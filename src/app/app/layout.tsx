@@ -12,9 +12,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading) {
-      if (!user) {
+      if (!user || !profile) {
+        // If no authenticated user or no profile document, redirect to login.
         router.replace('/login');
-      } else if (profile && profile.status !== 'ACTIVE') {
+      } else if (profile.status !== 'ACTIVE') {
+        // If profile exists but is not active, redirect to pending page.
         router.replace('/pending');
       }
     }
