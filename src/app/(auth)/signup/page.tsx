@@ -26,22 +26,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import { DEPARTMENTS } from "@/lib/constants";
 import { signUp } from "@/firebase/auth";
 
 const signupSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address"),
+  phone: z.string().min(9, "Valid phone number is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  department: z.string().min(1, "Department is required"),
 });
 
 export default function SignupPage() {
@@ -54,17 +46,17 @@ export default function SignupPage() {
     defaultValues: {
       name: "",
       email: "",
+      phone: "",
       password: "",
-      department: "",
     },
   });
 
   async function onSubmit(values: z.infer<typeof signupSchema>) {
     setIsSubmitting(true);
     try {
-      await signUp(values.email, values.password, values.name, values.department);
-      toast({ title: "Signup Successful", description: "You are now logged in." });
-      router.push("/"); // Redirect to home, which will handle routing.
+      await signUp(values.email, values.password, values.name, values.phone);
+      toast({ title: "Signup Successful", description: "Your account has been created and is pending approval." });
+      router.push("/"); // Redirect to home, which will handle routing to /pending.
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -115,12 +107,12 @@ export default function SignupPage() {
             />
             <FormField
               control={form.control}
-              name="password"
+              name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel>Phone Number</FormLabel>
                   <FormControl>
-                    <Input type="password" {...field} />
+                    <Input placeholder="0812345678" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -128,27 +120,13 @@ export default function SignupPage() {
             />
             <FormField
               control={form.control}
-              name="department"
+              name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Department</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select your department" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {DEPARTMENTS.map((dept) => (
-                        <SelectItem key={dept} value={dept}>
-                          {dept}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>Password</FormLabel>
+                  <FormControl>
+                    <Input type="password" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

@@ -5,10 +5,31 @@ export interface UserProfile {
   uid: string;
   name: string;
   email: string;
+  phone: string;
   role: Role;
-  department: Department;
+  department?: Department;
   status: UserStatus;
+  personal?: {
+    idCardNo?: string;
+    address?: string;
+    bank?: {
+      bankName?: string;
+      accountName?: string;
+      accountNo?: string;
+    };
+    emergencyContact?: {
+      name?: string;
+      relationship?: string;
+      phone?: string;
+    };
+  };
+  hr?: {
+    salary?: number;
+    ssoHospital?: string;
+    note?: string;
+  };
   createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface Customer {
@@ -58,17 +79,4 @@ export interface Attendance {
   userName: string;
   type: 'IN' | 'OUT';
   timestamp: Timestamp;
-}
-
-export interface Employee {
-  id: string;
-  name: string;
-  phone: string;
-  address: string;
-  idCardNumber: string;
-  bankAccount: string;
-  emergencyContact: string;
-  notes?: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
 }

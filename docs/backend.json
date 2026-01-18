@@ -19,6 +19,10 @@
           "format": "email",
           "description": "The user's email address."
         },
+        "phone": {
+          "type": "string",
+          "description": "The user's phone number."
+        },
         "role": {
           "type": "string",
           "description": "The user's role.",
@@ -46,23 +50,82 @@
           "enum": [
             "ACTIVE",
             "PENDING",
-            "INACTIVE"
+            "SUSPENDED"
           ]
+        },
+        "personal": {
+          "type": "object",
+          "description": "Personal information of the user.",
+          "properties": {
+            "idCardNo": {
+              "type": "string"
+            },
+            "address": {
+              "type": "string"
+            },
+            "bank": {
+              "type": "object",
+              "properties": {
+                "bankName": {
+                  "type": "string"
+                },
+                "accountName": {
+                  "type": "string"
+                },
+                "accountNo": {
+                  "type": "string"
+                }
+              }
+            },
+            "emergencyContact": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "relationship": {
+                  "type": "string"
+                },
+                "phone": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "hr": {
+          "type": "object",
+          "description": "HR-related information for the user.",
+          "properties": {
+            "salary": {
+              "type": "number"
+            },
+            "ssoHospital": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
         },
         "createdAt": {
           "type": "string",
           "format": "date-time",
           "description": "Timestamp of when the user was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the user was last updated."
         }
       },
       "required": [
         "uid",
         "name",
         "email",
-        "role",
-        "department",
-        "status",
-        "createdAt"
+        "phone",
+        "createdAt",
+        "updatedAt"
       ]
     },
     "Customer": {
@@ -285,65 +348,6 @@
         "type",
         "timestamp"
       ]
-    },
-    "Employee": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Employee",
-      "description": "Represents an employee's profile and information.",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the employee."
-        },
-        "name": {
-          "type": "string",
-          "description": "The employee's full name."
-        },
-        "phone": {
-          "type": "string",
-          "description": "The employee's phone number."
-        },
-        "address": {
-          "type": "string",
-          "description": "The employee's residential address."
-        },
-        "idCardNumber": {
-          "type": "string",
-          "description": "The employee's national ID card number."
-        },
-        "bankAccount": {
-          "type": "string",
-          "description": "The employee's bank account details for payroll."
-        },
-        "emergencyContact": {
-          "type": "string",
-          "description": "Contact information for an emergency contact."
-        },
-        "notes": {
-          "type": "string",
-          "description": "Additional notes about the employee."
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Timestamp of when the employee record was created."
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Timestamp of when the employee record was last updated."
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "phone",
-        "address",
-        "idCardNumber",
-        "bankAccount",
-        "emergencyContact"
-      ]
     }
   },
   "auth": {
@@ -413,22 +417,6 @@
             {
               "name": "attendanceId",
               "description": "The unique ID of the attendance record."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/employees/{employeeId}",
-        "definition": {
-          "entityName": "Employee",
-          "schema": {
-            "$ref": "#/backend/entities/Employee"
-          },
-          "description": "Stores employee information.",
-          "params": [
-            {
-              "name": "employeeId",
-              "description": "The unique ID of the employee."
             }
           ]
         }

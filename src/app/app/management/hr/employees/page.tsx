@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -9,119 +9,132 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
-import type { Employee } from "@/lib/types";
+import { Loader2, MoreHorizontal } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DEPARTMENTS, USER_ROLES, USER_STATUSES } from "@/lib/constants";
+import type { UserProfile } from "@/lib/types";
 
-const employeeSchema = z.object({
+const userProfileSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone is required"),
-  address: z.string().min(1, "Address is required"),
-  idCardNumber: z.string().min(1, "ID Card Number is required"),
-  bankAccount: z.string().min(1, "Bank Account is required"),
-  emergencyContact: z.string().min(1, "Emergency Contact is required"),
-  notes: z.string().optional().default(""),
+  department: z.enum(DEPARTMENTS).optional(),
+  role: z.enum(USER_ROLES),
+  status: z.enum(USER_STATUSES),
+  personal: z.object({
+    idCardNo: z.string().optional().default(''),
+    address: z.string().optional().default(''),
+    bank: z.object({
+      bankName: z.string().optional().default(''),
+      accountName: z.string().optional().default(''),
+      accountNo: z.string().optional().default(''),
+    }).optional(),
+    emergencyContact: z.object({
+      name: z.string().optional().default(''),
+      relationship: z.string().optional().default(''),
+      phone: z.string().optional().default(''),
+    }).optional(),
+  }).optional(),
+  hr: z.object({
+    salary: z.coerce.number().optional(),
+    ssoHospital: z.string().optional().default(''),
+    note: z.string().optional().default(''),
+  }).optional(),
 });
+
 
 export default function ManagementHREmployeesPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
 
-  const form = useForm<z.infer<typeof employeeSchema>>({
-    resolver: zodResolver(employeeSchema),
-    defaultValues: {
-      name: "",
-      phone: "",
-      address: "",
-      idCardNumber: "",
-      bankAccount: "",
-      emergencyContact: "",
-      notes: "",
-    },
+  const form = useForm<z.infer<typeof userProfileSchema>>({
+    resolver: zodResolver(userProfileSchema),
+    defaultValues: {},
   });
 
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "employees"), orderBy("createdAt", "desc"));
+    const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const employeesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
-      setEmployees(employeesData);
+      const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      setUsers(usersData);
       setLoading(false);
     },
     (error) => {
-      toast({ variant: "destructive", title: "Failed to load employees" });
+      toast({ variant: "destructive", title: "Failed to load users" });
       setLoading(false);
     });
     return () => unsubscribe();
   }, [db, toast]);
 
-  const openDialog = (employee: Employee | null = null) => {
-    setEditingEmployee(employee);
-    if (employee) {
-        form.reset(employee);
-    } else {
-        form.reset({
-            name: "",
-            phone: "",
-            address: "",
-            idCardNumber: "",
-            bankAccount: "",
-            emergencyContact: "",
-            notes: "",
-        });
-    }
+  const openDialog = (user: UserProfile) => {
+    setEditingUser(user);
+    form.reset({
+      name: user.name,
+      phone: user.phone,
+      department: user.department,
+      role: user.role,
+      status: user.status,
+      personal: {
+        idCardNo: user.personal?.idCardNo || '',
+        address: user.personal?.address || '',
+        bank: {
+            bankName: user.personal?.bank?.bankName || '',
+            accountName: user.personal?.bank?.accountName || '',
+            accountNo: user.personal?.bank?.accountNo || '',
+        },
+        emergencyContact: {
+            name: user.personal?.emergencyContact?.name || '',
+            relationship: user.personal?.emergencyContact?.relationship || '',
+            phone: user.personal?.emergencyContact?.phone || '',
+        }
+      },
+      hr: {
+          salary: user.hr?.salary || undefined,
+          ssoHospital: user.hr?.ssoHospital || '',
+          note: user.hr?.note || ''
+      }
+    });
     setIsDialogOpen(true);
   };
 
-  const onSubmit = (values: z.infer<typeof employeeSchema>) => {
-    if (!db) return;
+  const onSubmit = (values: z.infer<typeof userProfileSchema>) => {
+    if (!db || !editingUser) return;
     setIsSubmitting(true);
     
-    if (editingEmployee) {
-      const employeeDoc = doc(db, "employees", editingEmployee.id);
-      const updateData = { ...values, updatedAt: serverTimestamp() };
-      updateDoc(employeeDoc, updateData)
-        .then(() => {
-          toast({ title: "Employee updated successfully" });
-          setIsDialogOpen(false);
-        })
-        .catch(error => {
-          toast({ variant: "destructive", title: "Update Failed", description: error.message });
-        })
-        .finally(() => setIsSubmitting(false));
-    } else {
-      const addData = { ...values, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-      addDoc(collection(db, "employees"), addData)
-        .then(() => {
-          toast({ title: "Employee added successfully" });
-          setIsDialogOpen(false);
-        })
-        .catch(error => {
-          toast({ variant: "destructive", title: "Creation Failed", description: error.message });
-        })
-        .finally(() => setIsSubmitting(false));
-    }
+    const userDoc = doc(db, "users", editingUser.uid);
+    const updateData = { ...values, updatedAt: serverTimestamp() };
+    updateDoc(userDoc, updateData)
+      .then(() => {
+        toast({ title: "User profile updated successfully" });
+        setIsDialogOpen(false);
+      })
+      .catch(error => {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+      })
+      .finally(() => setIsSubmitting(false));
   };
 
-  const handleDelete = (employeeId: string) => {
+  const handleDelete = (userId: string) => {
     if (!db) return;
-    if (!window.confirm("Are you sure you want to delete this employee? This action cannot be undone.")) return;
+    if (!window.confirm("Are you sure you want to delete this user's profile from the database? This does not delete their authentication account.")) return;
     
-    const employeeDoc = doc(db, "employees", employeeId);
-    deleteDoc(employeeDoc)
+    const userDoc = doc(db, "users", userId);
+    deleteDoc(userDoc)
       .then(() => {
-        toast({title: "Employee deleted successfully"});
+        toast({title: "User profile deleted successfully"});
       })
       .catch(error => {
         toast({variant: "destructive", title: "Deletion Failed", description: error.message});
@@ -139,37 +152,37 @@ export default function ManagementHREmployeesPage() {
 
   return (
     <>
-      <PageHeader title="ข้อมูลพนักงาน" description="จัดการข้อมูลพนักงานทั้งหมด">
-        <Button onClick={() => openDialog()}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Employee
-        </Button>
-      </PageHeader>
+      <PageHeader title="ข้อมูลพนักงาน" description="จัดการข้อมูลพนักงานและบัญชีผู้ใช้ทั้งหมด" />
       
       <Card>
-        <CardHeader><CardTitle>Employee List</CardTitle></CardHeader>
+        <CardHeader><CardTitle>User List</CardTitle></CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Address</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {employees.length > 0 ? (
-                employees.map(employee => (
-                    <TableRow key={employee.id}>
-                    <TableCell className="font-medium">{employee.name}</TableCell>
-                    <TableCell>{employee.phone}</TableCell>
-                    <TableCell className="line-clamp-1">{employee.address}</TableCell>
+              {users.length > 0 ? (
+                users.map(user => (
+                    <TableRow key={user.uid}>
+                    <TableCell className="font-medium">{user.name}</TableCell>
+                    <TableCell>{user.phone}</TableCell>
+                    <TableCell>{user.department || 'N/A'}</TableCell>
+                    <TableCell>{user.role}</TableCell>
+                    <TableCell>{user.status}</TableCell>
                     <TableCell>
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openDialog(employee)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(employee.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openDialog(user)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDelete(user.uid)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -177,8 +190,8 @@ export default function ManagementHREmployeesPage() {
                 ))
               ) : (
                 <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        No employees found. <Button variant="link" className="p-0 h-auto" onClick={() => openDialog()}>Add the first one.</Button>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                       No users found. New users will appear here after they sign up.
                     </TableCell>
                 </TableRow>
               )}
@@ -188,35 +201,59 @@ export default function ManagementHREmployeesPage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingEmployee ? "Edit" : "Add"} Employee</DialogTitle>
-            <DialogDescription>Fill in the employee's details below.</DialogDescription>
+            <DialogTitle>Edit User Profile</DialogTitle>
+            <DialogDescription>Update the user's details below. Click save when you're done.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4 max-h-[70vh] overflow-y-auto pr-6">
-              <FormField name="name" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="phone" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="address" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Address</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="idCardNumber" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>ID Card Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-               <FormField name="bankAccount" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Bank Account</FormLabel><FormControl><Input placeholder="e.g., KBank 123-4-56789-0" {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-               <FormField name="emergencyContact" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Emergency Contact</FormLabel><FormControl><Input placeholder="e.g., Name (Relation) - 08X-XXX-XXXX" {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="notes" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <DialogFooter className="sticky bottom-0 bg-background pt-4 pb-0 -mx-6 px-6">
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <ScrollArea className="max-h-[70vh] p-1">
+                <div className="space-y-6 pr-6">
+                    <Card>
+                        <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
+                        <CardContent className="space-y-4">
+                            <FormField name="name" control={form.control} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <div className="grid grid-cols-3 gap-4">
+                                <FormField name="department" control={form.control} render={({ field }) => (<FormItem><FormLabel>Department</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{DEPARTMENTS.map(d=><SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                <FormField name="role" control={form.control} render={({ field }) => (<FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_ROLES.map(r=><SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                <FormField name="status" control={form.control} render={({ field }) => (<FormItem><FormLabel>Status</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                     <Card>
+                        <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
+                        <CardContent className="space-y-4">
+                             <FormField name="personal.idCardNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>ID Card Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="personal.address" control={form.control} render={({ field }) => (<FormItem><FormLabel>Address</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             <p className="font-medium text-sm">Bank Account</p>
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
+                                 <FormField name="personal.bank.bankName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Bank Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                 <FormField name="personal.bank.accountName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Account Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                 <FormField name="personal.bank.accountNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>Account No.</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             </div>
+                             <p className="font-medium text-sm">Emergency Contact</p>
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
+                                  <FormField name="personal.emergencyContact.name" control={form.control} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                  <FormField name="personal.emergencyContact.relationship" control={form.control} render={({ field }) => (<FormItem><FormLabel>Relationship</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                  <FormField name="personal.emergencyContact.phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             </div>
+                        </CardContent>
+                    </Card>
+                    
+                    <Card>
+                        <CardHeader><CardTitle>HR Information</CardTitle></CardHeader>
+                        <CardContent className="space-y-4">
+                             <FormField name="hr.salary" control={form.control} render={({ field }) => (<FormItem><FormLabel>Salary</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        </CardContent>
+                    </Card>
+                </div>
+              </ScrollArea>
+              <DialogFooter className="pt-6">
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
