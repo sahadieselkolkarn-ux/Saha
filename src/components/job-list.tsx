@@ -94,7 +94,7 @@ export function JobList({ department, status }: JobListProps) {
               <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
             </div>
             <CardDescription>
-              Dept: {job.department} &bull; Last update: {format((job.lastActivityAt as Timestamp).toDate(), 'PP')}
+              Dept: {job.department} &bull; Last update: {job.lastActivityAt ? format((job.lastActivityAt as Timestamp).toDate(), 'PP') : 'N/A'}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">

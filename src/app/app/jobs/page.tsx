@@ -85,7 +85,7 @@ export default function JobsPage() {
                   <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
                 </div>
                 <CardDescription>
-                  {job.department} &bull; Last update: {format((job.lastActivityAt as Timestamp).toDate(), 'PP')}
+                  {job.department} &bull; Last update: {job.lastActivityAt ? format((job.lastActivityAt as Timestamp).toDate(), 'PP') : 'N/A'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow">
