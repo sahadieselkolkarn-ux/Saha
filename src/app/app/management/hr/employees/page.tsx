@@ -16,11 +16,21 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MoreHorizontal } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEPARTMENTS, USER_ROLES, USER_STATUSES } from "@/lib/constants";
 import type { UserProfile } from "@/lib/types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const userProfileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -114,8 +124,16 @@ export default function ManagementHREmployeesPage() {
     if (!db || !editingUser) return;
     setIsSubmitting(true);
     
+    const updateData = {
+        ...values,
+        hr: {
+            ...values.hr,
+            salary: values.hr?.salary === undefined ? undefined : Number(values.hr.salary)
+        },
+        updatedAt: serverTimestamp()
+    };
+    
     const userDoc = doc(db, "users", editingUser.uid);
-    const updateData = { ...values, updatedAt: serverTimestamp() };
     updateDoc(userDoc, updateData)
       .then(() => {
         toast({ title: "User profile updated successfully" });
@@ -144,7 +162,7 @@ export default function ManagementHREmployeesPage() {
   if (loading) {
     return (
         <>
-            <PageHeader title="ข้อมูลพนักงาน" description="จัดการข้อมูลพนักงานทั้งหมด" />
+            <PageHeader title="จัดการผู้ใช้และพนักงาน" description="จัดการข้อมูลและบัญชีผู้ใช้ทั้งหมด" />
             <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
         </>
     );
@@ -152,7 +170,26 @@ export default function ManagementHREmployeesPage() {
 
   return (
     <>
-      <PageHeader title="ข้อมูลพนักงาน" description="จัดการข้อมูลพนักงานและบัญชีผู้ใช้ทั้งหมด" />
+      <PageHeader title="จัดการผู้ใช้และพนักงาน" description="จัดการข้อมูลและบัญชีผู้ใช้ทั้งหมด">
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button><PlusCircle className="mr-2 h-4 w-4" /> Add User</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>ขั้นตอนการสร้างผู้ใช้</AlertDialogTitle>
+              <AlertDialogDescription>
+                หากต้องการเพิ่มผู้ใช้ใหม่ ให้ผู้ใช้ไปสมัครสมาชิกด้วยตนเองที่หน้า Sign Up
+                <br /><br />
+                เมื่อสร้างบัญชีแล้ว บัญชีจะปรากฏในรายการนี้พร้อมสถานะ "PENDING" จากนั้นคุณสามารถแก้ไขข้อมูลและเปลี่ยนสถานะเป็น "ACTIVE" เพื่อเปิดใช้งานบัญชีได้
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction>ตกลง</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </PageHeader>
       
       <Card>
         <CardHeader><CardTitle>User List</CardTitle></CardHeader>

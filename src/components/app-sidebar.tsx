@@ -85,7 +85,7 @@ const DepartmentMenu = ({ department }: { department: Department }) => {
                         <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" />
                         <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" />
                         <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" />
-                        <SubNavLink href="/app/management/hr/employees" label="ข้อมูลพนักงาน" />
+                        <SubNavLink href="/app/management/hr/employees" label="ผู้ใช้และพนักงาน" />
                         <SubNavLink href="/app/management/hr/holidays" label="วันหยุด" />
                         <SubNavLink href="/app/management/hr/leaves" label="วันลา" />
                         <SubNavLink href="/app/management/hr/attendance-summary" label="สรุปลงเวลา" />
