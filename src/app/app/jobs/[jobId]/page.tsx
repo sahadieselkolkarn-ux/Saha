@@ -16,10 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { JOB_STATUSES } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, UploadCloud, X } from "lucide-react";
-import type { Job, JobActivity } from "@/lib/types";
+import { JOB_DEPARTMENTS, JOB_STATUSES } from "@/lib/constants";
+import { Loader2, User, Clock, Paperclip, UploadCloud, X, Send } from "lucide-react";
+import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { format } from 'date-fns';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 export default function JobDetailsPage() {
   const { jobId } = useParams();
@@ -34,6 +36,11 @@ export default function JobDetailsPage() {
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
+  const [transferDepartment, setTransferDepartment] = useState<JobDepartment | ''>('');
+  const [transferNote, setTransferNote] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   useEffect(() => {
     if (!jobId || !db) return;
@@ -137,6 +144,40 @@ export default function JobDetailsPage() {
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
         setIsSubmitting(false);
+    }
+  };
+
+  const handleTransferJob = async () => {
+    if (!transferDepartment || !job || !db || !profile) return;
+    setIsTransferring(true);
+    const jobDocRef = doc(db, "jobs", job.id);
+
+    try {
+        const newActivity: JobActivity = {
+            text: `Transferred from ${job.department} to ${transferDepartment}. Note: ${transferNote || 'N/A'}`,
+            userName: profile.name,
+            userId: profile.uid,
+            createdAt: serverTimestamp() as Timestamp,
+            photos: [],
+        };
+
+        const updateData: any = {
+            department: transferDepartment,
+            status: 'RECEIVED', // Reset status to RECEIVED for the new department
+            activities: arrayUnion(newActivity),
+            lastActivityAt: serverTimestamp(),
+        };
+
+        await updateDoc(jobDocRef, updateData);
+
+        toast({ title: 'Job Transferred', description: `Job moved to ${transferDepartment} department.`});
+        setIsTransferDialogOpen(false);
+        setTransferNote('');
+        setTransferDepartment('');
+    } catch(error: any) {
+        toast({ variant: "destructive", title: "Transfer Failed", description: error.message });
+    } finally {
+        setIsTransferring(false);
     }
   };
   
@@ -254,8 +295,50 @@ export default function JobDetailsPage() {
                   <p className="flex justify-between"><span>Last Activity:</span> <span>{format((job.lastActivityAt as Timestamp).toDate(), 'PPp')}</span></p>
               </CardContent>
           </Card>
+          <Card>
+              <CardHeader><CardTitle className="text-base font-semibold">Transfer Job</CardTitle></CardHeader>
+              <CardContent>
+                  <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline">
+                      <Send className="mr-2 h-4 w-4" /> Transfer to another Department
+                  </Button>
+              </CardContent>
+          </Card>
         </div>
       </div>
+      <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
+          <DialogContent>
+              <DialogHeader>
+                  <DialogTitle>Transfer Job</DialogTitle>
+                  <DialogDescription>
+                      Select a destination department and add an optional note. The job status will be reset to 'RECEIVED'.
+                  </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                      <Label htmlFor="department">New Department</Label>
+                      <Select value={transferDepartment} onValueChange={(v) => setTransferDepartment(v as JobDepartment)}>
+                          <SelectTrigger>
+                              <SelectValue placeholder="Select a department" />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {JOB_DEPARTMENTS.filter(d => d !== job?.department).map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <div className="grid gap-2">
+                      <Label htmlFor="note">Note (Optional)</Label>
+                      <Textarea id="note" value={transferNote} onChange={(e) => setTransferNote(e.target.value)} placeholder="Add a transfer note..." />
+                  </div>
+              </div>
+              <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleTransferJob} disabled={isTransferring || !transferDepartment}>
+                      {isTransferring && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Confirm Transfer
+                  </Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
     </>
   );
 }
