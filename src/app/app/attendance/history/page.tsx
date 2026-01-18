@@ -19,16 +19,18 @@ export default function AttendanceHistoryPage() {
   const { db } = useFirebase();
   const { profile } = useAuth();
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
-
+  
+  // Extracting the uid to a stable variable to prevent re-creating the query on every profile change.
+  const userId = profile?.uid;
 
   const attendanceQuery = useMemo(() => {
-    if (!db || !profile) return null;
+    if (!db || !userId) return null;
     return query(
       collection(db, `attendance`),
-      where('userId', '==', profile.uid),
+      where('userId', '==', userId),
       orderBy('timestamp', 'desc')
     );
-  }, [db, profile]);
+  }, [db, userId]); // Depend on the stable userId instead of the whole profile object.
 
   const { data: attendance, isLoading, error } = useCollection<Attendance>(attendanceQuery);
 
