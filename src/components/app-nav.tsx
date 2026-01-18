@@ -64,23 +64,23 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'MANAGEMENT' && (
                     <>
                         <SubNavLink href="/app/management/overview" label="ภาพรวม" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/jobs/by-status" label="งานตามสถานะ" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/summary" label="สรุปวันนี้/สัปดาห์" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/customers/all" label="รายชื่อลูกค้า" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/customers/tax" label="ลูกค้าใช้ภาษี" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/jobs" label="งาน (รวม)" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/customers" label="ลูกค้า (รวม)" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/accounting/revenue" label="รายรับ (เงินเข้า)" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/accounting/expenses" label="รายจ่าย (เงินออก)" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/hr/employees" label="ผู้ใช้และพนักงาน" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/hr/holidays" label="วันหยุด" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/hr/leaves" label="วันลา" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/hr/attendance-summary" label="สรุปลงเวลา" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/settings/store" label="ตั้งค่าร้าน/เวลา" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/settings/documents" label="ตั้งค่าเลขที่เอกสาร" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/accounting" label="บัญชี (รวม)" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/hr" label="บุคคล (รวม)" onClick={onLinkClick} />
+                        <Collapsible defaultOpen={pathname.startsWith('/app/management/settings')}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={pathname.startsWith('/app/management/settings') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
+                                    ตั้งค่า
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                <SubNavLink href="/app/management/settings/store" label="ตั้งค่าร้าน/เวลา" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/settings/documents" label="ตั้งค่าเลขที่เอกสาร" onClick={onLinkClick} />
+                            </CollapsibleContent>
+                        </Collapsible>
                     </>
                 )}
                 {department === 'OFFICE' && (
