@@ -102,7 +102,7 @@ export default function ManagementHREmployeesPage() {
         }
       },
       hr: {
-          salary: user.hr?.salary || undefined,
+          salary: user.hr?.salary ?? undefined,
           ssoHospital: user.hr?.ssoHospital || '',
           note: user.hr?.note || ''
       }
@@ -246,7 +246,27 @@ export default function ManagementHREmployeesPage() {
                     <Card>
                         <CardHeader><CardTitle>HR Information</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
-                             <FormField name="hr.salary" control={form.control} render={({ field }) => (<FormItem><FormLabel>Salary</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                              <FormField
+                                name="hr.salary"
+                                control={form.control}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Salary</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        {...field}
+                                        value={field.value ?? ''}
+                                        onChange={(e) => {
+                                          const value = e.target.valueAsNumber;
+                                          field.onChange(isNaN(value) ? undefined : value);
+                                        }}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
                              <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                              <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
