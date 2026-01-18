@@ -58,3 +58,16 @@ export interface Attendance {
   type: 'IN' | 'OUT';
   timestamp: Timestamp;
 }
+
+export interface Employee {
+  id: string;
+  name: string;
+  phone: string;
+  address: string;
+  idCardNumber: string;
+  bankAccount: string;
+  emergencyContact: string;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
