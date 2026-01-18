@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     
     return () => unsubscribeAuth();
-  }, [auth, db, loading]);
+  }, [auth, db]);
 
   useEffect(() => {
     if (!db || !user) {
