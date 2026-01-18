@@ -83,59 +83,50 @@ export default function IntakePage() {
 
   const onSubmit = async (values: z.infer<typeof intakeSchema>) => {
     if (!db || !storage) return;
-    setIsSubmitting(true);
-    
+
     const selectedCustomer = customers.find(c => c.id === values.customerId);
     if (!selectedCustomer) {
         toast({ variant: "destructive", title: "Customer not found." });
-        setIsSubmitting(false);
         return;
     }
+    
+    setIsSubmitting(true);
+    
+    try {
+        const jobData: any = {
+            ...values,
+            customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
+            status: "RECEIVED",
+            photos: [], // will be updated after upload
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            lastActivityAt: serverTimestamp(),
+            activities: [],
+        };
+    
+        const jobDocRef = await addDoc(collection(db, "jobs"), jobData);
+        const jobId = jobDocRef.id;
 
-    const jobData: any = {
-        ...values,
-        customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
-        status: "RECEIVED",
-        photos: [], // will be updated after upload
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        lastActivityAt: serverTimestamp(),
-        activities: [],
-    };
-
-    addDoc(collection(db, "jobs"), jobData)
-      .then(async (jobDocRef) => {
-        try {
-          // Generate an ID for the new job document before using it.
-          const jobWithId = { ...jobData, id: jobDocRef.id};
-          await updateDoc(doc(db, "jobs", jobDocRef.id), { id: jobDocRef.id });
-
-          const photoURLs: string[] = [];
-          for (const photo of photos) {
-              const photoRef = ref(storage, `jobs/${jobDocRef.id}/${Date.now()}-${photo.name}`);
-              await uploadBytes(photoRef, photo);
-              const url = await getDownloadURL(photoRef);
-              photoURLs.push(url);
-          }
-
-          if (photoURLs.length > 0) {
-            const updateData = { photos: photoURLs };
-            await updateDoc(jobDocRef, updateData).catch(error => {
-                toast({ variant: "destructive", title: "Failed to save photos to job", description: error.message });
-            });
-          }
-
-          toast({ title: "Job created successfully", description: `Job ID: ${jobDocRef.id}` });
-          router.push(`/app/jobs/${jobDocRef.id}`);
-        } catch (error: any) {
-          toast({ variant: "destructive", title: "Failed to upload photos", description: error.message });
-          setIsSubmitting(false); 
+        const photoURLs: string[] = [];
+        for (const photo of photos) {
+            const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
+            await uploadBytes(photoRef, photo);
+            const url = await getDownloadURL(photoRef);
+            photoURLs.push(url);
         }
-      })
-      .catch(error => {
+
+        await updateDoc(jobDocRef, {
+            id: jobId,
+            photos: photoURLs,
+        });
+
+        toast({ title: "Job created successfully", description: `Job ID: ${jobId}` });
+        router.push(`/app/jobs/${jobId}`);
+    } catch (error: any) {
         toast({ variant: "destructive", title: "Failed to create job", description: error.message });
+    } finally {
         setIsSubmitting(false);
-      });
+    }
   };
 
   useEffect(() => {

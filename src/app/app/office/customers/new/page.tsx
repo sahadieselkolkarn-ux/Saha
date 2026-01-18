@@ -54,20 +54,20 @@ export default function OfficeCustomersNewPage() {
 
   const useTax = form.watch("useTax");
 
-  const onSubmit = (values: z.infer<typeof customerSchema>) => {
+  const onSubmit = async (values: z.infer<typeof customerSchema>) => {
     if (!db) return;
     setIsSubmitting(true);
     
-    const addData = { ...values, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-    addDoc(collection(db, "customers"), addData)
-      .then(() => {
-        toast({ title: "Customer added successfully" });
-        router.push("/app/office/customers");
-      })
-      .catch(error => {
-        toast({ variant: "destructive", title: "Creation Failed", description: error.message });
-      })
-      .finally(() => setIsSubmitting(false));
+    try {
+      const addData = { ...values, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+      await addDoc(collection(db, "customers"), addData);
+      toast({ title: "Customer added successfully" });
+      router.push("/app/office/customers");
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Creation Failed", description: error.message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
 

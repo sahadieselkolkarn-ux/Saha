@@ -79,21 +79,21 @@ export default function CustomersPage() {
     setIsDialogOpen(true);
   };
 
-  const onSubmit = (values: z.infer<typeof customerSchema>) => {
+  const onSubmit = async (values: z.infer<typeof customerSchema>) => {
     if (!db || !editingCustomer) return;
     setIsSubmitting(true);
     
     const customerDoc = doc(db, "customers", editingCustomer.id);
     const updateData = { ...values, updatedAt: serverTimestamp() };
-    updateDoc(customerDoc, updateData)
-      .then(() => {
+    try {
+        await updateDoc(customerDoc, updateData);
         toast({ title: "Customer updated successfully" });
         setIsDialogOpen(false);
-      })
-      .catch(error => {
+    } catch (error: any) {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
-      })
-      .finally(() => setIsSubmitting(false));
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const handleDelete = (customerId: string) => {

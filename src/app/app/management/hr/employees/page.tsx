@@ -88,20 +88,22 @@ export default function ManagementHREmployeesPage() {
     });
     return () => unsubscribe();
   }, [db, toast]);
-
+  
   useEffect(() => {
+    // Cleanup state when the dialog is closed
     if (!isDialogOpen) {
       setEditingUser(null);
-      form.reset();
+      form.reset({});
     }
   }, [isDialogOpen, form]);
+
 
   const openDialog = (user: UserProfile) => {
     setEditingUser(user);
     form.reset({
       displayName: user.displayName,
       phone: user.phone,
-      department: user.department,
+      department: user.department ?? undefined,
       role: user.role,
       status: user.status,
       personal: {
@@ -127,16 +129,14 @@ export default function ManagementHREmployeesPage() {
     setIsDialogOpen(true);
   };
 
-  const onSubmit = (values: z.infer<typeof userProfileSchema>) => {
+  const onSubmit = async (values: z.infer<typeof userProfileSchema>) => {
     if (!db || !editingUser) return;
     setIsSubmitting(true);
     
-    // Create a payload for Firestore, ensuring no 'undefined' values are present.
-    // Convert undefined to null or empty strings where appropriate.
     const updateData: {[key: string]: any} = {
         displayName: values.displayName,
         phone: values.phone,
-        department: values.department ?? null,
+        department: values.department || null,
         role: values.role,
         status: values.status,
         personal: {
@@ -162,15 +162,16 @@ export default function ManagementHREmployeesPage() {
     };
     
     const userDoc = doc(db, "users", editingUser.uid);
-    updateDoc(userDoc, updateData)
-      .then(() => {
+
+    try {
+        await updateDoc(userDoc, updateData);
         toast({ title: "User profile updated successfully" });
         setIsDialogOpen(false);
-      })
-      .catch(error => {
+    } catch (error: any) {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
-      })
-      .finally(() => setIsSubmitting(false));
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const handleDelete = (userId: string) => {
@@ -291,19 +292,19 @@ export default function ManagementHREmployeesPage() {
                      <Card>
                         <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
-                             <FormField name="personal.idCardNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>ID Card Number</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                             <FormField name="personal.address" control={form.control} render={({ field }) => (<FormItem><FormLabel>Address</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="personal.idCardNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>ID Card Number</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="personal.address" control={form.control} render={({ field }) => (<FormItem><FormLabel>Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                              <p className="font-medium text-sm">Bank Account</p>
                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
-                                 <FormField name="personal.bank.bankName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Bank Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                 <FormField name="personal.bank.accountName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Account Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                 <FormField name="personal.bank.accountNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>Account No.</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                 <FormField name="personal.bank.bankName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Bank Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                 <FormField name="personal.bank.accountName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Account Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                 <FormField name="personal.bank.accountNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>Account No.</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                              </div>
                              <p className="font-medium text-sm">Emergency Contact</p>
                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
-                                  <FormField name="personal.emergencyContact.name" control={form.control} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                  <FormField name="personal.emergencyContact.relationship" control={form.control} render={({ field }) => (<FormItem><FormLabel>Relationship</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                  <FormField name="personal.emergencyContact.phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                  <FormField name="personal.emergencyContact.name" control={form.control} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                  <FormField name="personal.emergencyContact.relationship" control={form.control} render={({ field }) => (<FormItem><FormLabel>Relationship</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                  <FormField name="personal.emergencyContact.phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                              </div>
                         </CardContent>
                     </Card>
@@ -332,8 +333,8 @@ export default function ManagementHREmployeesPage() {
                                   </FormItem>
                                 )}
                               />
-                             <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                             <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
                     </Card>
                 </div>

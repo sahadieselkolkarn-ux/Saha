@@ -44,6 +44,8 @@ export default function JobDetailsPage() {
 
   const [techReport, setTechReport] = useState("");
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
 
   useEffect(() => {
     if (!jobId || !db) return;
@@ -65,40 +67,42 @@ export default function JobDetailsPage() {
     return () => unsubscribe();
   }, [jobId, toast, db]);
 
-  const handleUpdate = (field: string, value: any) => {
-    if (!jobId || !db) return;
+  const handleUpdate = async (field: string, value: any) => {
+    if (!jobId || !db || isUpdatingStatus) return;
+    setIsUpdatingStatus(true);
+
     const jobDocRef = doc(db, "jobs", jobId as string);
-    
-    const updateData: {[key: string]: any} = { 
-        [field]: value, 
-        lastActivityAt: serverTimestamp() 
+    const updateData: { [key: string]: any } = {
+        [field]: value,
+        lastActivityAt: serverTimestamp()
     };
 
-    updateDoc(jobDocRef, updateData)
-        .then(() => toast({ title: `Job ${field} updated` }))
-        .catch(error => {
-            toast({ variant: "destructive", title: "Update Failed", description: error.message });
-        });
+    try {
+        await updateDoc(jobDocRef, updateData);
+        toast({ title: `Job ${field} updated` });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+        setIsUpdatingStatus(false);
+    }
   };
 
-  const handleSaveTechReport = () => {
+  const handleSaveTechReport = async () => {
     if (!jobId || !db) return;
     setIsSavingTechReport(true);
     const jobDocRef = doc(db, "jobs", jobId as string);
     
-    updateDoc(jobDocRef, {
-      technicalReport: techReport,
-      lastActivityAt: serverTimestamp()
-    })
-    .then(() => {
-        toast({ title: `Technical report updated` });
-    })
-    .catch(error => {
-        toast({ variant: "destructive", title: "Update Failed", description: error.message });
-    })
-    .finally(() => {
+    try {
+      await updateDoc(jobDocRef, {
+        technicalReport: techReport,
+        lastActivityAt: serverTimestamp()
+      });
+      toast({ title: `Technical report updated` });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
         setIsSavingTechReport(false);
-    });
+    }
   };
   
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -332,7 +336,7 @@ export default function JobDetailsPage() {
               <Badge variant={job.status === 'DONE' ? 'default' : job.status === 'CLOSED' ? 'destructive' : 'secondary'}>{job.status}</Badge>
             </CardHeader>
             <CardContent>
-              <Select value={job.status} onValueChange={(v) => handleUpdate('status', v)}>
+              <Select value={job.status} onValueChange={(v) => handleUpdate('status', v)} disabled={isUpdatingStatus}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{JOB_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
