@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,11 @@ import { safeFormat } from '@/lib/date-utils';
 interface JobListProps {
   department?: JobDepartment;
   status?: JobStatus;
+  orderByField?: string;
+  orderByDirection?: OrderByDirection;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  children?: React.ReactNode;
 }
 
 const getStatusVariant = (status: Job['status']) => {
@@ -27,7 +32,15 @@ const getStatusVariant = (status: Job['status']) => {
   }
 }
 
-export function JobList({ department, status }: JobListProps) {
+export function JobList({ 
+  department, 
+  status,
+  orderByField = "lastActivityAt",
+  orderByDirection = "desc",
+  emptyTitle = "No Jobs Found",
+  emptyDescription = "There are no jobs that match the current criteria.",
+  children
+}: JobListProps) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -36,19 +49,21 @@ export function JobList({ department, status }: JobListProps) {
   const jobsQuery = useMemo(() => {
     if (!db) return null;
     
-    const constraints = [orderBy("lastActivityAt", "desc")];
+    const constraints: QueryConstraint[] = [];
     if (department) {
       constraints.push(where("department", "==", department));
     }
     if (status) {
       constraints.push(where("status", "==", status));
     }
+    constraints.push(orderBy(orderByField, orderByDirection));
     
-    // The 'as any' is a concession to TypeScript's difficulty with dynamically built queries.
-    // This is safe as long as the constraint values are of the correct type.
-    return query(collection(db, "jobs"), ...constraints as any);
+    // NOTE: Firestore requires composite indexes for queries that filter on one field
+    // and order by another. If the app shows a "missing index" error in the console,
+    // follow the link provided by Firestore to create it.
+    return query(collection(db, "jobs"), ...constraints);
 
-  }, [db, department, status]);
+  }, [db, department, status, orderByField, orderByDirection]);
 
   useEffect(() => {
     if (!jobsQuery) {
@@ -62,7 +77,10 @@ export function JobList({ department, status }: JobListProps) {
       setJobs(jobsData);
       setLoading(false);
     }, (error) => {
-        toast({ variant: "destructive", title: "Error loading jobs", description: "Could not retrieve jobs from the database." });
+        // A more robust error handler for index issues is in `attendance/history`
+        // For now, a console log and toast is sufficient here.
+        toast({ variant: "destructive", title: "Error loading jobs", description: "Could not retrieve jobs from the database. You may need to create a Firestore index." });
+        console.error(error);
         setLoading(false);
     });
 
@@ -77,9 +95,10 @@ export function JobList({ department, status }: JobListProps) {
      return (
         <Card className="text-center py-12">
             <CardHeader>
-                <CardTitle>No Jobs Found</CardTitle>
-                <CardDescription>There are no jobs that match the current criteria.</CardDescription>
+                <CardTitle>{emptyTitle}</CardTitle>
+                <CardDescription>{emptyDescription}</CardDescription>
             </CardHeader>
+            {children && <CardContent>{children}</CardContent>}
         </Card>
      );
   }
