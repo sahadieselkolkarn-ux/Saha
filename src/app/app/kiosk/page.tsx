@@ -11,15 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, RefreshCw } from "lucide-react";
 
-const TOKEN_REFRESH_INTERVAL = 30; // seconds
-
 export default function KioskPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
 
   const [currentToken, setCurrentToken] = useState<string | null>(null);
+  const [expiresAtMs, setExpiresAtMs] = useState<number | null>(null);
   const [qrData, setQrData] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(TOKEN_REFRESH_INTERVAL);
+  const [countdown, setCountdown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const generateNewToken = useCallback(async (isManual: boolean = false) => {
@@ -29,13 +28,14 @@ export default function KioskPage() {
     setIsLoading(true);
     try {
       // Pass the current token to be deactivated
-      const newToken = await generateKioskToken(db, currentToken);
-      setCurrentToken(newToken);
+      const { newTokenId, expiresAtMs: newExpiresAtMs } = await generateKioskToken(db, currentToken);
       
-      const fullUrl = `${window.location.origin}/app/attendance/scan?k=${newToken}`;
+      setCurrentToken(newTokenId);
+      setExpiresAtMs(newExpiresAtMs);
+      
+      const fullUrl = `${window.location.origin}/app/attendance/scan?k=${newTokenId}`;
       setQrData(fullUrl);
       
-      setCountdown(TOKEN_REFRESH_INTERVAL);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -50,7 +50,6 @@ export default function KioskPage() {
 
   // Initial token generation
   useEffect(() => {
-    // This effect runs only once on mount to generate the first token.
     generateNewToken();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db]); // Depend on db to ensure it's available.
@@ -60,17 +59,19 @@ export default function KioskPage() {
     if (isLoading) return;
 
     const intervalId = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          generateNewToken(); 
-          return TOKEN_REFRESH_INTERVAL;
+        if (expiresAtMs) {
+            const now = Date.now();
+            const newCountdown = Math.max(0, Math.round((expiresAtMs - now) / 1000));
+            setCountdown(newCountdown);
+
+            if (newCountdown <= 0) {
+                 generateNewToken(); 
+            }
         }
-        return prev - 1;
-      });
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [isLoading, generateNewToken]);
+  }, [isLoading, expiresAtMs, generateNewToken]);
 
 
   return (
@@ -85,7 +86,7 @@ export default function KioskPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
-            <QrDisplay data={qrData} />
+            <QrDisplay data={qrData} key={currentToken} />
             <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
               {isLoading && !qrData ? ( // Show only on initial load
                 <div className="flex items-center gap-2">
