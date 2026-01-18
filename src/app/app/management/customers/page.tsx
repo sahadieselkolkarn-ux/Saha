@@ -379,7 +379,7 @@ function TaxCustomersTab() {
 export default function ManagementCustomersPage() {
     return (
         <>
-            <PageHeader title="ลูกค้า (รวม)" description="จัดการข้อมูลลูกค้าทั้งหมด">
+            <PageHeader title="การจัดการลูกค้า" description="จัดการข้อมูลลูกค้าทั้งหมด">
                  <Button asChild>
                     <Link href="/app/office/customers/new">
                         <PlusCircle className="mr-2 h-4 w-4" />

@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export default function ManagementAccountingPage() {
     return (
         <>
-            <PageHeader title="บัญชี (รวม)" description="จัดการข้อมูลการเงินทั้งหมด" />
+            <PageHeader title="บริหารงานบัญชี" description="จัดการข้อมูลการเงินทั้งหมด" />
             <Tabs defaultValue="revenue" className="space-y-4">
                 <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
                     <TabsTrigger value="revenue">รายรับ (เงินเข้า)</TabsTrigger>

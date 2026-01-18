@@ -428,7 +428,7 @@ function EmployeesTab() {
 export default function ManagementHRPage() {
     return (
         <>
-            <PageHeader title="บุคคล (รวม)" description="จัดการข้อมูลพนักงานและการลา" />
+            <PageHeader title="บริหารงานบุคคล" description="จัดการข้อมูลพนักงานและการลา" />
             <Tabs defaultValue="employees" className="space-y-4">
                 <TabsList>
                     <TabsTrigger value="employees">ผู้ใช้และพนักงาน</TabsTrigger>

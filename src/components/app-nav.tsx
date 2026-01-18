@@ -64,12 +64,12 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
             <CollapsibleContent className="py-1 pl-6 space-y-1">
                 {department === 'MANAGEMENT' && (
                     <>
-                        <SubNavLink href="/app/management/overview" label="ภาพรวม" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/jobs" label="งาน (รวม)" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/customers" label="ลูกค้า (รวม)" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/overview" label="Dashboard" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/jobs" label="ภาพรวมงานซ่อม" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/accounting" label="บัญชี (รวม)" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/hr" label="บุคคล (รวม)" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/accounting" label="บริหารงานบัญชี" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/hr" label="บริหารงานบุคคล" onClick={onLinkClick} />
                         <Collapsible defaultOpen={pathname.startsWith('/app/management/settings')}>
                             <CollapsibleTrigger asChild>
                                 <Button variant={pathname.startsWith('/app/management/settings') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">

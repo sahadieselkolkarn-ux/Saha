@@ -101,7 +101,7 @@ function AllJobsTab() {
 export default function ManagementJobsPage() {
     return (
         <>
-            <PageHeader title="งาน (รวม)" description="จัดการงานทั้งหมดในที่เดียว">
+            <PageHeader title="ภาพรวมงานซ่อม" description="จัดการงานทั้งหมดในที่เดียว">
                  <Button asChild>
                     <Link href="/app/office/intake">
                         <PlusCircle className="mr-2 h-4 w-4" />
