@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUSES } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, UploadCloud, X, Send, Save, AlertCircle } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera } from "lucide-react";
 import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -298,12 +298,12 @@ export default function JobDetailsPage() {
               <CardContent className="space-y-4">
                 <Textarea placeholder="Type your note here..." value={newNote} onChange={e => setNewNote(e.target.value)} />
                 <div className="flex items-center justify-center w-full">
-                    <label htmlFor="dropzone-file" className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg ${((job.photos?.length || 0) + newPhotos.length) >= 4 ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer bg-muted hover:bg-secondary"}`}>
+                    <label htmlFor="activity-dropzone-file" className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg ${((job?.photos?.length || 0) + newPhotos.length) >= 4 ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer bg-muted hover:bg-secondary"}`}>
                         <div className="flex flex-col items-center justify-center">
-                        <UploadCloud className="w-8 h-8 text-muted-foreground" />
+                        <Camera className="w-8 h-8 text-muted-foreground" />
                         <p className="text-xs text-muted-foreground">Add Photos (up to 4 total)</p>
                         </div>
-                        <Input id="dropzone-file" type="file" className="hidden" multiple accept="image/*" onChange={handlePhotoChange} disabled={((job.photos?.length || 0) + newPhotos.length) >= 4} />
+                        <Input id="activity-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={((job?.photos?.length || 0) + newPhotos.length) >= 4} />
                     </label>
                 </div>
                 {(photoPreviews.length > 0) && (

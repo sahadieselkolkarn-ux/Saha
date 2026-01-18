@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
-import { Loader2, UploadCloud, X, ChevronsUpDown, PlusCircle } from "lucide-react";
+import { Loader2, Camera, X, ChevronsUpDown, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -253,12 +253,13 @@ export default function IntakePage() {
                 <FormLabel>Photos (up to 4, max 5MB each)</FormLabel>
                 <FormControl>
                   <div className="flex items-center justify-center w-full">
-                    <label htmlFor="dropzone-file" className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg ${photos.length >= 4 ? 'cursor-not-allowed bg-muted/50' : 'cursor-pointer bg-muted hover:bg-secondary'}`}>
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <UploadCloud className="w-8 h-8 mb-2 text-muted-foreground" />
-                        <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-                      </div>
-                      <Input id="dropzone-file" type="file" className="hidden" multiple accept="image/*" onChange={handlePhotoChange} disabled={photos.length >= 4} />
+                    <label htmlFor="intake-dropzone-file" className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg ${photos.length >= 4 ? 'cursor-not-allowed bg-muted/50' : 'cursor-pointer bg-muted hover:bg-secondary'}`}>
+                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                            <Camera className="w-8 h-8 mb-2 text-muted-foreground" />
+                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">Take Photo</span> or Upload</p>
+                             <p className="text-xs text-muted-foreground">Tap to open camera or file browser</p>
+                        </div>
+                      <Input id="intake-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= 4} />
                     </label>
                   </div>
                 </FormControl>
