@@ -24,6 +24,7 @@ import type { UserProfile } from "@/lib/types";
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -59,6 +60,44 @@ const userProfileSchema = z.object({
   }).optional(),
 });
 
+// Card component for mobile view
+const UserCard = ({ user, onEdit, onDelete }: { user: UserProfile, onEdit: (user: UserProfile) => void, onDelete: (userId: string) => void }) => (
+    <Card>
+        <CardHeader>
+            <div className="flex justify-between items-start">
+                <CardTitle className="text-lg">{user.displayName}</CardTitle>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onEdit(user)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onDelete(user.uid)} className="text-destructive focus:text-destructive">
+                            Delete
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+            <CardDescription>{user.phone}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm pt-0">
+            <div className="flex justify-between items-center border-t pt-2">
+                <span className="text-muted-foreground">Department</span>
+                <span className="font-medium">{user.department || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between items-center border-t pt-2">
+                <span className="text-muted-foreground">Role</span>
+                <span className="font-medium">{user.role}</span>
+            </div>
+             <div className="flex justify-between items-center border-t pt-2">
+                <span className="text-muted-foreground">Status</span>
+                <span className="font-medium">{user.status}</span>
+            </div>
+        </CardContent>
+    </Card>
+);
 
 export default function ManagementHREmployeesPage() {
   const { db } = useFirebase();
@@ -68,6 +107,8 @@ export default function ManagementHREmployeesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof userProfileSchema>>({
     resolver: zodResolver(userProfileSchema),
@@ -90,7 +131,6 @@ export default function ManagementHREmployeesPage() {
   }, [db, toast]);
   
   useEffect(() => {
-    // Cleanup state when the dialog is closed
     if (!isDialogOpen) {
       setEditingUser(null);
       form.reset({});
@@ -135,11 +175,8 @@ export default function ManagementHREmployeesPage() {
     
     try {
         const updateData: {[key: string]: any} = {
-            displayName: values.displayName,
-            phone: values.phone,
+            ...values,
             department: values.department || null,
-            role: values.role,
-            status: values.status,
             personal: {
                 idCardNo: values.personal?.idCardNo || null,
                 address: values.personal?.address || null,
@@ -174,18 +211,24 @@ export default function ManagementHREmployeesPage() {
     }
   };
 
-  const handleDelete = (userId: string) => {
-    if (!db) return;
-    if (!window.confirm("Are you sure you want to delete this user's profile from the database? This does not delete their authentication account.")) return;
+  const handleDeleteRequest = (userId: string) => {
+    setUserToDelete(userId);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!db || !userToDelete) return;
     
-    const userDoc = doc(db, "users", userId);
-    deleteDoc(userDoc)
-      .then(() => {
+    const userDoc = doc(db, "users", userToDelete);
+    try {
+        await deleteDoc(userDoc);
         toast({title: "User profile deleted successfully"});
-      })
-      .catch(error => {
+    } catch(error: any) {
         toast({variant: "destructive", title: "Deletion Failed", description: error.message});
-      });
+    } finally {
+        setIsDeleteAlertOpen(false);
+        setUserToDelete(null);
+    }
   };
 
   if (loading) {
@@ -220,7 +263,8 @@ export default function ManagementHREmployeesPage() {
         </AlertDialog>
       </PageHeader>
       
-      <Card>
+      {/* Desktop View: Table */}
+      <Card className="hidden sm:block">
         <CardHeader><CardTitle>User List</CardTitle></CardHeader>
         <CardContent>
           <Table>
@@ -248,7 +292,7 @@ export default function ManagementHREmployeesPage() {
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openDialog(user)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(user.uid)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteRequest(user.uid)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -266,11 +310,27 @@ export default function ManagementHREmployeesPage() {
         </CardContent>
       </Card>
 
+      {/* Mobile View: Card List */}
+      <div className="grid gap-4 sm:hidden">
+        {users.length > 0 ? (
+            users.map(user => (
+                <UserCard key={user.uid} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} />
+            ))
+        ) : (
+            <Card className="text-center py-12">
+                <CardHeader>
+                    <CardTitle>No Users Found</CardTitle>
+                    <CardDescription>New users will appear here after they sign up.</CardDescription>
+                </CardHeader>
+            </Card>
+        )}
+      </div>
+
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
             className="sm:max-w-2xl" 
-            onInteractOutside={(e) => isSubmitting && e.preventDefault()}
-            onEscapeKeyDown={(e) => isSubmitting && e.preventDefault()}
+            onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
+            onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
           <DialogHeader>
             <DialogTitle>Edit User Profile</DialogTitle>
@@ -285,7 +345,7 @@ export default function ManagementHREmployeesPage() {
                         <CardContent className="space-y-4">
                             <FormField name="displayName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             <FormField name="phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                            <div className="grid grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <FormField name="department" control={form.control} render={({ field }) => (<FormItem><FormLabel>Department</FormLabel><Select onValueChange={field.onChange} value={field.value ?? ''}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{DEPARTMENTS.map(d=><SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                                 <FormField name="role" control={form.control} render={({ field }) => (<FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_ROLES.map(r=><SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                                 <FormField name="status" control={form.control} render={({ field }) => (<FormItem><FormLabel>Status</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
@@ -353,6 +413,20 @@ export default function ManagementHREmployeesPage() {
           </Form>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This action will delete the user's profile from the database. This does not delete their authentication account and cannot be undone.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

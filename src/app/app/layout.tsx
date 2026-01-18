@@ -6,6 +6,7 @@ import { AppSidebar } from '@/components/app-sidebar';
 import { useAuth } from "@/context/auth-context";
 import { Loader2 } from "lucide-react";
 import { FixStuckUI } from "@/components/fix-stuck-ui";
+import { AppHeader } from "@/components/app-header";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -32,11 +33,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <FixStuckUI />
       <div className="flex min-h-screen w-full">
         <AppSidebar />
-        <main className="flex flex-1 flex-col sm:pl-64">
-          <div className="flex-1 p-4 md:p-8 lg:p-10">
+        <div className="flex flex-1 flex-col sm:pl-64">
+          <AppHeader />
+          <main className="flex-1 p-4 md:p-8 lg:p-10">
             {children}
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
     </>
   );

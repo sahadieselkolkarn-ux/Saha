@@ -7,9 +7,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import Link from "next/link";
+
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -18,8 +20,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Customer } from "@/lib/types";
-import Link from "next/link";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -34,6 +45,44 @@ const customerSchema = z.object({
   path: ["taxName"], 
 });
 
+// Card component for mobile view
+const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEdit: (customer: Customer) => void, onDelete: (customerId: string) => void }) => (
+    <Card>
+        <CardHeader>
+            <div className="flex justify-between items-start">
+                <CardTitle className="text-lg">{customer.name}</CardTitle>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive">
+                            Delete
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+            <CardDescription>{customer.phone}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm pt-0">
+             <div className="flex justify-between items-center border-t pt-2">
+                <span className="text-muted-foreground">Uses Tax Invoice</span>
+                <span className="font-medium">{customer.useTax ? "Yes" : "No"}</span>
+            </div>
+             {customer.detail && (
+                <div className="border-t pt-2">
+                    <p className="text-muted-foreground">Details:</p>
+                    <p className="whitespace-pre-wrap">{customer.detail}</p>
+                </div>
+            )}
+        </CardContent>
+    </Card>
+);
+
+
 export default function CustomersPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
@@ -42,6 +91,9 @@ export default function CustomersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
+
 
   const form = useForm<z.infer<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
@@ -74,7 +126,6 @@ export default function CustomersPage() {
   }, [db, toast]);
 
   useEffect(() => {
-    // Cleanup state when the dialog is closed
     if (!isDialogOpen) {
       setEditingCustomer(null);
       form.reset({
@@ -112,22 +163,33 @@ export default function CustomersPage() {
     }
   };
 
-  const handleDelete = (customerId: string) => {
-    if (!db) return;
-    if (!window.confirm("Are you sure you want to delete this customer? This action cannot be undone.")) return;
+  const handleDeleteRequest = (customerId: string) => {
+    setCustomerToDelete(customerId);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!db || !customerToDelete) return;
     
-    const customerDoc = doc(db, "customers", customerId);
-    deleteDoc(customerDoc)
-      .then(() => {
-        toast({title: "Customer deleted successfully"});
-      })
-      .catch(error => {
-        toast({variant: "destructive", title: "Deletion Failed", description: error.message});
-      });
+    const customerDoc = doc(db, "customers", customerToDelete);
+    try {
+      await deleteDoc(customerDoc)
+      toast({title: "Customer deleted successfully"});
+    } catch (error: any) {
+      toast({variant: "destructive", title: "Deletion Failed", description: error.message});
+    } finally {
+      setIsDeleteAlertOpen(false);
+      setCustomerToDelete(null);
+    }
   };
 
   if (loading) {
-    return <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin h-8 w-8" /></div>;
+    return (
+        <>
+            <PageHeader title="Customer Management" description="Add, edit, and manage your customers." />
+            <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
+        </>
+    );
   }
 
   return (
@@ -140,7 +202,8 @@ export default function CustomersPage() {
         </Button>
       </PageHeader>
       
-      <Card>
+      {/* Desktop View: Table */}
+      <Card className="hidden sm:block">
         <CardHeader><CardTitle>Customer List</CardTitle></CardHeader>
         <CardContent>
           <Table>
@@ -164,7 +227,7 @@ export default function CustomersPage() {
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openEditDialog(customer)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -182,11 +245,27 @@ export default function CustomersPage() {
         </CardContent>
       </Card>
 
+      {/* Mobile View: Card List */}
+      <div className="grid gap-4 sm:hidden">
+        {customers.length > 0 ? (
+          customers.map(customer => (
+            <CustomerCard key={customer.id} customer={customer} onEdit={openEditDialog} onDelete={handleDeleteRequest} />
+          ))
+        ) : (
+          <Card className="text-center py-12">
+            <CardHeader>
+                <CardTitle>No Customers Found</CardTitle>
+                <CardDescription>Get started by adding a new customer.</CardDescription>
+            </CardHeader>
+        </Card>
+        )}
+      </div>
+
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
             className="sm:max-w-[600px]"
-            onInteractOutside={(e) => isSubmitting && e.preventDefault()}
-            onEscapeKeyDown={(e) => isSubmitting && e.preventDefault()}
+            onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
+            onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
           <DialogHeader>
             <DialogTitle>Edit Customer</DialogTitle>
@@ -215,13 +294,13 @@ export default function CustomersPage() {
               {useTax && (
                 <div className="space-y-4 p-4 border rounded-md bg-muted/50">
                     <FormField name="taxName" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField name="taxAddress" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField name="taxId" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                     )} />
                 </div>
               )}
@@ -235,6 +314,21 @@ export default function CustomersPage() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This will permanently delete the customer. This action cannot be undone.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
