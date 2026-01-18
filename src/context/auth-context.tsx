@@ -38,11 +38,19 @@ export function AuthProvider({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Guard: Do not proceed if Firebase services are not ready.
+    if (!auth || !db) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribeAuth = auth.onAuthStateChanged(
       (firebaseUser) => {
+        // This check ensures we only attempt to read Firestore for authenticated users.
         if (firebaseUser) {
           setUser(firebaseUser);
           const userDocRef = doc(db, "users", firebaseUser.uid);
+          
           const unsubscribeProfile = onSnapshot(
             userDocRef,
             (docSnapshot) => {
@@ -72,9 +80,9 @@ export function AuthProvider({
               setLoading(false);
             }
           );
-          return unsubscribeProfile; // This will be called on cleanup
+          return unsubscribeProfile; // Cleanup profile listener on user change
         } else {
-          // User is signed out.
+          // User is signed out, clear all user-related state.
           setUser(null);
           setProfile(null);
           setLoading(false);
@@ -88,6 +96,7 @@ export function AuthProvider({
       }
     );
 
+    // Cleanup auth listener on component unmount
     return () => unsubscribeAuth();
   }, [auth, db]);
 

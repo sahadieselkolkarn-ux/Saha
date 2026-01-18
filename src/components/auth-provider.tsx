@@ -61,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // This is the case the user mentioned. User is loaded, but firestore is not.
       // This is an initialization issue. We should stop loading to not hang the app.
       console.warn("AuthProvider: Firestore instance not available. Cannot fetch user profile.");
+      setProfile(null); 
       setProfileLoading(false);
     }
   }, [user, isUserLoading, firestore]);
