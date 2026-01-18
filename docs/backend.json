@@ -272,46 +272,6 @@
           "type": "string",
           "description": "Timestamp of the last activity related to the job.",
           "format": "date-time"
-        },
-        "activities": {
-          "type": "array",
-          "description": "Log of activities or notes related to the job.",
-          "items": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string",
-                "description": "The text content of the activity log."
-              },
-              "userName": {
-                "type": "string",
-                "description": "Name of the user who created the activity."
-              },
-              "userId": {
-                "type": "string",
-                "description": "UID of the user who created the activity."
-              },
-              "createdAt": {
-                "type": "string",
-                "description": "Timestamp of when the activity was created.",
-                "format": "date-time"
-              },
-              "photos": {
-                "type": "array",
-                "description": "Array of URLs for photos related to the activity.",
-                "items": {
-                  "type": "string",
-                  "format": "uri"
-                }
-              }
-            },
-            "required": [
-              "text",
-              "userName",
-              "userId",
-              "createdAt"
-            ]
-          }
         }
       },
       "required": [
@@ -325,6 +285,45 @@
         "createdAt",
         "updatedAt",
         "lastActivityAt"
+      ]
+    },
+    "JobActivity": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Job Activity",
+      "description": "Represents a single activity log entry for a job.",
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "The text content of the activity log."
+        },
+        "userName": {
+          "type": "string",
+          "description": "Name of the user who created the activity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "UID of the user who created the activity."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the activity was created."
+        },
+        "photos": {
+          "type": "array",
+          "description": "Array of URLs for photos related to the activity.",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
+        }
+      },
+      "required": [
+        "text",
+        "userName",
+        "userId",
+        "createdAt"
       ]
     },
     "Attendance": {
@@ -449,6 +448,26 @@
             {
               "name": "jobId",
               "description": "The unique ID of the job."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/jobs/{jobId}/activities/{activityId}",
+        "definition": {
+          "entityName": "JobActivity",
+          "schema": {
+            "$ref": "#/backend/entities/JobActivity"
+          },
+          "description": "Stores activity logs for a specific job.",
+          "params": [
+            {
+              "name": "jobId",
+              "description": "The unique ID of the job."
+            },
+            {
+              "name": "activityId",
+              "description": "The unique ID of the activity."
             }
           ]
         }

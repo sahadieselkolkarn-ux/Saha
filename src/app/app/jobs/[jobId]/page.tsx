@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
+import { useCollection } from "@/firebase/firestore/use-collection";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
 
@@ -18,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUSES } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, UploadCloud, X, Send, Save } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, UploadCloud, X, Send, Save, AlertCircle } from "lucide-react";
 import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -45,6 +46,13 @@ export default function JobDetailsPage() {
   const [techReport, setTechReport] = useState("");
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  
+  const activitiesQuery = useMemo(() => {
+    if (!db || !jobId) return null;
+    return query(collection(db, "jobs", jobId as string, "activities"), orderBy("createdAt", "desc"));
+  }, [db, jobId]);
+
+  const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
 
   useEffect(() => {
@@ -134,28 +142,33 @@ export default function JobDetailsPage() {
     
     try {
         const jobDocRef = doc(db, "jobs", jobId as string);
+        const activitiesColRef = collection(db, "jobs", jobId as string, "activities");
+
         const photoURLs: string[] = [];
         for (const photo of newPhotos) {
             const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
             await uploadBytes(photoRef, photo);
             photoURLs.push(await getDownloadURL(photoRef));
         }
-
-        const newActivity: JobActivity = {
+        
+        const batch = writeBatch(db);
+        
+        // 1. Add new activity document
+        batch.set(doc(activitiesColRef), {
             text: newNote,
             userName: profile.displayName,
             userId: profile.uid,
-            createdAt: serverTimestamp() as Timestamp, // Cast for type consistency
+            createdAt: serverTimestamp(),
             photos: photoURLs,
-        };
+        });
         
-        const updateData = { 
-            activities: arrayUnion(newActivity),
+        // 2. Update main job document
+        batch.update(jobDocRef, { 
             photos: arrayUnion(...photoURLs),
             lastActivityAt: serverTimestamp() 
-        };
+        });
         
-        await updateDoc(jobDocRef, updateData);
+        await batch.commit();
 
         setNewNote("");
         setNewPhotos([]);
@@ -174,22 +187,27 @@ export default function JobDetailsPage() {
     setIsTransferring(true);
     try {
         const jobDocRef = doc(db, "jobs", job.id);
-        const newActivity: JobActivity = {
+        const activitiesColRef = collection(db, "jobs", job.id, "activities");
+
+        const batch = writeBatch(db);
+
+        // Update job doc
+        batch.update(jobDocRef, {
+            department: transferDepartment,
+            status: 'RECEIVED', // Reset status to RECEIVED for the new department
+            lastActivityAt: serverTimestamp(),
+        });
+
+        // Add activity to subcollection
+        batch.set(doc(activitiesColRef), {
             text: `Transferred from ${job.department} to ${transferDepartment}. Note: ${transferNote || 'N/A'}`,
             userName: profile.displayName,
             userId: profile.uid,
-            createdAt: serverTimestamp() as Timestamp,
+            createdAt: serverTimestamp(),
             photos: [],
-        };
+        });
 
-        const updateData: any = {
-            department: transferDepartment,
-            status: 'RECEIVED', // Reset status to RECEIVED for the new department
-            activities: arrayUnion(newActivity),
-            lastActivityAt: serverTimestamp(),
-        };
-
-        await updateDoc(jobDocRef, updateData);
+        await batch.commit();
 
         toast({ title: 'Job Transferred', description: `Job moved to ${transferDepartment} department.`});
         setIsTransferDialogOpen(false);
@@ -214,14 +232,6 @@ export default function JobDetailsPage() {
           setTransferDepartment('');
       }
   }, [isTransferDialogOpen])
-  
-  const sortedActivities = job?.activities ? [...job.activities].sort((a,b) => {
-      if (!a.createdAt) return 1;
-      if (!b.createdAt) return -1;
-      const timeA = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0;
-      const timeB = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0;
-      return timeB - timeA;
-  }) : [];
 
   if (loading) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -316,8 +326,19 @@ export default function JobDetailsPage() {
           <Card>
             <CardHeader><CardTitle>Activity Log</CardTitle></CardHeader>
             <CardContent className="space-y-6">
-              {sortedActivities.length > 0 ? sortedActivities.map((activity, index) => (
-                  <div key={index} className="flex gap-4">
+              {activitiesLoading ? (
+                  <div className="flex items-center justify-center h-24">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+              ) : activitiesError ? (
+                  <div className="flex flex-col items-center justify-center h-24 text-destructive">
+                      <AlertCircle className="h-6 w-6 mb-2" />
+                      <p>Error loading activities.</p>
+                      <p className="text-xs">{activitiesError.message}</p>
+                  </div>
+              ) : activities && activities.length > 0 ? (
+                activities.map((activity) => (
+                  <div key={activity.id} className="flex gap-4">
                       <User className="h-5 w-5 mt-1 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1">
                           <p className="font-semibold">{activity.userName} <span className="text-xs font-normal text-muted-foreground ml-2">{safeFormat(activity.createdAt, 'PPpp')}</span></p>
@@ -333,7 +354,10 @@ export default function JobDetailsPage() {
                           )}
                       </div>
                   </div>
-              )) : <p className="text-muted-foreground text-sm">No activities yet.</p>}
+              ))
+              ) : (
+                <p className="text-muted-foreground text-sm text-center h-24 flex items-center justify-center">No activities yet.</p>
+              )}
             </CardContent>
           </Card>
         </div>

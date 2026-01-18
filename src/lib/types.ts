@@ -66,10 +66,10 @@ export interface Job {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastActivityAt: Timestamp;
-  activities?: JobActivity[];
 }
 
 export interface JobActivity {
+  id?: string;
   text: string;
   userName: string;
   userId: string;
