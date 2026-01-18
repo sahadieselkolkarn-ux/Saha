@@ -117,6 +117,23 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp of when the user was last updated."
+        },
+        "lastAttendance": {
+          "type": "object",
+          "description": "The user's last attendance record to avoid complex queries.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "IN",
+                "OUT"
+              ]
+            },
+            "timestamp": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
         }
       },
       "required": [

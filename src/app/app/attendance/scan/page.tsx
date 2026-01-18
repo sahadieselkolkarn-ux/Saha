@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, serverTimestamp, Timestamp, writeBatch, doc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -11,51 +11,42 @@ import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle } from 'lucide-react';
-import type { Attendance } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 
 const SPAM_DELAY_SECONDS = 60; // 1 minute
 
+interface LastAttendanceInfo {
+  type: 'IN' | 'OUT';
+  timestamp: Timestamp;
+}
+
 export default function AttendanceScanPage() {
   const { db } = useFirebase();
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [lastAttendance, setLastAttendance] = useState<Attendance | null | undefined>(undefined); // undefined for initial loading state
+  const [lastAttendance, setLastAttendance] = useState<LastAttendanceInfo | null | undefined>(undefined); // undefined for initial loading state
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!db || !profile) return;
-
-    const attendanceCollection = collection(db, `attendance`);
-    const q = query(
-      attendanceCollection,
-      where('userId', '==', profile.uid),
-      orderBy('timestamp', 'desc'),
-      limit(1)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        const data = { id: doc.id, ...doc.data() } as Attendance;
-        setLastAttendance(data);
-
-        const lastTimestamp = (data.timestamp as Timestamp).toDate();
-        const diff = differenceInSeconds(new Date(), lastTimestamp);
-        setSecondsSinceLast(diff);
-      } else {
-        setLastAttendance(null); // No records found
-        setSecondsSinceLast(null);
-      }
-    }, (error) => {
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch attendance status.' });
-      setLastAttendance(null);
-    });
-
-    return () => unsubscribe();
-  }, [db, toast, profile]);
+    if (authLoading) {
+      setLastAttendance(undefined);
+      return;
+    }
+    
+    if (profile?.lastAttendance) {
+      const lastAtt = profile.lastAttendance as LastAttendanceInfo;
+      setLastAttendance(lastAtt);
+      
+      const lastTimestamp = lastAtt.timestamp.toDate();
+      const diff = differenceInSeconds(new Date(), lastTimestamp);
+      setSecondsSinceLast(diff);
+    } else {
+      setLastAttendance(null); // No records found
+      setSecondsSinceLast(null);
+    }
+  }, [profile, authLoading]);
   
   // Countdown timer for spam prevention
   useEffect(() => {
@@ -82,22 +73,41 @@ export default function AttendanceScanPage() {
 
     setIsSubmitting(true);
     const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
-
-    const attendanceCollection = collection(db, `attendance`);
-    const attendanceData = {
-      userId: profile.uid,
-      userName: profile.displayName,
-      type: nextAction,
-      timestamp: serverTimestamp(),
-    };
+    const clientTime = new Date();
+    const serverTime = serverTimestamp();
 
     try {
-      await addDoc(attendanceCollection, attendanceData);
+      const batch = writeBatch(db);
+
+      // 1. Create new attendance document
+      const newAttendanceRef = doc(collection(db, 'attendance'));
+      const attendanceData = {
+        userId: profile.uid,
+        userName: profile.displayName,
+        type: nextAction,
+        timestamp: serverTime,
+        id: newAttendanceRef.id // Add id to the document data itself.
+      };
+      batch.set(newAttendanceRef, attendanceData);
+      
+      // 2. Update user profile
+      const userDocRef = doc(db, 'users', profile.uid);
+      const userUpdateData = {
+        lastAttendance: {
+          type: nextAction,
+          timestamp: serverTime,
+        }
+      };
+      batch.update(userDocRef, userUpdateData);
+      
+      await batch.commit();
+
       toast({
         title: `Successfully Clocked ${nextAction}`,
-        description: `Your time has been recorded at ${format(new Date(), 'PPpp')}`,
+        description: `Your time has been recorded at ${format(clientTime, 'PPpp')}`,
       });
-      setRecentClock({ type: nextAction, time: new Date() });
+      setRecentClock({ type: nextAction, time: clientTime });
+
     } catch (error: any) {
       toast({
         variant: 'destructive',
@@ -109,7 +119,7 @@ export default function AttendanceScanPage() {
     }
   };
 
-  const isLoading = lastAttendance === undefined || !profile;
+  const isLoading = lastAttendance === undefined;
   const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
   const canClock = secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS;
 
@@ -151,7 +161,7 @@ export default function AttendanceScanPage() {
                 onClick={handleClockAction} 
                 disabled={isSubmitting || isLoading || !canClock}
             >
-                {isSubmitting ? (
+                {isSubmitting || isLoading ? (
                     <Loader2 className="h-8 w-8 animate-spin" />
                 ) : (
                     <>

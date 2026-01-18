@@ -30,6 +30,10 @@ export interface UserProfile {
   };
   createdAt: Timestamp;
   updatedAt?: Timestamp;
+  lastAttendance?: {
+    type: 'IN' | 'OUT';
+    timestamp: Timestamp;
+  };
 }
 
 export interface Customer {
