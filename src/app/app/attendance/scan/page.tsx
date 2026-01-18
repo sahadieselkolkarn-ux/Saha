@@ -13,7 +13,7 @@ import { safeFormat } from '@/lib/date-utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, ScanLine } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, Link2Off } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { KioskToken } from '@/lib/types';
 
@@ -71,14 +71,14 @@ function ScanPageContent() {
                 
                 if (new Timestamp(Date.now() / 1000, 0) > tokenData.expiresAt) {
                     setTokenStatus("invalid");
-                    setTokenError("QR Code หมดอายุแล้ว กรุณาสแกนใหม่");
+                    setTokenError("โค้ดหมดอายุ");
                     return; // Expired, no need to retry
                 }
 
                 if (!tokenData.isActive) {
                     setTokenStatus("invalid");
-                    setTokenError("QR Code นี้อาจถูกใช้งานไปแล้วหรือไม่ถูกต้อง");
-                    return; // Inactive, no need to retry
+                    setTokenError("ไม่พบโค้ด (โค้ดอาจถูกใช้ไปแล้ว)");
+                    return; // Inactive, treat as not usable
                 }
 
                 setTokenStatus("valid");
@@ -95,7 +95,7 @@ function ScanPageContent() {
       }
       
       setTokenStatus("invalid");
-      setTokenError("ไม่พบ Token ที่ระบุในระบบ กรุณาลองใหม่");
+      setTokenError("ไม่พบโค้ด (token ไม่เจอในระบบ)");
     }
 
     verifyToken();
@@ -211,11 +211,11 @@ function ScanPageContent() {
   
   if (tokenStatus === 'missing') {
      return (
-         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-             <ScanLine className="h-16 w-16 text-destructive mb-4" />
-             <h1 className="text-3xl font-bold">ต้องสแกน QR Code ก่อน</h1>
+         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-4">
+             <Link2Off className="h-16 w-16 text-destructive mb-4" />
+             <h1 className="text-3xl font-bold">ลิงก์ไม่ถูกต้อง</h1>
              <p className="text-muted-foreground mt-2 max-w-md">
-                กรุณาสแกน QR Code ที่หน้าจอ Kiosk ที่ออฟฟิศเพื่อเข้าสู่หน้านี้
+                ต้องสแกน QR Code ที่หน้าจอ Kiosk เพื่อเข้าสู่หน้านี้
              </p>
          </div>
       )
@@ -223,12 +223,20 @@ function ScanPageContent() {
   
   if (tokenStatus === 'invalid') {
        return (
-         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-4">
              <ShieldX className="h-16 w-16 text-destructive mb-4" />
-             <h1 className="text-3xl font-bold">QR Code ไม่ถูกต้อง</h1>
-             <p className="text-muted-foreground mt-2 max-w-md">
-                {tokenError || 'QR Code ที่คุณสแกนอาจหมดอายุแล้วหรือไม่ถูกต้อง กรุณาลองสแกนใหม่อีกครั้ง'}
+             <h1 className="text-3xl font-bold">QR Code ใช้งานไม่ได้</h1>
+             <p className="font-semibold text-destructive mt-2 text-base">
+                {tokenError || 'QR Code ไม่ถูกต้อง'}
              </p>
+             <p className="text-muted-foreground mt-1 text-sm max-w-md">
+                กรุณาลองสแกน QR Code ใหม่จากหน้าจอ Kiosk
+             </p>
+             {kioskToken && (
+                <p className="text-xs text-muted-foreground mt-4 font-mono bg-muted px-2 py-1 rounded">
+                    TOKEN: ...{kioskToken.slice(-6)}
+                </p>
+             )}
          </div>
       )
   }
