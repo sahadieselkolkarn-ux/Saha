@@ -1,12 +1,14 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, updateDoc, doc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -35,6 +37,7 @@ const intakeSchema = z.object({
 
 export default function IntakePage() {
   const { db, storage } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -99,7 +102,7 @@ export default function IntakePage() {
   };
 
   const onSubmit = async (values: z.infer<typeof intakeSchema>) => {
-    if (!db || !storage) return;
+    if (!db || !storage || !profile) return;
 
     const selectedCustomer = customers.find(c => c.id === values.customerId);
     if (!selectedCustomer) {
@@ -110,19 +113,13 @@ export default function IntakePage() {
     setIsSubmitting(true);
     
     try {
-        const jobData: any = {
-            ...values,
-            customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
-            status: "RECEIVED",
-            photos: [], // will be updated after upload
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            lastActivityAt: serverTimestamp(),
-        };
-    
-        const jobDocRef = await addDoc(collection(db, "jobs"), jobData);
+        const batch = writeBatch(db);
+        
+        // 1. Create a ref for the new job to get an ID
+        const jobDocRef = doc(collection(db, "jobs"));
         const jobId = jobDocRef.id;
 
+        // 2. Upload photos
         const photoURLs: string[] = [];
         for (const photo of photos) {
             const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
@@ -131,10 +128,31 @@ export default function IntakePage() {
             photoURLs.push(url);
         }
 
-        await updateDoc(jobDocRef, {
+        // 3. Define job data and set it in the batch
+        const jobData = {
+            ...values,
             id: jobId,
+            customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
+            status: "RECEIVED",
             photos: photoURLs,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            lastActivityAt: serverTimestamp(),
+        };
+        batch.set(jobDocRef, jobData);
+        
+        // 4. Create and set the initial activity log
+        const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
+        batch.set(activityDocRef, {
+            text: `เปิดงานใหม่ในแผนก ${values.department}`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
         });
+
+        // 5. Commit the batch
+        await batch.commit();
 
         toast({ title: "Job created successfully", description: `Job ID: ${jobId}` });
         router.push(`/app/jobs/${jobId}`);

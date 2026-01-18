@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -137,13 +138,29 @@ export function JobList({
     
     setIsAccepting(jobId);
     try {
+      const batch = writeBatch(db);
+
+      // Update job document
       const jobDocRef = doc(db, "jobs", jobId);
-      await updateDoc(jobDocRef, {
+      batch.update(jobDocRef, {
         status: "IN_PROGRESS",
         assigneeUid: profile.uid,
         assigneeName: profile.displayName,
         lastActivityAt: serverTimestamp(),
       });
+
+      // Add activity log
+      const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
+      batch.set(activityDocRef, {
+          text: `รับงานเข้าดำเนินการ`,
+          userName: profile.displayName,
+          userId: profile.uid,
+          createdAt: serverTimestamp(),
+          photos: [],
+      });
+
+      await batch.commit();
+
       toast({ title: "Job Accepted", description: "The job is now assigned to you." });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Failed to accept job", description: error.message });

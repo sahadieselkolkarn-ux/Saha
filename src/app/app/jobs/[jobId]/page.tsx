@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUSES } from "@/lib/constants";
 import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera } from "lucide-react";
-import type { Job, JobActivity, JobDepartment } from "@/lib/types";
+import type { Job, JobActivity, JobDepartment, JobStatus } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
@@ -77,17 +77,33 @@ export default function JobDetailsPage() {
     return () => unsubscribe();
   }, [jobId, toast, db]);
 
-  const handleUpdate = async (field: string, value: any) => {
-    if (!jobId || !db) return;
+  const handleStatusChange = async (newStatus: JobStatus) => {
+    if (!jobId || !db || !job || !profile) return;
+    if (job.status === newStatus) return; // Don't do anything if status is the same
+
     setIsUpdatingStatus(true);
     try {
+        const batch = writeBatch(db);
         const jobDocRef = doc(db, "jobs", jobId as string);
-        const updateData: { [key: string]: any } = {
-            [field]: value,
+        const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+        
+        // 1. Update job status
+        batch.update(jobDocRef, {
+            status: newStatus,
             lastActivityAt: serverTimestamp()
-        };
-        await updateDoc(jobDocRef, updateData);
-        toast({ title: `Job ${field} updated` });
+        });
+
+        // 2. Add activity log
+        batch.set(activityDocRef, {
+            text: `เปลี่ยนสถานะจาก ${job.status} เป็น ${newStatus}`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
+        });
+
+        await batch.commit();
+        toast({ title: `Job status updated to ${newStatus}` });
     } catch (error: any) {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
     } finally {
@@ -96,14 +112,30 @@ export default function JobDetailsPage() {
   };
 
   const handleSaveTechReport = async () => {
-    if (!jobId || !db) return;
+    if (!jobId || !db || !profile) return;
     setIsSavingTechReport(true);
     try {
+      const batch = writeBatch(db);
       const jobDocRef = doc(db, "jobs", jobId as string);
-      await updateDoc(jobDocRef, {
+      const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+
+      // 1. Update job report
+      batch.update(jobDocRef, {
         technicalReport: techReport,
         lastActivityAt: serverTimestamp()
       });
+
+      // 2. Add activity log
+      batch.set(activityDocRef, {
+          text: `อัปเดตผลการตรวจ/งานที่ทำ`,
+          userName: profile.displayName,
+          userId: profile.uid,
+          createdAt: serverTimestamp(),
+          photos: [],
+      });
+      
+      await batch.commit();
+
       toast({ title: `Technical report updated` });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Update Failed", description: error.message });
@@ -372,7 +404,7 @@ export default function JobDetailsPage() {
               <Badge variant={job.status === 'DONE' ? 'default' : job.status === 'CLOSED' ? 'destructive' : 'secondary'}>{job.status}</Badge>
             </CardHeader>
             <CardContent>
-              <Select value={job.status} onValueChange={(v) => handleUpdate('status', v)} disabled={isUpdatingStatus}>
+              <Select value={job.status} onValueChange={(v) => handleStatusChange(v as JobStatus)} disabled={isUpdatingStatus}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{JOB_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
