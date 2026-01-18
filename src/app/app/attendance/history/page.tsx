@@ -62,8 +62,8 @@ export default function AttendanceHistoryPage() {
               ) : attendance && attendance.length > 0 ? (
                 attendance.map(att => (
                   <TableRow key={att.id}>
-                    <TableCell className="font-medium">{format((att.timestamp as Timestamp).toDate(), 'PPP')}</TableCell>
-                    <TableCell>{format((att.timestamp as Timestamp).toDate(), 'HH:mm:ss')}</TableCell>
+                    <TableCell className="font-medium">{att.timestamp ? format((att.timestamp as Timestamp).toDate(), 'PPP') : 'N/A'}</TableCell>
+                    <TableCell>{att.timestamp ? format((att.timestamp as Timestamp).toDate(), 'HH:mm:ss') : 'N/A'}</TableCell>
                     <TableCell>
                       <Badge variant={att.type === 'IN' ? 'default' : 'secondary'}>{att.type}</Badge>
                     </TableCell>
@@ -72,7 +72,7 @@ export default function AttendanceHistoryPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center h-24 text-muted-foreground">
+                  <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
                     ไม่พบข้อมูลการลงเวลา
                   </TableCell>
                 </TableRow>

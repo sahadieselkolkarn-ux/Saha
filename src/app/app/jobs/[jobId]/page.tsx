@@ -56,6 +56,7 @@ export default function JobDetailsPage() {
         setJob(jobData);
         setTechReport(jobData.technicalReport || "");
       } else {
+        setJob(null);
         toast({ variant: "destructive", title: "Job not found" });
       }
       setLoading(false);
@@ -70,14 +71,12 @@ export default function JobDetailsPage() {
   const handleUpdate = async (field: string, value: any) => {
     if (!jobId || !db) return;
     setIsUpdatingStatus(true);
-
-    const jobDocRef = doc(db, "jobs", jobId as string);
-    const updateData: { [key: string]: any } = {
-        [field]: value,
-        lastActivityAt: serverTimestamp()
-    };
-
     try {
+        const jobDocRef = doc(db, "jobs", jobId as string);
+        const updateData: { [key: string]: any } = {
+            [field]: value,
+            lastActivityAt: serverTimestamp()
+        };
         await updateDoc(jobDocRef, updateData);
         toast({ title: `Job ${field} updated` });
     } catch (error: any) {
@@ -90,7 +89,6 @@ export default function JobDetailsPage() {
   const handleSaveTechReport = async () => {
     if (!jobId || !db) return;
     setIsSavingTechReport(true);
-    
     try {
       const jobDocRef = doc(db, "jobs", jobId as string);
       await updateDoc(jobDocRef, {
@@ -161,12 +159,9 @@ export default function JobDetailsPage() {
 
         setNewNote("");
         setNewPhotos([]);
-        setPhotoPreviews(p => {
-            p.forEach(url => URL.revokeObjectURL(url));
-            return [];
-        });
+        photoPreviews.forEach(url => URL.revokeObjectURL(url));
+        setPhotoPreviews([]);
         toast({title: "Activity added successfully"});
-
     } catch (error: any) {
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
@@ -177,7 +172,6 @@ export default function JobDetailsPage() {
   const handleTransferJob = async () => {
     if (!transferDepartment || !job || !db || !profile) return;
     setIsTransferring(true);
-
     try {
         const jobDocRef = doc(db, "jobs", job.id);
         const newActivity: JobActivity = {
@@ -199,20 +193,33 @@ export default function JobDetailsPage() {
 
         toast({ title: 'Job Transferred', description: `Job moved to ${transferDepartment} department.`});
         setIsTransferDialogOpen(false);
-        setTransferNote('');
-        setTransferDepartment('');
     } catch(error: any) {
         toast({ variant: "destructive", title: "Transfer Failed", description: error.message });
     } finally {
         setIsTransferring(false);
     }
   };
+
+  useEffect(() => {
+    // Cleanup function to revoke object URLs
+    return () => {
+      photoPreviews.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [photoPreviews]);
+
+  // Reset transfer form when dialog closes
+  useEffect(() => {
+      if (!isTransferDialogOpen) {
+          setTransferNote('');
+          setTransferDepartment('');
+      }
+  }, [isTransferDialogOpen])
   
-  const sortedActivities = [...(job?.activities || [])].sort((a,b) => {
+  const sortedActivities = job?.activities ? [...job.activities].sort((a,b) => {
       if (!a.createdAt) return 1;
       if (!b.createdAt) return -1;
       return (b.createdAt as Timestamp).toMillis() - (a.createdAt as Timestamp).toMillis()
-  });
+  }) : [];
 
   if (loading) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -260,9 +267,9 @@ export default function JobDetailsPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>Photos ({job.photos.length}/4)</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Photos ({job.photos?.length ?? 0}/4)</CardTitle></CardHeader>
             <CardContent>
-                {job.photos.length > 0 ? (
+                {job.photos && job.photos.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {job.photos.map((url, i) => (
                             <a key={i} href={url} target="_blank" rel="noopener noreferrer">
@@ -291,7 +298,7 @@ export default function JobDetailsPage() {
                   <div className="grid grid-cols-4 gap-2">
                     {photoPreviews.map((src, i) => (
                       <div key={i} className="relative">
-                        <Image src={src} alt="preview" width={100} height={100} className="rounded-md object-cover w-full aspect-square" onUnload={() => URL.revokeObjectURL(src)} />
+                        <Image src={src} alt="preview" width={100} height={100} className="rounded-md object-cover w-full aspect-square" />
                         <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-5 w-5" onClick={() => removeNewPhoto(i)}><X className="h-3 w-3" /></Button>
                       </div>
                     ))}
@@ -358,10 +365,10 @@ export default function JobDetailsPage() {
           </Card>
         </div>
       </div>
-      <Dialog open={isTransferDialogOpen} onOpenChange={(open) => !isTransferring && setIsTransferDialogOpen(open)}>
+      <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
           <DialogContent 
-              onInteractOutside={(e) => isTransferring && e.preventDefault()}
-              onEscapeKeyDown={(e) => isTransferring && e.preventDefault()}
+              onInteractOutside={(e) => {if (isTransferring) e.preventDefault()}}
+              onEscapeKeyDown={(e) => {if (isTransferring) e.preventDefault()}}
           >
               <DialogHeader>
                   <DialogTitle>Transfer Job</DialogTitle>
