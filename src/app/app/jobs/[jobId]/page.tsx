@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -252,6 +253,9 @@ export default function JobDetailsPage() {
             <CardContent className="space-y-4 text-sm">
               <div><h4 className="font-semibold text-base">Customer</h4><p>{job.customerSnapshot.name} ({job.customerSnapshot.phone})</p></div>
               <div><h4 className="font-semibold text-base">Department</h4><p>{job.department}</p></div>
+              {job.assigneeName && (
+                  <div><h4 className="font-semibold text-base">Assigned To</h4><p>{job.assigneeName}</p></div>
+              )}
               <div><h4 className="font-semibold text-base">Description</h4><p className="whitespace-pre-wrap">{job.description}</p></div>
             </CardContent>
           </Card>
