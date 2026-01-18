@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
-import { safeFormat } from '@/lib/utils/date-utils';
+import { safeFormat } from '@/lib/date-utils';
 
 interface JobListProps {
   department?: JobDepartment;
