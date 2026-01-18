@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,12 +12,12 @@ import { ArrowRight, Loader2, PlusCircle } from "lucide-react";
 import type { Job } from "@/lib/types";
 
 export default function JobsPage() {
-  const { profile } = useAuth();
+  const { profile, db } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || !db) return;
 
     let q;
     if (profile.role === "ADMIN") {
@@ -41,7 +40,7 @@ export default function JobsPage() {
     });
 
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile, db]);
   
   const getStatusVariant = (status: Job['status']) => {
     switch (status) {

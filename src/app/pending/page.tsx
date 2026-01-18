@@ -3,14 +3,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
-import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { Hourglass } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function PendingPage() {
-  const { profile, loading } = useAuth();
+  const { profile, loading, auth } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -20,6 +19,7 @@ export default function PendingPage() {
   }, [profile, loading, router]);
   
   const handleLogout = async () => {
+    if (!auth) return;
     await signOut(auth);
     router.push('/login');
   };

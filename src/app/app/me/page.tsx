@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -22,7 +21,7 @@ const formSchema = z.object({
 });
 
 export default function ProfilePage() {
-  const { profile, user } = useAuth();
+  const { profile, user, db } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -39,6 +38,7 @@ export default function ProfilePage() {
   }
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (!db) return;
     setIsLoading(true);
     try {
       const userDocRef = doc(db, "users", user.uid);

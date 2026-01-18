@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -34,6 +34,7 @@ const customerSchema = z.object({
 });
 
 export default function CustomersPage() {
+  const { db } = useAuth();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +50,7 @@ export default function CustomersPage() {
   const useTax = form.watch("useTax");
 
   useEffect(() => {
+    if (!db) return;
     const q = query(collection(db, "customers"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
@@ -56,7 +58,7 @@ export default function CustomersPage() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [db]);
 
   const openDialog = (customer: Customer | null = null) => {
     setEditingCustomer(customer);
@@ -65,6 +67,7 @@ export default function CustomersPage() {
   };
 
   const onSubmit = async (values: z.infer<typeof customerSchema>) => {
+    if (!db) return;
     setIsSubmitting(true);
     try {
       if (editingCustomer) {
@@ -84,6 +87,7 @@ export default function CustomersPage() {
   };
 
   const handleDelete = async (customerId: string) => {
+    if (!db) return;
     if (!window.confirm("Are you sure you want to delete this customer?")) return;
     try {
         await deleteDoc(doc(db, "customers", customerId));

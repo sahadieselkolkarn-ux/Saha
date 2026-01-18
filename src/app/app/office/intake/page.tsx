@@ -6,7 +6,6 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -30,7 +29,7 @@ const intakeSchema = z.object({
 });
 
 export default function IntakePage() {
-  const { profile } = useAuth();
+  const { profile, db, storage } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -43,12 +42,13 @@ export default function IntakePage() {
   });
 
   useEffect(() => {
+    if (!db) return;
     const q = query(collection(db, "customers"), orderBy("name", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     });
     return () => unsubscribe();
-  }, []);
+  }, [db]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -77,7 +77,7 @@ export default function IntakePage() {
   };
 
   const onSubmit = async (values: z.infer<typeof intakeSchema>) => {
-    if (!profile) return;
+    if (!profile || !db || !storage) return;
     setIsSubmitting(true);
     
     try {

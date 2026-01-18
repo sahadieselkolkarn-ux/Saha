@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,7 +19,7 @@ import { ROLES, DEPARTMENTS, USER_STATUSES } from "@/lib/constants";
 import { MoreHorizontal, Loader2 } from "lucide-react";
 
 export default function UsersPage() {
-  const { profile: currentAdmin, user: adminUser } = useAuth();
+  const { profile: currentAdmin, user: adminUser, db } = useAuth();
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +28,7 @@ export default function UsersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   useEffect(() => {
+    if (!db) return;
     const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const usersData: UserProfile[] = [];
@@ -40,7 +40,7 @@ export default function UsersPage() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [db]);
 
   const handleOpenDialog = (user: UserProfile) => {
     setSelectedUser(user);
@@ -48,7 +48,7 @@ export default function UsersPage() {
   };
 
   const handleSaveChanges = async () => {
-    if (!selectedUser || !adminUser) return;
+    if (!selectedUser || !adminUser || !db) return;
     setIsSubmitting(true);
     try {
       const userDocRef = doc(db, "users", selectedUser.uid);

@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, collection, query, where } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -23,7 +22,7 @@ import { format } from 'date-fns';
 
 export default function JobDetailsPage() {
   const { jobId } = useParams();
-  const { profile, user } = useAuth();
+  const { profile, user, db, storage } = useAuth();
   const { toast } = useToast();
   
   const [job, setJob] = useState<Job | null>(null);
@@ -36,7 +35,7 @@ export default function JobDetailsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!jobId || !db) return;
     const jobDocRef = doc(db, "jobs", jobId as string);
     const unsubscribe = onSnapshot(jobDocRef, (doc) => {
       if (doc.exists()) {
@@ -55,12 +54,12 @@ export default function JobDetailsPage() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [jobId, toast]);
+  }, [jobId, toast, db]);
   
   const canEdit = profile && (profile.role === 'ADMIN' || profile.department === job?.department);
 
   const handleUpdate = async (field: string, value: any) => {
-    if (!jobId || !canEdit) return;
+    if (!jobId || !canEdit || !db) return;
     const jobDocRef = doc(db, "jobs", jobId as string);
     try {
       await updateDoc(jobDocRef, { [field]: value, lastActivityAt: serverTimestamp() });
@@ -91,7 +90,7 @@ export default function JobDetailsPage() {
   
   const handleAddActivity = async () => {
     if (!newNote.trim() && newPhotos.length === 0) return;
-    if (!jobId || !user || !profile) return;
+    if (!jobId || !user || !profile || !db || !storage) return;
     setIsSubmitting(true);
     
     try {

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut } from "firebase/auth"
-import { auth } from "@/lib/firebase"
+
 import {
   Users,
   Briefcase,
@@ -23,7 +23,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { profile } = useAuth()
+  const { profile, auth } = useAuth()
 
   if (!profile) return null
 
@@ -58,7 +58,9 @@ export function AppSidebar() {
   ]
 
   const handleLogout = async () => {
-    await signOut(auth)
+    if (auth) {
+      await signOut(auth);
+    }
   }
 
   const getInitials = (name: string) => {
