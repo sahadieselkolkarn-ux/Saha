@@ -138,7 +138,7 @@ const DepartmentMenu = ({ department }: { department: Department }) => {
                  {department === 'OUTSOURCE' && (
                     <>
                         <SubNavLink href="/app/outsource/export/new" label="สร้างรายการส่งออก" />
-                        <SubNavLink href="/appoutsource/import" label="รับกลับเข้าระบบ" />
+                        <SubNavLink href="/app/outsource/import" label="รับกลับเข้าระบบ" />
                         <SubNavLink href="/app/outsource/tracking/pending" label="ติดตาม - รอส่ง" />
                         <SubNavLink href="/app/outsource/tracking/away" label="ติดตาม - อยู่ร้านนอก" />
                         <SubNavLink href="/app/outsource/tracking/returned" label="ติดตาม - รับกลับแล้ว" />
