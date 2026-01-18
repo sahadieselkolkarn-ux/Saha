@@ -67,6 +67,7 @@ export function AppSidebar() {
   const { profile, signOut } = useAuth();
 
   const getInitials = (name: string) => {
+    if (!name) return "?";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
 
