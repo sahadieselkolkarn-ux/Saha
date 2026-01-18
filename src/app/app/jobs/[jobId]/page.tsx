@@ -69,7 +69,7 @@ export default function JobDetailsPage() {
     return () => unsubscribe();
   }, [jobId, toast, db]);
   
-  const canEdit = profile && (profile.role === 'ADMIN' || profile.role === 'MANAGER' || (profile.role === 'OFFICER' && profile.uid === job?.assigneeUid));
+  const canEdit = profile && job && (profile.department === 'MANAGEMENT' || profile.department === job.department);
 
   const handleUpdate = (field: string, value: any, secondField?: string, secondValue?: any) => {
     if (!jobId || !canEdit || !db) return;

@@ -9,8 +9,8 @@ export default function OfficeLayout({ children }: { children: React.ReactNode }
   const { profile, loading } = useAuth();
   const router = useRouter();
 
-  // Access is granted to ADMINs or users in the OFFICE department.
-  const hasAccess = !loading && profile && (profile.role === 'ADMIN' || profile.department === 'OFFICE' || profile.role === 'MANAGER');
+  // Access is granted to MANAGEMENT or OFFICE departments.
+  const hasAccess = !loading && profile && (profile.department === 'MANAGEMENT' || profile.department === 'OFFICE');
 
   useEffect(() => {
     if (!loading && !hasAccess) {

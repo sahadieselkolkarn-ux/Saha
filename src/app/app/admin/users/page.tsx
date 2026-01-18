@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 import type { UserProfile } from "@/lib/types";
-import { ROLES, DEPARTMENTS, USER_STATUSES } from "@/lib/constants";
+import { DEPARTMENTS, USER_STATUSES } from "@/lib/constants";
 import { MoreHorizontal, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -73,7 +73,6 @@ export default function UsersPage() {
     
     const userDocRef = doc(db, "users", selectedUser.uid);
     const updates: any = {
-      role: selectedUser.role,
       department: selectedUser.department,
       status: selectedUser.status,
       updatedAt: serverTimestamp(),
@@ -119,7 +118,7 @@ export default function UsersPage() {
   
   return (
     <>
-      <PageHeader title="User Management" description="Approve new users and manage their roles and departments." />
+      <PageHeader title="User Management" description="Approve new users and manage their departments." />
 
       <Card>
         <CardHeader>
@@ -131,7 +130,6 @@ export default function UsersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Registered</TableHead>
@@ -143,7 +141,6 @@ export default function UsersPage() {
                 <TableRow key={user.uid}>
                   <TableCell className="font-medium">{user.displayName}</TableCell>
                   <TableCell>{user.email}</TableCell>
-                  <TableCell>{user.role || "N/A"}</TableCell>
                   <TableCell>{user.department || "N/A"}</TableCell>
                   <TableCell><Badge variant={getStatusVariant(user.status)}>{user.status}</Badge></TableCell>
                   <TableCell>{user.createdAt ? format(user.createdAt, 'PP') : 'N/A'}</TableCell>
@@ -174,24 +171,10 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>Edit User: {selectedUser?.displayName}</DialogTitle>
             <DialogDescription>
-              Modify the user's role, department, and status.
+              Modify the user's department and status.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <label htmlFor="role" className="text-right">Role</label>
-              <Select
-                value={selectedUser?.role || ""}
-                onValueChange={(value) => setSelectedUser(prev => prev ? {...prev, role: value as UserProfile['role']} : null)}
-              >
-                <SelectTrigger className="col-span-3">
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES.map(role => <SelectItem key={role} value={role}>{role}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <label htmlFor="department" className="text-right">Department</label>
               <Select

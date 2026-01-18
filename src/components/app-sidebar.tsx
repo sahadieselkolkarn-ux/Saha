@@ -29,14 +29,10 @@ export function AppSidebar() {
 
   if (!profile) return null
 
-  const isAdmin = profile.role === "ADMIN"
-  const isManager = profile.role === "MANAGER"
-  const isOffice = profile.department === "OFFICE"
-  const isCommonrail = profile.department === "COMMONRAIL"
-  const isManagerOrOfficer = profile.role === "MANAGER" || profile.role === "OFFICER"
+  const isManagement = profile.department === "MANAGEMENT";
+  const isOffice = profile.department === "OFFICE";
   
   const KIOSK_FRONT_DEPARTMENTS: string[] = ["CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"];
-
 
   const menuItems = [
     {
@@ -55,31 +51,31 @@ export function AppSidebar() {
       href: "/app/office/intake",
       label: "Job Intake",
       icon: ClipboardPenLine,
-      visible: isAdmin || isOffice || isManager,
+      visible: isManagement || isOffice,
     },
     {
       href: "/app/office/customers",
       label: "Customers",
       icon: Building,
-      visible: isAdmin || isManager || isOffice,
+      visible: isManagement || isOffice,
     },
     {
       href: "/app/admin/users",
       label: "Users",
       icon: Users,
-      visible: isAdmin || isManager,
+      visible: isManagement,
     },
     {
         href: "/app/kiosk/office",
         label: "Kiosk Office",
         icon: QrCode,
-        visible: isAdmin || (isCommonrail && isManagerOrOfficer),
+        visible: isManagement || isOffice,
     },
     {
         href: "/app/kiosk/front",
         label: "Kiosk Front",
         icon: QrCode,
-        visible: isAdmin || (isManagerOrOfficer && KIOSK_FRONT_DEPARTMENTS.includes(profile.department as string)),
+        visible: isManagement || KIOSK_FRONT_DEPARTMENTS.includes(profile.department as string),
     },
   ]
 

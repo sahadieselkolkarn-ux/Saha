@@ -28,10 +28,6 @@
           "description": "The user's email address.",
           "format": "email"
         },
-        "role": {
-          "type": "string",
-          "description": "The user's role (ADMIN, MANAGER, OFFICER, or empty string)."
-        },
         "department": {
           "type": "string",
           "description": "The user's department (MANAGEMENT, OFFICE, CAR_SERVICE, COMMONRAIL, MECHANIC, OUTSOURCE, or empty string)."
@@ -65,7 +61,6 @@
         "displayName",
         "phone",
         "email",
-        "role",
         "department",
         "status",
         "createdAt",

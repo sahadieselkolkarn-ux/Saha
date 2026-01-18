@@ -9,7 +9,7 @@ export default function KioskOfficeLayout({ children }: { children: React.ReactN
   const { profile, loading } = useAuth();
   const router = useRouter();
 
-  const hasAccess = !loading && profile && (profile.role === 'ADMIN' || (profile.department === 'COMMONRAIL' && (profile.role === 'MANAGER' || profile.role === 'OFFICER')));
+  const hasAccess = !loading && profile && (profile.department === 'MANAGEMENT' || profile.department === 'OFFICE');
 
   useEffect(() => {
     if (!loading && !hasAccess) {

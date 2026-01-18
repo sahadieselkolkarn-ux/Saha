@@ -78,7 +78,6 @@ export default function SignupPage() {
         photoURL: user.photoURL || null,
         phone: values.phone,
         email: values.email,
-        role: "",
         department: "",
         status: "PENDING",
         createdAt: serverTimestamp(),

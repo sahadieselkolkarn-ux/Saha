@@ -25,19 +25,19 @@ export default function JobsPage() {
 
     setLoading(true);
     let q;
-    // Admins see all jobs
-    if (profile.role === "ADMIN") {
+    // MANAGEMENT department sees all jobs
+    if (profile.department === "MANAGEMENT") {
       q = query(collection(db, "jobs"), orderBy("lastActivityAt", "desc"));
     } 
-    // Managers and Officers see jobs in their department
-    else if (profile.role === "MANAGER" || profile.role === "OFFICER") {
+    // Other active departments see jobs assigned to their department
+    else if (profile.department) {
       q = query(
         collection(db, "jobs"),
         where("department", "==", profile.department),
         orderBy("lastActivityAt", "desc")
       );
     } 
-    // Other roles don't see any jobs by default
+    // If user has no department, they see no jobs.
     else {
       setJobs([]);
       setLoading(false);
@@ -68,7 +68,7 @@ export default function JobsPage() {
     }
   }
 
-  const isOfficeUser = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE';
+  const isOfficeUser = profile?.department === 'MANAGEMENT' || profile?.department === 'OFFICE';
 
   return (
     <>

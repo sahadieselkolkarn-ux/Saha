@@ -1,5 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
-import type { Role, Department, UserStatus, JobStatus, JobDepartment } from './constants';
+import type { Department, UserStatus, JobStatus, JobDepartment } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -7,7 +7,6 @@ export interface UserProfile {
   photoURL?: string;
   phone: string;
   email: string;
-  role: Role | "";
   department: Department | "";
   status: UserStatus;
   createdAt: Timestamp;

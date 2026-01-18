@@ -9,8 +9,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { profile, loading } = useAuth();
   const router = useRouter();
 
-  // Access is granted only to ADMINs and MANAGERs.
-  const hasAccess = !loading && profile && (profile.role === 'ADMIN' || profile.role === 'MANAGER');
+  // Access is granted only to the MANAGEMENT department.
+  const hasAccess = !loading && profile && profile.department === 'MANAGEMENT';
 
   useEffect(() => {
     if (!loading && !hasAccess) {

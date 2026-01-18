@@ -6,18 +6,15 @@ import { useAuth } from '@/hooks/use-auth';
 import { Loader2 } from 'lucide-react';
 import { DEPARTMENTS } from '@/lib/constants';
 
-const KIOSK_DEPARTMENTS: Array<(typeof DEPARTMENTS)[number]> = ["CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"];
+const KIOSK_DEPARTMENTS: Array<typeof DEPARTMENTS[number]> = ["CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"];
 
 export default function KioskFrontLayout({ children }: { children: React.ReactNode }) {
   const { profile, loading } = useAuth();
   const router = useRouter();
 
   const hasAccess = !loading && profile && (
-    profile.role === 'ADMIN' || 
-    (
-      (profile.role === 'MANAGER' || profile.role === 'OFFICER') &&
-      KIOSK_DEPARTMENTS.includes(profile.department as any)
-    )
+    profile.department === 'MANAGEMENT' || 
+    KIOSK_DEPARTMENTS.includes(profile.department as any)
   );
 
   useEffect(() => {

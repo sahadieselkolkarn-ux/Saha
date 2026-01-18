@@ -129,10 +129,6 @@ export default function ProfilePage() {
                 <Input value={profile.email} disabled />
               </FormItem>
               <FormItem>
-                <FormLabel>Role</FormLabel>
-                <Input value={profile.role || "N/A"} disabled />
-              </FormItem>
-              <FormItem>
                 <FormLabel>Department</FormLabel>
                 <Input value={profile.department || "N/A"} disabled />
               </FormItem>

@@ -1,6 +1,3 @@
-export const ROLES = ["ADMIN", "MANAGER", "OFFICER"] as const;
-export type Role = (typeof ROLES)[number];
-
 export const DEPARTMENTS = ["MANAGEMENT", "OFFICE", "CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"] as const;
 export type Department = (typeof DEPARTMENTS)[number];
 

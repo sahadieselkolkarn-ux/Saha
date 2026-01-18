@@ -1,39 +1,38 @@
 /**
  * Core Philosophy:
- * This ruleset implements a Role-Based Access Control (RBAC) model for a job
- * management application. A user's permissions are determined by their 'role'
- * and 'status' fields stored within their user profile document. The default
+ * This ruleset implements a Department-Based Access Control (DBAC) model for a
+ * job management application. A user's permissions are primarily determined by
+ * their 'department' and 'status' fields stored within their user profile document.
+ * The 'MANAGEMENT' department has global administrative privileges. The default
  * posture is to deny all access, granting permissions only to authenticated
- * users with specific, active roles (e.g., ADMIN, MANAGER, OFFICER).
+ * users with an 'ACTIVE' status in their respective departments.
  *
  * Data Structure:
  * The data is organized into three distinct top-level collections:
  * 1. /users/{userId}: Stores user profiles and serves as the source of truth
- *    for authorization decisions (roles and status).
+ *    for authorization decisions (department and status).
  * 2. /customers/{customerId}: A central repository for customer information.
  * 3. /jobs/{jobId}: Contains all job-related data.
  *
  * Key Security Decisions:
- * - Role-Based Access: All significant operations on /customers and /jobs
+ * - Department-Based Access: All significant operations on /customers and /jobs
  *   require a get() call to the user's profile in /users to verify their
- *   role. While get() calls have performance implications, they are necessary
- *   to implement RBAC without Firebase Auth custom claims.
- * - User Management: Only users with a 'MANAGER' or 'ADMIN' role can modify
- *   other user profiles, which is essential for managing roles and statuses.
- *   Regular users can only manage their own profiles. User listing is disabled
- *   for non-managers to prevent data scraping.
- * - Job Ownership: A job can be updated by its assigned user (assigneeUid)
- *   or by a manager, providing both direct ownership and administrative override
- *   capabilities.
+ *   department and status. This is necessary to implement DBAC.
+ * - User Management: Only users from the 'MANAGEMENT' department can modify
+ *   other user profiles, which is essential for managing departments and statuses.
+ *   Regular users can only manage their own profiles. User listing is also
+ *   restricted to 'MANAGEMENT'.
+ * - Job Ownership: A job can be updated by a 'MANAGEMENT' user or by any
+ *   active user within the job's assigned department. This provides both
+ *   department-level control and administrative override capabilities.
  * - Default Secure: Unauthenticated users have no access. Users with a 'PENDING'
  *   status can only read their own profile and cannot interact with any other
  *   data.
  *
  * Denormalization for Authorization:
- * The `jobs` collection includes a denormalized `assigneeUid` field. This allows
- * for a simple, direct authorization check (`request.auth.uid == resource.data.assigneeUid`)
- * without needing to look up other documents, making the rule for job updates
- * highly efficient.
+ * The `jobs` collection includes a denormalized `department` field, which is
+ * central to the authorization model. Rules check this field against the
+ * requesting user's department to grant or deny access.
  *
  * Structural Segregation:
  * The use of separate top-level collections for `users`, `customers`, and `jobs`
@@ -72,7 +71,7 @@ service cloud.firestore {
 
     /**
      * Retrieves the requesting user's profile data from the /users collection.
-     * This is the core of the RBAC system, used to check roles and status.
+     * This is the core of the DBAC system, used to check department and status.
      * Note: This function results in a Firestore read operation.
      */
     function getUserData() {
@@ -80,34 +79,27 @@ service cloud.firestore {
     }
 
     /**
-     * Checks if the user is an active ADMIN or MANAGER.
-     * These roles have the highest level of privileges.
+     * Checks if the user is in the MANAGEMENT department.
+     * This department has the highest level of privileges.
      */
-    function isManager() {
-      return isSignedIn() && getUserData().status == 'ACTIVE' && getUserData().role in ['ADMIN', 'MANAGER'];
+    function isManagement() {
+      return isActiveUser() && getUserData().department == 'MANAGEMENT';
     }
 
     /**
-     * Checks if the user is authorized to perform office-related tasks.
+     * Checks if the user is authorized for office tasks (customer/job intake).
      * This aligns with the UI guard for the '/app/office' section.
      */
     function isOfficeUser() {
-      let userData = getUserData();
-      return isSignedIn() && userData.status == 'ACTIVE' &&
-             (userData.role in ['ADMIN', 'MANAGER'] || userData.department == 'OFFICE');
+      return isActiveUser() && getUserData().department in ['MANAGEMENT', 'OFFICE'];
     }
 
     /**
-     * Checks if the user is any active employee (ADMIN, MANAGER, or OFFICER).
-     * This is used for general access to shared resources. Any active user
-     * in the 'OFFICE' department is also considered a worker to allow them to
-     * perform tasks like job intake and customer management, aligning with
-     * the application's UI access control.
+     * Checks if the user is any active employee.
+     * This is used for general access to shared resources like viewing jobs.
      */
     function isWorker() {
-      let userData = getUserData();
-      return isSignedIn() && userData.status == 'ACTIVE' &&
-             (userData.role in ['ADMIN', 'MANAGER', 'OFFICER'] || userData.department == 'OFFICE');
+      return isActiveUser();
     }
 
     /**
@@ -130,13 +122,13 @@ service cloud.firestore {
       /**
        * @description
        *   A user can create and manage their own profile.
-       *   A 'MANAGER' or 'ADMIN' can view and edit any user's profile to manage
-       *   roles and status. Listing users is restricted to managers.
+       *   A 'MANAGEMENT' user can view and edit any user's profile to manage
+       *   departments and status. Listing users is restricted to 'MANAGEMENT'.
        */
-      allow get: if isOwner(userId) || isManager();
-      allow list: if isManager();
+      allow get: if isOwner(userId) || isManagement();
+      allow list: if isManagement();
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if (isOwner(userId) || isManager()) && resource != null && isIdImmutable();
+      allow update: if (isOwner(userId) || isManagement()) && resource != null && isIdImmutable();
       allow delete: if false; // Deleting users should be handled via a managed process, not direct API calls.
       
       /**
@@ -144,9 +136,9 @@ service cloud.firestore {
        *   Manages user time clock (attendance) records.
        */
       match /attendance/{attendanceId} {
-        // A user can create their own record, and managers/admins can read anyone's records.
+        // An active user can create their own record, and management can read anyone's records.
         allow create: if isOwner(userId) && isActiveUser();
-        allow read: if isOwner(userId) || isManager();
+        allow read: if isOwner(userId) || isManagement();
         // No one can update or delete records directly to maintain data integrity.
         allow update, delete: if false;
       }
@@ -154,43 +146,31 @@ service cloud.firestore {
 
     /**
      * @description
-     *   Manages customer data. Only active office staff, managers, or admins
-     *   can access and create customer records. Only managers can modify or
+     *   Manages customer data. Only active 'OFFICE' or 'MANAGEMENT' users
+     *   can access and create customer records. Only 'MANAGEMENT' can modify or
      *   delete existing customers to protect data integrity.
-     * @path /customers/{customerId}
-     * @allow (create) An 'OFFICE' user creating a new customer record.
-     * @deny (update) An 'OFFICE' user attempting to change an existing customer's details.
-     * @principle
-     *   Implements role-based permissions, granting broad read/create access
-     *   while restricting sensitive write operations to higher-privileged roles.
      */
     match /customers/{customerId} {
       allow get: if isOfficeUser();
       allow list: if isOfficeUser();
       allow create: if isOfficeUser();
-      allow update: if isManager() && resource != null;
-      allow delete: if isManager() && resource != null;
+      allow update: if isManagement() && resource != null;
+      allow delete: if isManagement() && resource != null;
     }
 
     /**
      * @description
      *   Manages job records. Job creation is restricted to office staff.
      *   Any active employee can view the list of jobs. An existing job can only
-     *   be updated by a manager, the user it is specifically assigned to, or any
-     *   worker if the job is not yet assigned. Only managers can delete jobs.
-     * @path /jobs/{jobId}
-     * @allow (update) The user whose UID is in the `assigneeUid` field updates the job status.
-     * @deny (delete) A user who is the assignee but not a manager tries to delete the job.
-     * @principle
-     *   Uses a hybrid model of role-based access for general operations and
-     *   resource-based ownership (`assigneeUid`) for specific update permissions.
+     *   be updated by 'MANAGEMENT' or an active worker within the same department.
+     *   Only 'MANAGEMENT' can delete jobs.
      */
     match /jobs/{jobId} {
       allow get: if isWorker();
       allow list: if isWorker();
       allow create: if isOfficeUser();
-      allow update: if (isManager() || request.auth.uid == resource.data.assigneeUid || (isWorker() && resource.data.assigneeUid == '')) && resource != null;
-      allow delete: if isManager() && resource != null;
+      allow update: if (isManagement() || (isWorker() && getUserData().department == resource.data.department)) && resource != null;
+      allow delete: if isManagement() && resource != null;
     }
   }
 }
