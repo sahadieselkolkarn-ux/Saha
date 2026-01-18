@@ -1,0 +1,263 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user in the system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The user's phone number."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role (ADMIN, MANAGER, OFFICER, or empty string)."
+        },
+        "department": {
+          "type": "string",
+          "description": "The user's department (MANAGEMENT, OFFICE, CAR_SERVICE, COMMONRAIL, MECHANIC, OUTSOURCE, or empty string)."
+        },
+        "status": {
+          "type": "string",
+          "description": "The user's status (PENDING, ACTIVE, SUSPENDED)."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of when the user was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of when the user was last updated.",
+          "format": "date-time"
+        },
+        "approvedAt": {
+          "type": "string",
+          "description": "Timestamp of when the user was approved.",
+          "format": "date-time"
+        },
+        "approvedBy": {
+          "type": "string",
+          "description": "User ID of the admin who approved the user."
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "phone",
+        "email",
+        "role",
+        "department",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Customer": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Customer",
+      "type": "object",
+      "description": "Represents a customer.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the customer."
+        },
+        "name": {
+          "type": "string",
+          "description": "The customer's name."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The customer's phone number."
+        },
+        "detail": {
+          "type": "string",
+          "description": "Additional details about the customer."
+        },
+        "useTax": {
+          "type": "boolean",
+          "description": "Indicates whether the customer uses tax."
+        },
+        "taxName": {
+          "type": "string",
+          "description": "The customer's tax name (if useTax is true)."
+        },
+        "taxAddress": {
+          "type": "string",
+          "description": "The customer's tax address (if useTax is true)."
+        },
+        "taxId": {
+          "type": "string",
+          "description": "The customer's tax ID (if useTax is true)."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of when the customer was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of when the customer was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "phone",
+        "detail",
+        "useTax",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Job": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Job",
+      "type": "object",
+      "description": "Represents a job.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the job."
+        },
+        "customerId": {
+          "type": "string",
+          "description": "Reference to Customer. (Relationship: Customer 1:N Job)"
+        },
+        "customerSnapshot": {
+          "type": "string",
+          "description": "Snapshot of customer data (name, phone) at the time the job was created. Stored as a stringified JSON object."
+        },
+        "department": {
+          "type": "string",
+          "description": "The department responsible for the job (CAR_SERVICE, COMMONRAIL, MECHANIC, OUTSOURCE)."
+        },
+        "status": {
+          "type": "string",
+          "description": "The job's status (RECEIVED, IN_PROGRESS, DONE, CLOSED)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the job (symptoms/details)."
+        },
+        "photos": {
+          "type": "array",
+          "description": "Array of URLs for photos related to the job.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assigneeUid": {
+          "type": "string",
+          "description": "Reference to User assigned to the job. (Relationship: User 1:N Job)"
+        },
+        "assigneeName": {
+          "type": "string",
+          "description": "Name of the user assigned to the job."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of when the job was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of when the job was last updated.",
+          "format": "date-time"
+        },
+        "lastActivityAt": {
+          "type": "string",
+          "description": "Timestamp of the last activity related to the job.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "customerId",
+        "customerSnapshot",
+        "department",
+        "status",
+        "description",
+        "photos",
+        "createdAt",
+        "updatedAt",
+        "lastActivityAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profiles. Uses path-based ownership for easy security rules.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user.  Corresponds to the Firebase Auth UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/customers/{customerId}",
+        "definition": {
+          "entityName": "Customer",
+          "schema": {
+            "$ref": "#/backend/entities/Customer"
+          },
+          "description": "Stores customer information.",
+          "params": [
+            {
+              "name": "customerId",
+              "description": "The unique ID of the customer."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/jobs/{jobId}",
+        "definition": {
+          "entityName": "Job",
+          "schema": {
+            "$ref": "#/backend/entities/Job"
+          },
+          "description": "Stores job information. Includes denormalized 'customerSnapshot' (name, phone) for authorization independence and data integrity.",
+          "params": [
+            {
+              "name": "jobId",
+              "description": "The unique ID of the job."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "This Firestore data structure is designed to support the core features of the Thai Job Management application, focusing on simplicity, security, and ease of management. It avoids complex features like Cloud Functions and Custom Claims in the MVP, relying solely on Firestore security rules and UI guards for access control. The structure prioritizes Authorization Independence by denormalizing customer data into the `jobs` collection, allowing for atomic operations and simplifying security rules. Structural Segregation is achieved by storing users in their own collection (`users`) and jobs in their own collection (`jobs`), and customers in the `customers` collection enabling us to define unique access control policies for each collection. The data model uses path-based ownership for user profiles ( `/users/{uid}`) making security rules efficient. It uses denormalization to avoid `get()` calls in the rules, promoting atomic operations. This architecture supports secure `list` operations by ensuring that a user can only list jobs that they are authorized to access. The `customerSnapshot` within the `jobs` document makes it possible to maintain an accurate historical record of the customer even if their information is updated."
+  }
+}

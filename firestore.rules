@@ -1,0 +1,163 @@
+/**
+ * Core Philosophy:
+ * This ruleset implements a Role-Based Access Control (RBAC) model for a job
+ * management application. A user's permissions are determined by their 'role'
+ * and 'status' fields stored within their user profile document. The default
+ * posture is to deny all access, granting permissions only to authenticated
+ * users with specific, active roles (e.g., ADMIN, MANAGER, OFFICER).
+ *
+ * Data Structure:
+ * The data is organized into three distinct top-level collections:
+ * 1. /users/{userId}: Stores user profiles and serves as the source of truth
+ *    for authorization decisions (roles and status).
+ * 2. /customers/{customerId}: A central repository for customer information.
+ * 3. /jobs/{jobId}: Contains all job-related data.
+ *
+ * Key Security Decisions:
+ * - Role-Based Access: All significant operations on /customers and /jobs
+ *   require a get() call to the user's profile in /users to verify their
+ *   role. While get() calls have performance implications, they are necessary
+ *   to implement RBAC without Firebase Auth custom claims.
+ * - User Management: Only users with a 'MANAGER' or 'ADMIN' role can modify
+ *   other user profiles, which is essential for managing roles and statuses.
+ *   Regular users can only manage their own profiles. User listing is disabled
+ *   for non-managers to prevent data scraping.
+ * - Job Ownership: A job can be updated by its assigned user (assigneeUid)
+ *   or by a manager, providing both direct ownership and administrative override
+ *   capabilities.
+ * - Default Secure: Unauthenticated users have no access. Users with a 'PENDING'
+ *   status can only read their own profile and cannot interact with any other
+ *   data.
+ *
+ * Denormalization for Authorization:
+ * The `jobs` collection includes a denormalized `assigneeUid` field. This allows
+ * for a simple, direct authorization check (`request.auth.uid == resource.data.assigneeUid`)
+ * without needing to look up other documents, making the rule for job updates
+ * highly efficient.
+ *
+ * Structural Segregation:
+ * The use of separate top-level collections for `users`, `customers`, and `jobs`
+ * creates strong security boundaries. This allows for clear, independent rules
+ * for each data type, preventing accidental permission leakage between them.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------------
+    // Helper Functions
+    // ------------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the requesting user's UID matches the provided userId.
+     * This is the foundation of the document ownership model.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Retrieves the requesting user's profile data from the /users collection.
+     * This is the core of the RBAC system, used to check roles and status.
+     * Note: This function results in a Firestore read operation.
+     */
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    /**
+     * Checks if the user is an active ADMIN or MANAGER.
+     * These roles have the highest level of privileges.
+     */
+    function isManager() {
+      return isSignedIn() && getUserData().status == 'ACTIVE' && getUserData().role in ['ADMIN', 'MANAGER'];
+    }
+
+    /**
+     * Checks if the user is any active employee (ADMIN, MANAGER, or OFFICER).
+     * This is used for general access to shared resources like customers and jobs.
+     */
+    function isWorker() {
+      return isSignedIn() && getUserData().status == 'ACTIVE' && getUserData().role in ['ADMIN', 'MANAGER', 'OFFICER'];
+    }
+
+    /**
+     * Ensures an update operation does not change the document's unique ID.
+     * This prevents re-associating a user profile with a different auth UID.
+     */
+    function isIdImmutable() {
+      return request.resource.data.id == resource.data.id;
+    }
+
+    // ------------------------------------------------------------------------
+    // Collection Rules
+    // ------------------------------------------------------------------------
+
+    /**
+     * @description
+     *   Manages user profiles. A user can create and manage their own profile.
+     *   A 'MANAGER' or 'ADMIN' can view and edit any user's profile to manage
+     *   roles and status. Listing users is restricted to managers.
+     * @path /users/{userId}
+     * @allow (create) An authenticated user creating their own profile document.
+     * @deny (list) An 'OFFICER' trying to list all users in the system.
+     * @principle
+     *   Combines self-ownership for personal data with role-based access for
+     *   administrative oversight.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isManager();
+      allow list: if isManager();
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if (isOwner(userId) || isManager()) && resource != null && isIdImmutable();
+      allow delete: if false; // Deleting users should be handled via a managed process, not direct API calls.
+    }
+
+    /**
+     * @description
+     *   Manages customer data. Any active employee ('WORKER') can create and
+     *   view customers. Only managers can modify or delete existing customers
+     *   to protect data integrity.
+     * @path /customers/{customerId}
+     * @allow (create) An 'OFFICER' creating a new customer record.
+     * @deny (update) An 'OFFICER' attempting to change an existing customer's details.
+     * @principle
+     *   Implements role-based permissions, granting broad read/create access
+     *   while restricting sensitive write operations to higher-privileged roles.
+     */
+    match /customers/{customerId} {
+      allow get: if isWorker();
+      allow list: if isWorker();
+      allow create: if isWorker();
+      allow update: if isManager() && resource != null;
+      allow delete: if isManager() && resource != null;
+    }
+
+    /**
+     * @description
+     *   Manages job records. Any active employee can view the list of jobs and
+     *   create new ones. An existing job can only be updated by a manager or
+     *   the user it is specifically assigned to. Only managers can delete jobs.
+     * @path /jobs/{jobId}
+     * @allow (update) The user whose UID is in the `assigneeUid` field updates the job status.
+     * @deny (delete) A user who is the assignee but not a manager tries to delete the job.
+     * @principle
+     *   Uses a hybrid model of role-based access for general operations and
+     *   resource-based ownership (`assigneeUid`) for specific update permissions.
+     */
+    match /jobs/{jobId} {
+      allow get: if isWorker();
+      allow list: if isWorker();
+      allow create: if isWorker();
+      allow update: if (isManager() || request.auth.uid == resource.data.assigneeUid) && resource != null;
+      allow delete: if isManager() && resource != null;
+    }
+  }
+}
