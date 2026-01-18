@@ -9,6 +9,7 @@ import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { differenceInSeconds } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
+import { TOKEN_BUFFER_MS } from '@/lib/constants';
 
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +38,8 @@ function ScanPageContent() {
 
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastAttendance, setLastAttendance] = useState<LastAttendanceInfo | null | undefined>(undefined);
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
@@ -59,6 +62,7 @@ function ScanPageContent() {
 
       setTokenStatus("verifying");
       setTokenError(null);
+      setTokenExpiresIn(null);
       
       const tokenRef = doc(db, "kioskTokens", kioskToken);
 
@@ -69,19 +73,21 @@ function ScanPageContent() {
             if (tokenSnap.exists()) {
                 const tokenData = tokenSnap.data() as KioskToken;
                 
-                if (new Timestamp(Date.now() / 1000, 0) > tokenData.expiresAt) {
-                    setTokenStatus("invalid");
-                    setTokenError("โค้ดหมดอายุ");
-                    return; // Expired, no need to retry
-                }
-
                 if (!tokenData.isActive) {
                     setTokenStatus("invalid");
                     setTokenError("ไม่พบโค้ด (โค้ดอาจถูกใช้ไปแล้ว)");
                     return; // Inactive, treat as not usable
                 }
 
+                if (Date.now() > tokenData.expiresAtMs + TOKEN_BUFFER_MS) {
+                    setTokenStatus("invalid");
+                    setTokenError("โค้ดหมดอายุ");
+                    setTokenExpiresIn(0);
+                    return; // Expired, no need to retry
+                }
+
                 setTokenStatus("valid");
+                setTokenExpiresIn(Math.round((tokenData.expiresAtMs - Date.now())/1000));
                 setTokenError(null);
                 return; 
             }
@@ -100,6 +106,16 @@ function ScanPageContent() {
 
     verifyToken();
   }, [kioskToken, db]);
+  
+  useEffect(() => {
+    if (tokenStatus !== 'valid' || tokenExpiresIn === null || tokenExpiresIn <= 0) return;
+
+    const timer = setInterval(() => {
+      setTokenExpiresIn(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [tokenStatus, tokenExpiresIn]);
   
   useEffect(() => {
     if (authLoading) {
@@ -274,6 +290,11 @@ function ScanPageContent() {
                     </>
                 )}
             </Button>
+            {tokenStatus === 'valid' && tokenExpiresIn !== null && (
+                <div className="text-xs text-muted-foreground">
+                    (Code expires in {tokenExpiresIn}s)
+                </div>
+            )}
             {!isLoading && !canClockSpam && (
                 <div className="flex items-center text-sm text-destructive p-2 rounded-md bg-destructive/10">
                     <AlertCircle className="mr-2 h-4 w-4" />
@@ -298,3 +319,5 @@ export default function AttendanceScanPage() {
         </Suspense>
     )
 }
+
+    
