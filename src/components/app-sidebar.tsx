@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import React from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -74,14 +74,14 @@ const DepartmentMenu = ({ department }: { department: Department }) => {
                 {department === 'MANAGEMENT' && (
                     <>
                         <SubNavLink href="/app/management/overview" label="ภาพรวม" />
-                        <SubNavLink href="/app/management/jobs/all" label="งานทั้งหมด" />
+                        <SubNavLink href="/app/management/jobs/all" label="งานทั้งหมด (ทุกแผนก)" />
                         <SubNavLink href="/app/management/jobs/by-status" label="งานตามสถานะ" />
                         <SubNavLink href="/app/management/summary" label="สรุปวันนี้/สัปดาห์" />
                         <SubNavLink href="/app/management/customers/all" label="รายชื่อลูกค้า" />
                         <SubNavLink href="/app/management/customers/tax" label="ลูกค้าใช้ภาษี" />
                         <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" />
-                        <SubNavLink href="/app/management/accounting/revenue" label="รายรับ" />
-                        <SubNavLink href="/app/management/accounting/expenses" label="รายจ่าย" />
+                        <SubNavLink href="/app/management/accounting/revenue" label="รายรับ (เงินเข้า)" />
+                        <SubNavLink href="/app/management/accounting/expenses" label="รายจ่าย (เงินออก)" />
                         <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" />
                         <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" />
                         <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" />
@@ -159,7 +159,7 @@ export function AppSidebar() {
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
 
-  const isKioskOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/scan') || pathname.startsWith('/app/attendance');
+  const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
   
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-64 flex-col border-r bg-background sm:flex">
@@ -170,9 +170,9 @@ export function AppSidebar() {
         
         <div className="flex-1 overflow-y-auto py-2">
             <nav className="grid items-start px-2 text-sm font-medium">
-                <Collapsible defaultOpen={isKioskOpen}>
+                <Collapsible defaultOpen={isAttendanceOpen}>
                     <CollapsibleTrigger asChild>
-                        <Button variant={isKioskOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                        <Button variant={isAttendanceOpen ? "secondary" : "ghost"} className="w-full justify-between">
                             <span className="flex items-center gap-2">
                                 <QrCode className="h-4 w-4" />
                                 QR ลงเวลา
@@ -181,10 +181,9 @@ export function AppSidebar() {
                         </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="py-1 pl-6 space-y-1">
-                        <SubNavLink href="/app/kiosk/office" label="Kiosk (ในออฟฟิศ)" />
-                        <SubNavLink href="/app/kiosk/outside" label="Kiosk (นอกออฟฟิศ)" />
-                        <SubNavLink href="/app/scan" label="Scan (มือถือ)" />
-                        <SubNavLink href="/app/attendance" label="ประวัติลงเวลา" />
+                        <SubNavLink href="/app/kiosk" label="Kiosk (คอมกลาง)" />
+                        <SubNavLink href="/app/attendance/scan" label="Scan (มือถือ)" />
+                        <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" />
                     </CollapsibleContent>
                 </Collapsible>
                 
