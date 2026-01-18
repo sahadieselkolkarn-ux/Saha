@@ -87,7 +87,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'OFFICE' && (
                     <>
                         <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า/ค้นหา" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/customers/tax" label="ภาษีลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/jobs/pending" label="งานรอดำเนินการ" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/jobs/waiting" label="งานรออะไหล่/รอส่งต่อ" onClick={onLinkClick} />

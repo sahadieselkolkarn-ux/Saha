@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -31,6 +30,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { Customer } from "@/lib/types";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -45,7 +46,6 @@ const customerSchema = z.object({
   path: ["taxName"], 
 });
 
-// Card component for mobile view
 const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEdit: (customer: Customer) => void, onDelete: (customerId: string) => void }) => (
     <Card>
         <CardHeader>
@@ -82,8 +82,7 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
     </Card>
 );
 
-
-export default function CustomersPage() {
+function AllCustomersTab() {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -137,12 +136,13 @@ export default function CustomersPage() {
           taxAddress: "",
           taxId: "",
       });
+    } else if (editingCustomer) {
+        form.reset(editingCustomer);
     }
-  }, [isDialogOpen, form]);
+  }, [isDialogOpen, editingCustomer, form]);
 
   const openEditDialog = (customer: Customer) => {
     setEditingCustomer(customer);
-    form.reset(customer);
     setIsDialogOpen(true);
   };
 
@@ -184,28 +184,13 @@ export default function CustomersPage() {
   };
 
   if (loading) {
-    return (
-        <>
-            <PageHeader title="Customer Management" description="Add, edit, and manage your customers." />
-            <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
-        </>
-    );
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
 
   return (
     <>
-      <PageHeader title="Customer Management" description="Add, edit, and manage your customers.">
-        <Button asChild>
-            <Link href="/app/office/customers/new">
-                <PlusCircle className="mr-2 h-4 w-4" /> Add Customer
-            </Link>
-        </Button>
-      </PageHeader>
-      
-      {/* Desktop View: Table */}
       <Card className="hidden sm:block">
-        <CardHeader><CardTitle>Customer List</CardTitle></CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <Table>
             <TableHeader>
               <TableRow>
@@ -245,7 +230,6 @@ export default function CustomersPage() {
         </CardContent>
       </Card>
 
-      {/* Mobile View: Card List */}
       <div className="grid gap-4 sm:hidden">
         {customers.length > 0 ? (
           customers.map(customer => (
@@ -331,4 +315,152 @@ export default function CustomersPage() {
       </AlertDialog>
     </>
   );
+}
+
+
+function TaxCustomersTab() {
+  const { db } = useFirebase();
+  const { toast } = useToast();
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "customers"), where("useTax", "==", true), orderBy("name", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+      setCustomers(customersData);
+      setLoading(false);
+    },
+    (error) => {
+      toast({ variant: "destructive", title: "Failed to load tax customers" });
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [db, toast]);
+  
+  if (loading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+
+  return (
+     <Card>
+        <CardContent className="pt-6">
+           <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Tax ID</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {customers.length > 0 ? (
+                customers.map(customer => (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell>{customer.phone}</TableCell>
+                      <TableCell>{customer.taxId}</TableCell>
+                    </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                        ไม่พบข้อมูลลูกค้าที่ใช้ภาษี
+                    </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+  )
+}
+
+function GeneralCustomersTab() {
+  const { db } = useFirebase();
+  const { toast } = useToast();
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "customers"), where("useTax", "==", false), orderBy("name", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+      setCustomers(customersData);
+      setLoading(false);
+    },
+    (error) => {
+      toast({ variant: "destructive", title: "Failed to load general customers" });
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [db, toast]);
+  
+  if (loading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+
+  return (
+     <Card>
+        <CardContent className="pt-6">
+           <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Phone</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {customers.length > 0 ? (
+                customers.map(customer => (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell>{customer.phone}</TableCell>
+                    </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                    <TableCell colSpan={2} className="h-24 text-center text-muted-foreground">
+                        ไม่พบข้อมูลลูกค้าทั่วไป
+                    </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+  )
+}
+
+
+export default function CustomersPage() {
+    return (
+        <>
+            <PageHeader title="Customer Management" description="Add, edit, and manage your customers.">
+                <Button asChild>
+                    <Link href="/app/office/customers/new">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add Customer
+                    </Link>
+                </Button>
+            </PageHeader>
+            <Tabs defaultValue="all" className="space-y-4">
+                <TabsList>
+                    <TabsTrigger value="all">ลูกค้าทั้งหมด</TabsTrigger>
+                    <TabsTrigger value="tax">ลูกค้าใช้ภาษี</TabsTrigger>
+                    <TabsTrigger value="general">ลูกค้าทั่วไป</TabsTrigger>
+                </TabsList>
+                <TabsContent value="all">
+                    <AllCustomersTab />
+                </TabsContent>
+                <TabsContent value="tax">
+                    <TaxCustomersTab />
+                </TabsContent>
+                 <TabsContent value="general">
+                    <GeneralCustomersTab />
+                </TabsContent>
+            </Tabs>
+        </>
+    );
 }
