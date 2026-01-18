@@ -33,45 +33,69 @@ function ScanPageContent() {
   const { toast } = useToast();
   
   const searchParams = useSearchParams();
-  const kioskToken = useMemo(() => searchParams.get('k'), [searchParams]);
+  const kioskToken = useMemo(() => searchParams.get('k') || searchParams.get('token'), [searchParams]);
 
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastAttendance, setLastAttendance] = useState<LastAttendanceInfo | null | undefined>(undefined);
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
   useEffect(() => {
+    const RETRY_LIMIT = 5;
+    const RETRY_DELAY_MS = 250;
+
+    async function sleep(ms: number) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     async function verifyToken() {
       if (!kioskToken) {
         setTokenStatus("missing");
         return;
       }
-      if (!db) {
-        // DB not ready, wait for re-render
-        return;
-      }
+      if (!db) return;
 
       setTokenStatus("verifying");
+      setTokenError(null);
+      
       const tokenRef = doc(db, "kioskTokens", kioskToken);
-      try {
-        const tokenSnap = await getDoc(tokenRef);
 
-        if (!tokenSnap.exists()) {
-          setTokenStatus("invalid");
-          return;
+      for (let i = 0; i < RETRY_LIMIT; i++) {
+        try {
+            const tokenSnap = await getDoc(tokenRef);
+
+            if (tokenSnap.exists()) {
+                const tokenData = tokenSnap.data() as KioskToken;
+                
+                if (new Timestamp(Date.now() / 1000, 0) > tokenData.expiresAt) {
+                    setTokenStatus("invalid");
+                    setTokenError("QR Code หมดอายุแล้ว กรุณาสแกนใหม่");
+                    return; // Expired, no need to retry
+                }
+
+                if (!tokenData.isActive) {
+                    setTokenStatus("invalid");
+                    setTokenError("QR Code นี้อาจถูกใช้งานไปแล้วหรือไม่ถูกต้อง");
+                    return; // Inactive, no need to retry
+                }
+
+                setTokenStatus("valid");
+                setTokenError(null);
+                return; 
+            }
+        } catch (error) {
+            console.error(`Token verification attempt ${i + 1} failed`, error);
         }
 
-        const tokenData = tokenSnap.data() as KioskToken;
-        if (!tokenData.isActive || new Timestamp(Date.now() / 1000, 0) > tokenData.expiresAt) {
-          setTokenStatus("invalid");
-        } else {
-          setTokenStatus("valid");
+        if (i < RETRY_LIMIT - 1) {
+            await sleep(RETRY_DELAY_MS);
         }
-      } catch (error) {
-        setTokenStatus("invalid");
-        console.error("Token verification failed", error);
       }
+      
+      setTokenStatus("invalid");
+      setTokenError("ไม่พบ Token ที่ระบุในระบบ กรุณาลองใหม่");
     }
 
     verifyToken();
@@ -203,7 +227,7 @@ function ScanPageContent() {
              <ShieldX className="h-16 w-16 text-destructive mb-4" />
              <h1 className="text-3xl font-bold">QR Code ไม่ถูกต้อง</h1>
              <p className="text-muted-foreground mt-2 max-w-md">
-                QR Code ที่คุณสแกนอาจหมดอายุแล้วหรือไม่ถูกต้อง กรุณาลองสแกนใหม่อีกครั้ง
+                {tokenError || 'QR Code ที่คุณสแกนอาจหมดอายุแล้วหรือไม่ถูกต้อง กรุณาลองสแกนใหม่อีกครั้ง'}
              </p>
          </div>
       )

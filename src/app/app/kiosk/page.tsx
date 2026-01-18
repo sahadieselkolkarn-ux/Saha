@@ -93,7 +93,10 @@ export default function KioskPage() {
                   <span>Generating new code...</span>
                 </div>
               ) : (
-                <span>Code refreshes in: {countdown}s</span>
+                <>
+                  <span>Code refreshes in: {countdown}s</span>
+                  {currentToken && <p className="text-xs font-mono break-all px-4">TOKEN: {currentToken}</p>}
+                </>
               )}
               <Button onClick={() => generateNewToken(true)} variant="outline" size="sm" disabled={isLoading}>
                 <RefreshCw className="mr-2 h-4 w-4" />
