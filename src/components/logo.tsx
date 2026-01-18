@@ -8,7 +8,7 @@ export function Logo({ className }: { className?: string }) {
         <div className="bg-primary text-primary-foreground rounded-lg p-2">
             <Building2 className="size-6" />
         </div>
-        <span className="font-headline">Thai Job Mgt.</span>
+        <span className="font-headline">Sahadiesel Service</span>
     </Link>
   );
 }

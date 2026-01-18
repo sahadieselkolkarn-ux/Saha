@@ -4,8 +4,8 @@ import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Thai Job Management',
-  description: 'A job management system for Thai businesses.',
+  title: 'Sahadiesel Service',
+  description: 'A job management system for Sahadiesel Service.',
 };
 
 export default function RootLayout({
