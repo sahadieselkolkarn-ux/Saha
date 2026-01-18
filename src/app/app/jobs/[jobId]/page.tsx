@@ -127,6 +127,9 @@ export default function JobDetailsPage() {
     if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !user || !profile || !db || !storage) return;
     setIsSubmitting(true);
     
+    const jobDocRef = doc(db, "jobs", jobId as string);
+    let updateData: any;
+
     try {
         const photoURLs: string[] = [];
         for (const photo of newPhotos) {
@@ -143,14 +146,13 @@ export default function JobDetailsPage() {
             photos: photoURLs,
         };
         
-        const jobDocRef = doc(db, "jobs", jobId as string);
-        const updateData = { 
+        updateData = { 
             activities: arrayUnion(newActivity),
             photos: arrayUnion(...photoURLs),
             lastActivityAt: serverTimestamp() 
         };
         
-        updateDoc(jobDocRef, updateData)
+        await updateDoc(jobDocRef, updateData)
           .catch(error => {
             const permissionError = new FirestorePermissionError({
                 path: jobDocRef.path,
@@ -176,7 +178,7 @@ export default function JobDetailsPage() {
     }
   };
   
-  const sortedActivities = job?.activities?.sort((a,b) => (b.createdAt as Timestamp).toMillis() - (a.createdAt as Timestamp).toMillis()) || [];
+  const sortedActivities = [...(job?.activities || [])].sort((a,b) => (b.createdAt as Timestamp).toMillis() - (a.createdAt as Timestamp).toMillis());
 
   if (loading) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin h-8 w-8" /></div>;
