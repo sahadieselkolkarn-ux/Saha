@@ -124,11 +124,32 @@ export default function ManagementHREmployeesPage() {
     if (!db || !editingUser) return;
     setIsSubmitting(true);
     
+    // Create a payload for Firestore, ensuring no 'undefined' values are present.
+    // Convert undefined to null or empty strings where appropriate.
     const updateData = {
-        ...values,
+        displayName: values.displayName,
+        phone: values.phone,
+        department: values.department ?? null,
+        role: values.role,
+        status: values.status,
+        personal: {
+            idCardNo: values.personal?.idCardNo ?? '',
+            address: values.personal?.address ?? '',
+            bank: {
+                bankName: values.personal?.bank?.bankName ?? '',
+                accountName: values.personal?.bank?.accountName ?? '',
+                accountNo: values.personal?.bank?.accountNo ?? '',
+            },
+            emergencyContact: {
+                name: values.personal?.emergencyContact?.name ?? '',
+                relationship: values.personal?.emergencyContact?.relationship ?? '',
+                phone: values.personal?.emergencyContact?.phone ?? '',
+            }
+        },
         hr: {
-            ...values.hr,
-            salary: values.hr?.salary === undefined ? undefined : Number(values.hr.salary)
+            salary: values.hr?.salary ?? null,
+            ssoHospital: values.hr?.ssoHospital ?? '',
+            note: values.hr?.note ?? ''
         },
         updatedAt: serverTimestamp()
     };
