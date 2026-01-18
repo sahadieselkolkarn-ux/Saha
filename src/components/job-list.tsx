@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
-import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 
@@ -42,9 +41,10 @@ export function JobList({
   children
 }: JobListProps) {
   const { db } = useFirebase();
-  const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<FirestoreError | null>(null);
+  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const jobsQuery = useMemo(() => {
     if (!db) return null;
@@ -58,9 +58,6 @@ export function JobList({
     }
     constraints.push(orderBy(orderByField, orderByDirection));
     
-    // NOTE: Firestore requires composite indexes for queries that filter on one field
-    // and order by another. If the app shows a "missing index" error in the console,
-    // follow the link provided by Firestore to create it.
     return query(collection(db, "jobs"), ...constraints);
 
   }, [db, department, status, orderByField, orderByDirection]);
@@ -72,25 +69,70 @@ export function JobList({
     };
 
     setLoading(true);
+    setError(null);
+    setIndexCreationUrl(null);
     const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
       const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
       setJobs(jobsData);
       setLoading(false);
-    }, (error) => {
-        // A more robust error handler for index issues is in `attendance/history`
-        // For now, a console log and toast is sufficient here.
-        toast({ variant: "destructive", title: "Error loading jobs", description: "Could not retrieve jobs from the database. You may need to create a Firestore index." });
-        console.error(error);
+      setError(null);
+      setIndexCreationUrl(null);
+    }, (err) => {
+        console.error(err);
+        setError(err);
         setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, toast]);
+  }, [jobsQuery]);
+
+  useEffect(() => {
+    if (error?.message?.includes('requires an index')) {
+      const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
+      if (urlMatch) {
+        setIndexCreationUrl(urlMatch[0]);
+      }
+    } else {
+      setIndexCreationUrl(null);
+    }
+  }, [error]);
 
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
   
+  if (indexCreationUrl) {
+    return (
+        <Card className="text-center py-12">
+            <CardHeader className="items-center">
+                <AlertCircle className="h-10 w-10 text-destructive mb-4" />
+                <CardTitle>ต้องสร้างดัชนี (Index) ก่อน</CardTitle>
+                <CardDescription className="max-w-xl mx-auto">
+                    ฐานข้อมูลต้องการดัชนี (Index) เพื่อกรองและเรียงข้อมูลงานตามที่คุณต้องการ
+                    กรุณากดปุ่มด้านล่างเพื่อเปิดหน้าสร้างใน Firebase Console (อาจใช้เวลา 2-3 นาที)
+                    เมื่อสร้างเสร็จแล้ว ให้กลับมารีเฟรชหน้านี้อีกครั้ง
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Button asChild>
+                    <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        เปิดหน้าสร้าง Index
+                    </a>
+                </Button>
+            </CardContent>
+             <CardFooter className="flex-col items-center gap-2 pt-4">
+                <p className="text-xs text-muted-foreground">Query details:</p>
+                <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded-md max-w-full overflow-x-auto">
+                    {department && `department: ${department}, `}
+                    {status && `status: ${status}, `}
+                    {`orderBy: ${orderByField} ${orderByDirection}`}
+                </p>
+            </CardFooter>
+        </Card>
+    );
+  }
+
   if (jobs.length === 0) {
      return (
         <Card className="text-center py-12">
