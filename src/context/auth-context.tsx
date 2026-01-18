@@ -59,8 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!db || !user) {
-        // user is logged out, or db is not ready.
-        if(!user) setLoading(false);
+        // user is logged out, or db is not ready. Let the other effect handle loading state.
         return;
     };
     

@@ -16,7 +16,6 @@ export async function createUserProfile(uid: string, data: UserProfileData) {
     const userDocRef = doc(db, "users", uid);
 
     const profileData = {
-        uid,
         ...data,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
