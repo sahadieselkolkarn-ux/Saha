@@ -133,37 +133,37 @@ export default function ManagementHREmployeesPage() {
     if (!db || !editingUser) return;
     setIsSubmitting(true);
     
-    const updateData: {[key: string]: any} = {
-        displayName: values.displayName,
-        phone: values.phone,
-        department: values.department || null,
-        role: values.role,
-        status: values.status,
-        personal: {
-            idCardNo: values.personal?.idCardNo ?? '',
-            address: values.personal?.address ?? '',
-            bank: {
-                bankName: values.personal?.bank?.bankName ?? '',
-                accountName: values.personal?.bank?.accountName ?? '',
-                accountNo: values.personal?.bank?.accountNo ?? '',
-            },
-            emergencyContact: {
-                name: values.personal?.emergencyContact?.name ?? '',
-                relationship: values.personal?.emergencyContact?.relationship ?? '',
-                phone: values.personal?.emergencyContact?.phone ?? '',
-            }
-        },
-        hr: {
-            salary: values.hr?.salary === undefined ? null : values.hr.salary,
-            ssoHospital: values.hr?.ssoHospital ?? '',
-            note: values.hr?.note ?? ''
-        },
-        updatedAt: serverTimestamp()
-    };
-    
-    const userDoc = doc(db, "users", editingUser.uid);
-
     try {
+        const updateData: {[key: string]: any} = {
+            displayName: values.displayName,
+            phone: values.phone,
+            department: values.department || null,
+            role: values.role,
+            status: values.status,
+            personal: {
+                idCardNo: values.personal?.idCardNo ?? null,
+                address: values.personal?.address ?? null,
+                bank: {
+                    bankName: values.personal?.bank?.bankName ?? null,
+                    accountName: values.personal?.bank?.accountName ?? null,
+                    accountNo: values.personal?.bank?.accountNo ?? null,
+                },
+                emergencyContact: {
+                    name: values.personal?.emergencyContact?.name ?? null,
+                    relationship: values.personal?.emergencyContact?.relationship ?? null,
+                    phone: values.personal?.emergencyContact?.phone ?? null,
+                }
+            },
+            hr: {
+                salary: values.hr?.salary === undefined ? null : values.hr.salary,
+                ssoHospital: values.hr?.ssoHospital ?? null,
+                note: values.hr?.note ?? null
+            },
+            updatedAt: serverTimestamp()
+        };
+        
+        const userDoc = doc(db, "users", editingUser.uid);
+
         await updateDoc(userDoc, updateData);
         toast({ title: "User profile updated successfully" });
         setIsDialogOpen(false);
