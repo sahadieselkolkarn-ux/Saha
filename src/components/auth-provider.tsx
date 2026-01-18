@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useState, useEffect, ReactNode, useMemo } from 'react';
-import { onAuthStateChanged, User, getAuth, Auth } from 'firebase/auth';
-import { doc, onSnapshot, getFirestore, Firestore } from 'firebase/firestore';
-import { getStorage, FirebaseStorage } from 'firebase/storage';
-import { app } from '@/lib/firebase'; // We still need the app instance
+import { createContext, useState, useEffect, ReactNode } from 'react';
+import { User, Auth } from 'firebase/auth';
+import { doc, onSnapshot, Firestore } from 'firebase/firestore';
+import { FirebaseStorage } from 'firebase/storage';
+import { useFirebase } from '@/firebase';
 import type { UserProfile } from '@/lib/types';
 
 export interface AuthContextType {
@@ -19,46 +19,36 @@ export interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, isUserLoading, firestore, auth, storage } = useFirebase();
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const { auth, db, storage } = useMemo(() => {
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    const storage = getStorage(app);
-    return { auth, db, storage };
-  }, []);
+  const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth) return;
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      if (!user) {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => unsubscribeAuth();
-  }, [auth]);
-
-  useEffect(() => {
-    if (user && db) {
-      const unsub = onSnapshot(doc(db, "users", user.uid), (doc) => {
+    if (isUserLoading) {
+      return; // Wait until user auth state is resolved
+    }
+    if (!user) {
+      setProfile(null);
+      setProfileLoading(false);
+      return;
+    }
+    if (firestore) {
+      const unsub = onSnapshot(doc(firestore, "users", user.uid), (doc) => {
         if (doc.exists()) {
           setProfile({ uid: doc.id, ...doc.data() } as UserProfile);
         } else {
           setProfile(null);
         }
-        setLoading(false);
+        setProfileLoading(false);
+      }, () => {
+        setProfileLoading(false);
       });
       return () => unsub();
     }
-  }, [user, db]);
+  }, [user, isUserLoading, firestore]);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, auth, db, storage }}>
+    <AuthContext.Provider value={{ user, profile, loading: isUserLoading || profileLoading, auth, db: firestore, storage }}>
       {children}
     </AuthContext.Provider>
   );
