@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
+import Link from "next/link";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -72,52 +73,27 @@ export default function CustomersPage() {
     return () => unsubscribe();
   }, [db, toast]);
 
-  const openDialog = (customer: Customer | null = null) => {
+  const openEditDialog = (customer: Customer) => {
     setEditingCustomer(customer);
-    if (customer) {
-        form.reset(customer);
-    } else {
-        form.reset({
-            name: "",
-            phone: "",
-            detail: "",
-            useTax: false,
-            taxName: "",
-            taxAddress: "",
-            taxId: "",
-        });
-    }
+    form.reset(customer);
     setIsDialogOpen(true);
   };
 
   const onSubmit = (values: z.infer<typeof customerSchema>) => {
-    if (!db) return;
+    if (!db || !editingCustomer) return;
     setIsSubmitting(true);
     
-    if (editingCustomer) {
-      const customerDoc = doc(db, "customers", editingCustomer.id);
-      const updateData = { ...values, updatedAt: serverTimestamp() };
-      updateDoc(customerDoc, updateData)
-        .then(() => {
-          toast({ title: "Customer updated successfully" });
-          setIsDialogOpen(false);
-        })
-        .catch(error => {
-          toast({ variant: "destructive", title: "Update Failed", description: error.message });
-        })
-        .finally(() => setIsSubmitting(false));
-    } else {
-      const addData = { ...values, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-      addDoc(collection(db, "customers"), addData)
-        .then(() => {
-          toast({ title: "Customer added successfully" });
-          setIsDialogOpen(false);
-        })
-        .catch(error => {
-          toast({ variant: "destructive", title: "Creation Failed", description: error.message });
-        })
-        .finally(() => setIsSubmitting(false));
-    }
+    const customerDoc = doc(db, "customers", editingCustomer.id);
+    const updateData = { ...values, updatedAt: serverTimestamp() };
+    updateDoc(customerDoc, updateData)
+      .then(() => {
+        toast({ title: "Customer updated successfully" });
+        setIsDialogOpen(false);
+      })
+      .catch(error => {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+      })
+      .finally(() => setIsSubmitting(false));
   };
 
   const handleDelete = (customerId: string) => {
@@ -141,8 +117,10 @@ export default function CustomersPage() {
   return (
     <>
       <PageHeader title="Customer Management" description="Add, edit, and manage your customers.">
-        <Button onClick={() => openDialog()}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Add Customer
+        <Button asChild>
+            <Link href="/app/office/customers/new">
+                <PlusCircle className="mr-2 h-4 w-4" /> Add Customer
+            </Link>
         </Button>
       </PageHeader>
       
@@ -159,22 +137,30 @@ export default function CustomersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {customers.map(customer => (
-                <TableRow key={customer.id}>
-                  <TableCell className="font-medium">{customer.name}</TableCell>
-                  <TableCell>{customer.phone}</TableCell>
-                  <TableCell>{customer.useTax ? "Yes" : "No"}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => openDialog(customer)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDelete(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
+              {customers.length > 0 ? (
+                customers.map(customer => (
+                    <TableRow key={customer.id}>
+                    <TableCell className="font-medium">{customer.name}</TableCell>
+                    <TableCell>{customer.phone}</TableCell>
+                    <TableCell>{customer.useTax ? "Yes" : "No"}</TableCell>
+                    <TableCell>
+                        <DropdownMenu>
+                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditDialog(customer)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDelete(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                        </DropdownMenuContent>
+                        </DropdownMenu>
+                    </TableCell>
+                    </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                        No customers found.
+                    </TableCell>
                 </TableRow>
-              ))}
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -183,8 +169,8 @@ export default function CustomersPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>{editingCustomer ? "Edit" : "Add"} Customer</DialogTitle>
-            <DialogDescription>Fill in the details below.</DialogDescription>
+            <DialogTitle>Edit Customer</DialogTitle>
+            <DialogDescription>Update the details below.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
@@ -222,7 +208,7 @@ export default function CustomersPage() {
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
                 </Button>
               </DialogFooter>
             </form>

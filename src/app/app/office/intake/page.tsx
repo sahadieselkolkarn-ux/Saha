@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
 import { Loader2, UploadCloud, X } from "lucide-react";
 import type { Customer } from "@/lib/types";
+import Link from "next/link";
 
 const intakeSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
@@ -105,6 +106,10 @@ export default function IntakePage() {
     addDoc(collection(db, "jobs"), jobData)
       .then(async (jobDocRef) => {
         try {
+          // Generate an ID for the new job document before using it.
+          const jobWithId = { ...jobData, id: jobDocRef.id};
+          await updateDoc(doc(db, "jobs", jobDocRef.id), { id: jobDocRef.id });
+
           const photoURLs: string[] = [];
           for (const photo of photos) {
               const photoRef = ref(storage, `jobs/${jobDocRef.id}/${Date.now()}-${photo.name}`);
@@ -149,10 +154,15 @@ export default function IntakePage() {
               <FormField name="customerId" control={form.control} render={({ field }) => (
                 <FormItem>
                   <FormLabel>Customer</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select a customer" /></SelectTrigger></FormControl>
-                    <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.phone}</SelectItem>)}</SelectContent>
-                  </Select>
+                   <div className="flex items-center gap-2">
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Select a customer" /></SelectTrigger></FormControl>
+                      <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.phone}</SelectItem>)}</SelectContent>
+                    </Select>
+                     <Button variant="outline" asChild>
+                        <Link href="/app/office/customers/new">New</Link>
+                    </Button>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )} />

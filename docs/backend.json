@@ -139,8 +139,20 @@
           "description": "Reference to Customer. (Relationship: Customer 1:N Job)"
         },
         "customerSnapshot": {
-          "type": "string",
-          "description": "Snapshot of customer data (name, phone) at the time the job was created. Stored as a stringified JSON object."
+          "type": "object",
+          "description": "Snapshot of customer data (name, phone) at the time the job was created.",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "phone": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "phone"
+          ]
         },
         "department": {
           "type": "string",
