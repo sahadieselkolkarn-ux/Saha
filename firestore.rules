@@ -143,8 +143,10 @@ service cloud.firestore {
     /**
      * @description
      *   Manages job records. Any active employee can view the list of jobs and
-     *   create new ones. An existing job can only be updated by a manager or
-     *   the user it is specifically assigned to. Only managers can delete jobs.
+     *   create new ones. An existing job can only be updated by a manager,
+     *   the user it is specifically assigned to, or any worker if the job is
+     *   not yet assigned (to allow for initial photo URL updates). Only
+     *   managers can delete jobs.
      * @path /jobs/{jobId}
      * @allow (update) The user whose UID is in the `assigneeUid` field updates the job status.
      * @deny (delete) A user who is the assignee but not a manager tries to delete the job.
@@ -156,7 +158,7 @@ service cloud.firestore {
       allow get: if isWorker();
       allow list: if isWorker();
       allow create: if isWorker();
-      allow update: if (isManager() || request.auth.uid == resource.data.assigneeUid) && resource != null;
+      allow update: if (isManager() || request.auth.uid == resource.data.assigneeUid || (isWorker() && resource.data.assigneeUid == '')) && resource != null;
       allow delete: if isManager() && resource != null;
     }
   }
