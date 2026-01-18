@@ -51,7 +51,11 @@ export function JobList({
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FirestoreError | null>(null);
+  
+  const [indexState, setIndexState] = useState<'ok' | 'missing' | 'building'>('ok');
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
 
   const jobsQuery = useMemo(() => {
@@ -75,7 +79,8 @@ export function JobList({
     
     return query(collection(db, "jobs"), ...constraints);
 
-  }, [db, department, status, assigneeUid, orderByField, orderByDirection]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, department, status, assigneeUid, orderByField, orderByDirection, retry]);
 
   useEffect(() => {
     if (!jobsQuery) {
@@ -83,14 +88,18 @@ export function JobList({
       return;
     };
 
+    // On new query, reset state before loading
     setLoading(true);
     setError(null);
+    setIndexState('ok');
     setIndexCreationUrl(null);
+
     const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
       const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
       setJobs(jobsData);
       setLoading(false);
       setError(null);
+      setIndexState('ok');
       setIndexCreationUrl(null);
     }, (err) => {
         console.error(err);
@@ -107,7 +116,15 @@ export function JobList({
       if (urlMatch) {
         setIndexCreationUrl(urlMatch[0]);
       }
+      if (error.message.includes('currently building')) {
+        setIndexState('building');
+        const timer = setTimeout(() => setRetry(r => r + 1), 10000); // Poll every 10 seconds
+        return () => clearTimeout(timer);
+      } else {
+        setIndexState('missing');
+      }
     } else {
+      setIndexState('ok');
       setIndexCreationUrl(null);
     }
   }, [error]);
@@ -139,7 +156,32 @@ export function JobList({
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
   
-  if (indexCreationUrl) {
+  if (indexState === 'building') {
+    return (
+        <Card className="text-center py-12">
+            <CardHeader className="items-center">
+                <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
+                <CardTitle>ดัชนีกำลังถูกสร้าง (Index is Building)</CardTitle>
+                <CardDescription className="max-w-xl mx-auto">
+                    ฐานข้อมูลกำลังเตรียมพร้อมสำหรับการแสดงผลนี้ อาจใช้เวลา 2-3 นาที
+                    หน้านี้จะพยายามโหลดข้อมูลใหม่โดยอัตโนมัติใน 10 วินาที หรือคุณสามารถลองรีเฟรชหน้านี้อีกครั้งในภายหลัง
+                </CardDescription>
+            </CardHeader>
+            {indexCreationUrl && (
+                <CardContent>
+                    <Button asChild variant="outline">
+                        <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            ตรวจสอบสถานะ
+                        </a>
+                    </Button>
+                </CardContent>
+            )}
+        </Card>
+    );
+  }
+  
+  if (indexState === 'missing') {
     return (
         <Card className="text-center py-12">
             <CardHeader className="items-center">
