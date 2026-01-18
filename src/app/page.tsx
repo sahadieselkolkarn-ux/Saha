@@ -6,26 +6,18 @@ import { useAuth } from '@/context/auth-context';
 import { Loader2 } from 'lucide-react';
 
 export default function Home() {
-  const { user, loading, profile } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return; // Wait until we have an auth state
 
     if (user) {
-        if (profile) { // Also wait for profile
-            if (profile.status === 'ACTIVE') {
-                router.replace('/app/jobs');
-            } else if (profile.status === 'PENDING') {
-                router.replace('/pending');
-            } else {
-                router.replace('/login');
-            }
-        }
+        router.replace('/app/jobs');
     } else {
       router.replace('/login');
     }
-  }, [user, profile, loading, router]);
+  }, [user, loading, router]);
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-background">

@@ -6,29 +6,9 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isUserActive(userId) {
-      let userDoc = get(/databases/$(database)/documents/users/$(userId));
-      return userDoc.data.status == 'ACTIVE';
-    }
-
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return userDoc.data.role == 'ADMIN';
-    }
-
-    match /users/{userId} {
-      allow read, update: if isOwner(userId) || isAdmin();
-      // Allow user creation during signup
-      allow create: if isOwner(userId);
-    }
-
-    // Single-user admin model: allow all if admin and active
+    // Allow read/write access to all documents for any signed-in user.
     match /{document=**} {
-       allow read, write: if isSignedIn() && isUserActive(request.auth.uid) && isAdmin();
+      allow read, write: if isSignedIn();
     }
   }
 }
