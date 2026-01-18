@@ -29,10 +29,10 @@ export function AppSidebar() {
   if (!profile) return null
 
   const isAdmin = profile.role === "ADMIN"
+  const isManager = profile.role === "MANAGER"
   const isOffice = profile.department === "OFFICE"
   const isCommonrail = profile.department === "COMMONRAIL"
   const isManagerOrOfficer = profile.role === "MANAGER" || profile.role === "OFFICER"
-
 
   const menuItems = [
     {
@@ -40,18 +40,6 @@ export function AppSidebar() {
       label: "Jobs",
       icon: Briefcase,
       visible: true,
-    },
-    {
-      href: "/app/commonrail/kiosk-office",
-      label: "Kiosk Office",
-      icon: QrCode,
-      visible: isAdmin || (isCommonrail && isManagerOrOfficer),
-    },
-    {
-      href: "/app/commonrail/kiosk-front",
-      label: "Kiosk Front",
-      icon: QrCode,
-      visible: isAdmin || (isCommonrail && isManagerOrOfficer),
     },
     {
       href: "/app/office/intake",
@@ -63,13 +51,25 @@ export function AppSidebar() {
       href: "/app/office/customers",
       label: "Customers",
       icon: Building,
-      visible: isAdmin || isOffice,
+      visible: isAdmin || isManager,
     },
     {
       href: "/app/admin/users",
       label: "Users",
       icon: Users,
-      visible: isAdmin,
+      visible: isAdmin || isManager,
+    },
+    {
+        href: "/app/commonrail/kiosk-office",
+        label: "Kiosk Office",
+        icon: QrCode,
+        visible: isAdmin || (isCommonrail && isManagerOrOfficer),
+    },
+    {
+        href: "/app/commonrail/kiosk-front",
+        label: "Kiosk Front",
+        icon: QrCode,
+        visible: isAdmin || (isCommonrail && isManagerOrOfficer),
     },
   ]
 

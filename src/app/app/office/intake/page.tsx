@@ -51,9 +51,10 @@ export default function IntakePage() {
     (error) => {
         const permissionError = new FirestorePermissionError({ path: 'customers', operation: 'list' });
         errorEmitter.emit('permission-error', permissionError);
+        toast({ variant: "destructive", title: "Failed to load customers" });
     });
     return () => unsubscribe();
-  }, [db]);
+  }, [db, toast]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -63,8 +64,8 @@ export default function IntakePage() {
         return;
       }
       const validFiles = newFiles.filter(file => {
-          if (file.size > 2 * 1024 * 1024) {
-              toast({ variant: "destructive", title: `File ${file.name} is too large.`, description: "Max size is 2MB." });
+          if (file.size > 5 * 1024 * 1024) { // 5MB limit
+              toast({ variant: "destructive", title: `File ${file.name} is too large.`, description: "Max size is 5MB." });
               return false;
           }
           return true;
@@ -96,17 +97,19 @@ export default function IntakePage() {
         ...values,
         customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
         status: "RECEIVED",
-        photos: [],
+        photos: [], // will be updated after upload
+        assigneeUid: '',
+        assigneeName: '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastActivityAt: serverTimestamp(),
+        activities: [],
     };
 
     addDoc(collection(db, "jobs"), jobData)
       .then(async (jobDocRef) => {
         try {
-          // Upload photos and update the job doc
-          const photoURLs = [];
+          const photoURLs: string[] = [];
           for (const photo of photos) {
               const photoRef = ref(storage, `jobs/${jobDocRef.id}/${Date.now()}-${photo.name}`);
               await uploadBytes(photoRef, photo);
@@ -119,7 +122,6 @@ export default function IntakePage() {
             await updateDoc(jobDocRef, updateData).catch(error => {
                 const permissionError = new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: updateData });
                 errorEmitter.emit('permission-error', permissionError);
-                // We can still proceed, but we should notify the user.
                 toast({ variant: "destructive", title: "Failed to save photos to job", description: error.message });
             });
           }
@@ -127,9 +129,8 @@ export default function IntakePage() {
           toast({ title: "Job created successfully", description: `Job ID: ${jobDocRef.id}` });
           router.push(`/app/jobs/${jobDocRef.id}`);
         } catch (error: any) {
-          // This catches storage errors
           toast({ variant: "destructive", title: "Failed to upload photos", description: error.message });
-          setIsSubmitting(false); // Stop loading if photo upload fails
+          setIsSubmitting(false); 
         }
       })
       .catch(error => {
@@ -175,7 +176,7 @@ export default function IntakePage() {
                 </FormItem>
               )} />
               <FormItem>
-                <FormLabel>Photos (up to 4, max 2MB each)</FormLabel>
+                <FormLabel>Photos (up to 4, max 5MB each)</FormLabel>
                 <FormControl>
                   <div className="flex items-center justify-center w-full">
                     <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted hover:bg-secondary">
@@ -191,7 +192,7 @@ export default function IntakePage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                     {photoPreviews.map((src, index) => (
                       <div key={index} className="relative">
-                        <Image src={src} alt={`Preview ${index}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
+                        <Image src={src} alt={`Preview ${index}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" onUnload={() => URL.revokeObjectURL(src)} />
                         <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePhoto(index)}>
                           <X className="h-4 w-4" />
                         </Button>

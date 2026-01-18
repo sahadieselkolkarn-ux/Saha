@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { errorEmitter, FirestorePermissionError } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,22 +15,30 @@ import type { Job } from "@/lib/types";
 
 export default function JobsPage() {
   const { profile, db } = useAuth();
+  const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!profile || !db) return;
 
+    setLoading(true);
     let q;
+    // Admins see all jobs
     if (profile.role === "ADMIN") {
-      q = query(collection(db, "jobs"), orderBy("createdAt", "desc"));
-    } else if (profile.role === "MANAGER" || profile.role === "OFFICER") {
+      q = query(collection(db, "jobs"), orderBy("lastActivityAt", "desc"));
+    } 
+    // Managers and Officers see jobs in their department
+    else if (profile.role === "MANAGER" || profile.role === "OFFICER") {
       q = query(
         collection(db, "jobs"),
         where("department", "==", profile.department),
-        orderBy("createdAt", "desc")
+        orderBy("lastActivityAt", "desc")
       );
-    } else {
+    } 
+    // Other roles don't see any jobs by default
+    else {
+      setJobs([]);
       setLoading(false);
       return;
     }
@@ -37,10 +47,15 @@ export default function JobsPage() {
       const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
       setJobs(jobsData);
       setLoading(false);
+    }, (error) => {
+        const permissionError = new FirestorePermissionError({ path: 'jobs', operation: 'list' });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({ variant: "destructive", title: "Error loading jobs", description: "You may not have permission to view jobs." });
+        setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [profile, db]);
+  }, [profile, db, toast]);
   
   const getStatusVariant = (status: Job['status']) => {
     switch (status) {
@@ -52,7 +67,7 @@ export default function JobsPage() {
     }
   }
 
-  const isOfficeUser = profile?.role === 'ADMIN' || profile?.department === 'OFFICE';
+  const isOfficeUser = profile?.role === 'ADMIN' || profile?.department === 'OFFICE' || profile?.role === 'MANAGER';
 
   return (
     <>
@@ -84,13 +99,13 @@ export default function JobsPage() {
             )}
         </Card>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {jobs.map(job => (
             <Card key={job.id} className="flex flex-col">
               <CardHeader>
                 <div className="flex justify-between items-start">
-                  <CardTitle className="text-lg font-bold">{job.customerSnapshot.name}</CardTitle>
-                  <Badge variant={getStatusVariant(job.status)}>{job.status}</Badge>
+                  <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
+                  <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
                 </div>
                 <CardDescription>
                   {job.department} &bull; Job ID: {job.id.substring(0, 6)}...

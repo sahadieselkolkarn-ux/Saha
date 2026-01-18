@@ -11,13 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 import type { UserProfile } from "@/lib/types";
 import { ROLES, DEPARTMENTS, USER_STATUSES } from "@/lib/constants";
 import { MoreHorizontal, Loader2 } from "lucide-react";
+import { format } from "date-fns";
 
 export default function UsersPage() {
   const { profile: currentAdmin, user: adminUser, db } = useAuth();
@@ -34,7 +35,16 @@ export default function UsersPage() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const usersData: UserProfile[] = [];
       querySnapshot.forEach((doc) => {
-        usersData.push({ uid: doc.id, ...doc.data() } as UserProfile);
+        const data = doc.data();
+        // Convert Firestore Timestamps to JS Dates
+        const userData = {
+            ...data,
+            uid: doc.id,
+            createdAt: data.createdAt?.toDate(),
+            updatedAt: data.updatedAt?.toDate(),
+            approvedAt: data.approvedAt?.toDate(),
+        } as unknown as UserProfile;
+        usersData.push(userData);
       });
       setUsers(usersData);
       setLoading(false);
@@ -45,11 +55,12 @@ export default function UsersPage() {
           operation: 'list',
       });
       errorEmitter.emit('permission-error', permissionError);
+      toast({ variant: "destructive", title: "Failed to load users", description: "You may not have permission to view this page."});
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [db]);
+  }, [db, toast]);
 
   const handleOpenDialog = (user: UserProfile) => {
     setSelectedUser(user);
@@ -68,7 +79,8 @@ export default function UsersPage() {
       updatedAt: serverTimestamp(),
     };
     
-    if(selectedUser.status === 'ACTIVE' && !users.find(u => u.uid === selectedUser.uid)?.approvedAt) {
+    const originalUser = users.find(u => u.uid === selectedUser.uid);
+    if(selectedUser.status === 'ACTIVE' && originalUser?.status !== 'ACTIVE') {
         updates.approvedAt = serverTimestamp();
         updates.approvedBy = adminUser.uid;
     }
@@ -122,6 +134,7 @@ export default function UsersPage() {
                 <TableHead>Role</TableHead>
                 <TableHead>Department</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Registered</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
@@ -133,6 +146,7 @@ export default function UsersPage() {
                   <TableCell>{user.role || "N/A"}</TableCell>
                   <TableCell>{user.department || "N/A"}</TableCell>
                   <TableCell><Badge variant={getStatusVariant(user.status)}>{user.status}</Badge></TableCell>
+                  <TableCell>{user.createdAt ? format(user.createdAt, 'PP') : 'N/A'}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -24,14 +24,14 @@ import { errorEmitter, FirestorePermissionError } from "@/firebase";
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone is required"),
-  detail: z.string().optional(),
+  detail: z.string().optional().default(""),
   useTax: z.boolean().default(false),
   taxName: z.string().optional(),
   taxAddress: z.string().optional(),
   taxId: z.string().optional(),
 }).refine(data => !data.useTax || (data.taxName && data.taxAddress && data.taxId), {
   message: "Tax information is required when 'Use Tax Invoice' is checked",
-  path: ["taxName"],
+  path: ["taxName"], 
 });
 
 export default function CustomersPage() {
@@ -45,7 +45,15 @@ export default function CustomersPage() {
 
   const form = useForm<z.infer<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
-    defaultValues: { useTax: false },
+    defaultValues: {
+      name: "",
+      phone: "",
+      detail: "",
+      useTax: false,
+      taxName: "",
+      taxAddress: "",
+      taxId: "",
+    },
   });
   
   const useTax = form.watch("useTax");
@@ -64,14 +72,27 @@ export default function CustomersPage() {
           operation: 'list',
       });
       errorEmitter.emit('permission-error', permissionError);
+      toast({ variant: "destructive", title: "Failed to load customers" });
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [db]);
+  }, [db, toast]);
 
   const openDialog = (customer: Customer | null = null) => {
     setEditingCustomer(customer);
-    form.reset(customer || { name: "", phone: "", detail: "", useTax: false, taxName: "", taxAddress: "", taxId: "" });
+    if (customer) {
+        form.reset(customer);
+    } else {
+        form.reset({
+            name: "",
+            phone: "",
+            detail: "",
+            useTax: false,
+            taxName: "",
+            taxAddress: "",
+            taxId: "",
+        });
+    }
     setIsDialogOpen(true);
   };
 
@@ -90,7 +111,7 @@ export default function CustomersPage() {
         .catch(error => {
           const permissionError = new FirestorePermissionError({ path: customerDoc.path, operation: 'update', requestResourceData: updateData });
           errorEmitter.emit('permission-error', permissionError);
-          toast({ variant: "destructive", title: "Operation Failed", description: error.message });
+          toast({ variant: "destructive", title: "Update Failed", description: error.message });
         })
         .finally(() => setIsSubmitting(false));
     } else {
@@ -103,7 +124,7 @@ export default function CustomersPage() {
         .catch(error => {
           const permissionError = new FirestorePermissionError({ path: 'customers', operation: 'create', requestResourceData: addData });
           errorEmitter.emit('permission-error', permissionError);
-          toast({ variant: "destructive", title: "Operation Failed", description: error.message });
+          toast({ variant: "destructive", title: "Creation Failed", description: error.message });
         })
         .finally(() => setIsSubmitting(false));
     }
@@ -111,7 +132,7 @@ export default function CustomersPage() {
 
   const handleDelete = (customerId: string) => {
     if (!db) return;
-    if (!window.confirm("Are you sure you want to delete this customer?")) return;
+    if (!window.confirm("Are you sure you want to delete this customer? This action cannot be undone.")) return;
     
     const customerDoc = doc(db, "customers", customerId);
     deleteDoc(customerDoc)
@@ -160,7 +181,7 @@ export default function CustomersPage() {
                       <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openDialog(customer)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDelete(customer.id)} className="text-red-600">Delete</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDelete(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -178,7 +199,7 @@ export default function CustomersPage() {
             <DialogDescription>Fill in the details below.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
               <FormField name="name" control={form.control} render={({ field }) => (
                 <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )} />
@@ -198,9 +219,9 @@ export default function CustomersPage() {
                 </FormItem>
               )} />
               {useTax && (
-                <div className="space-y-4 p-4 border rounded-md">
+                <div className="space-y-4 p-4 border rounded-md bg-muted/50">
                     <FormField name="taxName" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField name="taxAddress" control={form.control} render={({ field }) => (
                         <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>

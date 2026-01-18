@@ -45,27 +45,25 @@ export default function ProfilePage() {
 
     const userDocRef = doc(db, "users", user.uid);
     const updateData = {
-      ...values,
+      displayName: values.displayName,
+      phone: values.phone,
       updatedAt: serverTimestamp(),
     };
 
-    // Update Firestore document
     updateDoc(userDocRef, updateData)
       .then(() => {
         toast({
           title: "Profile Updated",
           description: "Your profile information has been successfully updated.",
         });
-        // Also update the auth profile
-        if (auth.currentUser) {
+        if (auth.currentUser && auth.currentUser.displayName !== values.displayName) {
           updateProfile(auth.currentUser, {
             displayName: values.displayName,
           }).catch((error) => {
-            // This error is less critical, so just log it and maybe toast
             console.error("Error updating auth profile:", error);
             toast({
               variant: "destructive",
-              title: "Could not update auth profile",
+              title: "Could not update display name",
               description: error.message,
             });
           });
@@ -138,7 +136,7 @@ export default function ProfilePage() {
                 <FormLabel>Department</FormLabel>
                 <Input value={profile.department || "N/A"} disabled />
               </FormItem>
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading || !form.formState.isDirty}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
               </Button>

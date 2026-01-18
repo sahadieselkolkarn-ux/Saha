@@ -66,6 +66,14 @@ export default function LoginPage() {
 
   const handlePasswordReset = async (email: string) => {
     if (!auth) return;
+    if (!email) {
+        toast({
+            variant: "destructive",
+            title: "Email Required",
+            description: "Please enter your email address first to reset the password.",
+        });
+        return;
+    }
     setIsLoading(true);
     try {
       await sendPasswordResetEmail(auth, email);
@@ -118,18 +126,8 @@ export default function LoginPage() {
                         type="button"
                         variant="link"
                         className="p-0 h-auto text-sm"
-                        onClick={() => {
-                            const email = form.getValues("email");
-                            if (!email) {
-                                toast({
-                                    variant: "destructive",
-                                    title: "Email Required",
-                                    description: "Please enter your email address first.",
-                                });
-                                return;
-                            }
-                            handlePasswordReset(email);
-                        }}
+                        onClick={() => handlePasswordReset(form.getValues("email"))}
+                        disabled={isLoading}
                     >
                         Forgot Password?
                     </Button>

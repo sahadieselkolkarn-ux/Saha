@@ -105,7 +105,7 @@ export default function SignupPage() {
           toast({
             variant: "destructive",
             title: "Signup Failed",
-            description: error.message,
+            description: "Could not save user data. " + error.message,
           });
           setIsLoading(false);
         });
