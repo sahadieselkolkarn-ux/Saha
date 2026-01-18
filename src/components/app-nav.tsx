@@ -97,24 +97,8 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 )}
                 {department === 'CAR_SERVICE' && (
                     <>
-                        <Collapsible defaultOpen={pathname.startsWith('/app/car-service/queue')}>
-                            <CollapsibleTrigger asChild>
-                                <Button variant={pathname.startsWith('/app/car-service/queue') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9">
-                                    คิวงาน
-                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                                </Button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="py-1 pl-4 space-y-1">
-                                <SubNavLink href="/app/car-service/queue/new" label="งานใหม่" onClick={onLinkClick} />
-                                <SubNavLink href="/app/car-service/queue/in-progress" label="กำลังทำ" onClick={onLinkClick} />
-                                <SubNavLink href="/app/car-service/queue/done" label="เสร็จแล้ว" onClick={onLinkClick} />
-                                <SubNavLink href="/app/car-service/queue/closed" label="ปิดงาน" onClick={onLinkClick} />
-                            </CollapsibleContent>
-                        </Collapsible>
-                        <SubNavLink href="/app/car-service/jobs/list" label="งานของแผนก" onClick={onLinkClick} />
-                        <SubNavLink href="/app/car-service/jobs/transfer/commonrail" label="ส่งต่อ COMMONRAIL" onClick={onLinkClick} />
-                        <SubNavLink href="/app/car-service/jobs/transfer/mechanic" label="ส่งต่อ MECHANIC" onClick={onLinkClick} />
-                        <SubNavLink href="/app/car-service/jobs/outsource" label="ส่ง OUTSOURCE" onClick={onLinkClick} />
+                       <SubNavLink href="/app/car-service/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
+                       <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                     </>
                 )}
                 {department === 'COMMONRAIL' && (
