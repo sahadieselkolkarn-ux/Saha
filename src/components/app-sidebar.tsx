@@ -123,15 +123,25 @@ const DepartmentMenu = ({ department }: { department: Department }) => {
                             </CollapsibleContent>
                         </Collapsible>
                         <SubNavLink href="/app/car-service/jobs/list" label="งานของแผนก" />
-                        <SubNavLink href="/app/car-service/jobs/outsource" label="ส่ง OUTSOURCE" />
                     </>
                 )}
                 {department === 'COMMONRAIL' && (
-                    <>
-                        <SubNavLink href="/app/commonrail/queue/new" label="คิวงาน - ใหม่" />
-                        <SubNavLink href="/app/commonrail/queue/in-progress" label="คิวงาน - กำลังทำ" />
-                        <SubNavLink href="/app/commonrail/queue/done" label="คิวงาน - เสร็จแล้ว" />
-                        <SubNavLink href="/app/commonrail/jobs/detail" label="หน้างานละเอียด" />
+                     <>
+                        <Collapsible defaultOpen={pathname.startsWith('/app/commonrail/queue')}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={pathname.startsWith('/app/commonrail/queue') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9">
+                                    คิวงาน
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                <SubNavLink href="/app/commonrail/queue/new" label="งานใหม่" />
+                                <SubNavLink href="/app/commonrail/queue/in-progress" label="กำลังทำ" />
+                                <SubNavLink href="/app/commonrail/queue/done" label="เสร็จแล้ว" />
+                                <SubNavLink href="/app/commonrail/queue/closed" label="ปิดงาน" />
+                            </CollapsibleContent>
+                        </Collapsible>
+                        <SubNavLink href="/app/commonrail/jobs/list" label="งานของแผนก" />
                         <SubNavLink href="/app/commonrail/jobs/return" label="ส่งกลับ" />
                     </>
                 )}

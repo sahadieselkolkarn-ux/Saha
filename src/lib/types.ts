@@ -35,6 +35,7 @@ export interface Job {
   status: JobStatus;
   description: string;
   photos: string[];
+  technicalReport?: string;
   assigneeUid?: string;
   assigneeName?: string;
   createdAt: Timestamp;

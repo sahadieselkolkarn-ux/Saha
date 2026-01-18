@@ -173,6 +173,10 @@
             "type": "string"
           }
         },
+        "technicalReport": {
+          "type": "string",
+          "description": "Technical report or test results, mainly for COMMONRAIL and MECHANIC jobs."
+        },
         "createdAt": {
           "type": "string",
           "description": "Timestamp of when the job was created.",

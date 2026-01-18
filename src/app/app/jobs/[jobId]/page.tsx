@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUSES } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, UploadCloud, X, Send } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, UploadCloud, X, Send, Save } from "lucide-react";
 import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -42,6 +42,9 @@ export default function JobDetailsPage() {
   const [transferNote, setTransferNote] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
 
+  const [techReport, setTechReport] = useState("");
+  const [isSavingTechReport, setIsSavingTechReport] = useState(false);
+
   useEffect(() => {
     if (!jobId || !db) return;
     const jobDocRef = doc(db, "jobs", jobId as string);
@@ -49,6 +52,7 @@ export default function JobDetailsPage() {
       if (doc.exists()) {
         const jobData = { id: doc.id, ...doc.data() } as Job;
         setJob(jobData);
+        setTechReport(jobData.technicalReport || "");
       } else {
         toast({ variant: "destructive", title: "Job not found" });
       }
@@ -75,6 +79,26 @@ export default function JobDetailsPage() {
         .catch(error => {
             toast({ variant: "destructive", title: "Update Failed", description: error.message });
         });
+  };
+
+  const handleSaveTechReport = () => {
+    if (!jobId || !db) return;
+    setIsSavingTechReport(true);
+    const jobDocRef = doc(db, "jobs", jobId as string);
+    
+    updateDoc(jobDocRef, {
+      technicalReport: techReport,
+      lastActivityAt: serverTimestamp()
+    })
+    .then(() => {
+        toast({ title: `Technical report updated` });
+    })
+    .catch(error => {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    })
+    .finally(() => {
+        setIsSavingTechReport(false);
+    });
   };
   
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -209,6 +233,28 @@ export default function JobDetailsPage() {
               <div><h4 className="font-semibold text-base">Description</h4><p className="whitespace-pre-wrap">{job.description}</p></div>
             </CardContent>
           </Card>
+          
+          {(job.department === 'COMMONRAIL' || job.department === 'MECHANIC') && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  {job.department === 'COMMONRAIL' ? 'ผลตรวจ / ค่าที่วัด' : 'ผลตรวจ / งานที่ทำ'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Textarea 
+                  placeholder="บันทึกรายละเอียดทางเทคนิค..."
+                  value={techReport}
+                  onChange={(e) => setTechReport(e.target.value)}
+                  rows={6}
+                />
+                <Button onClick={handleSaveTechReport} disabled={isSavingTechReport}>
+                  {isSavingTechReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save Report
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle>Photos ({job.photos.length}/4)</CardTitle></CardHeader>
