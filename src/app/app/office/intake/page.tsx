@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,7 @@ import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -18,10 +19,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
-import { Loader2, UploadCloud, X } from "lucide-react";
+import { Loader2, UploadCloud, X, ChevronsUpDown, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
-import Link from "next/link";
+import { cn } from "@/lib/utils";
+
 
 const intakeSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
@@ -37,10 +41,23 @@ export default function IntakePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+  const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
   
   const form = useForm<z.infer<typeof intakeSchema>>({
     resolver: zodResolver(intakeSchema),
   });
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch) {
+      return customers;
+    }
+    return customers.filter(
+      (customer) =>
+        customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        customer.phone.includes(customerSearch)
+    );
+  }, [customers, customerSearch]);
 
   useEffect(() => {
     if (!db) return;
@@ -101,7 +118,6 @@ export default function IntakePage() {
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             lastActivityAt: serverTimestamp(),
-            activities: [],
         };
     
         const jobDocRef = await addDoc(collection(db, "jobs"), jobData);
@@ -142,21 +158,80 @@ export default function IntakePage() {
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl mx-auto">
-              <FormField name="customerId" control={form.control} render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Customer</FormLabel>
-                   <div className="flex items-center gap-2">
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl><SelectTrigger><SelectValue placeholder="Select a customer" /></SelectTrigger></FormControl>
-                      <SelectContent>{customers.map(c => <SelectItem key={c.id} value={c.id}>{c.name} - {c.phone}</SelectItem>)}</SelectContent>
-                    </Select>
-                     <Button variant="outline" asChild>
-                        <Link href="/app/office/customers/new">New</Link>
-                    </Button>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )} />
+              <FormField
+                name="customerId"
+                control={form.control}
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Customer</FormLabel>
+                    <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className={cn(
+                              "w-full justify-between",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value
+                              ? customers.find(
+                                  (customer) => customer.id === field.value
+                                )?.name
+                              : "Search name or phone..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                        <div className="p-2">
+                          <Input
+                            autoFocus
+                            placeholder="Search by name or phone..."
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                          />
+                        </div>
+                        <ScrollArea className="h-fit max-h-60">
+                          {filteredCustomers.length > 0 ? (
+                            filteredCustomers.map((customer) => (
+                              <Button
+                                variant="ghost"
+                                key={customer.id}
+                                onClick={() => {
+                                  field.onChange(customer.id);
+                                  setIsCustomerPopoverOpen(false);
+                                  setCustomerSearch('');
+                                }}
+                                className="w-full justify-start h-auto py-2 px-3"
+                              >
+                                <div className="flex flex-col items-start">
+                                  <p>{customer.name}</p>
+                                  <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                                </div>
+                              </Button>
+                            ))
+                          ) : (
+                            <div className="py-6 text-center text-sm text-muted-foreground">
+                              No customer found.
+                            </div>
+                          )}
+                        </ScrollArea>
+                        <div className="border-t p-2">
+                          <Button asChild variant="outline" className="w-full">
+                            <Link href="/app/office/customers/new">
+                              <PlusCircle className="mr-2 h-4 w-4" />
+                              New Customer
+                            </Link>
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
                   <FormLabel>Department</FormLabel>
