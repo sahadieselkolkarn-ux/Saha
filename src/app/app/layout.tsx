@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { AppSidebar } from '@/components/app-sidebar';
 import { useAuth } from "@/context/auth-context";
 import { Loader2 } from "lucide-react";
@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (loading) return; // Wait until loading is false
@@ -16,6 +17,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       router.replace('/login');
     }
   }, [user, loading, router]);
+  
+  // Effect to remove scroll lock on navigation, as a safeguard against stuck dialogs.
+  useEffect(() => {
+    document.documentElement.classList.remove('prevent-scroll');
+    document.body.style.overflow = '';
+  }, [pathname]);
 
   if (loading || !user) {
     return (
