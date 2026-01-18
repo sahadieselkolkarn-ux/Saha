@@ -4,7 +4,7 @@ import { createContext, useState, useEffect, ReactNode } from 'react';
 import { User, Auth } from 'firebase/auth';
 import { doc, onSnapshot, Firestore } from 'firebase/firestore';
 import { FirebaseStorage } from 'firebase/storage';
-import { useFirebase } from '@/firebase';
+import { useFirebase, errorEmitter, FirestorePermissionError } from '@/firebase';
 import type { UserProfile } from '@/lib/types';
 
 export interface AuthContextType {
@@ -33,14 +33,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (firestore) {
-      const unsub = onSnapshot(doc(firestore, "users", user.uid), (doc) => {
+      const userDocRef = doc(firestore, "users", user.uid);
+      const unsub = onSnapshot(userDocRef, (doc) => {
         if (doc.exists()) {
           setProfile({ uid: doc.id, ...doc.data() } as UserProfile);
         } else {
           setProfile(null);
         }
         setProfileLoading(false);
-      }, () => {
+      }, (error) => {
+        console.error("AuthProvider: Error fetching user profile:", error);
+        const permissionError = new FirestorePermissionError({
+          path: userDocRef.path,
+          operation: 'get',
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        setProfile(null);
         setProfileLoading(false);
       });
       return () => unsub();
