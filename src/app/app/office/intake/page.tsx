@@ -78,6 +78,8 @@ export default function IntakePage() {
   };
 
   const removePhoto = (index: number) => {
+    // Revoke the object URL to prevent memory leaks
+    URL.revokeObjectURL(photoPreviews[index]);
     setPhotos(prev => prev.filter((_, i) => i !== index));
     setPhotoPreviews(prev => prev.filter((_, i) => i !== index));
   };
@@ -93,7 +95,7 @@ export default function IntakePage() {
         return;
     }
 
-    const jobData = {
+    const jobData: any = {
         ...values,
         customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
         status: "RECEIVED",
@@ -141,6 +143,13 @@ export default function IntakePage() {
       });
   };
 
+  // Cleanup object URLs on unmount
+  useEffect(() => {
+    return () => {
+      photoPreviews.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [photoPreviews]);
+
   return (
     <>
       <PageHeader title="Job Intake" description="Create a new job for a customer." />
@@ -179,7 +188,7 @@ export default function IntakePage() {
                 <FormLabel>Photos (up to 4, max 5MB each)</FormLabel>
                 <FormControl>
                   <div className="flex items-center justify-center w-full">
-                    <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted hover:bg-secondary">
+                    <label htmlFor="dropzone-file" className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg ${photos.length >= 4 ? 'cursor-not-allowed bg-muted/50' : 'cursor-pointer bg-muted hover:bg-secondary'}`}>
                       <div className="flex flex-col items-center justify-center pt-5 pb-6">
                         <UploadCloud className="w-8 h-8 mb-2 text-muted-foreground" />
                         <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">Click to upload</span> or drag and drop</p>
@@ -192,7 +201,7 @@ export default function IntakePage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                     {photoPreviews.map((src, index) => (
                       <div key={index} className="relative">
-                        <Image src={src} alt={`Preview ${index}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" onUnload={() => URL.revokeObjectURL(src)} />
+                        <Image src={src} alt={`Preview ${index}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
                         <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePhoto(index)}>
                           <X className="h-4 w-4" />
                         </Button>

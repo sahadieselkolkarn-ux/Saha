@@ -45,13 +45,13 @@ export function AppSidebar() {
       href: "/app/office/intake",
       label: "Job Intake",
       icon: ClipboardPenLine,
-      visible: isAdmin || isOffice,
+      visible: isAdmin || isOffice || isManager,
     },
     {
       href: "/app/office/customers",
       label: "Customers",
       icon: Building,
-      visible: isAdmin || isManager,
+      visible: isAdmin || isManager || isOffice,
     },
     {
       href: "/app/admin/users",
