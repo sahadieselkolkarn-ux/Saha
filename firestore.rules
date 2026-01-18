@@ -81,6 +81,16 @@ service cloud.firestore {
     }
 
     /**
+     * Checks if the user is authorized to perform office-related tasks.
+     * This aligns with the UI guard for the '/app/office' section.
+     */
+    function isOfficeUser() {
+      let userData = getUserData();
+      return isSignedIn() && userData.status == 'ACTIVE' &&
+             (userData.role in ['ADMIN', 'MANAGER'] || userData.department == 'OFFICE');
+    }
+
+    /**
      * Checks if the user is any active employee (ADMIN, MANAGER, or OFFICER).
      * This is used for general access to shared resources. Any active user
      * in the 'OFFICE' department is also considered a worker to allow them to
@@ -127,31 +137,30 @@ service cloud.firestore {
 
     /**
      * @description
-     *   Manages customer data. Any active employee ('WORKER') can create and
-     *   view customers. Only managers can modify or delete existing customers
-     *   to protect data integrity.
+     *   Manages customer data. Only active office staff, managers, or admins
+     *   can access and create customer records. Only managers can modify or
+     *   delete existing customers to protect data integrity.
      * @path /customers/{customerId}
-     * @allow (create) An 'OFFICER' creating a new customer record.
-     * @deny (update) An 'OFFICER' attempting to change an existing customer's details.
+     * @allow (create) An 'OFFICE' user creating a new customer record.
+     * @deny (update) An 'OFFICE' user attempting to change an existing customer's details.
      * @principle
      *   Implements role-based permissions, granting broad read/create access
      *   while restricting sensitive write operations to higher-privileged roles.
      */
     match /customers/{customerId} {
-      allow get: if isWorker();
-      allow list: if isWorker();
-      allow create: if isWorker();
+      allow get: if isOfficeUser();
+      allow list: if isOfficeUser();
+      allow create: if isOfficeUser();
       allow update: if isManager() && resource != null;
       allow delete: if isManager() && resource != null;
     }
 
     /**
      * @description
-     *   Manages job records. Any active employee can view the list of jobs and
-     *   create new ones. An existing job can only be updated by a manager,
-     *   the user it is specifically assigned to, or any worker if the job is
-     *   not yet assigned (to allow for initial photo URL updates). Only
-     *   managers can delete jobs.
+     *   Manages job records. Job creation is restricted to office staff.
+     *   Any active employee can view the list of jobs. An existing job can only
+     *   be updated by a manager, the user it is specifically assigned to, or any
+     *   worker if the job is not yet assigned. Only managers can delete jobs.
      * @path /jobs/{jobId}
      * @allow (update) The user whose UID is in the `assigneeUid` field updates the job status.
      * @deny (delete) A user who is the assignee but not a manager tries to delete the job.
@@ -162,7 +171,7 @@ service cloud.firestore {
     match /jobs/{jobId} {
       allow get: if isWorker();
       allow list: if isWorker();
-      allow create: if isWorker();
+      allow create: if isOfficeUser();
       allow update: if (isManager() || request.auth.uid == resource.data.assigneeUid || (isWorker() && resource.data.assigneeUid == '')) && resource != null;
       allow delete: if isManager() && resource != null;
     }
