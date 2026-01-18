@@ -111,10 +111,12 @@ export default function AttendanceHistoryPage() {
               ) : attendance && attendance.length > 0 ? (
                 attendance.map(att => (
                   <TableRow key={att.id}>
-                    <TableCell className="font-medium">{safeFormat(att.timestamp, 'PPP')}</TableCell>
-                    <TableCell>{safeFormat(att.timestamp, 'HH:mm:ss')}</TableCell>
+                    <TableCell className="font-medium">{safeFormat(att.timestamp, 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>{safeFormat(att.timestamp, 'HH:mm')}</TableCell>
                     <TableCell>
-                      <Badge variant={att.type === 'IN' ? 'default' : 'secondary'}>{att.type}</Badge>
+                      <Badge variant={att.type === 'IN' ? 'default' : 'secondary'}>
+                        {att.type === 'IN' ? 'IN (เข้า)' : 'OUT (ออก)'}
+                      </Badge>
                     </TableCell>
                     <TableCell>{att.userName}</TableCell>
                   </TableRow>
