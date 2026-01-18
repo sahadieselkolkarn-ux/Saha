@@ -82,10 +82,15 @@ service cloud.firestore {
 
     /**
      * Checks if the user is any active employee (ADMIN, MANAGER, or OFFICER).
-     * This is used for general access to shared resources like customers and jobs.
+     * This is used for general access to shared resources. Any active user
+     * in the 'OFFICE' department is also considered a worker to allow them to
+     * perform tasks like job intake and customer management, aligning with
+     * the application's UI access control.
      */
     function isWorker() {
-      return isSignedIn() && getUserData().status == 'ACTIVE' && getUserData().role in ['ADMIN', 'MANAGER', 'OFFICER'];
+      let userData = getUserData();
+      return isSignedIn() && userData.status == 'ACTIVE' &&
+             (userData.role in ['ADMIN', 'MANAGER', 'OFFICER'] || userData.department == 'OFFICE');
     }
 
     /**
