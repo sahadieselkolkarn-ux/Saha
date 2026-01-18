@@ -93,7 +93,7 @@ export default function SignupPage() {
             title: "Signup Successful",
             description: "Your account has been created. Please wait for an admin to approve it.",
           });
-          router.push("/pending");
+          router.push("/");
         })
         .catch((error) => {
           const permissionError = new FirestorePermissionError({
