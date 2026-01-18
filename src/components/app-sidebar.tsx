@@ -4,16 +4,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import React from "react"
 import {
-  LayoutDashboard,
-  Briefcase,
-  Clock,
-  BarChart,
-  Settings,
-  LogOut,
-  User,
-  BookUser,
-  Landmark,
-  Users,
+  Building, Factory, Wrench, Truck, Package, Landmark,
+  ChevronDown, QrCode, Smartphone, Settings, LogOut
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -21,51 +13,189 @@ import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
+import { DEPARTMENTS } from "@/lib/constants"
+import type { Department } from "@/lib/constants"
 
-const NavLink = ({ href, label, icon: Icon, className, exact = false }: { href: string; label: string; icon: React.ElementType; className?: string, exact?: boolean }) => {
+// Helper components for navigation
+const SubNavLink = ({ href, label }: { href: string; label: string; }) => {
     const pathname = usePathname();
-    const isActive = exact ? pathname === href : pathname.startsWith(href);
-
+    const isActive = pathname === href;
     return (
         <Button
             asChild
             variant={isActive ? "secondary" : "ghost"}
-            className={cn("w-full justify-start", className)}
+            className="w-full justify-start text-muted-foreground text-sm h-9"
         >
-            <Link href={href}>
-                <Icon className="mr-2 h-4 w-4" />
-                {label}
-            </Link>
+            <Link href={href}>{label}</Link>
         </Button>
     );
 };
 
+const DepartmentMenu = ({ department }: { department: Department }) => {
+    const pathname = usePathname();
+    const departmentPath = `/app/${department.toLowerCase().replace('_', '-')}`
+    const isOpen = pathname.startsWith(departmentPath)
+
+    const icons: Record<Department, React.ElementType> = {
+        MANAGEMENT: Building,
+        OFFICE: Landmark,
+        CAR_SERVICE: Truck,
+        COMMONRAIL: Factory,
+        MECHANIC: Wrench,
+        OUTSOURCE: Package,
+    };
+    const Icon = icons[department];
+
+    return (
+        <Collapsible defaultOpen={isOpen}>
+            <CollapsibleTrigger asChild>
+                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                    <span className="flex items-center gap-2">
+                        <Icon className="h-4 w-4" />
+                        {department}
+                    </span>
+                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="py-1 pl-6 space-y-1">
+                {department === 'MANAGEMENT' && (
+                    <>
+                        <SubNavLink href="/app/management/overview" label="ภาพรวม" />
+                        <SubNavLink href="/app/management/jobs/all" label="งานทั้งหมด" />
+                        <SubNavLink href="/app/management/jobs/by-status" label="งานตามสถานะ" />
+                        <SubNavLink href="/app/management/summary" label="สรุปวันนี้/สัปดาห์" />
+                        <SubNavLink href="/app/management/customers/all" label="รายชื่อลูกค้า" />
+                        <SubNavLink href="/app/management/customers/tax" label="ลูกค้าใช้ภาษี" />
+                        <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" />
+                        <SubNavLink href="/app/management/accounting/revenue" label="รายรับ" />
+                        <SubNavLink href="/app/management/accounting/expenses" label="รายจ่าย" />
+                        <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" />
+                        <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" />
+                        <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" />
+                        <SubNavLink href="/app/management/hr/employees" label="ข้อมูลพนักงาน" />
+                        <SubNavLink href="/app/management/hr/holidays" label="วันหยุด" />
+                        <SubNavLink href="/app/management/hr/leaves" label="วันลา" />
+                        <SubNavLink href="/app/management/hr/attendance-summary" label="สรุปลงเวลา" />
+                        <SubNavLink href="/app/management/settings/store" label="ตั้งค่าร้าน/เวลา" />
+                        <SubNavLink href="/app/management/settings/documents" label="ตั้งค่าเลขที่เอกสาร" />
+                    </>
+                )}
+                {department === 'OFFICE' && (
+                    <>
+                        <SubNavLink href="/app/office/customers/new" label="เพิ่มลูกค้า" />
+                        <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า/ค้นหา" />
+                        <SubNavLink href="/app/office/customers/tax" label="ภาษีลูกค้า" />
+                        <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" />
+                        <SubNavLink href="/app/office/jobs/pending" label="งานรอดำเนินการ" />
+                        <SubNavLink href="/app/office/jobs/waiting" label="งานรออะไหล่/รอส่งต่อ" />
+                        <SubNavLink href="/app/office/jobs/closing" label="งานเสร็จรอปิด" />
+                        <SubNavLink href="/app/office/payment/receive" label="รับเงินจากงาน" />
+                        <SubNavLink href="/app/office/payment/history" label="รายการรับเงิน" />
+                    </>
+                )}
+                {department === 'CAR_SERVICE' && (
+                    <>
+                        <SubNavLink href="/app/car-service/queue/new" label="คิวงาน - ใหม่" />
+                        <SubNavLink href="/app/car-service/queue/in-progress" label="คิวงาน - กำลังทำ" />
+                        <SubNavLink href="/app/car-service/queue/done" label="คิวงาน - เสร็จแล้ว" />
+                        <SubNavLink href="/app/car-service/jobs/list" label="รายการงานของฉัน" />
+                        <SubNavLink href="/app/car-service/jobs/transfer/commonrail" label="ส่งต่อ COMMONRAIL" />
+                        <SubNavLink href="/app/car-service/jobs/transfer/mechanic" label="ส่งต่อ MECHANIC" />
+                        <SubNavLink href="/app/car-service/jobs/outsource" label="ส่ง OUTSOURCE" />
+                    </>
+                )}
+                {department === 'COMMONRAIL' && (
+                    <>
+                        <SubNavLink href="/app/commonrail/queue/new" label="คิวงาน - ใหม่" />
+                        <SubNavLink href="/app/commonrail/queue/in-progress" label="คิวงาน - กำลังทำ" />
+                        <SubNavLink href="/app/commonrail/queue/done" label="คิวงาน - เสร็จแล้ว" />
+                        <SubNavLink href="/app/commonrail/jobs/detail" label="หน้างานละเอียด" />
+                        <SubNavLink href="/app/commonrail/jobs/return" label="ส่งกลับ" />
+                    </>
+                )}
+                {department === 'MECHANIC' && (
+                    <>
+                        <SubNavLink href="/app/mechanic/queue/new" label="คิวงาน - ใหม่" />
+                        <SubNavLink href="/app/mechanic/queue/in-progress" label="คิวงาน - กำลังทำ" />
+                        <SubNavLink href="/app/mechanic/queue/done" label="คิวงาน - เสร็จแล้ว" />
+                        <SubNavLink href="/app/mechanic/jobs/detail" label="หน้างานละเอียด" />
+                        <SubNavLink href="/app/mechanic/jobs/return" label="ส่งกลับ" />
+                    </>
+                )}
+                 {department === 'OUTSOURCE' && (
+                    <>
+                        <SubNavLink href="/app/outsource/export/new" label="สร้างรายการส่งออก" />
+                        <SubNavLink href="/appoutsource/import" label="รับกลับเข้าระบบ" />
+                        <SubNavLink href="/app/outsource/tracking/pending" label="ติดตาม - รอส่ง" />
+                        <SubNavLink href="/app/outsource/tracking/away" label="ติดตาม - อยู่ร้านนอก" />
+                        <SubNavLink href="/app/outsource/tracking/returned" label="ติดตาม - รับกลับแล้ว" />
+                    </>
+                )}
+            </CollapsibleContent>
+        </Collapsible>
+    )
+}
+
+
 export function AppSidebar() {
   const { profile, signOut } = useAuth();
+  const pathname = usePathname();
 
   const getInitials = (name?: string) => {
     if (!name) return "?";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
 
+  const isKioskOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/scan') || pathname.startsWith('/app/attendance');
+  
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-64 flex-col border-r bg-background sm:flex">
-      <div className="flex h-full flex-col px-4 py-6">
-        <Logo />
-        <nav className="mt-6 flex-1 space-y-1 overflow-y-auto">
-            <NavLink href="/app/dashboard" label="Dashboard" icon={LayoutDashboard} exact />
-            <NavLink href="/app/office/customers" label="Customers" icon={BookUser} />
-            <NavLink href="/app/jobs" label="Jobs" icon={Briefcase} />
-            <NavLink href="/app/attendance" label="Attendance" icon={Clock} exact />
-            <NavLink href="/app/accounting" label="Accounting" icon={Landmark} exact />
-            <NavLink href="/app/hr" label="HR" icon={Users} exact />
-            <NavLink href="/app/reports" label="Reports" icon={BarChart} exact />
-            <NavLink href="/app/settings" label="Settings" icon={Settings} exact />
-        </nav>
+      <div className="flex h-full max-h-screen flex-col">
+        <div className="flex h-16 items-center border-b px-4">
+            <Logo />
+        </div>
+        
+        <div className="flex-1 overflow-y-auto py-2">
+            <nav className="grid items-start px-2 text-sm font-medium">
+                <Collapsible defaultOpen={isKioskOpen}>
+                    <CollapsibleTrigger asChild>
+                        <Button variant={isKioskOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                            <span className="flex items-center gap-2">
+                                <QrCode className="h-4 w-4" />
+                                QR ลงเวลา
+                            </span>
+                            <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                        </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="py-1 pl-6 space-y-1">
+                        <SubNavLink href="/app/kiosk/office" label="Kiosk (ในออฟฟิศ)" />
+                        <SubNavLink href="/app/kiosk/outside" label="Kiosk (นอกออฟฟิศ)" />
+                        <SubNavLink href="/app/scan" label="Scan (มือถือ)" />
+                        <SubNavLink href="/app/attendance" label="ประวัติลงเวลา" />
+                    </CollapsibleContent>
+                </Collapsible>
+                
+                <div className="my-2 border-t"></div>
+
+                {DEPARTMENTS.map(dept => <DepartmentMenu key={dept} department={dept} />)}
+            </nav>
+        </div>
 
         {profile && (
-            <div className="mt-auto pt-4">
+            <div className="mt-auto border-t p-2">
                  <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="w-full justify-start h-auto p-2">
@@ -85,7 +215,7 @@ export function AppSidebar() {
                         <DropdownMenuLabel>{profile.name}</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
-                            <Link href="/app/settings"><User className="mr-2 h-4 w-4"/> Profile</Link>
+                            <Link href="/app/settings"><Settings className="mr-2 h-4 w-4"/> Profile & Settings</Link>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={signOut}>
