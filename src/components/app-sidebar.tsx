@@ -123,6 +123,9 @@ const DepartmentMenu = ({ department }: { department: Department }) => {
                             </CollapsibleContent>
                         </Collapsible>
                         <SubNavLink href="/app/car-service/jobs/list" label="งานของแผนก" />
+                        <SubNavLink href="/app/car-service/jobs/transfer/commonrail" label="ส่งต่อ COMMONRAIL" />
+                        <SubNavLink href="/app/car-service/jobs/transfer/mechanic" label="ส่งต่อ MECHANIC" />
+                        <SubNavLink href="/app/car-service/jobs/outsource" label="ส่ง OUTSOURCE" />
                     </>
                 )}
                 {department === 'COMMONRAIL' && (
@@ -147,10 +150,21 @@ const DepartmentMenu = ({ department }: { department: Department }) => {
                 )}
                 {department === 'MECHANIC' && (
                     <>
-                        <SubNavLink href="/app/mechanic/queue/new" label="คิวงาน - ใหม่" />
-                        <SubNavLink href="/app/mechanic/queue/in-progress" label="คิวงาน - กำลังทำ" />
-                        <SubNavLink href="/app/mechanic/queue/done" label="คิวงาน - เสร็จแล้ว" />
-                        <SubNavLink href="/app/mechanic/jobs/detail" label="หน้างานละเอียด" />
+                        <Collapsible defaultOpen={pathname.startsWith('/app/mechanic/queue')}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={pathname.startsWith('/app/mechanic/queue') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9">
+                                    คิวงาน
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                <SubNavLink href="/app/mechanic/queue/new" label="งานใหม่" />
+                                <SubNavLink href="/app/mechanic/queue/in-progress" label="กำลังทำ" />
+                                <SubNavLink href="/app/mechanic/queue/done" label="เสร็จแล้ว" />
+                                <SubNavLink href="/app/mechanic/queue/closed" label="ปิดงาน" />
+                            </CollapsibleContent>
+                        </Collapsible>
+                        <SubNavLink href="/app/mechanic/jobs/list" label="งานของแผนก" />
                         <SubNavLink href="/app/mechanic/jobs/return" label="ส่งกลับ" />
                     </>
                 )}
