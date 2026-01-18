@@ -12,7 +12,8 @@ import {
   ClipboardPenLine,
   Building,
   Wrench,
-  Settings
+  Settings,
+  QrCode
 } from "lucide-react"
 
 import { useAuth } from "@/hooks/use-auth"
@@ -29,6 +30,9 @@ export function AppSidebar() {
 
   const isAdmin = profile.role === "ADMIN"
   const isOffice = profile.department === "OFFICE"
+  const isCommonrail = profile.department === "COMMONRAIL"
+  const isManagerOrOfficer = profile.role === "MANAGER" || profile.role === "OFFICER"
+
 
   const menuItems = [
     {
@@ -36,6 +40,18 @@ export function AppSidebar() {
       label: "Jobs",
       icon: Briefcase,
       visible: true,
+    },
+    {
+      href: "/app/commonrail/kiosk-office",
+      label: "Kiosk Office",
+      icon: QrCode,
+      visible: isAdmin || (isCommonrail && isManagerOrOfficer),
+    },
+    {
+      href: "/app/commonrail/kiosk-front",
+      label: "Kiosk Front",
+      icon: QrCode,
+      visible: isAdmin || (isCommonrail && isManagerOrOfficer),
     },
     {
       href: "/app/office/intake",
