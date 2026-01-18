@@ -1,7 +1,9 @@
 "use client";
 
+import { Suspense, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { collection, serverTimestamp, Timestamp, writeBatch, doc } from 'firebase/firestore';
+import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -11,8 +13,9 @@ import { safeFormat } from '@/lib/date-utils';
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, ScanLine } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import type { KioskToken } from '@/lib/types';
 
 const SPAM_DELAY_SECONDS = 60; // 1 minute
 
@@ -21,15 +24,59 @@ interface LastAttendanceInfo {
   timestamp: Timestamp;
 }
 
-export default function AttendanceScanPage() {
+type TokenStatus = "verifying" | "valid" | "invalid" | "missing";
+
+
+function ScanPageContent() {
   const { db } = useFirebase();
   const { profile, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  
+  const searchParams = useSearchParams();
+  const kioskToken = useMemo(() => searchParams.get('k'), [searchParams]);
+
+  const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [lastAttendance, setLastAttendance] = useState<LastAttendanceInfo | null | undefined>(undefined); // undefined for initial loading state
+  const [lastAttendance, setLastAttendance] = useState<LastAttendanceInfo | null | undefined>(undefined);
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
+  useEffect(() => {
+    async function verifyToken() {
+      if (!kioskToken) {
+        setTokenStatus("missing");
+        return;
+      }
+      if (!db) {
+        // DB not ready, wait for re-render
+        return;
+      }
+
+      setTokenStatus("verifying");
+      const tokenRef = doc(db, "kioskTokens", kioskToken);
+      try {
+        const tokenSnap = await getDoc(tokenRef);
+
+        if (!tokenSnap.exists()) {
+          setTokenStatus("invalid");
+          return;
+        }
+
+        const tokenData = tokenSnap.data() as KioskToken;
+        if (!tokenData.isActive || new Timestamp(Date.now() / 1000, 0) > tokenData.expiresAt) {
+          setTokenStatus("invalid");
+        } else {
+          setTokenStatus("valid");
+        }
+      } catch (error) {
+        setTokenStatus("invalid");
+        console.error("Token verification failed", error);
+      }
+    }
+
+    verifyToken();
+  }, [kioskToken, db]);
+  
   useEffect(() => {
     if (authLoading) {
       setLastAttendance(undefined);
@@ -46,12 +93,11 @@ export default function AttendanceScanPage() {
         setSecondsSinceLast(diff);
       }
     } else {
-      setLastAttendance(null); // No records found
+      setLastAttendance(null);
       setSecondsSinceLast(null);
     }
   }, [profile, authLoading]);
   
-  // Countdown timer for spam prevention
   useEffect(() => {
     if (secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS) return;
     
@@ -68,6 +114,10 @@ export default function AttendanceScanPage() {
         toast({ variant: 'destructive', title: 'Action Denied', description: 'Your account is not active.'});
         return;
     }
+    if (tokenStatus !== 'valid') {
+        toast({ variant: 'destructive', title: 'Action Denied', description: 'Invalid or expired QR code.'});
+        return;
+    }
 
     if (secondsSinceLast !== null && secondsSinceLast <= SPAM_DELAY_SECONDS) {
         toast({ variant: 'destructive', title: 'Action Denied', description: `เพิ่งลงเวลาไปแล้ว กรุณารออีก ${SPAM_DELAY_SECONDS - secondsSinceLast} วินาที` });
@@ -82,26 +132,19 @@ export default function AttendanceScanPage() {
     try {
       const batch = writeBatch(db);
 
-      // 1. Create new attendance document
       const newAttendanceRef = doc(collection(db, 'attendance'));
-      const attendanceData = {
+      batch.set(newAttendanceRef, {
         userId: profile.uid,
         userName: profile.displayName,
         type: nextAction,
         timestamp: serverTime,
-        id: newAttendanceRef.id // Add id to the document data itself.
-      };
-      batch.set(newAttendanceRef, attendanceData);
+        id: newAttendanceRef.id
+      });
       
-      // 2. Update user profile
       const userDocRef = doc(db, 'users', profile.uid);
-      const userUpdateData = {
-        lastAttendance: {
-          type: nextAction,
-          timestamp: serverTime,
-        }
-      };
-      batch.update(userDocRef, userUpdateData);
+      batch.update(userDocRef, {
+        lastAttendance: { type: nextAction, timestamp: serverTime }
+      });
       
       await batch.commit();
 
@@ -122,9 +165,10 @@ export default function AttendanceScanPage() {
     }
   };
 
-  const isLoading = lastAttendance === undefined;
+  const isLoading = lastAttendance === undefined || authLoading || tokenStatus === "verifying";
   const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
-  const canClock = secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS;
+  const canClockSpam = secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS;
+  const canClock = tokenStatus === 'valid' && canClockSpam;
 
   if (recentClock) {
       return (
@@ -140,6 +184,31 @@ export default function AttendanceScanPage() {
          </div>
       )
   }
+  
+  if (tokenStatus === 'missing') {
+     return (
+         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+             <ScanLine className="h-16 w-16 text-destructive mb-4" />
+             <h1 className="text-3xl font-bold">ต้องสแกน QR Code ก่อน</h1>
+             <p className="text-muted-foreground mt-2 max-w-md">
+                กรุณาสแกน QR Code ที่หน้าจอ Kiosk ที่ออฟฟิศเพื่อเข้าสู่หน้านี้
+             </p>
+         </div>
+      )
+  }
+  
+  if (tokenStatus === 'invalid') {
+       return (
+         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
+             <ShieldX className="h-16 w-16 text-destructive mb-4" />
+             <h1 className="text-3xl font-bold">QR Code ไม่ถูกต้อง</h1>
+             <p className="text-muted-foreground mt-2 max-w-md">
+                QR Code ที่คุณสแกนอาจหมดอายุแล้วหรือไม่ถูกต้อง กรุณาลองสแกนใหม่อีกครั้ง
+             </p>
+         </div>
+      )
+  }
+
 
   return (
     <>
@@ -173,7 +242,7 @@ export default function AttendanceScanPage() {
                     </>
                 )}
             </Button>
-            {!isLoading && !canClock && (
+            {!isLoading && !canClockSpam && (
                 <div className="flex items-center text-sm text-destructive p-2 rounded-md bg-destructive/10">
                     <AlertCircle className="mr-2 h-4 w-4" />
                     เพิ่งลงเวลาไปแล้ว. กรุณารออีก {SPAM_DELAY_SECONDS - (secondsSinceLast ?? 0)} วินาที
@@ -184,4 +253,16 @@ export default function AttendanceScanPage() {
       </div>
     </>
   );
+}
+
+export default function AttendanceScanPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex justify-center items-center h-full">
+                <Loader2 className="animate-spin h-8 w-8" />
+            </div>
+        }>
+            <ScanPageContent />
+        </Suspense>
+    )
 }

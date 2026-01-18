@@ -1,37 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface QrDisplayProps {
   className?: string;
-  path?: string;
+  data: string | null; // The string to encode in the QR code
 }
 
-export function QrDisplay({ className, path = '/app/scan' }: QrDisplayProps) {
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    // This code runs only on the client side, after hydration, to get the full URL.
-    const fullUrl = `${window.location.origin}${path}`;
-    // We use an external API to generate the QR code image from the URL.
-    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(
-      fullUrl
-    )}`;
-    setQrCodeUrl(qrApiUrl);
-  }, [path]);
+export function QrDisplay({ className, data }: QrDisplayProps) {
+  const qrCodeUrl = data
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(data)}`
+    : null;
 
   return (
     <div className={cn('p-4 bg-white rounded-lg shadow-md inline-block', className)}>
       {qrCodeUrl ? (
         <Image
           src={qrCodeUrl}
-          alt={`QR Code for ${path}`}
+          alt="QR Code"
           width={256}
           height={256}
           priority
+          key={data} // Add key to force re-render when data changes
         />
       ) : (
         <Skeleton className="w-[256px] h-[256px]" />
