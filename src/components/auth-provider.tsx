@@ -25,13 +25,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isUserLoading) {
-      return; // Wait until user auth state is resolved
+      // Don't change profileLoading, just wait for user state.
+      // It's already true by default.
+      return;
     }
     if (!user) {
+      // No user, so no profile to load. We are done loading.
       setProfile(null);
       setProfileLoading(false);
       return;
     }
+    
+    // We have a user. Now we need firestore to fetch their profile.
     if (firestore) {
       const userDocRef = doc(firestore, "users", user.uid);
       const unsub = onSnapshot(userDocRef, (doc) => {
@@ -52,6 +57,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfileLoading(false);
       });
       return () => unsub();
+    } else {
+      // This is the case the user mentioned. User is loaded, but firestore is not.
+      // This is an initialization issue. We should stop loading to not hang the app.
+      console.warn("AuthProvider: Firestore instance not available. Cannot fetch user profile.");
+      setProfileLoading(false);
     }
   }, [user, isUserLoading, firestore]);
 

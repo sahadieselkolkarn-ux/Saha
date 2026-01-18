@@ -49,7 +49,14 @@ export default function LoginPage() {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!auth) return;
+    if (!auth) {
+      toast({
+        variant: "destructive",
+        title: "Authentication service not ready",
+        description: "Please wait a moment and try again.",
+      });
+      return;
+    }
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, values.email, values.password);
@@ -65,7 +72,14 @@ export default function LoginPage() {
   }
 
   const handlePasswordReset = async (email: string) => {
-    if (!auth) return;
+    if (!auth) {
+        toast({
+            variant: "destructive",
+            title: "Authentication service not ready",
+            description: "Please wait a moment and try again.",
+        });
+        return;
+    }
     if (!email) {
         toast({
             variant: "destructive",
