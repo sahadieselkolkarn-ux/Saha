@@ -10,9 +10,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, PlusCircle } from "lucide-react";
-import type { Job } from "@/lib/types";
+import type { Job, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { JOB_DEPARTMENTS } from "@/lib/constants";
+import { JobList } from "@/components/job-list";
 
 function AllJobsTab() {
   const { db } = useFirebase();
@@ -98,6 +101,39 @@ function AllJobsTab() {
   );
 }
 
+function JobsByDepartmentTab() {
+  const [selectedDepartment, setSelectedDepartment] = useState<JobDepartment | 'ALL'>('ALL');
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex justify-start">
+            <Select onValueChange={(value) => setSelectedDepartment(value as JobDepartment | 'ALL')} defaultValue="ALL">
+              <SelectTrigger className="w-full sm:w-[280px]">
+                <SelectValue placeholder="เลือกแผนกเพื่อกรองข้อมูล" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">ทุกแผนก</SelectItem>
+                {JOB_DEPARTMENTS.map(dept => (
+                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+      
+      <JobList 
+        department={selectedDepartment === 'ALL' ? undefined : selectedDepartment} 
+        emptyTitle={selectedDepartment === 'ALL' ? 'ไม่มีงานในระบบ' : `ไม่พบงานในแผนก ${selectedDepartment}`}
+        emptyDescription="ลองเลือกแผนกอื่น หรือสร้างงานใหม่"
+      />
+    </div>
+  )
+}
+
+
 export default function ManagementJobsPage() {
     return (
         <>
@@ -110,13 +146,17 @@ export default function ManagementJobsPage() {
                 </Button>
             </PageHeader>
             <Tabs defaultValue="all" className="space-y-4">
-                <TabsList>
+                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
                     <TabsTrigger value="all">งานทั้งหมด</TabsTrigger>
+                    <TabsTrigger value="by-department">แยกตามแผนก</TabsTrigger>
                     <TabsTrigger value="by-status">งานตามสถานะ</TabsTrigger>
                     <TabsTrigger value="summary">สรุปวันนี้/สัปดาห์</TabsTrigger>
                 </TabsList>
                 <TabsContent value="all">
                     <AllJobsTab />
+                </TabsContent>
+                <TabsContent value="by-department">
+                    <JobsByDepartmentTab />
                 </TabsContent>
                 <TabsContent value="by-status">
                     <Card><CardHeader><CardTitle>งานตามสถานะ</CardTitle><CardDescription>ดูและจัดการงานทั้งหมดโดยแยกตามสถานะ</CardDescription></CardHeader><CardContent><p>Coming soon.</p></CardContent></Card>
