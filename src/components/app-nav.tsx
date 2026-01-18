@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/collapsible"
 import { DEPARTMENTS } from "@/lib/constants"
 import type { Department } from "@/lib/constants"
+import { useAuth } from "@/context/auth-context"
 
 // Helper components for navigation
 const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onClick?: () => void }) => {
@@ -184,6 +185,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
 
 export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const pathname = usePathname();
+    const { profile } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
     return (
@@ -199,7 +201,9 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                     </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="py-1 pl-6 space-y-1">
-                    <SubNavLink href="/app/kiosk" label="Kiosk (คอมกลาง)" onClick={onLinkClick} />
+                    {profile?.role === 'OFFICER' && (
+                        <SubNavLink href="/app/kiosk" label="Kiosk (คอมกลาง)" onClick={onLinkClick} />
+                    )}
                     <SubNavLink href="/app/attendance/scan" label="Scan (มือถือ)" onClick={onLinkClick} />
                     <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
                 </CollapsibleContent>
