@@ -244,6 +244,46 @@
         "updatedAt",
         "lastActivityAt"
       ]
+    },
+    "Attendance": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Attendance",
+      "description": "Represents a user's clock-in or clock-out record.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the attendance record."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who this record belongs to."
+        },
+        "userName": {
+          "type": "string",
+          "description": "The display name of the user at the time of recording."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of record, either IN or OUT.",
+          "enum": [
+            "IN",
+            "OUT"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Timestamp of when the record was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "userName",
+        "type",
+        "timestamp"
+      ]
     }
   },
   "auth": {
@@ -298,6 +338,26 @@
             {
               "name": "jobId",
               "description": "The unique ID of the job."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/attendance/{attendanceId}",
+        "definition": {
+          "entityName": "Attendance",
+          "schema": {
+            "$ref": "#/backend/entities/Attendance"
+          },
+          "description": "Stores user clock-in/out records as a subcollection of the user.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The user's UID."
+            },
+            {
+              "name": "attendanceId",
+              "description": "The unique ID of the attendance record."
             }
           ]
         }

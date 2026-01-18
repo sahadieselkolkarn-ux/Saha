@@ -55,3 +55,11 @@ export interface JobActivity {
   createdAt: Timestamp;
   photos?: string[];
 }
+
+export interface Attendance {
+  id: string;
+  userId: string;
+  userName: string;
+  type: 'IN' | 'OUT';
+  timestamp: Timestamp;
+}

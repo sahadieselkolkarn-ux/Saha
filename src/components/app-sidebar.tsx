@@ -13,7 +13,8 @@ import {
   Building,
   Wrench,
   Settings,
-  QrCode
+  QrCode,
+  Camera,
 } from "lucide-react"
 
 import { useAuth } from "@/hooks/use-auth"
@@ -33,12 +34,21 @@ export function AppSidebar() {
   const isOffice = profile.department === "OFFICE"
   const isCommonrail = profile.department === "COMMONRAIL"
   const isManagerOrOfficer = profile.role === "MANAGER" || profile.role === "OFFICER"
+  
+  const KIOSK_FRONT_DEPARTMENTS: string[] = ["CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"];
+
 
   const menuItems = [
     {
       href: "/app/jobs",
       label: "Jobs",
       icon: Briefcase,
+      visible: true,
+    },
+    {
+      href: "/app/scan",
+      label: "Scan Time",
+      icon: Camera,
       visible: true,
     },
     {
@@ -60,16 +70,16 @@ export function AppSidebar() {
       visible: isAdmin || isManager,
     },
     {
-        href: "/app/commonrail/kiosk-office",
+        href: "/app/kiosk/office",
         label: "Kiosk Office",
         icon: QrCode,
         visible: isAdmin || (isCommonrail && isManagerOrOfficer),
     },
     {
-        href: "/app/commonrail/kiosk-front",
+        href: "/app/kiosk/front",
         label: "Kiosk Front",
         icon: QrCode,
-        visible: isAdmin || (isCommonrail && isManagerOrOfficer),
+        visible: isAdmin || (isManagerOrOfficer && KIOSK_FRONT_DEPARTMENTS.includes(profile.department as string)),
     },
   ]
 

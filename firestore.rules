@@ -54,6 +54,13 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
+    
+    /**
+     * Checks if the user has an 'ACTIVE' status.
+     */
+    function isActiveUser() {
+      return isSignedIn() && getUserData().status == 'ACTIVE';
+    }
 
     /**
      * Checks if the requesting user's UID matches the provided userId.
@@ -117,22 +124,32 @@ service cloud.firestore {
 
     /**
      * @description
-     *   Manages user profiles. A user can create and manage their own profile.
-     *   A 'MANAGER' or 'ADMIN' can view and edit any user's profile to manage
-     *   roles and status. Listing users is restricted to managers.
-     * @path /users/{userId}
-     * @allow (create) An authenticated user creating their own profile document.
-     * @deny (list) An 'OFFICER' trying to list all users in the system.
-     * @principle
-     *   Combines self-ownership for personal data with role-based access for
-     *   administrative oversight.
+     *   Manages user profiles and their subcollections.
      */
     match /users/{userId} {
+      /**
+       * @description
+       *   A user can create and manage their own profile.
+       *   A 'MANAGER' or 'ADMIN' can view and edit any user's profile to manage
+       *   roles and status. Listing users is restricted to managers.
+       */
       allow get: if isOwner(userId) || isManager();
       allow list: if isManager();
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if (isOwner(userId) || isManager()) && resource != null && isIdImmutable();
       allow delete: if false; // Deleting users should be handled via a managed process, not direct API calls.
+      
+      /**
+       * @description
+       *   Manages user time clock (attendance) records.
+       */
+      match /attendance/{attendanceId} {
+        // A user can create their own record, and managers/admins can read anyone's records.
+        allow create: if isOwner(userId) && isActiveUser();
+        allow read: if isOwner(userId) || isManager();
+        // No one can update or delete records directly to maintain data integrity.
+        allow update, delete: if false;
+      }
     }
 
     /**
