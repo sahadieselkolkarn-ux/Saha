@@ -1,5 +1,70 @@
 {
   "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User Profile",
+      "description": "Represents a user's profile information.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The user's unique ID from Firebase Auth."
+        },
+        "name": {
+          "type": "string",
+          "description": "The user's display name."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address."
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role.",
+          "enum": [
+            "ADMIN",
+            "OFFICER",
+            "WORKER"
+          ]
+        },
+        "department": {
+          "type": "string",
+          "description": "The department the user belongs to.",
+          "enum": [
+            "MANAGEMENT",
+            "OFFICE",
+            "CAR_SERVICE",
+            "COMMONRAIL",
+            "MECHANIC",
+            "OUTSOURCE"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "description": "The user's account status.",
+          "enum": [
+            "ACTIVE",
+            "PENDING",
+            "INACTIVE"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the user was created."
+        }
+      },
+      "required": [
+        "uid",
+        "name",
+        "email",
+        "role",
+        "department",
+        "status",
+        "createdAt"
+      ]
+    },
     "Customer": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Customer",
@@ -206,8 +271,29 @@
       ]
     }
   },
+  "auth": {
+    "providers": [
+      "password"
+    ]
+  },
   "firestore": {
     "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user profile information.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user."
+            }
+          ]
+        }
+      },
       {
         "path": "/customers/{customerId}",
         "definition": {
@@ -256,7 +342,6 @@
           ]
         }
       }
-    ],
-    "reasoning": "This Firestore data structure is designed for a single-user job management application. It removes all user management and authentication complexity. The data is structured into three simple top-level collections: customers, jobs, and attendance. This allows for easy access to all data without any security restrictions, suitable for a single-person operation."
+    ]
   }
 }

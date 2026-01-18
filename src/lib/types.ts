@@ -1,5 +1,15 @@
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department } from './constants';
+
+export interface UserProfile {
+  uid: string;
+  name: string;
+  email: string;
+  role: Role;
+  department: Department;
+  status: UserStatus;
+  createdAt: Timestamp;
+}
 
 export interface Customer {
   id: string;

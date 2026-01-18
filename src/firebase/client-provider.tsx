@@ -4,13 +4,15 @@ import React, { useMemo, type ReactNode, createContext, useContext } from 'react
 import { initializeFirebase } from '@/firebase';
 import type { Firestore } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
+import type { Auth } from 'firebase/auth';
 
 interface FirebaseServices {
   db: Firestore | null;
   storage: FirebaseStorage | null;
+  auth: Auth | null;
 }
 
-const FirebaseContext = createContext<FirebaseServices>({ db: null, storage: null });
+const FirebaseContext = createContext<FirebaseServices>({ db: null, storage: null, auth: null });
 
 export function FirebaseClientProvider({ children }: { children: ReactNode }) {
   const services = useMemo(() => {
@@ -18,7 +20,7 @@ export function FirebaseClientProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <FirebaseContext.Provider value={{ db: services.firestore, storage: services.storage }}>
+    <FirebaseContext.Provider value={{ db: services.firestore, storage: services.storage, auth: services.auth }}>
       {children}
     </FirebaseContext.Provider>
   );

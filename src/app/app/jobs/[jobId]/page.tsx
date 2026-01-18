@@ -6,6 +6,7 @@ import Image from "next/image";
 import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 
 import { PageHeader } from "@/components/page-header";
@@ -23,6 +24,7 @@ import { format } from 'date-fns';
 export default function JobDetailsPage() {
   const { jobId } = useParams();
   const { db, storage } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
   
   const [job, setJob] = useState<Job | null>(null);
@@ -94,7 +96,7 @@ export default function JobDetailsPage() {
   };
   
   const handleAddActivity = async () => {
-    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage) return;
+    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile) return;
     setIsSubmitting(true);
     
     const jobDocRef = doc(db, "jobs", jobId as string);
@@ -109,8 +111,8 @@ export default function JobDetailsPage() {
 
         const newActivity: JobActivity = {
             text: newNote,
-            userName: "System",
-            userId: "system",
+            userName: profile.name,
+            userId: profile.uid,
             createdAt: serverTimestamp() as Timestamp, // Cast for type consistency
             photos: photoURLs,
         };

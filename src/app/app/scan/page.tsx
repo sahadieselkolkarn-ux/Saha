@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
+import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
@@ -16,17 +17,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 export default function ScanPage() {
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastAttendance, setLastAttendance] = useState<Attendance | null>(null);
   const [todaysAttendance, setTodaysAttendance] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const userId = "system-user"; // Hardcoded user ID
-  const userName = "System User"; // Hardcoded user name
-
   useEffect(() => {
-    if (!db) return;
+    if (!db || !profile) return;
     setLoading(true);
 
     const attendanceCollection = collection(db, `attendance`);
@@ -34,7 +33,7 @@ export default function ScanPage() {
     // Last attendance query
     const lastAttQ = query(
       attendanceCollection,
-      where('userId', '==', userId),
+      where('userId', '==', profile.uid),
       orderBy('timestamp', 'desc'),
       limit(1)
     );
@@ -59,7 +58,7 @@ export default function ScanPage() {
 
     const todaysAttQ = query(
       attendanceCollection,
-      where('userId', '==', userId),
+      where('userId', '==', profile.uid),
       where('timestamp', '>=', today),
       where('timestamp', '<', tomorrow),
       orderBy('timestamp', 'desc')
@@ -75,17 +74,21 @@ export default function ScanPage() {
         unsubLast();
         unsubTodays();
     }
-  }, [db, toast]);
+  }, [db, toast, profile]);
 
 
   const handleClockAction = async (type: 'IN' | 'OUT') => {
-    if (!db) return;
+    if (!db || !profile) return;
+    if (profile.status !== 'ACTIVE') {
+        toast({ variant: 'destructive', title: 'Action Denied', description: 'Your account is not active.'});
+        return;
+    }
     setIsSubmitting(true);
 
     const attendanceCollection = collection(db, `attendance`);
     const attendanceData = {
-      userId: userId,
-      userName: userName,
+      userId: profile.uid,
+      userName: profile.name,
       type: type,
       timestamp: serverTimestamp(),
     };
@@ -129,7 +132,7 @@ export default function ScanPage() {
           </CardHeader>
           <CardContent className="flex gap-4">
             <Button size="lg" className="flex-1" onClick={() => handleClockAction('IN')} disabled={isSubmitting || !canClockIn || loading}>
-                {isSubmitting && canClockIn ? <Loader2 className="animate-spin" /> : <LogIn />}
+                {isSubmitting && !canClockOut ? <Loader2 className="animate-spin" /> : <LogIn />}
                 Clock In
             </Button>
             <Button size="lg" variant="outline" className="flex-1" onClick={() => handleClockAction('OUT')} disabled={isSubmitting || !canClockOut || loading}>
