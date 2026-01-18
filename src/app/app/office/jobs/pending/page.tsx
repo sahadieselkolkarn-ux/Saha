@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2 } from "lucide-react";
 import type { Job } from "@/lib/types";
-import { format } from "date-fns";
+import { safeFormat } from '@/lib/date-utils';
 
 export default function OfficeJobsPendingPage() {
   const { db } = useFirebase();
@@ -70,7 +70,7 @@ export default function OfficeJobsPendingPage() {
                   <Badge variant="secondary" className="flex-shrink-0">{job.status}</Badge>
                 </div>
                 <CardDescription>
-                  To: {job.department} &bull; Created: {format((job.createdAt as Timestamp).toDate(), 'PP')}
+                  To: {job.department} &bull; Created: {safeFormat(job.createdAt, 'PP')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow">

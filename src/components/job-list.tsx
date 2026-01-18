@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2 } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
-import { format } from "date-fns";
+import { safeFormat } from '@/lib/date-utils';
 
 interface JobListProps {
   department?: JobDepartment;
@@ -94,7 +94,7 @@ export function JobList({ department, status }: JobListProps) {
               <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
             </div>
             <CardDescription>
-              Dept: {job.department} &bull; Last update: {job.lastActivityAt ? format((job.lastActivityAt as Timestamp).toDate(), 'PP') : 'N/A'}
+              Dept: {job.department} &bull; Last update: {safeFormat(job.lastActivityAt, 'PP')}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">

@@ -8,6 +8,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { safeFormat } from '@/lib/date-utils';
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUSES } from "@/lib/constants";
 import { Loader2, User, Clock, Paperclip, UploadCloud, X, Send, Save } from "lucide-react";
 import type { Job, JobActivity, JobDepartment } from "@/lib/types";
-import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
@@ -35,7 +35,7 @@ export default function JobDetailsPage() {
   const [newNote, setNewNote] = useState("");
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
 
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
   const [transferDepartment, setTransferDepartment] = useState<JobDepartment | ''>('');
@@ -130,7 +130,7 @@ export default function JobDetailsPage() {
   
   const handleAddActivity = async () => {
     if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile) return;
-    setIsSubmitting(true);
+    setIsSubmittingNote(true);
     
     try {
         const jobDocRef = doc(db, "jobs", jobId as string);
@@ -165,7 +165,7 @@ export default function JobDetailsPage() {
     } catch (error: any) {
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
-        setIsSubmitting(false);
+        setIsSubmittingNote(false);
     }
   };
 
@@ -218,7 +218,9 @@ export default function JobDetailsPage() {
   const sortedActivities = job?.activities ? [...job.activities].sort((a,b) => {
       if (!a.createdAt) return 1;
       if (!b.createdAt) return -1;
-      return (b.createdAt as Timestamp).toMillis() - (a.createdAt as Timestamp).toMillis()
+      const timeA = a.createdAt instanceof Timestamp ? a.createdAt.toMillis() : 0;
+      const timeB = b.createdAt instanceof Timestamp ? b.createdAt.toMillis() : 0;
+      return timeB - timeA;
   }) : [];
 
   if (loading) {
@@ -304,8 +306,8 @@ export default function JobDetailsPage() {
                     ))}
                   </div>
                 )}
-                <Button onClick={handleAddActivity} disabled={isSubmitting || (!newNote.trim() && newPhotos.length === 0)}>
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />}
+                <Button onClick={handleAddActivity} disabled={isSubmittingNote || (!newNote.trim() && newPhotos.length === 0)}>
+                  {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />}
                   Add Activity
                 </Button>
               </CardContent>
@@ -318,7 +320,7 @@ export default function JobDetailsPage() {
                   <div key={index} className="flex gap-4">
                       <User className="h-5 w-5 mt-1 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1">
-                          <p className="font-semibold">{activity.userName} <span className="text-xs font-normal text-muted-foreground ml-2">{activity.createdAt ? format((activity.createdAt as Timestamp).toDate(), 'PPpp') : ''}</span></p>
+                          <p className="font-semibold">{activity.userName} <span className="text-xs font-normal text-muted-foreground ml-2">{safeFormat(activity.createdAt, 'PPpp')}</span></p>
                           {activity.text && <p className="whitespace-pre-wrap text-sm my-1">{activity.text}</p>}
                           {activity.photos && activity.photos.length > 0 && (
                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
@@ -351,8 +353,8 @@ export default function JobDetailsPage() {
           <Card>
               <CardHeader><CardTitle className="text-base font-semibold">Timestamps</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  <p className="flex justify-between"><span>Created:</span> <span>{job.createdAt ? format((job.createdAt as Timestamp).toDate(), 'PPp') : 'N/A'}</span></p>
-                  <p className="flex justify-between"><span>Last Activity:</span> <span>{job.lastActivityAt ? format((job.lastActivityAt as Timestamp).toDate(), 'PPp') : 'N/A'}</span></p>
+                  <p className="flex justify-between"><span>Created:</span> <span>{safeFormat(job.createdAt, 'PPp')}</span></p>
+                  <p className="flex justify-between"><span>Last Activity:</span> <span>{safeFormat(job.lastActivityAt, 'PPp')}</span></p>
               </CardContent>
           </Card>
           <Card>

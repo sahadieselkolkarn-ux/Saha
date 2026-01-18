@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo } from 'react';
-import { collection, query, where, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useAuth } from '@/context/auth-context';
-import { format } from 'date-fns';
+import { safeFormat } from '@/lib/date-utils';
 
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,8 +62,8 @@ export default function AttendanceHistoryPage() {
               ) : attendance && attendance.length > 0 ? (
                 attendance.map(att => (
                   <TableRow key={att.id}>
-                    <TableCell className="font-medium">{att.timestamp ? format((att.timestamp as Timestamp).toDate(), 'PPP') : 'N/A'}</TableCell>
-                    <TableCell>{att.timestamp ? format((att.timestamp as Timestamp).toDate(), 'HH:mm:ss') : 'N/A'}</TableCell>
+                    <TableCell className="font-medium">{safeFormat(att.timestamp, 'PPP')}</TableCell>
+                    <TableCell>{safeFormat(att.timestamp, 'HH:mm:ss')}</TableCell>
                     <TableCell>
                       <Badge variant={att.type === 'IN' ? 'default' : 'secondary'}>{att.type}</Badge>
                     </TableCell>

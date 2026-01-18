@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, PlusCircle } from "lucide-react";
 import type { Job } from "@/lib/types";
-import { format } from "date-fns";
+import { safeFormat } from '@/lib/date-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function AllJobsTab() {
@@ -77,7 +77,7 @@ function AllJobsTab() {
                   <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
                 </div>
                 <CardDescription>
-                  {job.department} &bull; Last update: {job.lastActivityAt ? format((job.lastActivityAt as Timestamp).toDate(), 'PP') : 'N/A'}
+                  {job.department} &bull; Last update: {safeFormat(job.lastActivityAt, 'PP')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow">

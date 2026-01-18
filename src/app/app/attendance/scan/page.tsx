@@ -5,7 +5,8 @@ import { collection, serverTimestamp, Timestamp, writeBatch, doc } from 'firebas
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import { format, differenceInSeconds } from 'date-fns';
+import { differenceInSeconds } from 'date-fns';
+import { safeFormat } from '@/lib/date-utils';
 
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,9 +40,11 @@ export default function AttendanceScanPage() {
       const lastAtt = profile.lastAttendance as LastAttendanceInfo;
       setLastAttendance(lastAtt);
       
-      const lastTimestamp = lastAtt.timestamp.toDate();
-      const diff = differenceInSeconds(new Date(), lastTimestamp);
-      setSecondsSinceLast(diff);
+      const lastTimestamp = lastAtt.timestamp?.toDate();
+      if (lastTimestamp) {
+        const diff = differenceInSeconds(new Date(), lastTimestamp);
+        setSecondsSinceLast(diff);
+      }
     } else {
       setLastAttendance(null); // No records found
       setSecondsSinceLast(null);
@@ -104,7 +107,7 @@ export default function AttendanceScanPage() {
 
       toast({
         title: `Successfully Clocked ${nextAction}`,
-        description: `Your time has been recorded at ${format(clientTime, 'PPpp')}`,
+        description: `Your time has been recorded at ${safeFormat(clientTime, 'PPpp')}`,
       });
       setRecentClock({ type: nextAction, time: clientTime });
 
@@ -131,7 +134,7 @@ export default function AttendanceScanPage() {
              <p className="text-muted-foreground mt-2 text-lg">
                  คุณได้ลงเวลา <Badge variant={recentClock.type === 'IN' ? 'default' : 'secondary'}>{recentClock.type}</Badge> เรียบร้อยแล้ว
              </p>
-             <p className="text-xl font-semibold mt-4">{format(recentClock.time, 'HH:mm:ss')}</p>
+             <p className="text-xl font-semibold mt-4">{safeFormat(recentClock.time, 'HH:mm:ss')}</p>
              <p className="text-muted-foreground">{profile?.displayName}</p>
              <Button onClick={() => setRecentClock(null)} className="mt-8">ลงเวลาอีกครั้ง</Button>
          </div>
@@ -150,7 +153,7 @@ export default function AttendanceScanPage() {
             ) : (
                 <CardDescription>
                     สถานะล่าสุด: <Badge variant={lastAttendance?.type === 'IN' ? 'default' : 'secondary'}>{lastAttendance?.type || 'ยังไม่มีข้อมูล'}</Badge> 
-                    {lastAttendance ? ` lúc ${format((lastAttendance.timestamp as Timestamp).toDate(), 'HH:mm')}`: ''}
+                    {lastAttendance ? ` lúc ${safeFormat(lastAttendance.timestamp, 'HH:mm')}`: ''}
                 </CardDescription>
             )}
           </CardHeader>
