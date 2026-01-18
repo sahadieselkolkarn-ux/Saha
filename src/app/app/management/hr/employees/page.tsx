@@ -89,6 +89,13 @@ export default function ManagementHREmployeesPage() {
     return () => unsubscribe();
   }, [db, toast]);
 
+  useEffect(() => {
+    if (!isDialogOpen) {
+      setEditingUser(null);
+      form.reset();
+    }
+  }, [isDialogOpen, form]);
+
   const openDialog = (user: UserProfile) => {
     setEditingUser(user);
     form.reset({
@@ -147,7 +154,7 @@ export default function ManagementHREmployeesPage() {
             }
         },
         hr: {
-            salary: values.hr?.salary ?? null,
+            salary: values.hr?.salary === undefined ? null : values.hr.salary,
             ssoHospital: values.hr?.ssoHospital ?? '',
             note: values.hr?.note ?? ''
         },
