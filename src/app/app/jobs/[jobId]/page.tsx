@@ -50,7 +50,7 @@ export default function JobDetailsPage() {
             where("status", "==", "ACTIVE")
         );
         onSnapshot(usersQuery, (snapshot) => {
-          setUsersInDept(snapshot.docs.map(d => d.data() as UserProfile));
+          setUsersInDept(snapshot.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
         }, (error) => {
             const permissionError = new FirestorePermissionError({ path: `users`, operation: 'list' });
             errorEmitter.emit('permission-error', permissionError);
@@ -69,7 +69,7 @@ export default function JobDetailsPage() {
     return () => unsubscribe();
   }, [jobId, toast, db]);
   
-  const canEdit = profile && (profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.uid === job?.assigneeUid);
+  const canEdit = profile && (profile.role === 'ADMIN' || profile.role === 'MANAGER' || (profile.role === 'OFFICER' && profile.uid === job?.assigneeUid));
 
   const handleUpdate = (field: string, value: any, secondField?: string, secondValue?: any) => {
     if (!jobId || !canEdit || !db) return;
@@ -135,11 +135,11 @@ export default function JobDetailsPage() {
             photoURLs.push(await getDownloadURL(photoRef));
         }
 
-        const newActivity = {
+        const newActivity: JobActivity = {
             text: newNote,
             userName: profile.displayName,
             userId: user.uid,
-            createdAt: serverTimestamp(),
+            createdAt: serverTimestamp() as Timestamp, // Cast for type consistency
             photos: photoURLs,
         };
         
@@ -150,7 +150,16 @@ export default function JobDetailsPage() {
             lastActivityAt: serverTimestamp() 
         };
         
-        await updateDoc(jobDocRef, updateData);
+        updateDoc(jobDocRef, updateData)
+          .catch(error => {
+            const permissionError = new FirestorePermissionError({
+                path: jobDocRef.path,
+                operation: 'update',
+                requestResourceData: updateData,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+            throw error;
+          });
 
         setNewNote("");
         setNewPhotos([]);
@@ -161,14 +170,6 @@ export default function JobDetailsPage() {
         toast({title: "Activity added successfully"});
 
     } catch (error: any) {
-        if (error.code?.includes('permission-denied')) {
-            const permissionError = new FirestorePermissionError({
-                path: `jobs/${jobId}`,
-                operation: 'update',
-                requestResourceData: { note: newNote },
-            });
-            errorEmitter.emit('permission-error', permissionError);
-        }
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
         setIsSubmitting(false);
@@ -187,7 +188,7 @@ export default function JobDetailsPage() {
   
   return (
     <>
-      <PageHeader title={`Job: ${job.customerSnapshot.name}`} description={`ID: ${job.id}`} />
+      <PageHeader title={`Job: ${job.customerSnapshot.name}`} description={`ID: ${job.id.substring(0,8)}...`} />
       
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
@@ -275,7 +276,7 @@ export default function JobDetailsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base font-semibold">Status</CardTitle>
-              <Badge variant={job.status === 'DONE' ? 'default' : 'secondary'}>{job.status}</Badge>
+              <Badge variant={job.status === 'DONE' ? 'default' : job.status === 'CLOSED' ? 'destructive' : 'secondary'}>{job.status}</Badge>
             </CardHeader>
             <CardContent>
               <Select value={job.status} onValueChange={(v) => handleUpdate('status', v)} disabled={!canEdit}>

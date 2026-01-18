@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { errorEmitter, FirestorePermissionError } from "@/firebase";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, PlusCircle } from "lucide-react";
 import type { Job } from "@/lib/types";
+import { format } from "date-fns";
 
 export default function JobsPage() {
   const { profile, db } = useAuth();
@@ -67,7 +68,7 @@ export default function JobsPage() {
     }
   }
 
-  const isOfficeUser = profile?.role === 'ADMIN' || profile?.department === 'OFFICE' || profile?.role === 'MANAGER';
+  const isOfficeUser = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE';
 
   return (
     <>
@@ -108,7 +109,7 @@ export default function JobsPage() {
                   <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
                 </div>
                 <CardDescription>
-                  {job.department} &bull; Job ID: {job.id.substring(0, 6)}...
+                  {job.department} &bull; Last update: {format((job.lastActivityAt as Timestamp).toDate(), 'PP')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow">

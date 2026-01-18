@@ -49,7 +49,6 @@ export interface Job {
 }
 
 export interface JobActivity {
-  id: string;
   text: string;
   userName: string;
   userId: string;
