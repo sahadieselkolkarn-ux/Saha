@@ -12,3 +12,6 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export const JOB_DEPARTMENTS = ["CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"] as const;
 export type JobDepartment = (typeof JOB_DEPARTMENTS)[number];
+
+export const TOKEN_TTL_MS = 30000; // 30 seconds
+export const TOKEN_BUFFER_MS = 5000; // 5 seconds buffer

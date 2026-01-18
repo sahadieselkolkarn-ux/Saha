@@ -4,10 +4,9 @@ import {
   collection,
   doc,
   writeBatch,
-  serverTimestamp,
-  Timestamp,
   type Firestore,
 } from "firebase/firestore";
+import { TOKEN_TTL_MS } from "@/lib/constants";
 
 // Helper to generate a random string for the token
 function generateToken(length: number = 20): string {
@@ -32,16 +31,16 @@ export async function generateKioskToken(db: Firestore, previousTokenId?: string
   const newTokenId = generateToken();
   const newTokenRef = doc(db, "kioskTokens", newTokenId);
   
-  const now = Timestamp.now();
-  const expiresAt = new Timestamp(now.seconds + 60, now.nanoseconds); // Expires in 60 seconds
+  const nowMs = Date.now();
+  const expiresAtMs = nowMs + TOKEN_TTL_MS;
 
   batch.set(newTokenRef, {
-    createdAt: serverTimestamp(),
-    expiresAt: expiresAt,
-    isActive: true,
     id: newTokenId,
+    createdAtMs: nowMs,
+    expiresAtMs: expiresAtMs,
+    isActive: true,
   });
 
   await batch.commit();
-  return newTokenId;
+  return { newTokenId, expiresAtMs };
 }

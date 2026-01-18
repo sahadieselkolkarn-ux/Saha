@@ -87,7 +87,7 @@ export interface Attendance {
 
 export interface KioskToken {
   id: string;
-  createdAt: Timestamp;
-  expiresAt: Timestamp;
+  createdAtMs: number;
+  expiresAtMs: number;
   isActive: boolean;
 }

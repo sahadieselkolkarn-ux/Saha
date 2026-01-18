@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "UserProfile": {
@@ -376,15 +377,13 @@
           "type": "string",
           "description": "The unique token string."
         },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Timestamp of when the token was created."
+        "createdAtMs": {
+          "type": "number",
+          "description": "Timestamp (in milliseconds) of when the token was created."
         },
-        "expiresAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Timestamp of when the token expires."
+        "expiresAtMs": {
+          "type": "number",
+          "description": "Timestamp (in milliseconds) of when the token expires."
         },
         "isActive": {
           "type": "boolean",
@@ -393,8 +392,8 @@
       },
       "required": [
         "id",
-        "createdAt",
-        "expiresAt",
+        "createdAtMs",
+        "expiresAtMs",
         "isActive"
       ]
     }
