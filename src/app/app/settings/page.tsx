@@ -45,11 +45,11 @@ export default function SettingsPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center gap-4">
                         <Avatar className="h-16 w-16">
-                            <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${profile.name}`} alt={profile.name} />
-                            <AvatarFallback>{getInitials(profile.name)}</AvatarFallback>
+                            <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${profile.displayName}`} alt={profile.displayName} />
+                            <AvatarFallback>{getInitials(profile.displayName)}</AvatarFallback>
                         </Avatar>
                         <div>
-                            <CardTitle className="text-2xl">{profile.name}</CardTitle>
+                            <CardTitle className="text-2xl">{profile.displayName}</CardTitle>
                             <CardDescription>{profile.email}</CardDescription>
                         </div>
                     </CardHeader>

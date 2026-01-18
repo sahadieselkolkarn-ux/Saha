@@ -10,7 +10,7 @@
           "type": "string",
           "description": "The user's unique ID from Firebase Auth."
         },
-        "name": {
+        "displayName": {
           "type": "string",
           "description": "The user's display name."
         },
@@ -121,7 +121,7 @@
       },
       "required": [
         "uid",
-        "name",
+        "displayName",
         "email",
         "phone",
         "createdAt",

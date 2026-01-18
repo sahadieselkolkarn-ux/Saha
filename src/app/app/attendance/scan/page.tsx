@@ -86,7 +86,7 @@ export default function AttendanceScanPage() {
     const attendanceCollection = collection(db, `attendance`);
     const attendanceData = {
       userId: profile.uid,
-      userName: profile.name,
+      userName: profile.displayName,
       type: nextAction,
       timestamp: serverTimestamp(),
     };
@@ -122,7 +122,7 @@ export default function AttendanceScanPage() {
                  คุณได้ลงเวลา <Badge variant={recentClock.type === 'IN' ? 'default' : 'secondary'}>{recentClock.type}</Badge> เรียบร้อยแล้ว
              </p>
              <p className="text-xl font-semibold mt-4">{format(recentClock.time, 'HH:mm:ss')}</p>
-             <p className="text-muted-foreground">{profile?.name}</p>
+             <p className="text-muted-foreground">{profile?.displayName}</p>
              <Button onClick={() => setRecentClock(null)} className="mt-8">ลงเวลาอีกครั้ง</Button>
          </div>
       )

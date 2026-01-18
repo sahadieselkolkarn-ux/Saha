@@ -243,18 +243,18 @@ export function AppSidebar() {
                         <Button variant="ghost" className="w-full justify-start h-auto p-2">
                              <div className="flex items-center gap-3">
                                 <Avatar className="h-9 w-9">
-                                    <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${profile.name}`} />
-                                    <AvatarFallback>{getInitials(profile.name)}</AvatarFallback>
+                                    <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${profile.displayName}`} />
+                                    <AvatarFallback>{getInitials(profile.displayName)}</AvatarFallback>
                                 </Avatar>
                                 <div className="text-left overflow-hidden">
-                                    <p className="text-sm font-medium leading-none truncate">{profile.name}</p>
+                                    <p className="text-sm font-medium leading-none truncate">{profile.displayName}</p>
                                     <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
                                 </div>
                              </div>
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent className="w-56 mb-2" align="start">
-                        <DropdownMenuLabel>{profile.name}</DropdownMenuLabel>
+                        <DropdownMenuLabel>{profile.displayName}</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
                             <Link href="/app/settings"><Settings className="mr-2 h-4 w-4"/> Profile & Settings</Link>

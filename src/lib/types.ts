@@ -3,7 +3,7 @@ import type { JobStatus, JobDepartment, Role, UserStatus, Department } from './c
 
 export interface UserProfile {
   uid: string;
-  name: string;
+  displayName: string;
   email: string;
   phone: string;
   role: Role;

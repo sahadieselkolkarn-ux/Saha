@@ -4,7 +4,7 @@ import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import type { Role, UserStatus } from "@/lib/constants";
 
 interface UserProfileData {
-    name: string;
+    displayName: string;
     email: string;
     phone: string;
     role: Role;

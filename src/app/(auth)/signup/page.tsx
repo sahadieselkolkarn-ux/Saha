@@ -30,7 +30,7 @@ import { Loader2 } from "lucide-react";
 import { signUp } from "@/firebase/auth";
 
 const signupSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  displayName: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email address"),
   phone: z.string().min(9, "Valid phone number is required"),
   password: z.string().min(6, "Password must be at least 6 characters"),
@@ -44,7 +44,7 @@ export default function SignupPage() {
   const form = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      name: "",
+      displayName: "",
       email: "",
       phone: "",
       password: "",
@@ -54,7 +54,7 @@ export default function SignupPage() {
   async function onSubmit(values: z.infer<typeof signupSchema>) {
     setIsSubmitting(true);
     try {
-      await signUp(values.email, values.password, values.name, values.phone);
+      await signUp(values.email, values.password, values.displayName, values.phone);
       toast({ title: "Signup Successful", description: "Your account has been created and is pending approval." });
       router.push("/"); // Redirect to home, which will handle routing to /pending.
     } catch (error: any) {
@@ -81,7 +81,7 @@ export default function SignupPage() {
           <CardContent className="space-y-4">
             <FormField
               control={form.control}
-              name="name"
+              name="displayName"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Name</FormLabel>

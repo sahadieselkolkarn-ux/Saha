@@ -142,7 +142,7 @@ export default function JobDetailsPage() {
 
         const newActivity: JobActivity = {
             text: newNote,
-            userName: profile.name,
+            userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp() as Timestamp, // Cast for type consistency
             photos: photoURLs,
@@ -179,7 +179,7 @@ export default function JobDetailsPage() {
     try {
         const newActivity: JobActivity = {
             text: `Transferred from ${job.department} to ${transferDepartment}. Note: ${transferNote || 'N/A'}`,
-            userName: profile.name,
+            userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp() as Timestamp,
             photos: [],

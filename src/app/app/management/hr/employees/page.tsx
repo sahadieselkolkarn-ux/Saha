@@ -23,7 +23,7 @@ import { DEPARTMENTS, USER_ROLES, USER_STATUSES } from "@/lib/constants";
 import type { UserProfile } from "@/lib/types";
 
 const userProfileSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  displayName: z.string().min(1, "Name is required"),
   phone: z.string().min(1, "Phone is required"),
   department: z.enum(DEPARTMENTS).optional(),
   role: z.enum(USER_ROLES),
@@ -82,7 +82,7 @@ export default function ManagementHREmployeesPage() {
   const openDialog = (user: UserProfile) => {
     setEditingUser(user);
     form.reset({
-      name: user.name,
+      displayName: user.displayName,
       phone: user.phone,
       department: user.department,
       role: user.role,
@@ -102,7 +102,7 @@ export default function ManagementHREmployeesPage() {
         }
       },
       hr: {
-          salary: user.hr?.salary ?? undefined,
+          salary: user.hr?.salary,
           ssoHospital: user.hr?.ssoHospital || '',
           note: user.hr?.note || ''
       }
@@ -172,7 +172,7 @@ export default function ManagementHREmployeesPage() {
               {users.length > 0 ? (
                 users.map(user => (
                     <TableRow key={user.uid}>
-                    <TableCell className="font-medium">{user.name}</TableCell>
+                    <TableCell className="font-medium">{user.displayName}</TableCell>
                     <TableCell>{user.phone}</TableCell>
                     <TableCell>{user.department || 'N/A'}</TableCell>
                     <TableCell>{user.role}</TableCell>
@@ -213,7 +213,7 @@ export default function ManagementHREmployeesPage() {
                     <Card>
                         <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
-                            <FormField name="name" control={form.control} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="displayName" control={form.control} render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             <FormField name="phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             <div className="grid grid-cols-3 gap-4">
                                 <FormField name="department" control={form.control} render={({ field }) => (<FormItem><FormLabel>Department</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{DEPARTMENTS.map(d=><SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
@@ -258,8 +258,8 @@ export default function ManagementHREmployeesPage() {
                                         {...field}
                                         value={field.value ?? ''}
                                         onChange={(e) => {
-                                          const value = e.target.valueAsNumber;
-                                          field.onChange(isNaN(value) ? undefined : value);
+                                          const value = e.target.value;
+                                          field.onChange(value === '' ? undefined : Number(value));
                                         }}
                                       />
                                     </FormControl>
