@@ -103,7 +103,7 @@ export default function ManagementHREmployeesPage() {
     form.reset({
       displayName: user.displayName,
       phone: user.phone,
-      department: user.department ?? undefined,
+      department: user.department || undefined,
       role: user.role,
       status: user.status,
       personal: {
@@ -141,23 +141,23 @@ export default function ManagementHREmployeesPage() {
             role: values.role,
             status: values.status,
             personal: {
-                idCardNo: values.personal?.idCardNo ?? null,
-                address: values.personal?.address ?? null,
+                idCardNo: values.personal?.idCardNo || null,
+                address: values.personal?.address || null,
                 bank: {
-                    bankName: values.personal?.bank?.bankName ?? null,
-                    accountName: values.personal?.bank?.accountName ?? null,
-                    accountNo: values.personal?.bank?.accountNo ?? null,
+                    bankName: values.personal?.bank?.bankName || null,
+                    accountName: values.personal?.bank?.accountName || null,
+                    accountNo: values.personal?.bank?.accountNo || null,
                 },
                 emergencyContact: {
-                    name: values.personal?.emergencyContact?.name ?? null,
-                    relationship: values.personal?.emergencyContact?.relationship ?? null,
-                    phone: values.personal?.emergencyContact?.phone ?? null,
+                    name: values.personal?.emergencyContact?.name || null,
+                    relationship: values.personal?.emergencyContact?.relationship || null,
+                    phone: values.personal?.emergencyContact?.phone || null,
                 }
             },
             hr: {
-                salary: values.hr?.salary === undefined ? null : values.hr.salary,
-                ssoHospital: values.hr?.ssoHospital ?? null,
-                note: values.hr?.note ?? null
+                salary: values.hr?.salary === undefined || values.hr.salary === '' ? null : values.hr.salary,
+                ssoHospital: values.hr?.ssoHospital || null,
+                note: values.hr?.note || null
             },
             updatedAt: serverTimestamp()
         };
@@ -266,8 +266,12 @@ export default function ManagementHREmployeesPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+      <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
+        <DialogContent 
+            className="sm:max-w-2xl" 
+            onInteractOutside={(e) => isSubmitting && e.preventDefault()}
+            onEscapeKeyDown={(e) => isSubmitting && e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Edit User Profile</DialogTitle>
             <DialogDescription>Update the user's details below. Click save when you're done.</DialogDescription>
@@ -283,8 +287,8 @@ export default function ManagementHREmployeesPage() {
                             <FormField name="phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
                             <div className="grid grid-cols-3 gap-4">
                                 <FormField name="department" control={form.control} render={({ field }) => (<FormItem><FormLabel>Department</FormLabel><Select onValueChange={field.onChange} value={field.value ?? ''}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{DEPARTMENTS.map(d=><SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
-                                <FormField name="role" control={form.control} render={({ field }) => (<FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_ROLES.map(r=><SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
-                                <FormField name="status" control={form.control} render={({ field }) => (<FormItem><FormLabel>Status</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                <FormField name="role" control={form.control} render={({ field }) => (<FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_ROLES.map(r=><SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                                <FormField name="status" control={form.control} render={({ field }) => (<FormItem><FormLabel>Status</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{USER_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                             </div>
                         </CardContent>
                     </Card>
@@ -340,7 +344,7 @@ export default function ManagementHREmployeesPage() {
                 </div>
               </ScrollArea>
               <DialogFooter className="pt-6">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
                 </Button>

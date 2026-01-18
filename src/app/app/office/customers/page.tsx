@@ -73,6 +73,22 @@ export default function CustomersPage() {
     return () => unsubscribe();
   }, [db, toast]);
 
+  useEffect(() => {
+    // Cleanup state when the dialog is closed
+    if (!isDialogOpen) {
+      setEditingCustomer(null);
+      form.reset({
+          name: "",
+          phone: "",
+          detail: "",
+          useTax: false,
+          taxName: "",
+          taxAddress: "",
+          taxId: "",
+      });
+    }
+  }, [isDialogOpen, form]);
+
   const openEditDialog = (customer: Customer) => {
     setEditingCustomer(customer);
     form.reset(customer);
@@ -83,9 +99,9 @@ export default function CustomersPage() {
     if (!db || !editingCustomer) return;
     setIsSubmitting(true);
     
-    const customerDoc = doc(db, "customers", editingCustomer.id);
-    const updateData = { ...values, updatedAt: serverTimestamp() };
     try {
+        const customerDoc = doc(db, "customers", editingCustomer.id);
+        const updateData = { ...values, updatedAt: serverTimestamp() };
         await updateDoc(customerDoc, updateData);
         toast({ title: "Customer updated successfully" });
         setIsDialogOpen(false);
@@ -166,8 +182,12 @@ export default function CustomersPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+      <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
+        <DialogContent 
+            className="sm:max-w-[600px]"
+            onInteractOutside={(e) => isSubmitting && e.preventDefault()}
+            onEscapeKeyDown={(e) => isSubmitting && e.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>Edit Customer</DialogTitle>
             <DialogDescription>Update the details below.</DialogDescription>
@@ -206,7 +226,7 @@ export default function CustomersPage() {
                 </div>
               )}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
                 </Button>

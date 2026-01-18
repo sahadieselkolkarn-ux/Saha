@@ -68,7 +68,7 @@ export default function JobDetailsPage() {
   }, [jobId, toast, db]);
 
   const handleUpdate = async (field: string, value: any) => {
-    if (!jobId || !db || isUpdatingStatus) return;
+    if (!jobId || !db) return;
     setIsUpdatingStatus(true);
 
     const jobDocRef = doc(db, "jobs", jobId as string);
@@ -90,9 +90,9 @@ export default function JobDetailsPage() {
   const handleSaveTechReport = async () => {
     if (!jobId || !db) return;
     setIsSavingTechReport(true);
-    const jobDocRef = doc(db, "jobs", jobId as string);
     
     try {
+      const jobDocRef = doc(db, "jobs", jobId as string);
       await updateDoc(jobDocRef, {
         technicalReport: techReport,
         lastActivityAt: serverTimestamp()
@@ -134,9 +134,8 @@ export default function JobDetailsPage() {
     if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile) return;
     setIsSubmitting(true);
     
-    const jobDocRef = doc(db, "jobs", jobId as string);
-
     try {
+        const jobDocRef = doc(db, "jobs", jobId as string);
         const photoURLs: string[] = [];
         for (const photo of newPhotos) {
             const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
@@ -178,9 +177,9 @@ export default function JobDetailsPage() {
   const handleTransferJob = async () => {
     if (!transferDepartment || !job || !db || !profile) return;
     setIsTransferring(true);
-    const jobDocRef = doc(db, "jobs", job.id);
 
     try {
+        const jobDocRef = doc(db, "jobs", job.id);
         const newActivity: JobActivity = {
             text: `Transferred from ${job.department} to ${transferDepartment}. Note: ${transferNote || 'N/A'}`,
             userName: profile.displayName,
@@ -359,8 +358,11 @@ export default function JobDetailsPage() {
           </Card>
         </div>
       </div>
-      <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
-          <DialogContent>
+      <Dialog open={isTransferDialogOpen} onOpenChange={(open) => !isTransferring && setIsTransferDialogOpen(open)}>
+          <DialogContent 
+              onInteractOutside={(e) => isTransferring && e.preventDefault()}
+              onEscapeKeyDown={(e) => isTransferring && e.preventDefault()}
+          >
               <DialogHeader>
                   <DialogTitle>Transfer Job</DialogTitle>
                   <DialogDescription>
@@ -385,7 +387,7 @@ export default function JobDetailsPage() {
                   </div>
               </div>
               <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)}>Cancel</Button>
+                  <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={isTransferring}>Cancel</Button>
                   <Button onClick={handleTransferJob} disabled={isTransferring || !transferDepartment}>
                       {isTransferring && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Confirm Transfer
