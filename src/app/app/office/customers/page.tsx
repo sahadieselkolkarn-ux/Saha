@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
+import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -56,6 +57,14 @@ export default function CustomersPage() {
       const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
       setCustomers(customersData);
       setLoading(false);
+    },
+    (error) => {
+      const permissionError = new FirestorePermissionError({
+          path: collection(db, "customers").path,
+          operation: 'list',
+      });
+      errorEmitter.emit('permission-error', permissionError);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, [db]);
@@ -66,35 +75,54 @@ export default function CustomersPage() {
     setIsDialogOpen(true);
   };
 
-  const onSubmit = async (values: z.infer<typeof customerSchema>) => {
+  const onSubmit = (values: z.infer<typeof customerSchema>) => {
     if (!db) return;
     setIsSubmitting(true);
-    try {
-      if (editingCustomer) {
-        const customerDoc = doc(db, "customers", editingCustomer.id);
-        await updateDoc(customerDoc, { ...values, updatedAt: serverTimestamp() });
-        toast({ title: "Customer updated successfully" });
-      } else {
-        await addDoc(collection(db, "customers"), { ...values, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        toast({ title: "Customer added successfully" });
-      }
-      setIsDialogOpen(false);
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Operation Failed", description: error.message });
-    } finally {
-      setIsSubmitting(false);
+    
+    if (editingCustomer) {
+      const customerDoc = doc(db, "customers", editingCustomer.id);
+      const updateData = { ...values, updatedAt: serverTimestamp() };
+      updateDoc(customerDoc, updateData)
+        .then(() => {
+          toast({ title: "Customer updated successfully" });
+          setIsDialogOpen(false);
+        })
+        .catch(error => {
+          const permissionError = new FirestorePermissionError({ path: customerDoc.path, operation: 'update', requestResourceData: updateData });
+          errorEmitter.emit('permission-error', permissionError);
+          toast({ variant: "destructive", title: "Operation Failed", description: error.message });
+        })
+        .finally(() => setIsSubmitting(false));
+    } else {
+      const addData = { ...values, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+      addDoc(collection(db, "customers"), addData)
+        .then(() => {
+          toast({ title: "Customer added successfully" });
+          setIsDialogOpen(false);
+        })
+        .catch(error => {
+          const permissionError = new FirestorePermissionError({ path: 'customers', operation: 'create', requestResourceData: addData });
+          errorEmitter.emit('permission-error', permissionError);
+          toast({ variant: "destructive", title: "Operation Failed", description: error.message });
+        })
+        .finally(() => setIsSubmitting(false));
     }
   };
 
-  const handleDelete = async (customerId: string) => {
+  const handleDelete = (customerId: string) => {
     if (!db) return;
     if (!window.confirm("Are you sure you want to delete this customer?")) return;
-    try {
-        await deleteDoc(doc(db, "customers", customerId));
+    
+    const customerDoc = doc(db, "customers", customerId);
+    deleteDoc(customerDoc)
+      .then(() => {
         toast({title: "Customer deleted successfully"});
-    } catch (error: any) {
+      })
+      .catch(error => {
+        const permissionError = new FirestorePermissionError({ path: customerDoc.path, operation: 'delete' });
+        errorEmitter.emit('permission-error', permissionError);
         toast({variant: "destructive", title: "Deletion Failed", description: error.message});
-    }
+      });
   };
 
   if (loading) {

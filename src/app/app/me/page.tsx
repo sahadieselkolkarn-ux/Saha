@@ -5,8 +5,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { updateProfile } from "firebase/auth";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -21,7 +23,7 @@ const formSchema = z.object({
 });
 
 export default function ProfilePage() {
-  const { profile, user, db } = useAuth();
+  const { profile, user, db, auth } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -37,28 +39,54 @@ export default function ProfilePage() {
     return null;
   }
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (!db) return;
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
+    if (!db || !auth?.currentUser) return;
     setIsLoading(true);
-    try {
-      const userDocRef = doc(db, "users", user.uid);
-      await updateDoc(userDocRef, {
-        ...values,
-        updatedAt: serverTimestamp(),
+
+    const userDocRef = doc(db, "users", user.uid);
+    const updateData = {
+      ...values,
+      updatedAt: serverTimestamp(),
+    };
+
+    // Update Firestore document
+    updateDoc(userDocRef, updateData)
+      .then(() => {
+        toast({
+          title: "Profile Updated",
+          description: "Your profile information has been successfully updated.",
+        });
+        // Also update the auth profile
+        if (auth.currentUser) {
+          updateProfile(auth.currentUser, {
+            displayName: values.displayName,
+          }).catch((error) => {
+            // This error is less critical, so just log it and maybe toast
+            console.error("Error updating auth profile:", error);
+            toast({
+              variant: "destructive",
+              title: "Could not update auth profile",
+              description: error.message,
+            });
+          });
+        }
+      })
+      .catch((error) => {
+        const permissionError = new FirestorePermissionError({
+          path: userDocRef.path,
+          operation: 'update',
+          requestResourceData: updateData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({
+          variant: "destructive",
+          title: "Update Failed",
+          description: error.message,
+        });
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
-      toast({
-        title: "Profile Updated",
-        description: "Your profile information has been successfully updated.",
-      });
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Update Failed",
-        description: error.message,
-      });
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   return (

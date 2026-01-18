@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,10 @@ export default function IntakePage() {
     const q = query(collection(db, "customers"), orderBy("name", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+    },
+    (error) => {
+        const permissionError = new FirestorePermissionError({ path: 'customers', operation: 'list' });
+        errorEmitter.emit('permission-error', permissionError);
     });
     return () => unsubscribe();
   }, [db]);
@@ -80,12 +85,14 @@ export default function IntakePage() {
     if (!profile || !db || !storage) return;
     setIsSubmitting(true);
     
-    try {
-      const selectedCustomer = customers.find(c => c.id === values.customerId);
-      if (!selectedCustomer) throw new Error("Customer not found.");
+    const selectedCustomer = customers.find(c => c.id === values.customerId);
+    if (!selectedCustomer) {
+        toast({ variant: "destructive", title: "Customer not found." });
+        setIsSubmitting(false);
+        return;
+    }
 
-      // 1. Create job document
-      const jobDocRef = await addDoc(collection(db, "jobs"), {
+    const jobData = {
         ...values,
         customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
         status: "RECEIVED",
@@ -93,29 +100,44 @@ export default function IntakePage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastActivityAt: serverTimestamp(),
+    };
+
+    addDoc(collection(db, "jobs"), jobData)
+      .then(async (jobDocRef) => {
+        try {
+          // Upload photos and update the job doc
+          const photoURLs = [];
+          for (const photo of photos) {
+              const photoRef = ref(storage, `jobs/${jobDocRef.id}/${Date.now()}-${photo.name}`);
+              await uploadBytes(photoRef, photo);
+              const url = await getDownloadURL(photoRef);
+              photoURLs.push(url);
+          }
+
+          if (photoURLs.length > 0) {
+            const updateData = { photos: photoURLs };
+            await updateDoc(jobDocRef, updateData).catch(error => {
+                const permissionError = new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: updateData });
+                errorEmitter.emit('permission-error', permissionError);
+                // We can still proceed, but we should notify the user.
+                toast({ variant: "destructive", title: "Failed to save photos to job", description: error.message });
+            });
+          }
+
+          toast({ title: "Job created successfully", description: `Job ID: ${jobDocRef.id}` });
+          router.push(`/app/jobs/${jobDocRef.id}`);
+        } catch (error: any) {
+          // This catches storage errors
+          toast({ variant: "destructive", title: "Failed to upload photos", description: error.message });
+          setIsSubmitting(false); // Stop loading if photo upload fails
+        }
+      })
+      .catch(error => {
+        const permissionError = new FirestorePermissionError({ path: 'jobs', operation: 'create', requestResourceData: jobData });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({ variant: "destructive", title: "Failed to create job", description: error.message });
+        setIsSubmitting(false);
       });
-
-      // 2. Upload photos
-      const photoURLs = [];
-      for (const photo of photos) {
-          const photoRef = ref(storage, `jobs/${jobDocRef.id}/${Date.now()}-${photo.name}`);
-          await uploadBytes(photoRef, photo);
-          const url = await getDownloadURL(photoRef);
-          photoURLs.push(url);
-      }
-
-      // 3. Update job with photo URLs
-      if(photoURLs.length > 0) {
-        await updateDoc(jobDocRef, { photos: photoURLs });
-      }
-
-      toast({ title: "Job created successfully", description: `Job ID: ${jobDocRef.id}` });
-      router.push(`/app/jobs/${jobDocRef.id}`);
-
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Failed to create job", description: error.message });
-      setIsSubmitting(false);
-    }
   };
 
   return (

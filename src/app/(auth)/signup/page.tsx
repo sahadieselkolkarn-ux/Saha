@@ -10,6 +10,7 @@ import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -65,8 +66,10 @@ export default function SignupPage() {
       await updateProfile(user, { displayName: values.displayName });
 
       const userDocRef = doc(db, "users", user.uid);
-      await setDoc(userDocRef, {
+      const userData = {
+        id: user.uid,
         displayName: values.displayName,
+        photoURL: user.photoURL || null,
         phone: values.phone,
         email: values.email,
         role: "",
@@ -76,14 +79,31 @@ export default function SignupPage() {
         updatedAt: serverTimestamp(),
         approvedAt: null,
         approvedBy: null,
-      });
+      };
 
-      toast({
-        title: "Signup Successful",
-        description: "Your account has been created. Please wait for an admin to approve it.",
-      });
+      setDoc(userDocRef, userData)
+        .then(() => {
+          toast({
+            title: "Signup Successful",
+            description: "Your account has been created. Please wait for an admin to approve it.",
+          });
+          router.push("/pending");
+        })
+        .catch((error) => {
+          const permissionError = new FirestorePermissionError({
+            path: userDocRef.path,
+            operation: 'create',
+            requestResourceData: userData,
+          });
+          errorEmitter.emit('permission-error', permissionError);
+          toast({
+            variant: "destructive",
+            title: "Signup Failed",
+            description: error.message,
+          });
+          setIsLoading(false);
+        });
 
-      router.push("/pending");
     } catch (error: any) {
       toast({
         variant: "destructive",

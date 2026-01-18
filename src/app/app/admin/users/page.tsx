@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,14 @@ export default function UsersPage() {
       });
       setUsers(usersData);
       setLoading(false);
+    },
+    (error) => {
+      const permissionError = new FirestorePermissionError({
+          path: collection(db, "users").path,
+          operation: 'list',
+      });
+      errorEmitter.emit('permission-error', permissionError);
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -50,29 +59,37 @@ export default function UsersPage() {
   const handleSaveChanges = async () => {
     if (!selectedUser || !adminUser || !db) return;
     setIsSubmitting(true);
-    try {
-      const userDocRef = doc(db, "users", selectedUser.uid);
-      const updates: any = {
-        role: selectedUser.role,
-        department: selectedUser.department,
-        status: selectedUser.status,
-        updatedAt: serverTimestamp(),
-      };
-      
-      if(selectedUser.status === 'ACTIVE' && !users.find(u => u.uid === selectedUser.uid)?.approvedAt) {
-          updates.approvedAt = serverTimestamp();
-          updates.approvedBy = adminUser.uid;
-      }
-      
-      await updateDoc(userDocRef, updates);
-      
-      toast({ title: "User Updated", description: "User details saved successfully." });
-      setIsDialogOpen(false);
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Update Failed", description: error.message });
-    } finally {
-      setIsSubmitting(false);
+    
+    const userDocRef = doc(db, "users", selectedUser.uid);
+    const updates: any = {
+      role: selectedUser.role,
+      department: selectedUser.department,
+      status: selectedUser.status,
+      updatedAt: serverTimestamp(),
+    };
+    
+    if(selectedUser.status === 'ACTIVE' && !users.find(u => u.uid === selectedUser.uid)?.approvedAt) {
+        updates.approvedAt = serverTimestamp();
+        updates.approvedBy = adminUser.uid;
     }
+    
+    updateDoc(userDocRef, updates)
+      .then(() => {
+        toast({ title: "User Updated", description: "User details saved successfully." });
+        setIsDialogOpen(false);
+      })
+      .catch((error: any) => {
+        const permissionError = new FirestorePermissionError({
+          path: userDocRef.path,
+          operation: 'update',
+          requestResourceData: updates,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+      });
   };
   
   const getStatusVariant = (status: UserProfile['status']) => {

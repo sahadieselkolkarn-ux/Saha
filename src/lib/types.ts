@@ -4,6 +4,7 @@ import type { Role, Department, UserStatus, JobStatus, JobDepartment } from './c
 export interface UserProfile {
   uid: string;
   displayName: string;
+  photoURL?: string;
   phone: string;
   email: string;
   role: Role | "";

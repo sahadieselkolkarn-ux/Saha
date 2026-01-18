@@ -7,6 +7,7 @@ import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, collection, qu
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,11 +47,19 @@ export default function JobDetailsPage() {
         const usersQuery = query(collection(db, "users"), where("department", "==", jobData.department));
         onSnapshot(usersQuery, (snapshot) => {
           setUsersInDept(snapshot.docs.map(d => d.data() as UserProfile));
+        }, (error) => {
+            const permissionError = new FirestorePermissionError({ path: `users`, operation: 'list' });
+            errorEmitter.emit('permission-error', permissionError);
         });
 
       } else {
         toast({ variant: "destructive", title: "Job not found" });
       }
+      setLoading(false);
+    },
+    (error) => {
+      const permissionError = new FirestorePermissionError({ path: jobDocRef.path, operation: 'get' });
+      errorEmitter.emit('permission-error', permissionError);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -58,15 +67,21 @@ export default function JobDetailsPage() {
   
   const canEdit = profile && (profile.role === 'ADMIN' || profile.department === job?.department);
 
-  const handleUpdate = async (field: string, value: any) => {
+  const handleUpdate = (field: string, value: any) => {
     if (!jobId || !canEdit || !db) return;
     const jobDocRef = doc(db, "jobs", jobId as string);
-    try {
-      await updateDoc(jobDocRef, { [field]: value, lastActivityAt: serverTimestamp() });
-      toast({ title: `Job ${field} updated` });
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "Update Failed", description: error.message });
-    }
+    const updateData = { [field]: value, lastActivityAt: serverTimestamp() };
+    updateDoc(jobDocRef, updateData)
+        .then(() => toast({ title: `Job ${field} updated` }))
+        .catch(error => {
+            const permissionError = new FirestorePermissionError({
+                path: jobDocRef.path,
+                operation: 'update',
+                requestResourceData: updateData,
+            });
+            errorEmitter.emit('permission-error', permissionError);
+            toast({ variant: "destructive", title: "Update Failed", description: error.message });
+        });
   };
   
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -113,19 +128,30 @@ export default function JobDetailsPage() {
         
         // 3. Update job document
         const jobDocRef = doc(db, "jobs", jobId as string);
-        await updateDoc(jobDocRef, { 
+        const updateData = { 
             activities: arrayUnion(newActivity),
             photos: arrayUnion(...photoURLs),
             lastActivityAt: serverTimestamp() 
-        });
-
-        setNewNote("");
-        setNewPhotos([]);
-        setPhotoPreviews([]);
-        toast({title: "Activity added successfully"});
+        };
+        updateDoc(jobDocRef, updateData)
+            .then(() => {
+                setNewNote("");
+                setNewPhotos([]);
+                setPhotoPreviews([]);
+                toast({title: "Activity added successfully"});
+            })
+            .catch(error => {
+                 const permissionError = new FirestorePermissionError({
+                    path: jobDocRef.path,
+                    operation: 'update',
+                    requestResourceData: updateData,
+                });
+                errorEmitter.emit('permission-error', permissionError);
+                toast({variant: "destructive", title: "Failed to add activity", description: error.message});
+            });
 
     } catch (error: any) {
-        toast({variant: "destructive", title: "Failed to add activity", description: error.message});
+        toast({variant: "destructive", title: "Failed to upload photos", description: error.message});
     } finally {
         setIsSubmitting(false);
     }
