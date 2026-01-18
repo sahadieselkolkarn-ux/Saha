@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Loader2, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-export default function ProfilePage() {
+export default function SettingsPage() {
     const { profile, signOut, loading } = useAuth();
     const router = useRouter();
     const { toast } = useToast();
@@ -32,14 +32,14 @@ export default function ProfilePage() {
         );
     }
 
-    const getInitials = (name: string) => {
+    const getInitials = (name?: string) => {
         if (!name) return "?";
         return name.split(' ').map(n => n[0]).join('').toUpperCase();
     }
 
     return (
         <>
-            <PageHeader title="My Profile" description="View and manage your account details." />
+            <PageHeader title="Settings" description="View your profile and manage application settings." />
 
             <div className="max-w-2xl mx-auto">
                 <Card>
