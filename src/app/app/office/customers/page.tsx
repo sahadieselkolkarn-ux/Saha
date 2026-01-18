@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -19,7 +19,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
-import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -35,7 +34,7 @@ const customerSchema = z.object({
 });
 
 export default function CustomersPage() {
-  const { db } = useAuth();
+  const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,11 +66,6 @@ export default function CustomersPage() {
       setLoading(false);
     },
     (error) => {
-      const permissionError = new FirestorePermissionError({
-          path: collection(db, "customers").path,
-          operation: 'list',
-      });
-      errorEmitter.emit('permission-error', permissionError);
       toast({ variant: "destructive", title: "Failed to load customers" });
       setLoading(false);
     });
@@ -109,8 +103,6 @@ export default function CustomersPage() {
           setIsDialogOpen(false);
         })
         .catch(error => {
-          const permissionError = new FirestorePermissionError({ path: customerDoc.path, operation: 'update', requestResourceData: updateData });
-          errorEmitter.emit('permission-error', permissionError);
           toast({ variant: "destructive", title: "Update Failed", description: error.message });
         })
         .finally(() => setIsSubmitting(false));
@@ -122,8 +114,6 @@ export default function CustomersPage() {
           setIsDialogOpen(false);
         })
         .catch(error => {
-          const permissionError = new FirestorePermissionError({ path: 'customers', operation: 'create', requestResourceData: addData });
-          errorEmitter.emit('permission-error', permissionError);
           toast({ variant: "destructive", title: "Creation Failed", description: error.message });
         })
         .finally(() => setIsSubmitting(false));
@@ -140,8 +130,6 @@ export default function CustomersPage() {
         toast({title: "Customer deleted successfully"});
       })
       .catch(error => {
-        const permissionError = new FirestorePermissionError({ path: customerDoc.path, operation: 'delete' });
-        errorEmitter.emit('permission-error', permissionError);
         toast({variant: "destructive", title: "Deletion Failed", description: error.message});
       });
   };

@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSnapshot, Timestamp } from 'firebase/firestore';
-import { useAuth } from '@/hooks/use-auth';
+import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import { errorEmitter, FirestorePermissionError, useMemoFirebase } from '@/firebase';
 
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,44 +15,30 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function ScanPage() {
-  const { user, profile, db } = useAuth();
+  const { db } = useFirebase();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastAttendance, setLastAttendance] = useState<Attendance | null>(null);
   const [todaysAttendance, setTodaysAttendance] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Memoize the query for the last attendance record
-  const lastAttendanceQuery = useMemoFirebase(() => {
-    if (!user || !db) return null;
-    return query(
-      collection(db, `users/${user.uid}/attendance`),
+  const userId = "system-user"; // Hardcoded user ID
+  const userName = "System User"; // Hardcoded user name
+
+  useEffect(() => {
+    if (!db) return;
+    setLoading(true);
+
+    const attendanceCollection = collection(db, `attendance`);
+    
+    // Last attendance query
+    const lastAttQ = query(
+      attendanceCollection,
+      where('userId', '==', userId),
       orderBy('timestamp', 'desc'),
       limit(1)
     );
-  }, [user, db]);
-
-  // Memoize the query for today's attendance records
-  const todaysAttendanceQuery = useMemoFirebase(() => {
-    if (!user || !db) return null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    return query(
-      collection(db, `users/${user.uid}/attendance`),
-      where('timestamp', '>=', today),
-      where('timestamp', '<', tomorrow),
-      orderBy('timestamp', 'desc')
-    );
-  }, [user, db]);
-
-  // Effect for last attendance
-  useEffect(() => {
-    if (!lastAttendanceQuery || !user) return;
-    setLoading(true);
-    const unsubscribe = onSnapshot(lastAttendanceQuery, (snapshot) => {
+    const unsubLast = onSnapshot(lastAttQ, (snapshot) => {
       if (!snapshot.empty) {
         const doc = snapshot.docs[0];
         setLastAttendance({ id: doc.id, ...doc.data() } as Attendance);
@@ -62,34 +47,45 @@ export default function ScanPage() {
       }
       setLoading(false);
     }, (error) => {
-      const permissionError = new FirestorePermissionError({ path: `users/${user.uid}/attendance`, operation: 'list' });
-      errorEmitter.emit('permission-error', permissionError);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch last attendance.' });
       setLoading(false);
     });
-    return () => unsubscribe();
-  }, [lastAttendanceQuery, user]);
 
-  // Effect for today's attendance
-  useEffect(() => {
-    if (!todaysAttendanceQuery || !user) return;
-    const unsubscribe = onSnapshot(todaysAttendanceQuery, (snapshot) => {
+    // Today's attendance query
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todaysAttQ = query(
+      attendanceCollection,
+      where('userId', '==', userId),
+      where('timestamp', '>=', today),
+      where('timestamp', '<', tomorrow),
+      orderBy('timestamp', 'desc')
+    );
+    const unsubTodays = onSnapshot(todaysAttQ, (snapshot) => {
       const records = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Attendance));
       setTodaysAttendance(records);
     }, (error) => {
-      const permissionError = new FirestorePermissionError({ path: `users/${user.uid}/attendance`, operation: 'list' });
-      errorEmitter.emit('permission-error', permissionError);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not fetch today\'s attendance.' });
     });
-    return () => unsubscribe();
-  }, [todaysAttendanceQuery, user]);
+
+    return () => {
+        unsubLast();
+        unsubTodays();
+    }
+  }, [db, toast]);
+
 
   const handleClockAction = async (type: 'IN' | 'OUT') => {
-    if (!user || !profile || !db) return;
+    if (!db) return;
     setIsSubmitting(true);
 
-    const attendanceCollection = collection(db, `users/${user.uid}/attendance`);
+    const attendanceCollection = collection(db, `attendance`);
     const attendanceData = {
-      userId: user.uid,
-      userName: profile.displayName,
+      userId: userId,
+      userName: userName,
       type: type,
       timestamp: serverTimestamp(),
     };
@@ -102,8 +98,6 @@ export default function ScanPage() {
         });
       })
       .catch((error: any) => {
-        const permissionError = new FirestorePermissionError({ path: attendanceCollection.path, operation: 'create', requestResourceData: attendanceData });
-        errorEmitter.emit('permission-error', permissionError);
         toast({
           variant: 'destructive',
           title: `Failed to Clock ${type}`,

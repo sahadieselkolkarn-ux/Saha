@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
-import { useAuth } from "@/hooks/use-auth";
+import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
+import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { errorEmitter, FirestorePermissionError } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,48 +14,31 @@ import type { Job } from "@/lib/types";
 import { format } from "date-fns";
 
 export default function JobsPage() {
-  const { profile, db } = useAuth();
+  const { db } = useFirebase();
   const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profile || !db) return;
-
-    setLoading(true);
-    let q;
-    // MANAGEMENT department sees all jobs
-    if (profile.department === "MANAGEMENT") {
-      q = query(collection(db, "jobs"), orderBy("lastActivityAt", "desc"));
-    } 
-    // Other active departments see jobs assigned to their department
-    else if (profile.department) {
-      q = query(
-        collection(db, "jobs"),
-        where("department", "==", profile.department),
-        orderBy("lastActivityAt", "desc")
-      );
-    } 
-    // If user has no department, they see no jobs.
-    else {
-      setJobs([]);
+    if (!db) {
       setLoading(false);
       return;
-    }
+    };
+
+    setLoading(true);
+    const q = query(collection(db, "jobs"), orderBy("lastActivityAt", "desc"));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
       setJobs(jobsData);
       setLoading(false);
     }, (error) => {
-        const permissionError = new FirestorePermissionError({ path: 'jobs', operation: 'list' });
-        errorEmitter.emit('permission-error', permissionError);
-        toast({ variant: "destructive", title: "Error loading jobs", description: "You may not have permission to view jobs." });
+        toast({ variant: "destructive", title: "Error loading jobs", description: "Could not retrieve jobs from the database." });
         setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [profile, db, toast]);
+  }, [db, toast]);
   
   const getStatusVariant = (status: Job['status']) => {
     switch (status) {
@@ -68,19 +50,15 @@ export default function JobsPage() {
     }
   }
 
-  const isOfficeUser = profile?.department === 'MANAGEMENT' || profile?.department === 'OFFICE';
-
   return (
     <>
       <PageHeader title="Job List" description="View and manage all ongoing and past jobs.">
-        {isOfficeUser && (
-            <Button asChild>
-                <Link href="/app/office/intake">
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    New Job
-                </Link>
-            </Button>
-        )}
+        <Button asChild>
+            <Link href="/app/office/intake">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                New Job
+            </Link>
+        </Button>
       </PageHeader>
       
       {loading ? (
@@ -89,15 +67,13 @@ export default function JobsPage() {
         <Card className="text-center py-12">
             <CardHeader>
                 <CardTitle>No Jobs Found</CardTitle>
-                <CardDescription>There are no jobs to display for your department.</CardDescription>
+                <CardDescription>There are no jobs to display.</CardDescription>
             </CardHeader>
-            {isOfficeUser && (
-                <CardContent>
-                    <Button asChild>
-                        <Link href="/app/office/intake">Create the first job</Link>
-                    </Button>
-                </CardContent>
-            )}
+            <CardContent>
+                <Button asChild>
+                    <Link href="/app/office/intake">Create the first job</Link>
+                </Button>
+            </CardContent>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

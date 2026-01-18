@@ -6,11 +6,10 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,7 @@ const intakeSchema = z.object({
 });
 
 export default function IntakePage() {
-  const { profile, db, storage } = useAuth();
+  const { db, storage } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -49,8 +48,6 @@ export default function IntakePage() {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     },
     (error) => {
-        const permissionError = new FirestorePermissionError({ path: 'customers', operation: 'list' });
-        errorEmitter.emit('permission-error', permissionError);
         toast({ variant: "destructive", title: "Failed to load customers" });
     });
     return () => unsubscribe();
@@ -78,14 +75,13 @@ export default function IntakePage() {
   };
 
   const removePhoto = (index: number) => {
-    // Revoke the object URL to prevent memory leaks
     URL.revokeObjectURL(photoPreviews[index]);
     setPhotos(prev => prev.filter((_, i) => i !== index));
     setPhotoPreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const onSubmit = async (values: z.infer<typeof intakeSchema>) => {
-    if (!profile || !db || !storage) return;
+    if (!db || !storage) return;
     setIsSubmitting(true);
     
     const selectedCustomer = customers.find(c => c.id === values.customerId);
@@ -100,8 +96,6 @@ export default function IntakePage() {
         customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
         status: "RECEIVED",
         photos: [], // will be updated after upload
-        assigneeUid: '',
-        assigneeName: '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         lastActivityAt: serverTimestamp(),
@@ -122,8 +116,6 @@ export default function IntakePage() {
           if (photoURLs.length > 0) {
             const updateData = { photos: photoURLs };
             await updateDoc(jobDocRef, updateData).catch(error => {
-                const permissionError = new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: updateData });
-                errorEmitter.emit('permission-error', permissionError);
                 toast({ variant: "destructive", title: "Failed to save photos to job", description: error.message });
             });
           }
@@ -136,14 +128,11 @@ export default function IntakePage() {
         }
       })
       .catch(error => {
-        const permissionError = new FirestorePermissionError({ path: 'jobs', operation: 'create', requestResourceData: jobData });
-        errorEmitter.emit('permission-error', permissionError);
         toast({ variant: "destructive", title: "Failed to create job", description: error.message });
         setIsSubmitting(false);
       });
   };
 
-  // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
       photoPreviews.forEach(url => URL.revokeObjectURL(url));

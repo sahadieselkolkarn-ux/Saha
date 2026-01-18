@@ -3,14 +3,13 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Image from "next/image";
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, collection, query, where, Timestamp } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useAuth } from "@/hooks/use-auth";
+import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { errorEmitter, FirestorePermissionError } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,16 +17,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_STATUSES } from "@/lib/constants";
 import { Loader2, User, Clock, Paperclip, UploadCloud, X } from "lucide-react";
-import type { Job, UserProfile, JobActivity } from "@/lib/types";
+import type { Job, JobActivity } from "@/lib/types";
 import { format } from 'date-fns';
 
 export default function JobDetailsPage() {
   const { jobId } = useParams();
-  const { profile, user, db, storage } = useAuth();
+  const { db, storage } = useFirebase();
   const { toast } = useToast();
   
   const [job, setJob] = useState<Job | null>(null);
-  const [usersInDept, setUsersInDept] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [newNote, setNewNote] = useState("");
@@ -42,37 +40,20 @@ export default function JobDetailsPage() {
       if (doc.exists()) {
         const jobData = { id: doc.id, ...doc.data() } as Job;
         setJob(jobData);
-        
-        // Fetch users in the same department who are active
-        const usersQuery = query(
-            collection(db, "users"), 
-            where("department", "==", jobData.department),
-            where("status", "==", "ACTIVE")
-        );
-        onSnapshot(usersQuery, (snapshot) => {
-          setUsersInDept(snapshot.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
-        }, (error) => {
-            const permissionError = new FirestorePermissionError({ path: `users`, operation: 'list' });
-            errorEmitter.emit('permission-error', permissionError);
-        });
-
       } else {
         toast({ variant: "destructive", title: "Job not found" });
       }
       setLoading(false);
     },
     (error) => {
-      const permissionError = new FirestorePermissionError({ path: jobDocRef.path, operation: 'get' });
-      errorEmitter.emit('permission-error', permissionError);
+      toast({ variant: "destructive", title: "Error", description: "Failed to load job details."});
       setLoading(false);
     });
     return () => unsubscribe();
   }, [jobId, toast, db]);
-  
-  const canEdit = profile && job && (profile.department === 'MANAGEMENT' || profile.department === job.department);
 
-  const handleUpdate = (field: string, value: any, secondField?: string, secondValue?: any) => {
-    if (!jobId || !canEdit || !db) return;
+  const handleUpdate = (field: string, value: any) => {
+    if (!jobId || !db) return;
     const jobDocRef = doc(db, "jobs", jobId as string);
     
     const updateData: {[key: string]: any} = { 
@@ -80,19 +61,9 @@ export default function JobDetailsPage() {
         lastActivityAt: serverTimestamp() 
     };
 
-    if(secondField) {
-        updateData[secondField] = secondValue;
-    }
-
     updateDoc(jobDocRef, updateData)
         .then(() => toast({ title: `Job ${field} updated` }))
         .catch(error => {
-            const permissionError = new FirestorePermissionError({
-                path: jobDocRef.path,
-                operation: 'update',
-                requestResourceData: updateData,
-            });
-            errorEmitter.emit('permission-error', permissionError);
             toast({ variant: "destructive", title: "Update Failed", description: error.message });
         });
   };
@@ -117,18 +88,16 @@ export default function JobDetailsPage() {
   };
 
   const removeNewPhoto = (index: number) => {
-    // Revoke the object URL to free up memory
     URL.revokeObjectURL(photoPreviews[index]);
     setNewPhotos(p => p.filter((_, i) => i !== index));
     setPhotoPreviews(p => p.filter((_, i) => i !== index));
   };
   
   const handleAddActivity = async () => {
-    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !user || !profile || !db || !storage) return;
+    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage) return;
     setIsSubmitting(true);
     
     const jobDocRef = doc(db, "jobs", jobId as string);
-    let updateData: any;
 
     try {
         const photoURLs: string[] = [];
@@ -140,28 +109,19 @@ export default function JobDetailsPage() {
 
         const newActivity: JobActivity = {
             text: newNote,
-            userName: profile.displayName,
-            userId: user.uid,
+            userName: "System",
+            userId: "system",
             createdAt: serverTimestamp() as Timestamp, // Cast for type consistency
             photos: photoURLs,
         };
         
-        updateData = { 
+        const updateData = { 
             activities: arrayUnion(newActivity),
             photos: arrayUnion(...photoURLs),
             lastActivityAt: serverTimestamp() 
         };
         
-        await updateDoc(jobDocRef, updateData)
-          .catch(error => {
-            const permissionError = new FirestorePermissionError({
-                path: jobDocRef.path,
-                operation: 'update',
-                requestResourceData: updateData,
-            });
-            errorEmitter.emit('permission-error', permissionError);
-            throw error;
-          });
+        await updateDoc(jobDocRef, updateData);
 
         setNewNote("");
         setNewPhotos([]);
@@ -218,8 +178,7 @@ export default function JobDetailsPage() {
             </CardContent>
           </Card>
           
-          {canEdit && (
-            <Card>
+          <Card>
               <CardHeader><CardTitle>Add Activity / Photos</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <Textarea placeholder="Type your note here..." value={newNote} onChange={e => setNewNote(e.target.value)} />
@@ -248,7 +207,6 @@ export default function JobDetailsPage() {
                 </Button>
               </CardContent>
             </Card>
-          )}
 
           <Card>
             <CardHeader><CardTitle>Activity Log</CardTitle></CardHeader>
@@ -281,31 +239,9 @@ export default function JobDetailsPage() {
               <Badge variant={job.status === 'DONE' ? 'default' : job.status === 'CLOSED' ? 'destructive' : 'secondary'}>{job.status}</Badge>
             </CardHeader>
             <CardContent>
-              <Select value={job.status} onValueChange={(v) => handleUpdate('status', v)} disabled={!canEdit}>
+              <Select value={job.status} onValueChange={(v) => handleUpdate('status', v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{JOB_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base font-semibold">Assigned To</CardTitle>
-              {job.assigneeName && <Badge variant="outline">{job.assigneeName}</Badge>}
-            </CardHeader>
-            <CardContent>
-              <Select 
-                value={job.assigneeUid || ""} 
-                onValueChange={(v) => {
-                    const selectedUser = usersInDept.find(u => u.uid === v);
-                    handleUpdate('assigneeUid', v, 'assigneeName', selectedUser?.displayName || "");
-                }}
-                disabled={!canEdit}
-              >
-                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
-                  {usersInDept.map(u => <SelectItem key={u.uid} value={u.uid}>{u.displayName}</SelectItem>)}
-                </SelectContent>
               </Select>
             </CardContent>
           </Card>

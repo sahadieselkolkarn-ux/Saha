@@ -2,145 +2,78 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { signOut } from "firebase/auth"
 
 import {
-  Users,
   Briefcase,
-  User,
-  LogOut,
   ClipboardPenLine,
   Building,
-  Wrench,
-  Settings,
   QrCode,
   Camera,
 } from "lucide-react"
 
-import { useAuth } from "@/hooks/use-auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Logo } from "@/components/logo"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { profile, auth } = useAuth()
-
-  if (!profile) return null
-
-  const isManagement = profile.department === "MANAGEMENT";
-  const isOffice = profile.department === "OFFICE";
-  
-  const KIOSK_FRONT_DEPARTMENTS: string[] = ["CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"];
 
   const menuItems = [
     {
       href: "/app/jobs",
       label: "Jobs",
       icon: Briefcase,
-      visible: true,
     },
     {
-      href: "/app/scan",
-      label: "Scan Time",
-      icon: Camera,
-      visible: true,
+        href: "/app/office/intake",
+        label: "Job Intake",
+        icon: ClipboardPenLine,
     },
     {
-      href: "/app/office/intake",
-      label: "Job Intake",
-      icon: ClipboardPenLine,
-      visible: isManagement || isOffice,
+        href: "/app/office/customers",
+        label: "Customers",
+        icon: Building,
     },
     {
-      href: "/app/office/customers",
-      label: "Customers",
-      icon: Building,
-      visible: isManagement || isOffice,
-    },
-    {
-      href: "/app/admin/users",
-      label: "Users",
-      icon: Users,
-      visible: isManagement,
+        href: "/app/scan",
+        label: "Scan Time",
+        icon: Camera,
     },
     {
         href: "/app/kiosk/office",
         label: "Kiosk Office",
         icon: QrCode,
-        visible: isManagement || isOffice,
     },
     {
         href: "/app/kiosk/front",
         label: "Kiosk Front",
         icon: QrCode,
-        visible: isManagement || KIOSK_FRONT_DEPARTMENTS.includes(profile.department as string),
     },
   ]
 
-  const handleLogout = async () => {
-    if (auth) {
-      await signOut(auth);
-    }
-  }
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-  }
-
   return (
     <aside className="fixed inset-y-0 left-0 z-10 hidden w-64 flex-col border-r bg-background sm:flex">
-      <nav className="flex flex-col gap-4 px-4 py-6">
+      <nav className="flex flex-1 flex-col gap-4 px-4 py-6">
         <Logo />
-        <div className="flex-1">
-          <ul className="space-y-1">
-            {menuItems.map(
-              (item) =>
-                item.visible && (
-                  <li key={item.href}>
-                    <Button
-                      asChild
-                      variant={pathname.startsWith(item.href) ? "secondary" : "ghost"}
-                      className="w-full justify-start"
-                    >
-                      <Link href={item.href}>
-                        <item.icon className="mr-2 h-4 w-4" />
-                        {item.label}
-                      </Link>
-                    </Button>
-                  </li>
-                )
-            )}
-          </ul>
-        </div>
+        <ul className="flex-1 space-y-1">
+          {menuItems.map(
+            (item) => (
+              <li key={item.href}>
+                <Button
+                  asChild
+                  variant={pathname.startsWith(item.href) ? "secondary" : "ghost"}
+                  className="w-full justify-start"
+                >
+                  <Link href={item.href}>
+                    <item.icon className="mr-2 h-4 w-4" />
+                    {item.label}
+                  </Link>
+                </Button>
+              </li>
+            )
+          )}
+        </ul>
       </nav>
-      <div className="mt-auto p-4 space-y-4">
-        <div className="flex items-center gap-3">
-            <Avatar>
-                <AvatarImage src={profile.photoURL} />
-                <AvatarFallback>{getInitials(profile.displayName)}</AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col text-sm">
-                <span className="font-semibold">{profile.displayName}</span>
-                <span className="text-muted-foreground">{profile.email}</span>
-            </div>
-        </div>
-        <Button variant="ghost" className="w-full justify-start" asChild>
-            <Link href="/app/me">
-                <Settings className="mr-2 h-4 w-4" />
-                Profile Settings
-            </Link>
-        </Button>
-        <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
-          <LogOut className="mr-2 h-4 w-4" />
-          Logout
-        </Button>
-      </div>
     </aside>
   )
 }
