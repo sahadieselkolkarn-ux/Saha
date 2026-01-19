@@ -85,14 +85,36 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                     </>
                 )}
                 {department === 'OFFICE' && (
-                    <>
-                        <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า/ค้นหา" onClick={onLinkClick} />
+                     <>
                         <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/jobs/pending" label="งานรอดำเนินการ" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/jobs/waiting" label="งานรออะไหล่/รอส่งต่อ" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/jobs/closing" label="งานเสร็จรอปิด" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/payment/receive" label="รับเงินจากงาน" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/payment/history" label="รายการรับเงิน" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/jobs/management" label="บริหารงานซ่อม" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า" onClick={onLinkClick} />
+
+                        <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={pathname.startsWith('/app/office/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
+                                    งานเอกสาร
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                <SubNavLink href="/app/office/documents/delivery-note" label="ใบส่งสินค้า" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/documents/tax-invoice" label="ใบกำกับภาษี" onClick={onLinkClick} />
+                            </CollapsibleContent>
+                        </Collapsible>
+
+                        <Collapsible defaultOpen={pathname.startsWith('/app/office/payment') || pathname.startsWith('/app/office/cash-drawer')}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={(pathname.startsWith('/app/office/payment') || pathname.startsWith('/app/office/cash-drawer')) ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
+                                    การเงิน
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                <SubNavLink href="/app/office/payment/receive" label="รับเงินจากงาน" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
+                            </CollapsibleContent>
+                        </Collapsible>
                     </>
                 )}
                 {department === 'CAR_SERVICE' && (
