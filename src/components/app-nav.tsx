@@ -89,6 +89,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/jobs/management" label="บริหารงานซ่อม" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
 
                         <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
                             <CollapsibleTrigger asChild>
@@ -103,16 +104,18 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                             </CollapsibleContent>
                         </Collapsible>
 
-                        <Collapsible defaultOpen={pathname.startsWith('/app/office/payment') || pathname.startsWith('/app/office/cash-drawer')}>
+                        <Collapsible defaultOpen={pathname.startsWith('/app/office/parts')}>
                             <CollapsibleTrigger asChild>
-                                <Button variant={(pathname.startsWith('/app/office/payment') || pathname.startsWith('/app/office/cash-drawer')) ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
-                                    การเงิน
+                                <Button variant={pathname.startsWith('/app/office/parts') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
+                                    การจัดการอะไหล่
                                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                                 </Button>
                             </CollapsibleTrigger>
                             <CollapsibleContent className="py-1 pl-4 space-y-1">
-                                <SubNavLink href="/app/office/payment/receive" label="รับเงินจากงาน" onClick={onLinkClick} />
-                                <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/parts/withdraw" label="เบิกอะไหล่" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/parts/receive" label="รับอะไหล่" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/parts/list" label="รายการอะไหล่/ค้นหา" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/parts/vendors" label="รายชื่อร้านค้า" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
                     </>
