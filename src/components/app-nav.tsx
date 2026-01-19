@@ -127,43 +127,15 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                     </>
                 )}
                 {department === 'COMMONRAIL' && (
-                     <>
-                        <Collapsible defaultOpen={pathname.startsWith('/app/commonrail/queue')}>
-                            <CollapsibleTrigger asChild>
-                                <Button variant={pathname.startsWith('/app/commonrail/queue') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9">
-                                    คิวงาน
-                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                                </Button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="py-1 pl-4 space-y-1">
-                                <SubNavLink href="/app/commonrail/queue/new" label="งานใหม่" onClick={onLinkClick} />
-                                <SubNavLink href="/app/commonrail/queue/in-progress" label="กำลังทำ" onClick={onLinkClick} />
-                                <SubNavLink href="/app/commonrail/queue/done" label="เสร็จแล้ว" onClick={onLinkClick} />
-                                <SubNavLink href="/app/commonrail/queue/closed" label="ปิดงาน" onClick={onLinkClick} />
-                            </CollapsibleContent>
-                        </Collapsible>
-                        <SubNavLink href="/app/commonrail/jobs/list" label="งานของแผนก" onClick={onLinkClick} />
-                        <SubNavLink href="/app/commonrail/jobs/return" label="ส่งกลับ" onClick={onLinkClick} />
+                    <>
+                       <SubNavLink href="/app/commonrail/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
+                       <SubNavLink href="/app/commonrail/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                     </>
                 )}
                 {department === 'MECHANIC' && (
                     <>
-                        <Collapsible defaultOpen={pathname.startsWith('/app/mechanic/queue')}>
-                            <CollapsibleTrigger asChild>
-                                <Button variant={pathname.startsWith('/app/mechanic/queue') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9">
-                                    คิวงาน
-                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                                </Button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="py-1 pl-4 space-y-1">
-                                <SubNavLink href="/app/mechanic/queue/new" label="งานใหม่" onClick={onLinkClick} />
-                                <SubNavLink href="/app/mechanic/queue/in-progress" label="กำลังทำ" onClick={onLinkClick} />
-                                <SubNavLink href="/app/mechanic/queue/done" label="เสร็จแล้ว" onClick={onLinkClick} />
-                                <SubNavLink href="/app/mechanic/queue/closed" label="ปิดงาน" onClick={onLinkClick} />
-                            </CollapsibleContent>
-                        </Collapsible>
-                        <SubNavLink href="/app/mechanic/jobs/list" label="งานของแผนก" onClick={onLinkClick} />
-                        <SubNavLink href="/app/mechanic/jobs/return" label="ส่งกลับ" onClick={onLinkClick} />
+                       <SubNavLink href="/app/mechanic/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
+                       <SubNavLink href="/app/mechanic/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                     </>
                 )}
                  {department === 'OUTSOURCE' && (
