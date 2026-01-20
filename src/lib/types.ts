@@ -92,3 +92,33 @@ export interface KioskToken {
   expiresAtMs: number;
   isActive: boolean;
 }
+
+export interface HRSettings {
+  id?: 'hr';
+  workStart?: string;
+  workEnd?: string;
+  breakStart?: string;
+  breakEnd?: string;
+  graceMinutes?: number;
+  absentCutoffTime?: string;
+  minSecondsBetweenScans?: number;
+  payroll?: {
+    payday1?: number;
+    payday2?: string;
+    period1Start?: number;
+    period1End?: number;
+    period2Start?: number;
+    period2End?: string;
+  };
+  sso?: {
+    employeePercent?: number;
+    employerPercent?: number;
+    monthlyCap?: number;
+    effectiveFrom?: Timestamp;
+  };
+  withholding?: {
+    enabled?: boolean;
+    defaultPercent?: number;
+    note?: string;
+  };
+}

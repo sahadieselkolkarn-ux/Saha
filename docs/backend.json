@@ -400,6 +400,97 @@
         "expiresAtMs",
         "isActive"
       ]
+    },
+    "HRSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "HR Settings",
+      "description": "Configuration for Human Resources module.",
+      "type": "object",
+      "properties": {
+        "workStart": {
+          "type": "string",
+          "description": "Work start time (HH:mm)"
+        },
+        "workEnd": {
+          "type": "string",
+          "description": "Work end time (HH:mm)"
+        },
+        "breakStart": {
+          "type": "string",
+          "description": "Break start time (HH:mm)"
+        },
+        "breakEnd": {
+          "type": "string",
+          "description": "Break end time (HH:mm)"
+        },
+        "graceMinutes": {
+          "type": "number",
+          "description": "Grace period for being late in minutes."
+        },
+        "absentCutoffTime": {
+          "type": "string",
+          "description": "Time after which an employee is marked absent (HH:mm)."
+        },
+        "minSecondsBetweenScans": {
+          "type": "number",
+          "description": "Minimum seconds between two attendance scans for the same user."
+        },
+        "payroll": {
+          "type": "object",
+          "properties": {
+            "payday1": {
+              "type": "number"
+            },
+            "payday2": {
+              "type": "string"
+            },
+            "period1Start": {
+              "type": "number"
+            },
+            "period1End": {
+              "type": "number"
+            },
+            "period2Start": {
+              "type": "number"
+            },
+            "period2End": {
+              "type": "string"
+            }
+          }
+        },
+        "sso": {
+          "type": "object",
+          "properties": {
+            "employeePercent": {
+              "type": "number"
+            },
+            "employerPercent": {
+              "type": "number"
+            },
+            "monthlyCap": {
+              "type": "number"
+            },
+            "effectiveFrom": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "withholding": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "defaultPercent": {
+              "type": "number"
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "auth": {
@@ -505,6 +596,22 @@
             {
               "name": "tokenId",
               "description": "The unique token ID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/settings/{settingId}",
+        "definition": {
+          "entityName": "HRSettings",
+          "schema": {
+            "$ref": "#/backend/entities/HRSettings"
+          },
+          "description": "Stores application settings, like 'hr' settings.",
+          "params": [
+            {
+              "name": "settingId",
+              "description": "The ID of the settings document (e.g., 'hr')."
             }
           ]
         }

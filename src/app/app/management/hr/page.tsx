@@ -18,7 +18,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEPARTMENTS, USER_ROLES, USER_STATUSES } from "@/lib/constants";
 import type { UserProfile } from "@/lib/types";
@@ -34,6 +33,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { HRSettingsForm } from "@/components/hr-settings-form";
 
 
 const userProfileSchema = z.object({
@@ -438,14 +438,18 @@ export default function ManagementHRPage() {
         <>
             <PageHeader title="บริหารงานบุคคล" description="จัดการข้อมูลพนักงานและการลา" />
             <Tabs defaultValue="employees" className="space-y-4">
-                <TabsList>
+                <TabsList className="grid w-full grid-cols-5">
                     <TabsTrigger value="employees">ผู้ใช้และพนักงาน</TabsTrigger>
+                    <TabsTrigger value="settings">ตั้งค่า HR</TabsTrigger>
                     <TabsTrigger value="holidays">วันหยุด</TabsTrigger>
                     <TabsTrigger value="leaves">วันลา</TabsTrigger>
                     <TabsTrigger value="attendance-summary">สรุปลงเวลา</TabsTrigger>
                 </TabsList>
                 <TabsContent value="employees">
                     <EmployeesTab />
+                </TabsContent>
+                 <TabsContent value="settings">
+                    <HRSettingsForm />
                 </TabsContent>
                 <TabsContent value="holidays">
                      <Card>
