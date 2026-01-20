@@ -29,6 +29,7 @@
           "description": "The user's role.",
           "enum": [
             "ADMIN",
+            "MANAGER",
             "OFFICER",
             "WORKER"
           ]
@@ -98,8 +99,12 @@
           "type": "object",
           "description": "HR-related information for the user.",
           "properties": {
-            "salary": {
+            "salaryMonthly": {
               "type": "number"
+            },
+            "payType": {
+                "type": "string",
+                "enum": ["MONTHLY", "DAILY"]
             },
             "ssoHospital": {
               "type": "string"

@@ -24,7 +24,8 @@ export interface UserProfile {
     };
   };
   hr?: {
-    salary?: number;
+    salaryMonthly?: number;
+    payType?: 'MONTHLY' | 'DAILY';
     ssoHospital?: string;
     note?: string;
   };

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -13,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
@@ -54,7 +55,8 @@ const userProfileSchema = z.object({
     }).optional(),
   }).optional(),
   hr: z.object({
-    salary: z.coerce.number().optional(),
+    salaryMonthly: z.coerce.number().optional(),
+    payType: z.enum(["MONTHLY", "DAILY"]).optional(),
     ssoHospital: z.string().optional().default(''),
     note: z.string().optional().default(''),
   }).optional(),
@@ -101,6 +103,7 @@ const UserCard = ({ user, onEdit, onDelete }: { user: UserProfile, onEdit: (user
 
 export default function ManagementHREmployeesPage() {
   const { db } = useFirebase();
+  const { profile: loggedInUser } = useAuth();
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,6 +112,8 @@ export default function ManagementHREmployeesPage() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  
+  const isManager = loggedInUser?.role === 'MANAGER';
 
   const form = useForm<z.infer<typeof userProfileSchema>>({
     resolver: zodResolver(userProfileSchema),
@@ -161,7 +166,8 @@ export default function ManagementHREmployeesPage() {
         }
       },
       hr: {
-          salary: user.hr?.salary,
+          salaryMonthly: user.hr?.salaryMonthly,
+          payType: user.hr?.payType,
           ssoHospital: user.hr?.ssoHospital || '',
           note: user.hr?.note || ''
       }
@@ -169,39 +175,46 @@ export default function ManagementHREmployeesPage() {
     setIsDialogOpen(true);
   };
 
-  const onSubmit = async (values: z.infer<typeof userProfileSchema>) => {
+  const onSubmit = async (formValues: z.infer<typeof userProfileSchema>) => {
     if (!db || !editingUser) return;
     setIsSubmitting(true);
     
     try {
-        const updateData: {[key: string]: any} = {
-            ...values,
-            department: values.department || null,
-            personal: {
-                idCardNo: values.personal?.idCardNo || null,
-                address: values.personal?.address || null,
-                bank: {
-                    bankName: values.personal?.bank?.bankName || null,
-                    accountName: values.personal?.bank?.accountName || null,
-                    accountNo: values.personal?.bank?.accountNo || null,
-                },
-                emergencyContact: {
-                    name: values.personal?.emergencyContact?.name || null,
-                    relationship: values.personal?.emergencyContact?.relationship || null,
-                    phone: values.personal?.emergencyContact?.phone || null,
-                }
-            },
-            hr: {
-                salary: values.hr?.salary === undefined || values.hr.salary === '' ? null : values.hr.salary,
-                ssoHospital: values.hr?.ssoHospital || null,
-                note: values.hr?.note || null
-            },
+        const updateData: any = { ...formValues };
+
+        // Handle salary permission
+        if (!isManager) {
+            delete updateData.hr.salaryMonthly;
+        }
+
+        // Ensure nested objects are handled correctly without overwriting other fields
+        const finalUpdate: {[key: string]: any} = {
+            displayName: updateData.displayName,
+            phone: updateData.phone,
+            department: updateData.department || null,
+            role: updateData.role,
+            status: updateData.status,
+            'personal.idCardNo': updateData.personal?.idCardNo || null,
+            'personal.address': updateData.personal?.address || null,
+            'personal.bank.bankName': updateData.personal?.bank?.bankName || null,
+            'personal.bank.accountName': updateData.personal?.bank?.accountName || null,
+            'personal.bank.accountNo': updateData.personal?.bank?.accountNo || null,
+            'personal.emergencyContact.name': updateData.personal?.emergencyContact?.name || null,
+            'personal.emergencyContact.relationship': updateData.personal?.emergencyContact?.relationship || null,
+            'personal.emergencyContact.phone': updateData.personal?.emergencyContact?.phone || null,
+            'hr.payType': updateData.hr?.payType || null,
+            'hr.ssoHospital': updateData.hr?.ssoHospital || null,
+            'hr.note': updateData.hr?.note || null,
             updatedAt: serverTimestamp()
         };
+
+        if (isManager) {
+            finalUpdate['hr.salaryMonthly'] = updateData.hr?.salaryMonthly === undefined || updateData.hr.salaryMonthly === '' ? null : Number(updateData.hr.salaryMonthly);
+        }
         
         const userDoc = doc(db, "users", editingUser.uid);
-
-        await updateDoc(userDoc, updateData);
+        await updateDoc(userDoc, finalUpdate);
+        
         toast({ title: "User profile updated successfully" });
         setIsDialogOpen(false);
     } catch (error: any) {
@@ -275,6 +288,7 @@ export default function ManagementHREmployeesPage() {
                 <TableHead>Department</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Salary</TableHead>
                 <TableHead><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
@@ -287,6 +301,7 @@ export default function ManagementHREmployeesPage() {
                     <TableCell>{user.department || 'N/A'}</TableCell>
                     <TableCell>{user.role}</TableCell>
                     <TableCell>{user.status}</TableCell>
+                    <TableCell>{user.hr?.salaryMonthly?.toLocaleString() || '-'}</TableCell>
                     <TableCell>
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -300,7 +315,7 @@ export default function ManagementHREmployeesPage() {
                 ))
               ) : (
                 <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                        No users found. New users will appear here after they sign up.
                     </TableCell>
                 </TableRow>
@@ -377,15 +392,16 @@ export default function ManagementHREmployeesPage() {
                         <CardHeader><CardTitle>HR Information</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
                               <FormField
-                                name="hr.salary"
+                                name="hr.salaryMonthly"
                                 control={form.control}
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>Salary</FormLabel>
+                                    <FormLabel>Monthly Salary</FormLabel>
                                     <FormControl>
                                       <Input
                                         type="number"
                                         {...field}
+                                        disabled={!isManager}
                                         value={field.value ?? ''}
                                         onChange={(e) => {
                                           const value = e.target.value;
@@ -393,10 +409,12 @@ export default function ManagementHREmployeesPage() {
                                         }}
                                       />
                                     </FormControl>
+                                     {!isManager && <FormDescription>แก้เงินเดือนได้เฉพาะ Manager</FormDescription>}
                                     <FormMessage />
                                   </FormItem>
                                 )}
                               />
+                            <FormField name="hr.payType" control={form.control} render={({ field }) => (<FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
                              <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                              <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
