@@ -1,13 +1,5 @@
-"use client";
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { redirect } from 'next/navigation';
 
 export default function Page() {
-  const router = useRouter();
-  useEffect(() => {
-    router.replace('/app/management/overview');
-  }, [router]);
-  return <div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  redirect('/app/management/overview');
 }
