@@ -75,7 +75,33 @@ export function HRSettingsForm() {
 
   const form = useForm<z.infer<typeof hrSettingsSchema>>({
     resolver: zodResolver(hrSettingsSchema),
-    defaultValues: {},
+    defaultValues: {
+      workStart: "",
+      workEnd: "",
+      breakStart: "",
+      breakEnd: "",
+      graceMinutes: 0,
+      absentCutoffTime: "",
+      minSecondsBetweenScans: 60,
+      payroll: {
+        payday1: 15,
+        period1Start: 1,
+        period1End: 15,
+        payday2: "EOM",
+        period2Start: 16,
+        period2End: "EOM",
+      },
+      sso: {
+        employeePercent: 0,
+        employerPercent: 0,
+        monthlyCap: 0,
+      },
+      withholding: {
+        enabled: false,
+        defaultPercent: 0,
+        note: "",
+      },
+    },
   });
 
   useEffect(() => {
