@@ -401,6 +401,37 @@
         "isActive"
       ]
     },
+    "LeaveTypePolicy": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Leave Type Policy",
+      "description": "Defines the policy for a specific type of leave.",
+      "type": "object",
+      "properties": {
+        "annualEntitlement": {
+          "type": "number",
+          "description": "Number of entitled leave days per year."
+        },
+        "overLimitHandling": {
+          "type": "object",
+          "description": "How to handle leaves that exceed the annual entitlement.",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "DEDUCT_SALARY",
+                "UNPAID",
+                "DISALLOW"
+              ],
+              "description": "Action to take when leave limit is exceeded."
+            },
+            "salaryDeductionBaseDays": {
+              "type": "number",
+              "description": "The base number of days to divide the monthly salary by for deduction calculation (e.g., 26)."
+            }
+          }
+        }
+      }
+    },
     "HRSettings": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "HR Settings",
@@ -487,6 +518,34 @@
             },
             "note": {
               "type": "string"
+            }
+          }
+        },
+        "leavePolicy": {
+          "type": "object",
+          "description": "Defines the company's leave policy.",
+          "properties": {
+            "calculationPeriod": {
+              "type": "string",
+              "enum": [
+                "CALENDAR_YEAR"
+              ],
+              "description": "The period for calculating annual leave entitlement (fixed to calendar year)."
+            },
+            "leaveTypes": {
+              "type": "object",
+              "description": "Configuration for different types of leave.",
+              "properties": {
+                "SICK": {
+                  "$ref": "#/backend/entities/LeaveTypePolicy"
+                },
+                "BUSINESS": {
+                  "$ref": "#/backend/entities/LeaveTypePolicy"
+                },
+                "VACATION": {
+                  "$ref": "#/backend/entities/LeaveTypePolicy"
+                }
+              }
             }
           }
         }

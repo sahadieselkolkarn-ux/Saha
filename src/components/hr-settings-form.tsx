@@ -32,6 +32,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Save } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+
+const leaveTypePolicySchema = z.object({
+  annualEntitlement: z.coerce.number().min(0).optional(),
+  overLimitHandling: z.object({
+    mode: z.enum(["DEDUCT_SALARY", "UNPAID", "DISALLOW"]).optional(),
+    salaryDeductionBaseDays: z.coerce.number().min(1).optional(),
+  }).optional(),
+});
 
 // Zod schema for validation
 const hrSettingsSchema = z.object({
@@ -60,7 +69,74 @@ const hrSettingsSchema = z.object({
     defaultPercent: z.coerce.number().min(0).max(100).optional(),
     note: z.string().optional(),
   }).optional(),
+  leavePolicy: z.object({
+    calculationPeriod: z.literal("CALENDAR_YEAR").optional(),
+    leaveTypes: z.object({
+      SICK: leaveTypePolicySchema.optional(),
+      BUSINESS: leaveTypePolicySchema.optional(),
+      VACATION: leaveTypePolicySchema.optional(),
+    }).optional()
+  }).optional(),
 });
+
+const LeavePolicyFields = ({ type, form }: { type: 'SICK' | 'BUSINESS' | 'VACATION', form: any }) => {
+  const overLimitMode = form.watch(`leavePolicy.leaveTypes.${type}.overLimitHandling.mode`);
+  const typeLabel = type.charAt(0) + type.slice(1).toLowerCase();
+
+  return (
+    <div>
+      <h4 className="font-medium mb-2">{typeLabel} Leave</h4>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
+        <FormField
+          control={form.control}
+          name={`leavePolicy.leaveTypes.${type}.annualEntitlement`}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Annual Entitlement</FormLabel>
+              <FormControl><Input type="number" placeholder="e.g. 30" {...field} /></FormControl>
+              <FormDescription>Days per year</FormDescription>
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name={`leavePolicy.leaveTypes.${type}.overLimitHandling.mode`}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Over-limit Handling</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select mode" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="DEDUCT_SALARY">Deduct from Salary</SelectItem>
+                  <SelectItem value="UNPAID">Unpaid Leave</SelectItem>
+                  <SelectItem value="DISALLOW">Disallow</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormItem>
+          )}
+        />
+        {overLimitMode === 'DEDUCT_SALARY' && (
+          <FormField
+            control={form.control}
+            name={`leavePolicy.leaveTypes.${type}.overLimitHandling.salaryDeductionBaseDays`}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Deduction Base Days</FormLabel>
+                <FormControl><Input type="number" placeholder="e.g. 26" {...field} /></FormControl>
+                <FormDescription>Salary will be divided by this number.</FormDescription>
+              </FormItem>
+            )}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
 
 export function HRSettingsForm() {
   const { db } = useFirebase();
@@ -101,6 +177,14 @@ export function HRSettingsForm() {
         defaultPercent: 0,
         note: "",
       },
+      leavePolicy: {
+        calculationPeriod: 'CALENDAR_YEAR',
+        leaveTypes: {
+          SICK: { annualEntitlement: 30, overLimitHandling: { mode: 'DEDUCT_SALARY', salaryDeductionBaseDays: 26 } },
+          BUSINESS: { annualEntitlement: 7, overLimitHandling: { mode: 'DEDUCT_SALARY', salaryDeductionBaseDays: 26 } },
+          VACATION: { annualEntitlement: 6, overLimitHandling: { mode: 'DISALLOW', salaryDeductionBaseDays: 26 } },
+        }
+      }
     },
   });
 
@@ -132,6 +216,14 @@ export function HRSettingsForm() {
           defaultPercent: settings.withholding?.defaultPercent ?? 0,
           note: settings.withholding?.note || "",
         },
+        leavePolicy: {
+          calculationPeriod: 'CALENDAR_YEAR',
+          leaveTypes: {
+            SICK: settings.leavePolicy?.leaveTypes?.SICK,
+            BUSINESS: settings.leavePolicy?.leaveTypes?.BUSINESS,
+            VACATION: settings.leavePolicy?.leaveTypes?.VACATION,
+          }
+        }
       });
     }
   }, [settings, form]);
@@ -139,7 +231,16 @@ export function HRSettingsForm() {
   const onSubmit = async (values: z.infer<typeof hrSettingsSchema>) => {
     if (!settingsDocRef) return;
     try {
-      await setDoc(settingsDocRef, values, { merge: true });
+      // Ensure the calculationPeriod is always set
+      const finalValues = {
+        ...values,
+        leavePolicy: {
+          ...values.leavePolicy,
+          calculationPeriod: 'CALENDAR_YEAR'
+        }
+      };
+
+      await setDoc(settingsDocRef, finalValues, { merge: true });
       toast({
         title: "Settings Saved",
         description: "HR settings have been updated successfully.",
@@ -175,10 +276,10 @@ export function HRSettingsForm() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <FormField control={form.control} name="workStart" render={({ field }) => (<FormItem><FormLabel>Work Start</FormLabel><FormControl><Input type="time" {...field} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="workEnd" render={({ field }) => (<FormItem><FormLabel>Work End</FormLabel><FormControl><Input type="time" {...field} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="breakStart" render={({ field }) => (<FormItem><FormLabel>Break Start</FormLabel><FormControl><Input type="time" {...field} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="breakEnd" render={({ field }) => (<FormItem><FormLabel>Break End</FormLabel><FormControl><Input type="time" {...field} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="workStart" render={({ field }) => (<FormItem><FormLabel>Work Start</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="workEnd" render={({ field }) => (<FormItem><FormLabel>Work End</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="breakStart" render={({ field }) => (<FormItem><FormLabel>Break Start</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="breakEnd" render={({ field }) => (<FormItem><FormLabel>Break End</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl></FormItem>)} />
           </CardContent>
         </Card>
 
@@ -190,11 +291,26 @@ export function HRSettingsForm() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <FormField control={form.control} name="graceMinutes" render={({ field }) => (<FormItem><FormLabel>Grace Period (minutes)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormDescription>นาทีที่อนุญาตให้สายได้</FormDescription></FormItem>)} />
-            <FormField control={form.control} name="absentCutoffTime" render={({ field }) => (<FormItem><FormLabel>Absent Cutoff Time</FormLabel><FormControl><Input type="time" {...field} /></FormControl><FormDescription>หลังเวลานี้ถือว่าขาด</FormDescription></FormItem>)} />
-            <FormField control={form.control} name="minSecondsBetweenScans" render={({ field }) => (<FormItem><FormLabel>Scan Cooldown (seconds)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormDescription>กันการสแกนซ้ำ</FormDescription></FormItem>)} />
+            <FormField control={form.control} name="graceMinutes" render={({ field }) => (<FormItem><FormLabel>Grace Period (minutes)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl><FormDescription>นาทีที่อนุญาตให้สายได้</FormDescription></FormItem>)} />
+            <FormField control={form.control} name="absentCutoffTime" render={({ field }) => (<FormItem><FormLabel>Absent Cutoff Time</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl><FormDescription>หลังเวลานี้ถือว่าขาด</FormDescription></FormItem>)} />
+            <FormField control={form.control} name="minSecondsBetweenScans" render={({ field }) => (<FormItem><FormLabel>Scan Cooldown (seconds)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl><FormDescription>กันการสแกนซ้ำ</FormDescription></FormItem>)} />
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Leave Policy</CardTitle>
+            <CardDescription>
+              กำหนดสิทธิ์การลาประเภทต่างๆ คำนวณตามปีปฏิทิน (1 ม.ค. - 31 ธ.ค.)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <LeavePolicyFields type="SICK" form={form} />
+            <LeavePolicyFields type="BUSINESS" form={form} />
+            <LeavePolicyFields type="VACATION" form={form} />
+          </CardContent>
+        </Card>
+
 
         <Card>
           <CardHeader>
@@ -207,17 +323,17 @@ export function HRSettingsForm() {
             <div>
               <h4 className="font-medium mb-2">Period 1</h4>
               <div className="grid grid-cols-3 gap-4 p-4 border rounded-md">
-                <FormField control={form.control} name="payroll.period1Start" render={({ field }) => (<FormItem><FormLabel>Start Day</FormLabel><FormControl><Input type="number" {...field} /></FormControl></FormItem>)} />
-                <FormField control={form.control} name="payroll.period1End" render={({ field }) => (<FormItem><FormLabel>End Day</FormLabel><FormControl><Input type="number" {...field} /></FormControl></FormItem>)} />
-                <FormField control={form.control} name="payroll.payday1" render={({ field }) => (<FormItem><FormLabel>Pay Day</FormLabel><FormControl><Input type="number" {...field} /></FormControl></FormItem>)} />
+                <FormField control={form.control} name="payroll.period1Start" render={({ field }) => (<FormItem><FormLabel>Start Day</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                <FormField control={form.control} name="payroll.period1End" render={({ field }) => (<FormItem><FormLabel>End Day</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                <FormField control={form.control} name="payroll.payday1" render={({ field }) => (<FormItem><FormLabel>Pay Day</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
               </div>
             </div>
             <div>
               <h4 className="font-medium mb-2">Period 2</h4>
               <div className="grid grid-cols-3 gap-4 p-4 border rounded-md">
-                <FormField control={form.control} name="payroll.period2Start" render={({ field }) => (<FormItem><FormLabel>Start Day</FormLabel><FormControl><Input type="number" {...field} /></FormControl></FormItem>)} />
-                <FormField control={form.control} name="payroll.period2End" render={({ field }) => (<FormItem><FormLabel>End Day</FormLabel><FormControl><Input placeholder="EOM" {...field} /></FormControl></FormItem>)} />
-                <FormField control={form.control} name="payroll.payday2" render={({ field }) => (<FormItem><FormLabel>Pay Day</FormLabel><FormControl><Input placeholder="EOM" {...field} /></FormControl></FormItem>)} />
+                <FormField control={form.control} name="payroll.period2Start" render={({ field }) => (<FormItem><FormLabel>Start Day</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                <FormField control={form.control} name="payroll.period2End" render={({ field }) => (<FormItem><FormLabel>End Day</FormLabel><FormControl><Input placeholder="EOM" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                <FormField control={form.control} name="payroll.payday2" render={({ field }) => (<FormItem><FormLabel>Pay Day</FormLabel><FormControl><Input placeholder="EOM" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
               </div>
             </div>
           </CardContent>
@@ -231,9 +347,9 @@ export function HRSettingsForm() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-             <FormField control={form.control} name="sso.employeePercent" render={({ field }) => (<FormItem><FormLabel>Employee %</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl></FormItem>)} />
-             <FormField control={form.control} name="sso.employerPercent" render={({ field }) => (<FormItem><FormLabel>Employer %</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl></FormItem>)} />
-             <FormField control={form.control} name="sso.monthlyCap" render={({ field }) => (<FormItem><FormLabel>Monthly Cap</FormLabel><FormControl><Input type="number" {...field} /></FormControl></FormItem>)} />
+             <FormField control={form.control} name="sso.employeePercent" render={({ field }) => (<FormItem><FormLabel>Employee %</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? 0} /></FormControl></FormItem>)} />
+             <FormField control={form.control} name="sso.employerPercent" render={({ field }) => (<FormItem><FormLabel>Employer %</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? 0} /></FormControl></FormItem>)} />
+             <FormField control={form.control} name="sso.monthlyCap" render={({ field }) => (<FormItem><FormLabel>Monthly Cap</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl></FormItem>)} />
           </CardContent>
         </Card>
 
@@ -251,8 +367,8 @@ export function HRSettingsForm() {
                   <FormLabel className="font-normal">Enable Withholding Tax</FormLabel>
                 </FormItem>
             )} />
-            <FormField control={form.control} name="withholding.defaultPercent" render={({ field }) => (<FormItem><FormLabel>Default Percent (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} disabled={!form.watch('withholding.enabled')} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="withholding.note" render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="withholding.defaultPercent" render={({ field }) => (<FormItem><FormLabel>Default Percent (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? 0} disabled={!form.watch('withholding.enabled')} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="withholding.note" render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
           </CardContent>
         </Card>
         

@@ -93,6 +93,14 @@ export interface KioskToken {
   isActive: boolean;
 }
 
+export interface LeaveTypePolicy {
+  annualEntitlement?: number;
+  overLimitHandling?: {
+    mode?: 'DEDUCT_SALARY' | 'UNPAID' | 'DISALLOW';
+    salaryDeductionBaseDays?: number;
+  };
+}
+
 export interface HRSettings {
   id?: 'hr';
   workStart?: string;
@@ -120,6 +128,14 @@ export interface HRSettings {
     enabled?: boolean;
     defaultPercent?: number;
     note?: string;
+  };
+  leavePolicy?: {
+    calculationPeriod?: 'CALENDAR_YEAR';
+    leaveTypes?: {
+      SICK?: LeaveTypePolicy;
+      BUSINESS?: LeaveTypePolicy;
+      VACATION?: LeaveTypePolicy;
+    };
   };
 }
 
