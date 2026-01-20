@@ -329,18 +329,17 @@ function EmployeesTab() {
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
-            className="sm:max-w-2xl" 
+            className="sm:max-w-2xl flex flex-col max-h-[90vh]" 
             onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
             onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
-          <DialogHeader>
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit User Profile</DialogTitle>
             <DialogDescription>Update the user's details below. Click save when you're done.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <ScrollArea className="max-h-[60vh] p-1">
-                <div className="space-y-6 pr-6">
+            <div className="flex-1 overflow-y-auto -mx-6 px-6 py-4">
+              <form id="edit-user-form-hr" onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                     <Card>
                         <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
@@ -405,15 +404,14 @@ function EmployeesTab() {
                              <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
                     </Card>
-                </div>
-              </ScrollArea>
-              <DialogFooter className="pt-6">
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
-                </Button>
-              </DialogFooter>
-            </form>
+              </form>
+            </div>
+            <DialogFooter className="flex-shrink-0 border-t pt-4 bg-background pb-6 -mx-6 px-6">
+              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+              <Button type="submit" form="edit-user-form-hr" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
+              </Button>
+            </DialogFooter>
           </Form>
         </DialogContent>
       </Dialog>
