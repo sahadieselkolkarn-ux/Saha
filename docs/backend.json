@@ -491,6 +491,33 @@
           }
         }
       }
+    },
+    "HRHoliday": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "HR Holiday",
+      "description": "Represents a single company holiday.",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "The date of the holiday in YYYY-MM-DD format."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the holiday (e.g., New Year's Day)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the holiday was added."
+        }
+      },
+      "required": [
+        "date",
+        "name",
+        "createdAt"
+      ]
     }
   },
   "auth": {
@@ -612,6 +639,22 @@
             {
               "name": "settingId",
               "description": "The ID of the settings document (e.g., 'hr')."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/hrHolidays/{holidayId}",
+        "definition": {
+          "entityName": "HRHoliday",
+          "schema": {
+            "$ref": "#/backend/entities/HRHoliday"
+          },
+          "description": "Stores company holiday records.",
+          "params": [
+            {
+              "name": "holidayId",
+              "description": "The unique ID of the holiday record."
             }
           ]
         }

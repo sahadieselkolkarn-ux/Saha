@@ -122,3 +122,10 @@ export interface HRSettings {
     note?: string;
   };
 }
+
+export interface HRHoliday {
+  id: string;
+  date: string; // YYYY-MM-DD
+  name: string;
+  createdAt: Timestamp;
+}
