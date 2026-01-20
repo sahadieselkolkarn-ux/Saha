@@ -1,5 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -144,4 +144,19 @@ export interface HRHoliday {
   date: string; // YYYY-MM-DD
   name: string;
   createdAt: Timestamp;
+}
+
+export interface LeaveRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  leaveType: LeaveType;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  days: number;
+  reason: string;
+  status: LeaveStatus;
+  year: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
