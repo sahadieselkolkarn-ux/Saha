@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function PageAlias() {
-  return null;
+  redirect("/app/jobs");
 }
