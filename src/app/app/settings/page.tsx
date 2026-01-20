@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, LogOut, Edit, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const profileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -39,6 +40,7 @@ const profileSchema = z.object({
   }).optional(),
   hr: z.object({
     salaryMonthly: z.coerce.number().optional(),
+    payType: z.enum(["MONTHLY", "DAILY"]).optional(),
     ssoHospital: z.string().optional().default(''),
     note: z.string().optional().default(''),
   }).optional(),
@@ -48,7 +50,7 @@ const profileSchema = z.object({
 const InfoRow = ({ label, value }: { label: string, value: React.ReactNode }) => (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <p className="text-sm sm:text-right">{value || '-'}</p>
+        <div className="text-sm sm:text-right">{value || '-'}</div>
     </div>
 )
 
@@ -87,6 +89,7 @@ export default function SettingsPage() {
                 },
                 hr: {
                     salaryMonthly: profile.hr?.salaryMonthly,
+                    payType: profile.hr?.payType,
                     ssoHospital: profile.hr?.ssoHospital || '',
                     note: profile.hr?.note || ''
                 }
@@ -109,6 +112,7 @@ export default function SettingsPage() {
                 'personal.emergencyContact.name': values.personal?.emergencyContact?.name || null,
                 'personal.emergencyContact.relationship': values.personal?.emergencyContact?.relationship || null,
                 'personal.emergencyContact.phone': values.personal?.emergencyContact?.phone || null,
+                'hr.payType': values.hr?.payType || null,
                 'hr.ssoHospital': values.hr?.ssoHospital || null,
                 'hr.note': values.hr?.note || null,
                 updatedAt: serverTimestamp()
@@ -200,6 +204,9 @@ export default function SettingsPage() {
                                       </FormItem>
                                     )}
                                   />
+                                  <FormField name="hr.payType" control={form.control} render={({ field }) => (
+                                    <FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                                  )} />
                                  <FormField control={form.control} name="hr.ssoHospital" render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                                  <FormField control={form.control} name="hr.note" render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                             </CardContent>

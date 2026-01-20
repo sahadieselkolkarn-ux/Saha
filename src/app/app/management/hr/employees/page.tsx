@@ -136,42 +136,45 @@ export default function ManagementHREmployeesPage() {
   }, [db, toast]);
   
   useEffect(() => {
-    if (!isDialogOpen) {
+    if (isDialogOpen) {
+      if (editingUser) {
+        form.reset({
+          displayName: editingUser.displayName,
+          phone: editingUser.phone,
+          department: editingUser.department || undefined,
+          role: editingUser.role,
+          status: editingUser.status,
+          personal: {
+            idCardNo: editingUser.personal?.idCardNo || '',
+            address: editingUser.personal?.address || '',
+            bank: {
+              bankName: editingUser.personal?.bank?.bankName || '',
+              accountName: editingUser.personal?.bank?.accountName || '',
+              accountNo: editingUser.personal?.bank?.accountNo || '',
+            },
+            emergencyContact: {
+              name: editingUser.personal?.emergencyContact?.name || '',
+              relationship: editingUser.personal?.emergencyContact?.relationship || '',
+              phone: editingUser.personal?.emergencyContact?.phone || '',
+            }
+          },
+          hr: {
+            salaryMonthly: editingUser.hr?.salaryMonthly,
+            payType: editingUser.hr?.payType,
+            ssoHospital: editingUser.hr?.ssoHospital || '',
+            note: editingUser.hr?.note || ''
+          }
+        });
+      }
+    } else {
       setEditingUser(null);
       form.reset({});
     }
-  }, [isDialogOpen, form]);
+  }, [isDialogOpen, editingUser, form]);
 
 
   const openDialog = (user: UserProfile) => {
     setEditingUser(user);
-    form.reset({
-      displayName: user.displayName,
-      phone: user.phone,
-      department: user.department || undefined,
-      role: user.role,
-      status: user.status,
-      personal: {
-        idCardNo: user.personal?.idCardNo || '',
-        address: user.personal?.address || '',
-        bank: {
-            bankName: user.personal?.bank?.bankName || '',
-            accountName: user.personal?.bank?.accountName || '',
-            accountNo: user.personal?.bank?.accountNo || '',
-        },
-        emergencyContact: {
-            name: user.personal?.emergencyContact?.name || '',
-            relationship: user.personal?.emergencyContact?.relationship || '',
-            phone: user.personal?.emergencyContact?.phone || '',
-        }
-      },
-      hr: {
-          salaryMonthly: user.hr?.salaryMonthly,
-          payType: user.hr?.payType,
-          ssoHospital: user.hr?.ssoHospital || '',
-          note: user.hr?.note || ''
-      }
-    });
     setIsDialogOpen(true);
   };
 
