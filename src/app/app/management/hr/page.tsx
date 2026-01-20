@@ -332,7 +332,7 @@ function EmployeesTab() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)}>
-              <ScrollArea className="max-h-[70vh] p-1">
+              <ScrollArea className="max-h-[60vh] p-1">
                 <div className="space-y-6 pr-6">
                     <Card>
                         <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
