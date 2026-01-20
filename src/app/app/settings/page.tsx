@@ -256,7 +256,7 @@ export default function SettingsPage() {
                     <CardContent className="space-y-2">
                         <InfoRow label="ID Card Number" value={profile.personal?.idCardNo} />
                         <Separator />
-                        <InfoRow label="Address" value={<p className="whitespace-pre-wrap">{profile.personal?.address || '-'}</p>} />
+                        <InfoRow label="Address" value={<span className="whitespace-pre-wrap">{profile.personal?.address || '-'}</span>} />
                         <Separator />
                         <p className="font-medium pt-2">Bank Account</p>
                         <div className="pl-4">
@@ -283,7 +283,7 @@ export default function SettingsPage() {
                         <Separator />
                         <InfoRow label="SSO Hospital" value={profile.hr?.ssoHospital} />
                         <Separator />
-                        <InfoRow label="Note" value={<p className="whitespace-pre-wrap">{profile.hr?.note || '-'}</p>} />
+                        <InfoRow label="Note" value={<span className="whitespace-pre-wrap">{profile.hr?.note || '-'}</span>} />
                     </CardContent>
                 </Card>
 
