@@ -17,10 +17,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MoreHorizontal, PlusCircle, Trash2, CalendarPlus } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Trash2, CalendarPlus, CheckCircle, XCircle, ShieldAlert } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DEPARTMENTS, USER_ROLES, USER_STATUSES } from "@/lib/constants";
-import type { UserProfile, HRHoliday as HRHolidayType } from "@/lib/types";
+import { DEPARTMENTS, USER_ROLES, USER_STATUSES, LeaveStatus, LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
+import type { UserProfile, HRHoliday as HRHolidayType, LeaveRequest, HRSettings } from "@/lib/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,11 +34,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HRSettingsForm } from "@/components/hr-settings-form";
-import { format, isBefore, startOfToday, parseISO } from 'date-fns';
+import { format, isBefore, startOfToday, parseISO, getYear } from 'date-fns';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useCollection } from "@/firebase/firestore/use-collection";
+import { useDoc } from "@/firebase/firestore/use-doc";
+import { Badge } from "@/components/ui/badge";
 
 
 const userProfileSchema = z.object({
@@ -637,6 +639,296 @@ function HolidaysTab() {
   );
 }
 
+function LeavesTab() {
+  const { db } = useFirebase();
+  const { profile: adminProfile } = useAuth();
+  const { toast } = useToast();
+
+  const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
+  const [filters, setFilters] = useState({ status: 'ALL', userId: 'ALL' });
+  const [rejectingLeave, setRejectingLeave] = useState<LeaveRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [approvingLeave, setApprovingLeave] = useState<LeaveRequest | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
+  const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
+  
+  const usersQuery = useMemo(() => db ? query(collection(db, 'users'), orderBy('displayName', 'asc')) : null, [db]);
+  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersQuery);
+
+  const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), orderBy('createdAt', 'desc')) : null, [db]);
+  const { data: allLeaves, isLoading: isLoadingLeaves } = useCollection<LeaveRequest>(leavesQuery);
+
+  const isLoading = isLoadingSettings || isLoadingUsers || isLoadingLeaves;
+
+  const { leaveSummary, filteredLeaves, yearOptions } = useMemo(() => {
+    const years = new Set<number>();
+    if (allLeaves) {
+      allLeaves.forEach(leave => years.add(leave.year));
+    }
+    const currentYear = getYear(new Date());
+    years.add(currentYear);
+    const sortedYears = Array.from(years).sort((a, b) => b - a);
+
+    if (!allLeaves || !users) {
+      return { leaveSummary: [], filteredLeaves: [], yearOptions: sortedYears };
+    }
+
+    const summary: Record<string, { userName: string; SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }> = {};
+    users.forEach(u => {
+      summary[u.uid] = { userName: u.displayName, SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
+    });
+
+    allLeaves.forEach(leave => {
+      if (leave.status === 'APPROVED' && leave.year === selectedYear && summary[leave.userId]) {
+        if (leave.leaveType in summary[leave.userId]) {
+            summary[leave.userId][leave.leaveType] += leave.days;
+            summary[leave.userId].TOTAL += leave.days;
+        }
+      }
+    });
+
+    const filtered = allLeaves.filter(leave => 
+      leave.year === selectedYear &&
+      (filters.status === 'ALL' || leave.status === filters.status) &&
+      (filters.userId === 'ALL' || leave.userId === filters.userId)
+    );
+
+    return { leaveSummary: Object.values(summary).filter(s => s.TOTAL > 0), filteredLeaves: filtered, yearOptions: sortedYears };
+  }, [allLeaves, users, selectedYear, filters]);
+
+  const overLimitDetails = useMemo(() => {
+    if (!approvingLeave || !hrSettings || !allLeaves || !users) return null;
+
+    const leave = approvingLeave;
+    const approvedLeavesThisYear = allLeaves.filter(l =>
+        l.userId === leave.userId && l.year === leave.year && l.leaveType === leave.leaveType && l.status === 'APPROVED'
+    );
+    const daysTaken = approvedLeavesThisYear.reduce((sum, l) => sum + l.days, 0);
+
+    const policy = hrSettings.leavePolicy?.leaveTypes?.[leave.leaveType];
+    const entitlement = policy?.annualEntitlement ?? 0;
+    
+    if ((daysTaken + leave.days) > entitlement) {
+        const salary = users.find(u => u.uid === leave.userId)?.hr?.salaryMonthly;
+        const deductionDays = policy?.overLimitHandling?.salaryDeductionBaseDays ?? 26;
+        let deductionAmount = 0;
+        if (policy?.overLimitHandling?.mode === 'DEDUCT_SALARY' && salary) {
+            const overDays = (daysTaken + leave.days) - entitlement;
+            deductionAmount = (salary / deductionDays) * overDays;
+        }
+        return { mode: policy?.overLimitHandling?.mode, amount: deductionAmount, days: (daysTaken + leave.days) - entitlement };
+    }
+    return null;
+  }, [approvingLeave, hrSettings, allLeaves, users]);
+
+  const handleApprove = async () => {
+    if (!db || !adminProfile || !approvingLeave) return;
+
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'hrLeaves', approvingLeave.id), {
+        status: 'APPROVED',
+        approvedByName: adminProfile.displayName,
+        approvedAt: serverTimestamp(),
+        overLimit: !!overLimitDetails,
+        updatedAt: serverTimestamp(),
+      });
+      toast({ title: 'Leave Approved' });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Approval Failed', description: error.message });
+    } finally {
+      setIsSubmitting(false);
+      setApprovingLeave(null);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!db || !adminProfile || !rejectingLeave || !rejectReason) return;
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'hrLeaves', rejectingLeave.id), {
+        status: 'REJECTED',
+        rejectedByName: adminProfile.displayName,
+        rejectedAt: serverTimestamp(),
+        rejectReason,
+        updatedAt: serverTimestamp(),
+      });
+      toast({ title: 'Leave Rejected' });
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Rejection Failed', description: error.message });
+    } finally {
+      setIsSubmitting(false);
+      setRejectingLeave(null);
+      setRejectReason('');
+    }
+  };
+
+  const getStatusVariant = (status: LeaveStatus) => {
+    switch (status) {
+      case 'SUBMITTED': return 'secondary';
+      case 'APPROVED': return 'default';
+      case 'REJECTED': return 'destructive';
+      case 'CANCELLED': return 'outline';
+      default: return 'outline';
+    }
+  };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+
+  return (
+    <Tabs defaultValue="summary">
+      <TabsList>
+        <TabsTrigger value="summary">Summary</TabsTrigger>
+        <TabsTrigger value="requests">All Requests</TabsTrigger>
+      </TabsList>
+      <TabsContent value="summary" className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Leave Summary</CardTitle>
+            <CardDescription>Total approved leave days for the selected year.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex justify-end mb-4">
+              <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number(v))}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Sick</TableHead>
+                  <TableHead>Business</TableHead>
+                  <TableHead>Vacation</TableHead>
+                  <TableHead>Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {leaveSummary.length > 0 ? leaveSummary.map(s => (
+                  <TableRow key={s.userName}>
+                    <TableCell>{s.userName}</TableCell>
+                    <TableCell>{s.SICK}</TableCell>
+                    <TableCell>{s.BUSINESS}</TableCell>
+                    <TableCell>{s.VACATION}</TableCell>
+                    <TableCell className="font-bold">{s.TOTAL}</TableCell>
+                  </TableRow>
+                )) : <TableRow><TableCell colSpan={5} className="text-center h-24">No approved leaves this year.</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TabsContent>
+      <TabsContent value="requests" className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>All Leave Requests</CardTitle>
+            <CardDescription>Review and approve/reject leave requests.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4 mb-4">
+              <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number(v))}>
+                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={filters.status} onValueChange={(v) => setFilters(f => ({...f, status: v}))}>
+                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="ALL">All Statuses</SelectItem>{LEAVE_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={filters.userId} onValueChange={(v) => setFilters(f => ({...f, userId: v}))}>
+                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="ALL">All Employees</SelectItem>{users?.map(u=><SelectItem key={u.uid} value={u.uid}>{u.displayName}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Dates</TableHead>
+                  <TableHead>Days</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredLeaves.length > 0 ? filteredLeaves.map(leave => (
+                  <TableRow key={leave.id}>
+                    <TableCell>{leave.userName}</TableCell>
+                    <TableCell>{leave.leaveType}</TableCell>
+                    <TableCell>{format(parseISO(leave.startDate), 'dd/MM/yy')} - {format(parseISO(leave.endDate), 'dd/MM/yy')}</TableCell>
+                    <TableCell>{leave.days}</TableCell>
+                    <TableCell><Badge variant={getStatusVariant(leave.status)}>{leave.status}</Badge></TableCell>
+                    <TableCell className="space-x-2">
+                      {leave.status === 'SUBMITTED' && (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => setApprovingLeave(leave)}><CheckCircle className="h-4 w-4 mr-2"/>Approve</Button>
+                          <Button size="sm" variant="destructive" onClick={() => setRejectingLeave(leave)}><XCircle className="h-4 w-4 mr-2"/>Reject</Button>
+                        </>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )) : <TableRow><TableCell colSpan={6} className="text-center h-24">No requests match filters.</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TabsContent>
+      <AlertDialog open={!!approvingLeave} onOpenChange={(open) => !open && setApprovingLeave(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Approval</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to approve this leave request for <span className="font-bold">{approvingLeave?.userName}</span>?
+              {overLimitDetails && (
+                <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                    <div className="flex items-start gap-3">
+                        <ShieldAlert className="h-5 w-5 text-destructive mt-0.5" />
+                        <div>
+                            <h4 className="font-semibold text-destructive">Leave Limit Exceeded</h4>
+                            <p className="text-destructive/80 text-sm">Approving this will exceed the annual limit by {overLimitDetails.days} day(s).</p>
+                            {overLimitDetails.mode === 'DEDUCT_SALARY' && (
+                                <p className="text-destructive/80 text-sm">Estimated deduction: {overLimitDetails.amount.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApprove} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : 'Confirm Approve'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <Dialog open={!!rejectingLeave} onOpenChange={(open) => !open && setRejectingLeave(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Reject Leave Request</DialogTitle>
+                <DialogDescription>Please provide a reason for rejecting the request.</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <Textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason for rejection..."/>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setRejectingLeave(null)} disabled={isSubmitting}>Cancel</Button>
+                <Button variant="destructive" onClick={handleReject} disabled={isSubmitting || !rejectReason}>
+                     {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : 'Confirm Reject'}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Tabs>
+  );
+}
+
 
 export default function ManagementHRPage() {
     return (
@@ -660,13 +952,7 @@ export default function ManagementHRPage() {
                      <HolidaysTab />
                 </TabsContent>
                 <TabsContent value="leaves">
-                     <Card>
-                        <CardHeader>
-                            <CardTitle>วันลา</CardTitle>
-                            <CardDescription>จัดการและดูประวัติการลาของพนักงาน</CardDescription>
-                        </CardHeader>
-                        <CardContent><p>Coming soon.</p></CardContent>
-                    </Card>
+                     <LeavesTab />
                 </TabsContent>
                 <TabsContent value="attendance-summary">
                      <Card>

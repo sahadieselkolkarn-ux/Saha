@@ -631,6 +631,32 @@
         "year": {
           "type": "number"
         },
+        "approvedByName": {
+          "type": "string",
+          "description": "Name of the user who approved the request."
+        },
+        "approvedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the request was approved."
+        },
+        "rejectedByName": {
+          "type": "string",
+          "description": "Name of the user who rejected the request."
+        },
+        "rejectedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of when the request was rejected."
+        },
+        "rejectReason": {
+          "type": "string",
+          "description": "Reason for rejecting the request."
+        },
+        "overLimit": {
+          "type": "boolean",
+          "description": "Whether this leave request exceeded the annual entitlement."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"

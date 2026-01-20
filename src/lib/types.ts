@@ -157,6 +157,12 @@ export interface LeaveRequest {
   reason: string;
   status: LeaveStatus;
   year: number;
+  approvedByName?: string;
+  approvedAt?: Timestamp;
+  rejectedByName?: string;
+  rejectedAt?: Timestamp;
+  rejectReason?: string;
+  overLimit?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
