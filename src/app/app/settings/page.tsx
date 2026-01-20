@@ -20,6 +20,7 @@ import { Loader2, LogOut, Edit, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const profileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -48,9 +49,9 @@ const profileSchema = z.object({
 
 
 const InfoRow = ({ label, value }: { label: string, value: React.ReactNode }) => (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2">
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between py-2">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
-        <div className="text-sm sm:text-right">{value || '-'}</div>
+        <div className="text-sm sm:text-right break-words">{value || '-'}</div>
     </div>
 )
 
@@ -95,13 +96,13 @@ export default function SettingsPage() {
                 }
             });
         }
-    }, [profile, form]);
+    }, [profile, form, isEditing]); // Rerun when isEditing changes to reset form
 
     const onSubmit = async (values: z.infer<typeof profileSchema>) => {
         if (!db || !profile) return;
 
         try {
-            const updateData: any = {
+            const finalUpdate: any = {
                 displayName: values.displayName,
                 phone: values.phone,
                 'personal.idCardNo': values.personal?.idCardNo || null,
@@ -119,11 +120,11 @@ export default function SettingsPage() {
             };
 
             if (isManager) {
-                updateData['hr.salaryMonthly'] = values.hr?.salaryMonthly === undefined || values.hr.salaryMonthly === '' ? null : Number(values.hr.salaryMonthly);
+                finalUpdate['hr.salaryMonthly'] = values.hr?.salaryMonthly === undefined || values.hr.salaryMonthly === '' ? null : Number(values.hr.salaryMonthly);
             }
 
             const userDocRef = doc(db, 'users', profile.uid);
-            await updateDoc(userDocRef, updateData);
+            await updateDoc(userDocRef, finalUpdate);
 
             toast({ title: "Profile updated successfully" });
             setIsEditing(false);
@@ -161,58 +162,64 @@ export default function SettingsPage() {
                 <PageHeader title="Edit Profile" description="Update your personal information." />
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-4xl mx-auto">
-                        <Card>
-                            <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
-                            <CardContent className="space-y-4">
-                                <FormField control={form.control} name="displayName" render={({ field }) => (<FormItem><FormLabel>Display Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                <FormField control={form.control} name="phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
-                             <CardContent className="space-y-4">
-                                <FormField control={form.control} name="personal.idCardNo" render={({ field }) => (<FormItem><FormLabel>ID Card Number</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                <FormField control={form.control} name="personal.address" render={({ field }) => (<FormItem><FormLabel>Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                 <p className="font-medium text-sm pt-4">Bank Account</p>
-                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
-                                     <FormField control={form.control} name="personal.bank.bankName" render={({ field }) => (<FormItem><FormLabel>Bank Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                     <FormField control={form.control} name="personal.bank.accountName" render={({ field }) => (<FormItem><FormLabel>Account Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                     <FormField control={form.control} name="personal.bank.accountNo" render={({ field }) => (<FormItem><FormLabel>Account No.</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                 </div>
-                                 <p className="font-medium text-sm pt-4">Emergency Contact</p>
-                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
-                                      <FormField control={form.control} name="personal.emergencyContact.name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                      <FormField control={form.control} name="personal.emergencyContact.relationship" render={({ field }) => (<FormItem><FormLabel>Relationship</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                      <FormField control={form.control} name="personal.emergencyContact.phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                 </div>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                             <CardHeader><CardTitle>HR Information</CardTitle></CardHeader>
-                             <CardContent className="space-y-4">
-                                  <FormField
-                                    control={form.control}
-                                    name="hr.salaryMonthly"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel>Monthly Salary</FormLabel>
-                                        <FormControl>
-                                            <Input type="number" {...field} disabled={!isManager} value={field.value ?? ''} />
-                                        </FormControl>
-                                        {!isManager && <FormDescription>Only Managers can edit salary.</FormDescription>}
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <FormField name="hr.payType" control={form.control} render={({ field }) => (
-                                    <FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>
-                                  )} />
-                                 <FormField control={form.control} name="hr.ssoHospital" render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                 <FormField control={form.control} name="hr.note" render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                            </CardContent>
-                        </Card>
-
-                        <div className="flex items-center gap-4">
+                        <ScrollArea className="max-h-[70vh] p-1">
+                          <div className="space-y-6 pr-6">
+                            <Card>
+                                <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
+                                <CardContent className="space-y-4">
+                                    <FormField control={form.control} name="displayName" render={({ field }) => (<FormItem><FormLabel>Display Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader><CardTitle>Personal Information</CardTitle></CardHeader>
+                                <CardContent className="space-y-4">
+                                    <FormField control={form.control} name="personal.idCardNo" render={({ field }) => (<FormItem><FormLabel>ID Card Number</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="personal.address" render={({ field }) => (<FormItem><FormLabel>Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                    <p className="font-medium text-sm pt-4">Bank Account</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
+                                        <FormField control={form.control} name="personal.bank.bankName" render={({ field }) => (<FormItem><FormLabel>Bank Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField control={form.control} name="personal.bank.accountName" render={({ field }) => (<FormItem><FormLabel>Account Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField control={form.control} name="personal.bank.accountNo" render={({ field }) => (<FormItem><FormLabel>Account No.</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                    </div>
+                                    <p className="font-medium text-sm pt-4">Emergency Contact</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
+                                        <FormField control={form.control} name="personal.emergencyContact.name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField control={form.control} name="personal.emergencyContact.relationship" render={({ field }) => (<FormItem><FormLabel>Relationship</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                        <FormField control={form.control} name="personal.emergencyContact.phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                            <Card>
+                                <CardHeader><CardTitle>HR Information</CardTitle></CardHeader>
+                                <CardContent className="space-y-4">
+                                    <FormField
+                                        control={form.control}
+                                        name="hr.salaryMonthly"
+                                        render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Monthly Salary</FormLabel>
+                                            <FormControl>
+                                                <Input type="number" {...field} disabled={!isManager} value={field.value ?? ''} onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    field.onChange(value === '' ? undefined : Number(value));
+                                                }} />
+                                            </FormControl>
+                                            {!isManager && <FormDescription>Only Managers can edit salary.</FormDescription>}
+                                            <FormMessage />
+                                        </FormItem>
+                                        )}
+                                    />
+                                    <FormField name="hr.payType" control={form.control} render={({ field }) => (
+                                        <FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={form.control} name="hr.ssoHospital" render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="hr.note" render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                </CardContent>
+                            </Card>
+                          </div>
+                        </ScrollArea>
+                        <div className="flex items-center gap-4 pt-6">
                             <Button type="submit" disabled={form.formState.isSubmitting}>
                                 {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Save Changes

@@ -183,36 +183,28 @@ export default function ManagementHREmployeesPage() {
     setIsSubmitting(true);
     
     try {
-        const updateData: any = { ...formValues };
-
-        // Handle salary permission
-        if (!isManager) {
-            delete updateData.hr.salaryMonthly;
-        }
-
-        // Ensure nested objects are handled correctly without overwriting other fields
         const finalUpdate: {[key: string]: any} = {
-            displayName: updateData.displayName,
-            phone: updateData.phone,
-            department: updateData.department || null,
-            role: updateData.role,
-            status: updateData.status,
-            'personal.idCardNo': updateData.personal?.idCardNo || null,
-            'personal.address': updateData.personal?.address || null,
-            'personal.bank.bankName': updateData.personal?.bank?.bankName || null,
-            'personal.bank.accountName': updateData.personal?.bank?.accountName || null,
-            'personal.bank.accountNo': updateData.personal?.bank?.accountNo || null,
-            'personal.emergencyContact.name': updateData.personal?.emergencyContact?.name || null,
-            'personal.emergencyContact.relationship': updateData.personal?.emergencyContact?.relationship || null,
-            'personal.emergencyContact.phone': updateData.personal?.emergencyContact?.phone || null,
-            'hr.payType': updateData.hr?.payType || null,
-            'hr.ssoHospital': updateData.hr?.ssoHospital || null,
-            'hr.note': updateData.hr?.note || null,
+            displayName: formValues.displayName,
+            phone: formValues.phone,
+            department: formValues.department || null,
+            role: formValues.role,
+            status: formValues.status,
+            'personal.idCardNo': formValues.personal?.idCardNo || null,
+            'personal.address': formValues.personal?.address || null,
+            'personal.bank.bankName': formValues.personal?.bank?.bankName || null,
+            'personal.bank.accountName': formValues.personal?.bank?.accountName || null,
+            'personal.bank.accountNo': formValues.personal?.bank?.accountNo || null,
+            'personal.emergencyContact.name': formValues.personal?.emergencyContact?.name || null,
+            'personal.emergencyContact.relationship': formValues.personal?.emergencyContact?.relationship || null,
+            'personal.emergencyContact.phone': formValues.personal?.emergencyContact?.phone || null,
+            'hr.payType': formValues.hr?.payType || null,
+            'hr.ssoHospital': formValues.hr?.ssoHospital || null,
+            'hr.note': formValues.hr?.note || null,
             updatedAt: serverTimestamp()
         };
 
         if (isManager) {
-            finalUpdate['hr.salaryMonthly'] = updateData.hr?.salaryMonthly === undefined || updateData.hr.salaryMonthly === '' ? null : Number(updateData.hr.salaryMonthly);
+            finalUpdate['hr.salaryMonthly'] = formValues.hr?.salaryMonthly === undefined || formValues.hr.salaryMonthly === '' ? null : Number(formValues.hr.salaryMonthly);
         }
         
         const userDoc = doc(db, "users", editingUser.uid);
