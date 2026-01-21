@@ -68,7 +68,22 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/management/jobs" label="ภาพรวมงานซ่อม" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/accounting" label="บริหารงานบัญชี" onClick={onLinkClick} />
+                        <Collapsible defaultOpen={pathname.startsWith('/app/management/accounting')}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={pathname.startsWith('/app/management/accounting') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
+                                    บริหารงานบัญชี
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                <SubNavLink href="/app/management/accounting/revenue" label="รายรับ (เงินเข้า)" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/accounting/expenses" label="รายจ่าย (เงินออก)" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
+                            </CollapsibleContent>
+                        </Collapsible>
                         <SubNavLink href="/app/management/hr" label="บริหารงานบุคคล" onClick={onLinkClick} />
                         <Collapsible defaultOpen={pathname.startsWith('/app/management/settings')}>
                             <CollapsibleTrigger asChild>
