@@ -695,7 +695,7 @@ function LeavesTab() {
     const summary = users.map(user => {
         const userLeaveDays = leaveDaysMap.get(user.uid) || { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
         return {
-            userId: user.uid,
+            userId: user.id, // Using the document ID from useCollection
             userName: user.displayName,
             ...userLeaveDays
         };
