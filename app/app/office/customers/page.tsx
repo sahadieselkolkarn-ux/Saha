@@ -59,9 +59,7 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive">
-                            Delete
-                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>

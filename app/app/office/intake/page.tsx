@@ -285,7 +285,7 @@ export default function IntakePage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                     {photoPreviews.map((src, index) => (
                       <div key={index} className="relative">
-                        <Image src={src} alt={`Preview ${index}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
+                        <Image src={`Preview ${index}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
                         <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePhoto(index)}>
                           <X className="h-4 w-4" />
                         </Button>

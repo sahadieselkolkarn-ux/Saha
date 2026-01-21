@@ -11,9 +11,9 @@ import { differenceInSeconds } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { TOKEN_BUFFER_MS } from '@/lib/constants';
 
-import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { PageHeader } from "@/components/page-header";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, Link2Off } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { KioskToken } from '@/lib/types';
