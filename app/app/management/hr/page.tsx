@@ -675,9 +675,9 @@ function LeavesTab() {
       return { leaveSummary: [], filteredLeaves: [], yearOptions: sortedYears };
     }
 
-    const summary: Record<string, { userName: string; SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }> = {};
+    const summary: Record<string, { userId: string, userName: string; SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }> = {};
     users.forEach(u => {
-      summary[u.uid] = { userName: u.displayName, SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
+      summary[u.uid] = { userId: u.uid, userName: u.displayName, SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
     });
 
     allLeaves.forEach(leave => {
@@ -810,7 +810,7 @@ function LeavesTab() {
               </TableHeader>
               <TableBody>
                 {leaveSummary.length > 0 ? leaveSummary.map(s => (
-                  <TableRow key={s.userName}>
+                  <TableRow key={s.userId}>
                     <TableCell>{s.userName}</TableCell>
                     <TableCell>{s.SICK}</TableCell>
                     <TableCell>{s.BUSINESS}</TableCell>
