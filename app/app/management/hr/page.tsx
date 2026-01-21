@@ -837,11 +837,11 @@ function LeavesTab() {
               </Select>
               <Select value={filters.status} onValueChange={(v) => setFilters(f => ({...f, status: v}))}>
                 <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="ALL">All Statuses</SelectItem>{LEAVE_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                <SelectContent><SelectItem key="status-all" value="ALL">All Statuses</SelectItem>{LEAVE_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
               </Select>
               <Select value={filters.userId} onValueChange={(v) => setFilters(f => ({...f, userId: v}))}>
                 <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="ALL">All Employees</SelectItem>{users?.map(u=><SelectItem key={u.uid} value={u.uid}>{u.displayName}</SelectItem>)}</SelectContent>
+                <SelectContent><SelectItem key="user-all" value="ALL">All Employees</SelectItem>{users?.map(u=><SelectItem key={u.uid} value={u.uid}>{u.displayName}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <Table>
