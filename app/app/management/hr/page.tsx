@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -38,7 +39,7 @@ import { format, isBefore, startOfToday, parseISO, getYear } from 'date-fns';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { useCollection } from "@/firebase/firestore/use-collection";
+import { useCollection, WithId } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { Badge } from "@/components/ui/badge";
 
@@ -78,7 +79,9 @@ const holidaySchema = z.object({
   name: z.string().min(1, "Holiday name is required."),
 });
 
-const UserCard = ({ user, onEdit, onDelete }: { user: UserProfile, onEdit: (user: UserProfile) => void, onDelete: (userId: string) => void }) => (
+type UserWithId = WithId<UserProfile>;
+
+const UserCard = ({ user, onEdit, onDelete }: { user: UserWithId, onEdit: (user: UserWithId) => void, onDelete: (userId: string) => void }) => (
     <Card>
         <CardHeader>
             <div className="flex justify-between items-start">
@@ -91,7 +94,7 @@ const UserCard = ({ user, onEdit, onDelete }: { user: UserProfile, onEdit: (user
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => onEdit(user)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onDelete(user.uid)} className="text-destructive focus:text-destructive">
+                        <DropdownMenuItem onClick={() => onDelete(user.id)} className="text-destructive focus:text-destructive">
                             Delete
                         </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -120,11 +123,11 @@ function EmployeesTab() {
   const { db } = useFirebase();
   const { profile: loggedInUser } = useAuth();
   const { toast } = useToast();
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<UserWithId[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editingUser, setEditingUser] = useState<UserWithId | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
 
@@ -139,7 +142,7 @@ function EmployeesTab() {
     if (!db) return;
     const q = query(collection(db, "users"), orderBy("displayName", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserWithId));
       setUsers(usersData);
       setLoading(false);
     },
@@ -188,7 +191,7 @@ function EmployeesTab() {
   }, [isDialogOpen, editingUser, form]);
 
 
-  const openDialog = (user: UserProfile) => {
+  const openDialog = (user: UserWithId) => {
     setEditingUser(user);
     setIsDialogOpen(true);
   };
@@ -222,7 +225,7 @@ function EmployeesTab() {
             finalUpdate['hr.salaryMonthly'] = formValues.hr?.salaryMonthly === undefined || formValues.hr.salaryMonthly === '' ? null : Number(formValues.hr.salaryMonthly);
         }
         
-        const userDoc = doc(db, "users", editingUser.uid);
+        const userDoc = doc(db, "users", editingUser.id);
         await updateDoc(userDoc, finalUpdate);
         
         toast({ title: "User profile updated successfully" });
@@ -296,7 +299,7 @@ function EmployeesTab() {
             <TableBody>
               {users.length > 0 ? (
                 users.map(user => (
-                    <TableRow key={user.uid}>
+                    <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.displayName}</TableCell>
                     <TableCell>{user.phone}</TableCell>
                     <TableCell>{user.department || 'N/A'}</TableCell>
@@ -308,7 +311,7 @@ function EmployeesTab() {
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openDialog(user)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeleteRequest(user.uid)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteRequest(user.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -329,7 +332,7 @@ function EmployeesTab() {
       <div className="grid gap-4 sm:hidden">
         {users.length > 0 ? (
             users.map(user => (
-                <UserCard key={user.uid} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} />
+                <UserCard key={user.id} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} />
             ))
         ) : (
             <Card className="text-center py-12">
@@ -693,7 +696,7 @@ function LeavesTab() {
 
     // 3. Create the final summary by mapping over all users
     const summary = users.map(user => {
-        const userLeaveDays = leaveDaysMap.get(user.uid) || { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
+        const userLeaveDays = leaveDaysMap.get(user.id) || { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
         return {
             userId: user.id, // Using the document ID from useCollection
             userName: user.displayName,
@@ -724,7 +727,7 @@ function LeavesTab() {
     const entitlement = policy?.annualEntitlement ?? 0;
     
     if ((daysTaken + leave.days) > entitlement) {
-        const salary = users.find(u => u.uid === leave.userId)?.hr?.salaryMonthly;
+        const salary = users.find(u => u.id === leave.userId)?.hr?.salaryMonthly;
         const deductionDays = policy?.overLimitHandling?.salaryDeductionBaseDays ?? 26;
         let deductionAmount = 0;
         if (policy?.overLimitHandling?.mode === 'DEDUCT_SALARY' && salary) {
@@ -854,7 +857,7 @@ function LeavesTab() {
               </Select>
               <Select value={filters.userId} onValueChange={(v) => setFilters(f => ({...f, userId: v}))}>
                 <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem key="user-all" value="ALL">All Employees</SelectItem>{users?.map(u=><SelectItem key={u.uid} value={u.uid}>{u.displayName}</SelectItem>)}</SelectContent>
+                <SelectContent><SelectItem key="user-all" value="ALL">All Employees</SelectItem>{users?.map(u=><SelectItem key={u.id} value={u.id}>{u.displayName}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <Table>

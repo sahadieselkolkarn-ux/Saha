@@ -688,155 +688,61 @@
     ]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "UserProfile",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Stores user profile information.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique ID of the user."
-            }
-          ]
-        }
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/backend/entities/UserProfile"
       },
-      {
-        "path": "/customers/{customerId}",
-        "definition": {
-          "entityName": "Customer",
-          "schema": {
-            "$ref": "#/backend/entities/Customer"
-          },
-          "description": "Stores customer information.",
-          "params": [
-            {
-              "name": "customerId",
-              "description": "The unique ID of the customer."
-            }
-          ]
-        }
+      "description": "Stores user profile information."
+    },
+    "/customers/{customerId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Customer"
       },
-      {
-        "path": "/jobs/{jobId}",
-        "definition": {
-          "entityName": "Job",
-          "schema": {
-            "$ref": "#/backend/entities/Job"
-          },
-          "description": "Stores job information.",
-          "params": [
-            {
-              "name": "jobId",
-              "description": "The unique ID of the job."
-            }
-          ]
-        }
+      "description": "Stores customer information."
+    },
+    "/jobs/{jobId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Job"
       },
-      {
-        "path": "/jobs/{jobId}/activities/{activityId}",
-        "definition": {
-          "entityName": "JobActivity",
-          "schema": {
-            "$ref": "#/backend/entities/JobActivity"
-          },
-          "description": "Stores activity logs for a specific job.",
-          "params": [
-            {
-              "name": "jobId",
-              "description": "The unique ID of the job."
-            },
-            {
-              "name": "activityId",
-              "description": "The unique ID of the activity."
-            }
-          ]
-        }
+      "description": "Stores job information."
+    },
+    "/jobs/{jobId}/activities/{activityId}": {
+      "schema": {
+        "$ref": "#/backend/entities/JobActivity"
       },
-      {
-        "path": "/attendance/{attendanceId}",
-        "definition": {
-          "entityName": "Attendance",
-          "schema": {
-            "$ref": "#/backend/entities/Attendance"
-          },
-          "description": "Stores clock-in/out records.",
-          "params": [
-            {
-              "name": "attendanceId",
-              "description": "The unique ID of the attendance record."
-            }
-          ]
-        }
+      "description": "Stores activity logs for a specific job."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Attendance"
       },
-      {
-        "path": "/kioskTokens/{tokenId}",
-        "definition": {
-          "entityName": "KioskToken",
-          "schema": {
-            "$ref": "#/backend/entities/KioskToken"
-          },
-          "description": "Stores temporary tokens for kiosk attendance.",
-          "params": [
-            {
-              "name": "tokenId",
-              "description": "The unique token ID."
-            }
-          ]
-        }
+      "description": "Stores clock-in/out records."
+    },
+    "/kioskTokens/{tokenId}": {
+      "schema": {
+        "$ref": "#/backend/entities/KioskToken"
       },
-      {
-        "path": "/settings/{settingId}",
-        "definition": {
-          "entityName": "HRSettings",
-          "schema": {
-            "$ref": "#/backend/entities/HRSettings"
-          },
-          "description": "Stores application settings, like 'hr' settings.",
-          "params": [
-            {
-              "name": "settingId",
-              "description": "The ID of the settings document (e.g., 'hr')."
-            }
-          ]
-        }
+      "description": "Stores temporary tokens for kiosk attendance."
+    },
+    "/settings/{settingId}": {
+      "schema": {
+        "$ref": "#/backend/entities/HRSettings"
       },
-      {
-        "path": "/hrHolidays/{holidayId}",
-        "definition": {
-          "entityName": "HRHoliday",
-          "schema": {
-            "$ref": "#/backend/entities/HRHoliday"
-          },
-          "description": "Stores company holiday records.",
-          "params": [
-            {
-              "name": "holidayId",
-              "description": "The unique ID of the holiday record."
-            }
-          ]
-        }
+      "description": "Stores application settings, like 'hr' settings."
+    },
+    "/hrHolidays/{holidayId}": {
+      "schema": {
+        "$ref": "#/backend/entities/HRHoliday"
       },
-      {
-        "path": "/hrLeaves/{leaveId}",
-        "definition": {
-          "entityName": "LeaveRequest",
-          "schema": {
-            "$ref": "#/backend/entities/LeaveRequest"
-          },
-          "description": "Stores employee leave requests.",
-          "params": [
-            {
-              "name": "leaveId",
-              "description": "The unique ID of the leave request."
-            }
-          ]
-        }
-      }
-    ]
+      "description": "Stores company holiday records."
+    },
+    "/hrLeaves/{leaveId}": {
+      "schema": {
+        "$ref": "#/backend/entities/LeaveRequest"
+      },
+      "description": "Stores employee leave requests."
+    }
   }
 }
+
+    
