@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -680,13 +681,13 @@ function LeavesTab() {
     }
 
     // 2. Create a map of approved leave days per user for the selected year
-    const leaveDaysMap = new Map<string, { SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }>();
+    const approvedLeaveDaysMap = new Map<string, { SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }>();
     allLeaves.forEach(leave => {
         if (leave.status === 'APPROVED' && leave.year === selectedYear) {
-            if (!leaveDaysMap.has(leave.userId)) {
-                leaveDaysMap.set(leave.userId, { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 });
+            if (!approvedLeaveDaysMap.has(leave.userId)) {
+                approvedLeaveDaysMap.set(leave.userId, { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 });
             }
-            const userLeave = leaveDaysMap.get(leave.userId)!;
+            const userLeave = approvedLeaveDaysMap.get(leave.userId)!;
             if (leave.leaveType in userLeave) {
                 (userLeave as any)[leave.leaveType] += leave.days;
                 userLeave.TOTAL += leave.days;
@@ -696,9 +697,9 @@ function LeavesTab() {
 
     // 3. Create the final summary by mapping over all users
     const summary = users.map(user => {
-        const userLeaveDays = leaveDaysMap.get(user.id) || { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
+        const userLeaveDays = approvedLeaveDaysMap.get(user.id) || { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
         return {
-            userId: user.id, // Using the document ID from useCollection
+            userId: user.id,
             userName: user.displayName,
             ...userLeaveDays
         };
@@ -900,22 +901,22 @@ function LeavesTab() {
             <AlertDialogTitle>Confirm Approval</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to approve this leave request for <span className="font-bold">{approvingLeave?.userName}</span>?
-              {overLimitDetails && (
-                <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                    <div className="flex items-start gap-3">
-                        <ShieldAlert className="h-5 w-5 text-destructive mt-0.5" />
-                        <div>
-                            <h4 className="font-semibold text-destructive">Leave Limit Exceeded</h4>
-                            <p className="text-destructive/80 text-sm">Approving this will exceed the annual limit by {overLimitDetails.days} day(s).</p>
-                            {overLimitDetails.mode === 'DEDUCT_SALARY' && (
-                                <p className="text-destructive/80 text-sm">Estimated deduction: {overLimitDetails.amount.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {overLimitDetails && (
+            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                <div className="flex items-start gap-3">
+                    <ShieldAlert className="h-5 w-5 text-destructive mt-0.5" />
+                    <div>
+                        <h4 className="font-semibold text-destructive">Leave Limit Exceeded</h4>
+                        <p className="text-destructive/80 text-sm">Approving this will exceed the annual limit by {overLimitDetails.days} day(s).</p>
+                        {overLimitDetails.mode === 'DEDUCT_SALARY' && (
+                            <p className="text-destructive/80 text-sm">Estimated deduction: {overLimitDetails.amount.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleApprove} disabled={isSubmitting}>
@@ -983,3 +984,4 @@ export default function ManagementHRPage() {
         </>
     );
 }
+
