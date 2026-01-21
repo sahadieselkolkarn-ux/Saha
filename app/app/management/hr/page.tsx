@@ -663,6 +663,7 @@ function LeavesTab() {
   const isLoading = isLoadingSettings || isLoadingUsers || isLoadingLeaves;
 
   const { leaveSummary, filteredLeaves, yearOptions } = useMemo(() => {
+    // 1. Get all possible years from leaves
     const years = new Set<number>();
     if (allLeaves) {
       allLeaves.forEach(leave => years.add(leave.year));
@@ -675,27 +676,39 @@ function LeavesTab() {
       return { leaveSummary: [], filteredLeaves: [], yearOptions: sortedYears };
     }
 
-    const summary: Record<string, { userId: string, userName: string; SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }> = {};
-    users.forEach(u => {
-      summary[u.uid] = { userId: u.uid, userName: u.displayName, SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
-    });
-
+    // 2. Create a map of approved leave days per user for the selected year
+    const leaveDaysMap = new Map<string, { SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }>();
     allLeaves.forEach(leave => {
-      if (leave.status === 'APPROVED' && leave.year === selectedYear && summary[leave.userId]) {
-        if (leave.leaveType in summary[leave.userId]) {
-            summary[leave.userId][leave.leaveType] += leave.days;
-            summary[leave.userId].TOTAL += leave.days;
+        if (leave.status === 'APPROVED' && leave.year === selectedYear) {
+            if (!leaveDaysMap.has(leave.userId)) {
+                leaveDaysMap.set(leave.userId, { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 });
+            }
+            const userLeave = leaveDaysMap.get(leave.userId)!;
+            if (leave.leaveType in userLeave) {
+                (userLeave as any)[leave.leaveType] += leave.days;
+                userLeave.TOTAL += leave.days;
+            }
         }
-      }
     });
 
+    // 3. Create the final summary by mapping over all users
+    const summary = users.map(user => {
+        const userLeaveDays = leaveDaysMap.get(user.uid) || { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
+        return {
+            userId: user.uid,
+            userName: user.displayName,
+            ...userLeaveDays
+        };
+    });
+    
+    // 4. Filter leaves for the "All Requests" tab
     const filtered = allLeaves.filter(leave => 
       leave.year === selectedYear &&
       (filters.status === 'ALL' || leave.status === filters.status) &&
       (filters.userId === 'ALL' || leave.userId === filters.userId)
     );
 
-    return { leaveSummary: Object.values(summary).filter(s => s.TOTAL > 0), filteredLeaves: filtered, yearOptions: sortedYears };
+    return { leaveSummary: summary, filteredLeaves: filtered, yearOptions: sortedYears };
   }, [allLeaves, users, selectedYear, filters]);
 
   const overLimitDetails = useMemo(() => {
