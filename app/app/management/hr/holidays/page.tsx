@@ -118,7 +118,9 @@ export default function ManagementHRHolidaysPage() {
                                 mode="single"
                                 selected={field.value}
                                 onSelect={(date) => {
-                                  field.onChange(date);
+                                  if (date) {
+                                    field.onChange(date);
+                                  }
                                   setIsCalendarOpen(false);
                                 }}
                                 disabled={(date) => isBefore(date, today)}
