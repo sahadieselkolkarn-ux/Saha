@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc } from "firebase/firestore";
+import { useMemo, useState, useEffect } from "react";
+import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useCollection, WithId } from "@/firebase/firestore/use-collection";
-import { addMonths, subMonths, format, startOfYear, endOfYear, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
 import { PageHeader } from "@/components/page-header";
@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction } from "@/lib/types";
 
@@ -34,41 +34,63 @@ export default function ManagementAccountingPayrollPage() {
   const [period, setPeriod] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Data fetching for calculation
+  // State for one-time fetches
+  const [manualLoading, setManualLoading] = useState(true);
+  const [manualError, setManualError] = useState<Error | null>(null);
+  const [users, setUsers] = useState<WithId<UserProfile>[] | null>(null);
+  const [allYearLeaves, setAllYearLeaves] = useState<LeaveRequest[] | null>(null);
+
+  // Real-time data for settings (single doc, low risk)
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
-  const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
-  
-  const allUsersQuery = useMemo(() => db ? query(collection(db, 'users'), orderBy('displayName', 'asc')) : null, [db]);
-  const { data: allUsers } = useCollection<WithId<UserProfile>>(allUsersQuery);
+  const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
 
-  const activeUsers = useMemo(() => {
-    if (!allUsers) return null;
-    return allUsers.filter(u => u.status === 'ACTIVE');
-  }, [allUsers]);
+  // Fetch users and leaves once when month changes
+  useEffect(() => {
+    if (!db) return;
 
-  const users = useMemo(() => {
-    if (!activeUsers) return null;
-    return activeUsers.filter(u => u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
-  }, [activeUsers]);
-  
-  // Fetch all leaves for the year and filter by status on the client to avoid complex composite indexes.
-  const yearLeavesQuery = useMemo(() => {
-    if (!db) return null;
-    return query(collection(db, 'hrLeaves'), 
-        where('year', '==', currentMonthDate.getFullYear())
-    );
-  }, [db, currentMonthDate]);
-  const { data: allYearLeaves, error: leavesError } = useCollection<LeaveRequest>(yearLeavesQuery);
+    const fetchPayrollPrerequisites = async () => {
+      setManualLoading(true);
+      setManualError(null);
+      try {
+        const year = currentMonthDate.getFullYear();
+        
+        const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
+        const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
 
-  // Data fetching for existing payroll run
+        const [usersSnapshot, leavesSnapshot] = await Promise.all([
+            getDocs(usersQuery),
+            getDocs(leavesQuery)
+        ]);
+
+        const allUsersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+        const activeUsersWithSalary = allUsersData.filter(u => u.status === 'ACTIVE' && u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
+        setUsers(activeUsersWithSalary);
+        
+        const leavesData = leavesSnapshot.docs.map(d => d.data() as LeaveRequest);
+        setAllYearLeaves(leavesData);
+
+      } catch (e: any) {
+        setManualError(e);
+        toast({ variant: 'destructive', title: 'Error Fetching Prerequisite Data', description: e.message });
+      } finally {
+        setManualLoading(false);
+      }
+    };
+    
+    fetchPayrollPrerequisites();
+  }, [db, currentMonthDate, toast]);
+
+
+  // Real-time data for the specific payroll run we are viewing/editing (targeted, low risk)
   const payrollRunId = useMemo(() => `${format(currentMonthDate, 'yyyy-MM')}-${period}`, [currentMonthDate, period]);
   const payrollRunRef = useMemo(() => db ? doc(db, 'payrollRuns', payrollRunId) : null, [db, payrollRunId]);
   const { data: payrollRun, isLoading: isLoadingRun } = useDoc<PayrollRun>(payrollRunRef);
 
+  // Real-time data for payslips of the current run (subcollection, low risk)
   const payslipsQuery = useMemo(() => db && payrollRun ? query(collection(db, 'payrollRuns', payrollRunId, 'payslips')) : null, [db, payrollRun, payrollRunId]);
   const { data: payslips, isLoading: isLoadingPayslips } = useCollection<WithId<Payslip>>(payslipsQuery);
 
-  const isLoading = !hrSettings || !users || !allYearLeaves || isLoadingRun || isLoadingPayslips;
+  const isLoading = isLoadingSettings || manualLoading || isLoadingRun || isLoadingPayslips;
 
   const calculatedPayrollData = useMemo(() => {
     if (!hrSettings || !users || !allYearLeaves) return [];
@@ -138,7 +160,6 @@ export default function ManagementAccountingPayrollPage() {
     try {
         const batch = writeBatch(db);
 
-        // 1. Create payrollRun document
         const runRef = doc(db, 'payrollRuns', payrollRunId);
         batch.set(runRef, {
             id: payrollRunId,
@@ -149,7 +170,6 @@ export default function ManagementAccountingPayrollPage() {
             createdAt: serverTimestamp(),
         });
         
-        // 2. Create payslip sub-documents
         calculatedPayrollData.forEach(payslipData => {
             const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', payslipData.userId);
             batch.set(payslipRef, { id: payslipRef.id, ...payslipData });
@@ -232,10 +252,26 @@ export default function ManagementAccountingPayrollPage() {
                     </AccordionContent>
             </AccordionItem>
         )) : (
-            <div className="text-center text-muted-foreground p-8">No active employees with salary found.</div>
+            <div className="text-center text-muted-foreground p-8">No active employees with salary found for this period.</div>
         )}
     </Accordion>
   );
+
+  const renderContent = () => {
+    if (isLoading) {
+      return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
+    }
+    if (manualError) {
+      return (
+        <div className="text-destructive text-center p-8 bg-destructive/10 rounded-lg">
+            <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+            <h3 className="font-semibold">Error Loading Payroll Data</h3>
+            <p className="text-sm">{manualError.message}</p>
+        </div>
+      );
+    }
+    return payrollRun ? renderPayrollTable(payslips || []) : renderPayrollTable(calculatedPayrollData);
+  }
 
   return (
     <>
@@ -269,17 +305,9 @@ export default function ManagementAccountingPayrollPage() {
           )}
         </CardHeader>
         <CardContent>
-            {isLoading ? (
-                 <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
-            ) : leavesError ? (
-                 <div className="text-destructive text-center p-8">Error loading leave data. A database index might be required for the query on 'hrLeaves'. Check console for details.</div>
-            ) : payrollRun ? (
-                renderPayrollTable(payslips || [])
-            ) : (
-                renderPayrollTable(calculatedPayrollData)
-            )}
+            {renderContent()}
         </CardContent>
-        {!isLoading && (
+        {!isLoading && !manualError && (
              <CardContent>
                 {!payrollRun && (
                     <Button onClick={handleCreateDraft} disabled={isSubmitting || (calculatedPayrollData && calculatedPayrollData.length === 0)}>
