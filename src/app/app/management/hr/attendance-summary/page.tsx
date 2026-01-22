@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { doc, collection, query, where, orderBy, getDocs, Timestamp } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -56,6 +56,7 @@ export default function ManagementHRAttendanceSummaryPage() {
   
   // Data and loading states
   const [summaryData, setSummaryData] = useState<AttendanceMonthlySummary[]>([]);
+  const [allUsers, setAllUsers] = useState<WithId<UserProfile>[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<any>(null);
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
@@ -182,14 +183,16 @@ export default function ManagementHRAttendanceSummaryPage() {
         try {
             const dateRange = { from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) };
             const year = currentMonth.getFullYear();
+            const startStr = format(dateRange.from, 'yyyy-MM-dd');
+            const endStr = format(dateRange.to, 'yyyy-MM-dd');
             const nextMonth = addMonths(currentMonth, 1);
             const firstDayOfNextMonth = startOfMonth(nextMonth);
             
             const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
             const settingsDocRef = doc(db, 'settings', 'hr');
             const holidaysQuery = query(collection(db, 'hrHolidays'), 
-              where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), 
-              where('date', '<=', format(dateRange.to, 'yyyy-MM-dd')),
+              where('date', '>=', startStr), 
+              where('date', '<=', endStr),
               orderBy('date', 'asc')
             );
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
@@ -199,8 +202,8 @@ export default function ManagementHRAttendanceSummaryPage() {
               orderBy('timestamp', 'asc')
             );
             const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), 
-              where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), 
-              where('date', '<=', format(dateRange.to, 'yyyy-MM-dd')),
+              where('date', '>=', startStr), 
+              where('date', '<=', endStr),
               orderBy('date', 'asc')
             );
 
@@ -213,7 +216,7 @@ export default function ManagementHRAttendanceSummaryPage() {
                 adjustmentsSnapshot
             ] = await Promise.all([
                 getDocs(usersQuery),
-                getDocs(doc(db, 'settings', 'hr')),
+                getDoc(settingsDocRef),
                 getDocs(holidaysQuery),
                 getDocs(leavesQuery),
                 getDocs(attendanceQuery),
@@ -221,6 +224,8 @@ export default function ManagementHRAttendanceSummaryPage() {
             ]);
 
             const usersData: WithId<UserProfile>[] = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+            setAllUsers(usersData); // Save all users for the dialog
+
             const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
             const holidaysData: WithId<HRHolidayType>[] = holidaysSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<HRHolidayType>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
@@ -241,9 +246,8 @@ export default function ManagementHRAttendanceSummaryPage() {
                 if (urlMatch) {
                     setIndexCreationUrl(urlMatch[0]);
                 }
-            } else {
-                 setError(err);
             }
+            setError(err);
         } finally {
             setIsLoading(false);
         }
@@ -284,9 +288,9 @@ export default function ManagementHRAttendanceSummaryPage() {
               <AlertCircle className="h-10 w-10 text-destructive" />
               <h3 className="font-semibold text-lg text-foreground">ต้องสร้างดัชนี (Index) ก่อน</h3>
               <p className="text-muted-foreground text-sm">
-                ฐานข้อมูลต้องการดัชนีเพื่อกรองและเรียงข้อมูล กรุณากดปุ่มด้านล่างเพื่อสร้างใน Firebase Console (อาจใช้เวลา 2-3 นาที) แล้วลองรีเฟรชหน้านี้
+                ฐานข้อมูลต้องการดัชนีเพื่อกรองและเรียงข้อมูล กรุณาตรวจสอบ Console เพื่อดูลิงก์สำหรับสร้าง Index ใน Firebase Console (อาจใช้เวลา 2-3 นาที) แล้วลองรีเฟรชหน้านี้
               </p>
-              <Button asChild className="mt-2">
+               <Button asChild className="mt-2">
                 <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="mr-2 h-4 w-4" />
                   เปิดหน้าสร้าง Index
@@ -307,8 +311,8 @@ export default function ManagementHRAttendanceSummaryPage() {
       );
     }
 
-    if (summaryData.length === 0) {
-      return <div className="text-center p-8 text-muted-foreground">No attendance data available for this month.</div>;
+    if (filteredSummaryData.length === 0) {
+      return <div className="text-center p-8 text-muted-foreground">{searchQuery ? "No employees match your search." : "No attendance data available for this month."}</div>;
     }
 
     return (
@@ -377,7 +381,12 @@ export default function ManagementHRAttendanceSummaryPage() {
                                   <Button 
                                     variant="outline"
                                     size="icon"
-                                    onClick={() => setAdjustingDayInfo({ user: summaryData.find(u=>u.userId===summary.userId)! as any, day })}
+                                    onClick={() => {
+                                        const userForDialog = allUsers.find(u=>u.id===summary.userId);
+                                        if (userForDialog) {
+                                            setAdjustingDayInfo({ user: userForDialog, day })
+                                        }
+                                    }}
                                   >
                                     <Edit className="h-4 w-4"/>
                                   </Button>
