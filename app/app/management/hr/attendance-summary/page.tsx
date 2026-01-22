@@ -73,7 +73,7 @@ export default function ManagementHRAttendanceSummaryPage() {
   const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED')) : null, [db, year]);
   const { data: yearLeaves, isLoading: isLoadingLeaves, error: leavesError } = useCollection<LeaveRequest>(leavesQuery);
 
-  const attendanceQuery = useMemo(() => db ? query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<=', dateRange.to), orderBy('timestamp', 'asc')) : null, [db, dateRange]);
+  const attendanceQuery = useMemo(() => db ? query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<=', dateRange.to)) : null, [db, dateRange]);
   const { data: monthAttendance, isLoading: isLoadingAttendance, error: attendanceError } = useCollection<Attendance>(attendanceQuery);
   
   const adjustmentsQuery = useMemo(() => db ? query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), where('date', '<=', format(dateRange.to, 'yyyy-MM-dd'))) : null, [db, dateRange]);
