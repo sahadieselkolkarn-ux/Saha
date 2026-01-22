@@ -217,6 +217,7 @@ export interface Payslip {
   employeeAccepted?: boolean;
   employeeAcceptedAt?: Timestamp | null;
   employeeNote?: string | null;
+  sentToEmployeeAt?: Timestamp;
   // Fields for HR audit
   hrCheckedByName?: string;
   hrCheckedAt?: Timestamp;

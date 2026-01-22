@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
@@ -27,6 +28,19 @@ function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, 
   if (start > end) return 0;
   return differenceInCalendarDays(end, start) + 1;
 }
+
+const PayslipStatusBadge = ({ status }: { status: Payslip['employeeStatus'] }) => {
+    switch (status) {
+        case 'PENDING_REVIEW':
+            return <Badge variant="secondary">Pending Review</Badge>;
+        case 'ACCEPTED':
+            return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">Accepted</Badge>;
+        case 'REJECTED':
+            return <Badge variant="destructive">Needs Fix</Badge>;
+        default:
+            return null;
+    }
+};
 
 // Main Payroll Component
 export default function ManagementAccountingPayrollPage() {
@@ -196,13 +210,28 @@ export default function ManagementAccountingPayrollPage() {
   }
 
   const handleSendToEmployees = async () => {
-    if (!db || !payrollRun) return;
+    if (!db || !payrollRun || !payslipsQuery) return;
      setIsSubmitting(true);
      try {
-        await updateDoc(doc(db, 'payrollRuns', payrollRun.id), {
+        const batch = writeBatch(db);
+
+        // 1. Update the main run status
+        const runRef = doc(db, 'payrollRuns', payrollRun.id);
+        batch.update(runRef, {
             status: 'SENT_TO_EMPLOYEE'
         });
-        toast({ title: 'Sent to Employees', description: 'Draft has been sent for employee review.' });
+
+        // 2. Get all current payslips and update them
+        const payslipsSnapshot = await getDocs(payslipsQuery);
+        payslipsSnapshot.forEach(payslipDoc => {
+            batch.update(payslipDoc.ref, {
+                sentToEmployeeAt: serverTimestamp()
+            });
+        });
+
+        await batch.commit();
+        
+        toast({ title: 'Sent to Employees', description: 'Payslips have been sent for employee review.' });
      } catch(error: any) {
         toast({ variant: 'destructive', title: 'Error', description: error.message });
      } finally {
@@ -242,9 +271,14 @@ export default function ManagementAccountingPayrollPage() {
         {data.length > 0 ? data.map(p => (
             <AccordionItem value={p.userId} key={p.userId}>
                     <AccordionTrigger>
-                        <div className="flex justify-between w-full pr-4">
-                            <span>{p.userName}</span>
-                            <span className="font-mono text-primary">Net: {p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</span>
+                        <div className="flex justify-between w-full pr-4 items-center">
+                            <span className="font-medium">{p.userName}</span>
+                            <div className="flex items-center gap-4">
+                                {payrollRun && payrollRun.status !== 'DRAFT_HR' && 'employeeStatus' in p && (
+                                    <PayslipStatusBadge status={p.employeeStatus} />
+                                )}
+                                <span className="font-mono text-primary">Net: {p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</span>
+                            </div>
                         </div>
                     </AccordionTrigger>
                     <AccordionContent className="p-4 bg-muted/50">
