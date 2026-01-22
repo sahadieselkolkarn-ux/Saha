@@ -94,7 +94,7 @@ const LeavePolicyFields = ({ type, form }: { type: 'SICK' | 'BUSINESS' | 'VACATI
           render={({ field }) => (
             <FormItem>
               <FormLabel>Annual Entitlement</FormLabel>
-              <FormControl><Input type="number" placeholder="e.g. 30" {...field} /></FormControl>
+              <FormControl><Input type="number" placeholder="e.g. 30" {...field} value={field.value ?? ''} /></FormControl>
               <FormDescription>Days per year</FormDescription>
             </FormItem>
           )}
@@ -127,7 +127,7 @@ const LeavePolicyFields = ({ type, form }: { type: 'SICK' | 'BUSINESS' | 'VACATI
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Deduction Base Days</FormLabel>
-                <FormControl><Input type="number" placeholder="e.g. 26" {...field} /></FormControl>
+                <FormControl><Input type="number" placeholder="e.g. 26" {...field} value={field.value ?? ''} /></FormControl>
                 <FormDescription>Salary will be divided by this number.</FormDescription>
               </FormItem>
             )}
@@ -183,7 +183,7 @@ export function HRSettingsForm() {
         leaveTypes: {
           SICK: { annualEntitlement: 30, overLimitHandling: { mode: 'DEDUCT_SALARY', salaryDeductionBaseDays: 26 } },
           BUSINESS: { annualEntitlement: 7, overLimitHandling: { mode: 'DEDUCT_SALARY', salaryDeductionBaseDays: 26 } },
-          VACATION: { annualEntitlement: 6, overLimitHandling: { mode: 'DISALLOW' } },
+          VACATION: { annualEntitlement: 6, overLimitHandling: { mode: 'DISALLOW', salaryDeductionBaseDays: 26 } },
         }
       }
     },
@@ -191,6 +191,7 @@ export function HRSettingsForm() {
 
   useEffect(() => {
     if (settings) {
+      const defaultValues = form.formState.defaultValues;
       form.reset({
         workStart: settings.workStart || "",
         workEnd: settings.workEnd || "",
@@ -199,30 +200,36 @@ export function HRSettingsForm() {
         graceMinutes: settings.graceMinutes ?? 0,
         absentCutoffTime: settings.absentCutoffTime || "",
         minSecondsBetweenScans: settings.minSecondsBetweenScans ?? 60,
-        payroll: {
-          payday1: settings.payroll?.payday1 ?? 15,
-          period1Start: settings.payroll?.period1Start ?? 1,
-          period1End: settings.payroll?.period1End ?? 15,
-          payday2: settings.payroll?.payday2 || "EOM",
-          period2Start: settings.payroll?.period2Start ?? 16,
-          period2End: settings.payroll?.period2End || "EOM",
-        },
-        sso: {
-          employeePercent: settings.sso?.employeePercent ?? 0,
-          employerPercent: settings.sso?.employerPercent ?? 0,
-          monthlyCap: settings.sso?.monthlyCap ?? 0,
-        },
-        withholding: {
-          enabled: settings.withholding?.enabled || false,
-          defaultPercent: settings.withholding?.defaultPercent ?? 0,
-          note: settings.withholding?.note || "",
-        },
+        payroll: { ...defaultValues.payroll, ...settings.payroll },
+        sso: { ...defaultValues.sso, ...settings.sso },
+        withholding: { ...defaultValues.withholding, ...settings.withholding },
         leavePolicy: {
           calculationPeriod: 'CALENDAR_YEAR',
           leaveTypes: {
-            SICK: settings.leavePolicy?.leaveTypes?.SICK,
-            BUSINESS: settings.leavePolicy?.leaveTypes?.BUSINESS,
-            VACATION: settings.leavePolicy?.leaveTypes?.VACATION,
+            SICK: {
+              ...(defaultValues.leavePolicy?.leaveTypes?.SICK),
+              ...(settings.leavePolicy?.leaveTypes?.SICK),
+              overLimitHandling: {
+                ...(defaultValues.leavePolicy?.leaveTypes?.SICK?.overLimitHandling),
+                ...(settings.leavePolicy?.leaveTypes?.SICK?.overLimitHandling),
+              },
+            },
+            BUSINESS: {
+              ...(defaultValues.leavePolicy?.leaveTypes?.BUSINESS),
+              ...(settings.leavePolicy?.leaveTypes?.BUSINESS),
+              overLimitHandling: {
+                ...(defaultValues.leavePolicy?.leaveTypes?.BUSINESS?.overLimitHandling),
+                ...(settings.leavePolicy?.leaveTypes?.BUSINESS?.overLimitHandling),
+              },
+            },
+            VACATION: {
+              ...(defaultValues.leavePolicy?.leaveTypes?.VACATION),
+              ...(settings.leavePolicy?.leaveTypes?.VACATION),
+              overLimitHandling: {
+                ...(defaultValues.leavePolicy?.leaveTypes?.VACATION?.overLimitHandling),
+                ...(settings.leavePolicy?.leaveTypes?.VACATION?.overLimitHandling),
+              },
+            },
           }
         }
       });
