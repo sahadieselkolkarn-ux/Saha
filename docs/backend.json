@@ -680,6 +680,53 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "PayrollRun": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Payroll Run",
+      "description": "Represents a single payroll processing cycle for a specific period.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "year": { "type": "number" },
+        "month": { "type": "number" },
+        "period": { "type": "number", "description": "1 for first half, 2 for second half." },
+        "status": { "type": "string", "enum": ["DRAFT", "FINAL"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "finalizedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "year", "month", "period", "status", "createdAt"]
+    },
+    "Payslip": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Payslip",
+      "description": "Represents an individual employee's payslip for a specific payroll run.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "payrollRunId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "baseSalary": { "type": "number", "description": "The base salary for the period before deductions." },
+        "deductions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "amount": { "type": "number" },
+              "notes": { "type": "string" }
+            },
+            "required": ["name", "amount"]
+          }
+        },
+        "ssoEmployee": { "type": "number", "description": "Employee's SSO contribution." },
+        "withholdingTax": { "type": "number" },
+        "netSalary": { "type": "number", "description": "Final salary after all deductions." },
+        "isOverridden": { "type": "boolean" },
+        "overrideNotes": { "type": "string" }
+      },
+      "required": ["id", "payrollRunId", "userId", "baseSalary", "netSalary"]
     }
   },
   "auth": {
@@ -741,8 +788,18 @@
         "$ref": "#/backend/entities/LeaveRequest"
       },
       "description": "Stores employee leave requests."
+    },
+    "/payrollRuns/{runId}": {
+      "schema": {
+        "$ref": "#/backend/entities/PayrollRun"
+      },
+      "description": "Stores payroll run information."
+    },
+    "/payrollRuns/{runId}/payslips/{payslipId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Payslip"
+      },
+      "description": "Stores individual payslips for a payroll run."
     }
   }
 }
-
-    

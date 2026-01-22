@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus } from './constants';
 
@@ -165,4 +166,34 @@ export interface LeaveRequest {
   overLimit?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export interface PayrollRun {
+  id: string;
+  year: number;
+  month: number; // 1-12
+  period: 1 | 2;
+  status: 'DRAFT' | 'FINAL';
+  createdAt: Timestamp;
+  finalizedAt?: Timestamp;
+}
+
+export interface PayslipDeduction {
+    name: string;
+    amount: number;
+    notes?: string;
+}
+
+export interface Payslip {
+  id: string;
+  payrollRunId: string;
+  userId: string;
+  userName: string;
+  baseSalary: number;
+  deductions: PayslipDeduction[];
+  ssoEmployee: number;
+  withholdingTax: number;
+  netSalary: number;
+  isOverridden?: boolean;
+  overrideNotes?: string;
 }

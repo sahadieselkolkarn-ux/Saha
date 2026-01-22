@@ -1015,7 +1015,10 @@ function AttendanceSummaryTab() {
                 const onLeave = userLeaves.find(leave => 
                     isWithinInterval(day, { start: parseISO(leave.startDate), end: parseISO(leave.endDate) })
                 );
-                if (onLeave) return { status: 'LEAVE', type: onLeave.leaveType };
+                if (onLeave) {
+                    const leaveTypeMap: Record<LeaveType, string> = { SICK: "ป่วย", BUSINESS: "กิจ", VACATION: "พัก" };
+                    return { status: 'LEAVE', type: leaveTypeMap[onLeave.leaveType] || "ลา" };
+                }
                 
                 const userAttendanceToday = (attendanceByUser.get(user.id) || []).filter((att: any) => 
                     att.timestamp && format(att.timestamp.toDate(), 'yyyy-MM-dd') === dayStr
@@ -1075,12 +1078,7 @@ function AttendanceSummaryTab() {
             case 'ABSENT': variant = 'destructive'; text = 'A'; tooltipContent = 'Absent'; break;
             case 'LEAVE':
                 variant = 'secondary';
-                const leaveTypeMap: Record<LeaveType, string> = {
-                    SICK: "ป่วย",
-                    BUSINESS: "กิจ",
-                    VACATION: "พัก",
-                };
-                text = leaveTypeMap[dayStatus.type as LeaveType] || "ลา";
+                text = dayStatus.type;
                 tooltipContent = `On Leave (${dayStatus.type})`;
                 break;
             case 'HOLIDAY': variant = 'secondary'; text = 'H'; tooltipContent = `Holiday: ${dayStatus.name}`; break;
