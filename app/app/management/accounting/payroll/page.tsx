@@ -44,12 +44,9 @@ export default function ManagementAccountingPayrollPage() {
   
   const yearLeavesQuery = useMemo(() => {
     if (!db) return null;
-    const yearStart = startOfYear(currentMonthDate);
-    const yearEnd = endOfYear(currentMonthDate);
     return query(collection(db, 'hrLeaves'), 
         where('status', '==', 'APPROVED'),
-        where('startDate', '>=', format(yearStart, 'yyyy-MM-dd')),
-        where('endDate', '<=', format(yearEnd, 'yyyy-MM-dd'))
+        where('year', '==', currentMonthDate.getFullYear())
     );
   }, [db, currentMonthDate]);
   const { data: approvedLeaves, error: leavesError } = useCollection<LeaveRequest>(yearLeavesQuery);
