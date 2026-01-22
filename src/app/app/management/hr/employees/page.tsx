@@ -66,12 +66,12 @@ const userProfileSchema = z.object({
 
 type UserWithId = WithId<UserProfile>;
 
-const UserCard = ({ user, onEdit, onDelete, isManager }: { user: UserWithId, onEdit: (user: UserWithId) => void, onDelete: (userId: string) => void, isManager: boolean }) => (
+const UserCard = ({ user, onEdit, onDelete, isManagerOrAdmin }: { user: UserWithId, onEdit: (user: UserWithId) => void, onDelete: (userId: string) => void, isManagerOrAdmin: boolean }) => (
     <Card>
         <CardHeader>
             <div className="flex justify-between items-start">
                 <CardTitle className="text-lg">{user.displayName}</CardTitle>
-                {isManager && (
+                {isManagerOrAdmin && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="h-8 w-8 p-0">
@@ -118,7 +118,7 @@ export default function ManagementHREmployeesPage() {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
 
-  const isManager = loggedInUser?.role === 'MANAGER';
+  const isManagerOrAdmin = loggedInUser?.role === 'MANAGER' || loggedInUser?.role === 'ADMIN';
 
   const form = useForm<z.infer<typeof userProfileSchema>>({
     resolver: zodResolver(userProfileSchema),
@@ -212,7 +212,7 @@ export default function ManagementHREmployeesPage() {
             updatedAt: serverTimestamp()
         };
         
-        if (isManager) {
+        if (isManagerOrAdmin) {
             finalUpdate['hr.salaryMonthly'] = formValues.hr?.salaryMonthly === undefined || (formValues.hr.salaryMonthly as any) === '' ? null : Number(formValues.hr.salaryMonthly);
         }
         
@@ -284,8 +284,7 @@ export default function ManagementHREmployeesPage() {
                 <TableHead>Department</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
-                {isManager && <TableHead>Salary</TableHead>}
-                {isManager && <TableHead><span className="sr-only">Actions</span></TableHead>}
+                {isManagerOrAdmin && <TableHead><span className="sr-only">Actions</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -297,8 +296,7 @@ export default function ManagementHREmployeesPage() {
                     <TableCell>{user.department || 'N/A'}</TableCell>
                     <TableCell>{user.role}</TableCell>
                     <TableCell>{user.status}</TableCell>
-                    {isManager && <TableCell>{user.hr?.salaryMonthly?.toLocaleString() || '-'}</TableCell>}
-                    {isManager && (
+                    {isManagerOrAdmin && (
                         <TableCell>
                             <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -313,7 +311,7 @@ export default function ManagementHREmployeesPage() {
                 ))
               ) : (
                 <TableRow>
-                    <TableCell colSpan={isManager ? 7 : 5} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={isManagerOrAdmin ? 6 : 5} className="h-24 text-center text-muted-foreground">
                        No users found. New users will appear here after they sign up.
                     </TableCell>
                 </TableRow>
@@ -326,7 +324,7 @@ export default function ManagementHREmployeesPage() {
       <div className="grid gap-4 sm:hidden">
         {users.length > 0 ? (
             users.map(user => (
-                <UserCard key={user.id} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} isManager={isManager} />
+                <UserCard key={user.id} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} isManagerOrAdmin={isManagerOrAdmin} />
             ))
         ) : (
             <Card className="text-center py-12">
@@ -413,7 +411,7 @@ export default function ManagementHREmployeesPage() {
                                       <Input
                                         type="number"
                                         {...field}
-                                        disabled={!isManager}
+                                        disabled={!isManagerOrAdmin}
                                         value={field.value ?? ''}
                                         onChange={(e) => {
                                           const value = e.target.value;
@@ -421,7 +419,7 @@ export default function ManagementHREmployeesPage() {
                                         }}
                                       />
                                     </FormControl>
-                                    {!isManager && <FormDescription>แก้เงินเดือนได้เฉพาะ Manager</FormDescription>}
+                                    {!isManagerOrAdmin && <FormDescription>แก้เงินเดือนได้เฉพาะ Manager หรือ Admin</FormDescription>}
                                     <FormMessage />
                                   </FormItem>
                                 )}
