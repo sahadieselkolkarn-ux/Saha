@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useState } from "react";
@@ -39,8 +38,13 @@ export default function ManagementAccountingPayrollPage() {
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
   const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
   
-  const usersQuery = useMemo(() => db ? query(collection(db, 'users'), where('status', '==', 'ACTIVE'), where('hr.salaryMonthly', '>', 0), orderBy('displayName', 'asc')) : null, [db]);
-  const { data: users } = useCollection<WithId<UserProfile>>(usersQuery);
+  const usersQuery = useMemo(() => db ? query(collection(db, 'users'), where('status', '==', 'ACTIVE'), orderBy('displayName', 'asc')) : null, [db]);
+  const { data: activeUsers } = useCollection<WithId<UserProfile>>(usersQuery);
+
+  const users = useMemo(() => {
+    if (!activeUsers) return null;
+    return activeUsers.filter(u => u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
+  }, [activeUsers]);
   
   const yearLeavesQuery = useMemo(() => {
     if (!db) return null;
@@ -272,7 +276,7 @@ export default function ManagementAccountingPayrollPage() {
         {!isLoading && (
              <CardContent>
                 {!payrollRun && (
-                    <Button onClick={handleCreateDraft} disabled={isSubmitting || calculatedPayrollData.length === 0}>
+                    <Button onClick={handleCreateDraft} disabled={isSubmitting || (calculatedPayrollData && calculatedPayrollData.length === 0)}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FilePlus className="mr-2 h-4 w-4"/>}
                         Create Draft
                     </Button>
