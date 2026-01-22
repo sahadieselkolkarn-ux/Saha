@@ -120,7 +120,7 @@ export default function SettingsPage() {
             };
 
             if (isManager) {
-                finalUpdate['hr.salaryMonthly'] = values.hr?.salaryMonthly === undefined || values.hr.salaryMonthly === '' ? null : Number(values.hr.salaryMonthly);
+                finalUpdate['hr.salaryMonthly'] = values.hr?.salaryMonthly === undefined || (values.hr.salaryMonthly as any) === '' ? null : Number(values.hr.salaryMonthly);
             }
 
             const userDocRef = doc(db, 'users', profile.uid);
@@ -291,6 +291,10 @@ export default function SettingsPage() {
                  <Card>
                     <CardHeader><CardTitle>HR Information</CardTitle></CardHeader>
                     <CardContent className="space-y-2">
+                        <InfoRow label="Start Date" value={profile.hr?.startDate || '-'} />
+                        <Separator />
+                        <InfoRow label="End Date" value={profile.hr?.endDate || 'Present'} />
+                        <Separator />
                         <InfoRow label="Monthly Salary" value={profile.hr?.salaryMonthly?.toLocaleString()} />
                         <Separator />
                          <InfoRow label="Pay Type" value={profile.hr?.payType} />

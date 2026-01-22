@@ -106,6 +106,16 @@
                 "type": "string",
                 "enum": ["MONTHLY", "DAILY"]
             },
+            "startDate": {
+              "type": "string",
+              "format": "date",
+              "description": "The user's start date of employment."
+            },
+            "endDate": {
+              "type": "string",
+              "format": "date",
+              "description": "The user's end date of employment."
+            },
             "ssoHospital": {
               "type": "string"
             },

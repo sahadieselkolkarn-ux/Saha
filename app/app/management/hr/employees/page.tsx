@@ -57,6 +57,8 @@ const userProfileSchema = z.object({
   hr: z.object({
     salaryMonthly: z.coerce.number().optional(),
     payType: z.enum(["MONTHLY", "DAILY"]).optional(),
+    startDate: z.string().optional().default(''),
+    endDate: z.string().optional().default(''),
     ssoHospital: z.string().optional().default(''),
     note: z.string().optional().default(''),
   }).optional(),
@@ -162,6 +164,8 @@ export default function ManagementHREmployeesPage() {
           hr: {
               salaryMonthly: editingUser.hr?.salaryMonthly,
               payType: editingUser.hr?.payType,
+              startDate: editingUser.hr?.startDate || '',
+              endDate: editingUser.hr?.endDate || '',
               ssoHospital: editingUser.hr?.ssoHospital || '',
               note: editingUser.hr?.note || ''
           }
@@ -199,6 +203,8 @@ export default function ManagementHREmployeesPage() {
             'personal.emergencyContact.relationship': formValues.personal?.emergencyContact?.relationship || null,
             'personal.emergencyContact.phone': formValues.personal?.emergencyContact?.phone || null,
             'hr.payType': formValues.hr?.payType || null,
+            'hr.startDate': formValues.hr?.startDate || null,
+            'hr.endDate': formValues.hr?.endDate || null,
             'hr.ssoHospital': formValues.hr?.ssoHospital || null,
             'hr.note': formValues.hr?.note || null,
             updatedAt: serverTimestamp()
@@ -377,6 +383,22 @@ export default function ManagementHREmployeesPage() {
                     <Card>
                         <CardHeader><CardTitle>HR Information</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <FormField name="hr.startDate" control={form.control} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Start Date</FormLabel>
+                                        <FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                                <FormField name="hr.endDate" control={form.control} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>End Date</FormLabel>
+                                        <FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                              </div>
                               <FormField
                                 name="hr.salaryMonthly"
                                 control={form.control}

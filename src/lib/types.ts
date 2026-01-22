@@ -29,6 +29,8 @@ export interface UserProfile {
     payType?: 'MONTHLY' | 'DAILY';
     ssoHospital?: string;
     note?: string;
+    startDate?: string; // YYYY-MM-DD
+    endDate?: string | null; // YYYY-MM-DD or null
   };
   createdAt: Timestamp;
   updatedAt?: Timestamp;
