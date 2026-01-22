@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { doc, collection, query, where, orderBy, getDocs } from "firebase/firestore";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { doc, collection, query, where, orderBy, getDocs, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
-import { useCollection, WithId } from "@/firebase/firestore/use-collection";
-import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval,
@@ -13,6 +11,7 @@ import {
 import { safeFormat } from '@/lib/date-utils';
 
 import type { UserProfile, Attendance, LeaveRequest, HRHoliday as HRHolidayType, HRSettings, AttendanceAdjustment } from "@/lib/types";
+import { WithId } from "@/firebase/firestore/use-collection";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,75 +53,26 @@ export default function ManagementHRAttendanceSummaryPage() {
   const { toast } = useToast();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Data and loading states
+  const [summaryData, setSummaryData] = useState<AttendanceMonthlySummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any>(null);
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   // State for Adjustment Dialog
   const [adjustingDayInfo, setAdjustingDayInfo] = useState<{ user: WithId<UserProfile>, day: AttendanceDailySummary } | null>(null);
 
-  const dateRange = useMemo(() => ({ from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) }), [currentMonth]);
-  const year = useMemo(() => currentMonth.getFullYear(), [currentMonth]);
-
-  // Data Fetching
-  const usersQuery = useMemo(() => db ? query(collection(db, 'users'), orderBy('displayName', 'asc')) : null, [db]);
-  const { data: users, isLoading: isLoadingUsers, error: usersError } = useCollection<WithId<UserProfile>>(usersQuery);
-
-  const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
-  const { data: hrSettings, isLoading: isLoadingSettings, error: settingsError } = useDoc<HRSettings>(settingsDocRef);
-  
-  const holidaysQuery = useMemo(() => {
-    if (!db) return null;
-    return query(collection(db, 'hrHolidays'), 
-      where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), 
-      where('date', '<=', format(dateRange.to, 'yyyy-MM-dd')),
-      orderBy('date', 'asc')
-    );
-  }, [dateRange, db]);
-  const { data: holidays, isLoading: isLoadingHolidays, error: holidaysError } = useCollection<HRHolidayType>(holidaysQuery);
-
-  const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), where('year', '==', year)) : null, [db, year]);
-  const { data: yearLeaves, isLoading: isLoadingLeaves, error: leavesError } = useCollection<LeaveRequest>(leavesQuery);
-
-  const attendanceQuery = useMemo(() => {
-    if (!db) return null;
-    const nextMonth = addMonths(currentMonth, 1);
-    const firstDayOfNextMonth = startOfMonth(nextMonth);
-    return query(collection(db, 'attendance'), 
-      where('timestamp', '>=', dateRange.from), 
-      where('timestamp', '<', firstDayOfNextMonth),
-      orderBy('timestamp', 'asc')
-    );
-  }, [db, currentMonth, dateRange.from]);
-  const { data: monthAttendance, isLoading: isLoadingAttendance, error: attendanceError } = useCollection<Attendance>(attendanceQuery);
-  
-  const adjustmentsQuery = useMemo(() => {
-    if (!db) return null;
-    return query(collection(db, 'hrAttendanceAdjustments'), 
-      where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), 
-      where('date', '<=', format(dateRange.to, 'yyyy-MM-dd')),
-      orderBy('date', 'asc')
-    );
-  }, [db, dateRange]);
-  const { data: monthAdjustments, isLoading: isLoadingAdjustments, error: adjustmentsError } = useCollection<WithId<AttendanceAdjustment>>(adjustmentsQuery);
-
-  const isLoading = isLoadingUsers || isLoadingSettings || isLoadingHolidays || isLoadingLeaves || isLoadingAttendance || isLoadingAdjustments;
-  const combinedError = usersError || settingsError || holidaysError || leavesError || attendanceError || adjustmentsError;
-
-  useEffect(() => {
-    if (combinedError?.message?.includes('requires an index')) {
-        const urlMatch = combinedError.message.match(/https?:\/\/[^\s]+/);
-        if (urlMatch) {
-            setIndexCreationUrl(urlMatch[0]);
-        }
-    } else {
-        setIndexCreationUrl(null);
-    }
-  }, [combinedError]);
-
-
-  // Main Calculation Logic
-  const summaryData = useMemo((): AttendanceMonthlySummary[] => {
-    if (isLoading || !users || !hrSettings || !holidays || !yearLeaves || !monthAttendance || !monthAdjustments) return [];
-
+  const calculateSummary = useCallback((
+    users: WithId<UserProfile>[],
+    hrSettings: HRSettings,
+    holidays: HRHolidayType[],
+    yearLeaves: LeaveRequest[],
+    monthAttendance: Attendance[],
+    monthAdjustments: WithId<AttendanceAdjustment>[],
+    dateRange: { from: Date, to: Date }
+  ): AttendanceMonthlySummary[] => {
+      
     const activeUsers = users.filter(u => u.status === 'ACTIVE');
     const approvedLeaves = yearLeaves.filter(l => l.status === 'APPROVED');
     const daysInMonth = eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
@@ -161,7 +111,10 @@ export default function ManagementHRAttendanceSummaryPage() {
         const adjustmentForDay = userAdjustments.find(a => a.date === dayStr);
         daily.adjustment = adjustmentForDay;
 
-        const attendanceForDay = userAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
+        const attendanceForDay = userAttendance.filter(a => {
+            if (!a.timestamp || !(a.timestamp instanceof Timestamp)) return false;
+            return format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr;
+        });
         
         const rawIns = attendanceForDay.filter(a => a.type === 'IN' && a.timestamp).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
         const rawOuts = attendanceForDay.filter(a => a.type === 'OUT' && a.timestamp).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
@@ -216,7 +169,88 @@ export default function ManagementHRAttendanceSummaryPage() {
         dailySummaries, reviewNeeded
       };
     });
-  }, [isLoading, users, hrSettings, holidays, yearLeaves, monthAttendance, monthAdjustments, dateRange, daysInMonth]);
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+        if (!db) return;
+
+        setIsLoading(true);
+        setError(null);
+        setIndexCreationUrl(null);
+
+        try {
+            const dateRange = { from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) };
+            const year = currentMonth.getFullYear();
+            const nextMonth = addMonths(currentMonth, 1);
+            const firstDayOfNextMonth = startOfMonth(nextMonth);
+            
+            const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
+            const settingsDocRef = doc(db, 'settings', 'hr');
+            const holidaysQuery = query(collection(db, 'hrHolidays'), 
+              where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), 
+              where('date', '<=', format(dateRange.to, 'yyyy-MM-dd')),
+              orderBy('date', 'asc')
+            );
+            const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
+            const attendanceQuery = query(collection(db, 'attendance'), 
+              where('timestamp', '>=', dateRange.from), 
+              where('timestamp', '<', firstDayOfNextMonth),
+              orderBy('timestamp', 'asc')
+            );
+            const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), 
+              where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), 
+              where('date', '<=', format(dateRange.to, 'yyyy-MM-dd')),
+              orderBy('date', 'asc')
+            );
+
+            const [
+                usersSnapshot,
+                settingsDocSnap,
+                holidaysSnapshot,
+                leavesSnapshot,
+                attendanceSnapshot,
+                adjustmentsSnapshot
+            ] = await Promise.all([
+                getDocs(usersQuery),
+                getDocs(doc(db, 'settings', 'hr')),
+                getDocs(holidaysQuery),
+                getDocs(leavesQuery),
+                getDocs(attendanceQuery),
+                getDocs(adjustmentsQuery),
+            ]);
+
+            const usersData: WithId<UserProfile>[] = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+            const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
+            const holidaysData: WithId<HRHolidayType>[] = holidaysSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<HRHolidayType>));
+            const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
+            const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
+            const monthAdjustmentsData: WithId<AttendanceAdjustment>[] = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
+            
+            if (!hrSettingsData) {
+                throw new Error("HR Settings not found. Please configure them in the HR settings page.");
+            }
+            
+            const calculatedData = calculateSummary(usersData, hrSettingsData, holidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
+            setSummaryData(calculatedData);
+
+        } catch (err: any) {
+            console.error("Error fetching attendance summary data:", err);
+            if (err.message?.includes('requires an index')) {
+                const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+                if (urlMatch) {
+                    setIndexCreationUrl(urlMatch[0]);
+                }
+            } else {
+                 setError(err);
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    fetchData();
+  }, [db, currentMonth, toast, calculateSummary]);
   
   const filteredSummaryData = useMemo(() => {
     if (!searchQuery) return summaryData;
@@ -263,12 +297,12 @@ export default function ManagementHRAttendanceSummaryPage() {
       );
     }
     
-    if (combinedError) {
+    if (error) {
       return (
          <div className="text-center p-8 text-destructive bg-destructive/10 rounded-md">
             <AlertCircle className="h-8 w-8 mx-auto mb-2" />
             <h3 className="font-semibold text-lg">Error Loading Data</h3>
-            <p className="text-sm">{combinedError.message}</p>
+            <p className="text-sm">{error.message}</p>
          </div>
       );
     }
@@ -343,7 +377,7 @@ export default function ManagementHRAttendanceSummaryPage() {
                                   <Button 
                                     variant="outline"
                                     size="icon"
-                                    onClick={() => setAdjustingDayInfo({ user: users.find(u=>u.id===summary.userId)!, day })}
+                                    onClick={() => setAdjustingDayInfo({ user: summaryData.find(u=>u.userId===summary.userId)! as any, day })}
                                   >
                                     <Edit className="h-4 w-4"/>
                                   </Button>
