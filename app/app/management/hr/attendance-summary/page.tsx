@@ -1,221 +1,332 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { doc, collection, query, where, orderBy } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useCollection, WithId } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, isSaturday, isSunday, subMonths, addMonths, parseISO } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
+import {
+  format, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval,
+  isSaturday, isSunday, subMonths, addMonths, parseISO, differenceInMinutes, setHours, setMinutes
+} from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
+
+import type { UserProfile, Attendance, LeaveRequest, HRHoliday as HRHolidayType, HRSettings, AttendanceAdjustment } from "@/lib/types";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit, CalendarDays, Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import type { UserProfile, Attendance, LeaveRequest, HRHoliday as HRHolidayType, HRSettings, LeaveType } from "@/lib/types";
-import { DateRange } from "react-day-picker";
+import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
 
+// Helper types for this component
+interface AttendanceDailySummary {
+  date: Date;
+  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'LEAVE' | 'HOLIDAY' | 'WEEKEND' | 'NO_DATA';
+  workHours?: string;
+  lateMinutes?: number;
+  rawIn?: Date | null;
+  rawOut?: Date | null;
+  adjustment?: WithId<AttendanceAdjustment>;
+  leaveType?: string;
+}
+
+interface AttendanceMonthlySummary {
+  userId: string;
+  userName: string;
+  totalPresent: number;
+  totalLate: number;
+  totalAbsent: number;
+  totalLeave: number;
+  totalLateMinutes: number;
+  dailySummaries: AttendanceDailySummary[];
+  reviewNeeded: boolean;
+}
 
 export default function ManagementHRAttendanceSummaryPage() {
-    const { db } = useFirebase();
-    const { toast } = useToast();
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+  const { db } = useFirebase();
+  const { toast } = useToast();
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
-    const dateRange: DateRange | undefined = useMemo(() => ({
-        from: startOfMonth(currentMonth),
-        to: endOfMonth(currentMonth),
-    }), [currentMonth]);
+  // State for Adjustment Dialog
+  const [adjustingDayInfo, setAdjustingDayInfo] = useState<{ user: WithId<UserProfile>, day: AttendanceDailySummary } | null>(null);
 
-    const usersQuery = useMemo(() => db ? query(collection(db, 'users'), where('status', '==', 'ACTIVE'), orderBy('displayName', 'asc')) : null, [db]);
-    const { data: users, isLoading: isLoadingUsers } = useCollection<WithId<UserProfile>>(usersQuery);
+  const dateRange = useMemo(() => ({ from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) }), [currentMonth]);
+  const year = useMemo(() => currentMonth.getFullYear(), [currentMonth]);
 
-    const attendanceQuery = useMemo(() => {
-        if (!db || !dateRange?.from || !dateRange?.to) return null;
-        return query(collection(db, 'attendance'), 
-            where('timestamp', '>=', dateRange.from), 
-            where('timestamp', '<=', dateRange.to),
-            orderBy('timestamp', 'asc')
-        );
-    }, [db, dateRange]);
-    const { data: attendance, isLoading: isLoadingAttendance, error: attendanceError } = useCollection<Attendance>(attendanceQuery);
+  // Data Fetching
+  const usersQuery = useMemo(() => db ? query(collection(db, 'users'), where('status', '==', 'ACTIVE'), orderBy('displayName', 'asc')) : null, [db]);
+  const { data: users, isLoading: isLoadingUsers } = useCollection<WithId<UserProfile>>(usersQuery);
 
-    const approvedLeavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), where('status', '==', 'APPROVED')) : null, [db]);
-    const { data: approvedLeaves, isLoading: isLoadingLeaves } = useCollection<LeaveRequest>(approvedLeavesQuery);
+  const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
+  const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
+  
+  const holidaysQuery = useMemo(() => db ? query(collection(db, 'hrHolidays'), where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), where('date', '<=', format(dateRange.to, 'yyyy-MM-dd'))) : null, [dateRange, db]);
+  const { data: holidays, isLoading: isLoadingHolidays } = useCollection<HRHolidayType>(holidaysQuery);
 
-    const holidaysQuery = useMemo(() => db ? query(collection(db, 'hrHolidays')) : null, [db]);
-    const { data: holidays, isLoading: isLoadingHolidays } = useCollection<HRHolidayType>(holidaysQuery);
+  // Fetch leaves and attendance for the entire year to simplify calculations, then filter in-memory.
+  const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED')) : null, [db, year]);
+  const { data: yearLeaves, isLoading: isLoadingLeaves, error: leavesError } = useCollection<LeaveRequest>(leavesQuery);
 
-    const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
-    const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
-    
-    const isLoading = isLoadingUsers || isLoadingAttendance || isLoadingLeaves || isLoadingHolidays || isLoadingSettings;
+  const attendanceQuery = useMemo(() => db ? query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<=', dateRange.to), orderBy('timestamp', 'asc')) : null, [db, dateRange]);
+  const { data: monthAttendance, isLoading: isLoadingAttendance, error: attendanceError } = useCollection<Attendance>(attendanceQuery);
+  
+  const adjustmentsQuery = useMemo(() => db ? query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', format(dateRange.from, 'yyyy-MM-dd')), where('date', '<=', format(dateRange.to, 'yyyy-MM-dd'))) : null, [db, dateRange]);
+  const { data: monthAdjustments, isLoading: isLoadingAdjustments, error: adjustmentsError } = useCollection<AttendanceAdjustment>(adjustmentsQuery);
 
-    const { days, summaryData } = useMemo(() => {
-        if (isLoading || !dateRange?.from || !dateRange.to || !users || !attendance || !approvedLeaves || !holidays || !hrSettings) {
-            return { days: [], summaryData: [] };
+  const isLoading = isLoadingUsers || isLoadingSettings || isLoadingHolidays || isLoadingLeaves || isLoadingAttendance || isLoadingAdjustments;
+
+  // Main Calculation Logic
+  const summaryData = useMemo((): AttendanceMonthlySummary[] => {
+    if (isLoading || !users || !hrSettings || !holidays || !yearLeaves || !monthAttendance || !monthAdjustments) return [];
+
+    const daysInMonth = eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
+    const holidaysMap = new Map(holidays.map(h => [h.date, h.name]));
+    const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
+    const graceMinutes = hrSettings.graceMinutes || 0;
+
+    return users.map(user => {
+      const userLeaves = yearLeaves.filter(l => l.userId === user.id);
+      const userAttendance = monthAttendance.filter(a => a.userId === user.id);
+      const userAdjustments = monthAdjustments.filter(a => a.userId === user.id);
+      
+      let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalLeave = 0, totalLateMinutes = 0, reviewNeeded = false;
+
+      const dailySummaries: AttendanceDailySummary[] = daysInMonth.map(day => {
+        const dayStr = format(day, 'yyyy-MM-dd');
+        let daily: AttendanceDailySummary = { date: day, status: 'NO_DATA' };
+
+        // 1. Check for Holidays & Weekends
+        if (holidaysMap.has(dayStr)) {
+          daily.status = 'HOLIDAY';
+          return daily;
+        }
+        if (isSaturday(day) || isSunday(day)) {
+          daily.status = 'WEEKEND';
+          return daily;
         }
 
-        const intervalDays = eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
-        const holidaysMap = new Map(holidays.map(h => [h.date, h.name]));
-        const leavesMap = new Map<string, LeaveRequest[]>();
-        approvedLeaves.forEach(leave => {
-            if (!leavesMap.has(leave.userId)) leavesMap.set(leave.userId, []);
-            leavesMap.get(leave.userId)!.push(leave);
-        });
+        // 2. Check for Approved Leave
+        const onLeave = userLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+        if (onLeave) {
+          totalLeave += 1;
+          daily.status = 'LEAVE';
+          daily.leaveType = onLeave.leaveType;
+          return daily;
+        }
+
+        // 3. Process Attendance & Adjustments
+        const adjustmentForDay = userAdjustments.find(a => a.date === dayStr);
+        daily.adjustment = adjustmentForDay;
+
+        const attendanceForDay = userAttendance.filter(a => format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
+        const rawIns = attendanceForDay.filter(a => a.type === 'IN').map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
+        const rawOuts = attendanceForDay.filter(a => a.type === 'OUT').map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
+
+        let firstIn = rawIns[0] ?? null;
+        let lastOut = rawOuts[rawOuts.length-1] ?? null;
+
+        if (adjustmentForDay?.type === 'ADD_RECORD') {
+          if (adjustmentForDay.adjustedIn) firstIn = adjustmentForDay.adjustedIn.toDate();
+          if (adjustmentForDay.adjustedOut) lastOut = adjustmentForDay.adjustedOut.toDate();
+        }
+        daily.rawIn = firstIn;
+        daily.rawOut = lastOut;
+
+        if (!firstIn) {
+          totalAbsent += 1;
+          daily.status = 'ABSENT';
+          return daily;
+        }
         
-        const attendanceByUser = new Map<string, Attendance[]>();
-        attendance.forEach(att => {
-            if (!attendanceByUser.has(att.userId)) attendanceByUser.set(att.userId, []);
-            attendanceByUser.get(att.userId)!.push(att);
-        });
-
-        const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
-        const graceMinutes = hrSettings.graceMinutes || 0;
-
-        const processedData = users.map(user => {
-            const dailyStatuses = intervalDays.map(day => {
-                const dayStr = format(day, 'yyyy-MM-dd');
-                
-                if (holidaysMap.has(dayStr)) return { status: 'HOLIDAY', name: holidaysMap.get(dayStr) };
-                if (isSaturday(day) || isSunday(day)) return { status: 'WEEKEND' };
-
-                const userLeaves = leavesMap.get(user.id) || [];
-                const onLeave = userLeaves.find(leave => 
-                    isWithinInterval(day, { start: parseISO(leave.startDate), end: parseISO(leave.endDate) })
-                );
-                if (onLeave) {
-                    const leaveTypeMap: Record<LeaveType, string> = { SICK: "ป่วย", BUSINESS: "กิจ", VACATION: "พัก" };
-                    return { status: 'LEAVE', type: leaveTypeMap[onLeave.leaveType] || "ลา" };
-                }
-                
-                const userAttendanceToday = (attendanceByUser.get(user.id) || []).filter((att: any) => 
-                    att.timestamp && format(att.timestamp.toDate(), 'yyyy-MM-dd') === dayStr
-                );
-                
-                const clockIns = userAttendanceToday.filter((a: any) => a.type === 'IN').map((a: any) => a.timestamp.toDate()).sort((a: Date, b: Date) => a.getTime() - b.getTime());
-                const clockOuts = userAttendanceToday.filter((a: any) => a.type === 'OUT').map((a: any) => a.timestamp.toDate()).sort((a: Date, b: Date) => a.getTime() - b.getTime());
-
-                if (clockIns.length === 0) return { status: 'ABSENT' };
-
-                const firstClockIn = clockIns[0];
-                const lastClockOut = clockOuts.length > 0 ? clockOuts[clockOuts.length - 1] : undefined;
-                
-                let status: 'PRESENT' | 'LATE' = 'PRESENT';
-                const clockInTime = firstClockIn.getHours() * 60 + firstClockIn.getMinutes();
-                const workStartTime = workStartHour * 60 + workStartMinute + graceMinutes;
-                if (clockInTime > workStartTime) {
-                    status = 'LATE';
-                }
-                
-                return { status, clockIn: firstClockIn, clockOut: lastClockOut };
-            });
-            return { user, dailyStatuses };
-        });
-
-        return { days: intervalDays, summaryData: processedData };
-    }, [isLoading, dateRange, users, attendance, approvedLeaves, holidays, hrSettings]);
-
-    useEffect(() => {
-        if (attendanceError?.message?.includes('requires an index')) {
-          const urlMatch = attendanceError.message.match(/https?:\/\/[^\s]+/);
-          toast({
-            variant: "destructive",
-            title: "Database Index Required",
-            description: `The attendance query needs an index. Please create it in Firebase. ${urlMatch ? `Link: ${urlMatch[0]}`: ''}`,
-            duration: 20000,
-          });
-        }
-    }, [attendanceError, toast]);
-    
-    const getStatusContent = (dayStatus: any) => {
-        let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'outline';
-        let text: React.ReactNode = '';
-        let tooltipContent = '';
-
-        switch(dayStatus.status) {
-            case 'PRESENT':
-                variant = 'default';
-                text = 'P';
-                tooltipContent = `Present. In: ${safeFormat(dayStatus.clockIn, 'HH:mm')}${dayStatus.clockOut ? `, Out: ${safeFormat(dayStatus.clockOut, 'HH:mm')}`: ''}`;
-                break;
-            case 'LATE':
-                variant = 'destructive';
-                text = 'L';
-                tooltipContent = `Late. In: ${safeFormat(dayStatus.clockIn, 'HH:mm')}`;
-                break;
-            case 'ABSENT': variant = 'destructive'; text = 'A'; tooltipContent = 'Absent'; break;
-            case 'LEAVE':
-                variant = 'secondary';
-                text = dayStatus.type;
-                tooltipContent = `On Leave (${dayStatus.type})`;
-                break;
-            case 'HOLIDAY': variant = 'secondary'; text = 'H'; tooltipContent = `Holiday: ${dayStatus.name}`; break;
-            case 'WEEKEND': return <div className="w-full h-8 flex items-center justify-center text-muted-foreground text-xs"></div>;
-            default: return null;
+        if (!lastOut) {
+          reviewNeeded = true;
+          daily.status = 'NO_DATA';
+          return daily;
         }
 
-        return (
-            <TooltipProvider>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Badge variant={variant} className="w-8 h-8 flex items-center justify-center cursor-default">{text}</Badge>
-                    </TooltipTrigger>
-                    <TooltipContent><p>{tooltipContent}</p></TooltipContent>
-                </Tooltip>
-            </TooltipProvider>
-        );
-    };
+        // 4. Calculate Status (Present, Late)
+        const workStartTimeWithGrace = setMinutes(setHours(day, workStartHour), workStartMinute + graceMinutes);
+        let lateMins = differenceInMinutes(firstIn, workStartTimeWithGrace);
+        if (lateMins < 0) lateMins = 0;
 
-    const handlePrevMonth = () => setCurrentMonth(prev => subMonths(prev, 1));
-    const handleNextMonth = () => setCurrentMonth(prev => addMonths(prev, 1));
+        if (adjustmentForDay?.type === 'FORGIVE_LATE') lateMins = 0;
 
-    return (
-        <>
-            <PageHeader title="สรุปลงเวลา" description="สรุปการลงเวลาทำงานรายวันของพนักงานทุกคน" />
-            <Card>
-                <CardHeader>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <CardTitle>Attendance Summary</CardTitle>
-                        <div className="flex items-center gap-2 self-end sm:self-center">
-                            <Button variant="outline" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
-                            <span className="font-semibold text-lg text-center w-32">{format(currentMonth, 'MMMM yyyy')}</span>
-                            <Button variant="outline" size="icon" onClick={handleNextMonth}><ChevronRight className="h-4 w-4" /></Button>
-                        </div>
+        if (lateMins > 0) {
+          daily.status = 'LATE';
+          daily.lateMinutes = lateMins;
+          totalLate += 1;
+          totalLateMinutes += lateMins;
+        } else {
+          daily.status = 'PRESENT';
+          totalPresent += 1;
+        }
+        
+        const workMins = differenceInMinutes(lastOut, firstIn);
+        daily.workHours = `${Math.floor(workMins/60)}h ${workMins % 60}m`;
+        
+        return daily;
+      });
+
+      return {
+        userId: user.id, userName: user.displayName,
+        totalPresent, totalLate, totalAbsent, totalLeave, totalLateMinutes,
+        dailySummaries, reviewNeeded
+      };
+    });
+  }, [isLoading, users, hrSettings, holidays, yearLeaves, monthAttendance, monthAdjustments, dateRange]);
+
+
+  useEffect(() => {
+    const combinedError = attendanceError || leavesError || adjustmentsError;
+    if (combinedError?.message?.includes('requires an index')) {
+      toast({
+        variant: "destructive",
+        title: "Database Index Required",
+        description: `A query needs a Firestore index. Check developer console for the link to create it.`,
+        duration: 20000,
+      });
+    }
+  }, [attendanceError, leavesError, adjustmentsError, toast]);
+
+  const handlePrevMonth = () => setCurrentMonth(prev => subMonths(prev, 1));
+  const handleNextMonth = () => setCurrentMonth(prev => addMonths(prev, 1));
+  const handleToday = () => setCurrentMonth(new Date());
+
+  const getStatusBadge = (status: AttendanceDailySummary['status'], leaveType?: string) => {
+    switch (status) {
+      case 'PRESENT': return <Badge variant="default">Present</Badge>;
+      case 'LATE': return <Badge variant="destructive">Late</Badge>;
+      case 'ABSENT': return <Badge variant="destructive">Absent</Badge>;
+      case 'LEAVE': return <Badge variant="secondary">{leaveType || 'Leave'}</Badge>;
+      case 'NO_DATA': return <Badge variant="outline">No Data</Badge>;
+      default: return <span className="text-muted-foreground text-xs">{status}</span>
+    }
+  };
+
+  return (
+    <>
+      <PageHeader title="สรุปลงเวลา" description="สรุปการลงเวลาทำงานรายวันของพนักงานทุกคน" />
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <CardTitle>Attendance Summary</CardTitle>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <Button variant="outline" onClick={handleToday}><CalendarDays className="mr-2 h-4 w-4" />Today</Button>
+              <Button variant="outline" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
+              <span className="font-semibold text-lg text-center w-36">{format(currentMonth, 'MMMM yyyy')}</span>
+              <Button variant="outline" size="icon" onClick={handleNextMonth}><ChevronRight className="h-4 w-4" /></Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
+          ) : (
+            <Accordion type="multiple" className="w-full">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[200px]">Employee</TableHead>
+                    <TableHead>Present</TableHead>
+                    <TableHead>Late</TableHead>
+                    <TableHead>Absent</TableHead>
+                    <TableHead>Leave</TableHead>
+                    <TableHead>Total Late (min)</TableHead>
+                    <TableHead>Notes</TableHead>
+                  </TableRow>
+                </TableHeader>
+              </Table>
+              {summaryData.length > 0 ? summaryData.map(summary => (
+                <AccordionItem value={summary.userId} key={summary.userId}>
+                  <AccordionTrigger className="hover:no-underline hover:bg-muted/50 px-4">
+                    <Table className="w-full">
+                      <TableBody>
+                        <TableRow className="border-none hover:bg-transparent">
+                          <TableCell className="w-[200px] font-medium">{summary.userName}</TableCell>
+                          <TableCell>{summary.totalPresent}</TableCell>
+                          <TableCell>{summary.totalLate}</TableCell>
+                          <TableCell>{summary.totalAbsent}</TableCell>
+                          <TableCell>{summary.totalLeave}</TableCell>
+                          <TableCell>{summary.totalLateMinutes}</TableCell>
+                          <TableCell>
+                            {summary.reviewNeeded && <Badge variant="destructive">Review Needed</Badge>}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="p-4 bg-muted/30 max-h-96 overflow-y-auto">
+                      <h4 className="font-semibold mb-2">Daily Details for {summary.userName}</h4>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Clock In</TableHead>
+                            <TableHead>Clock Out</TableHead>
+                            <TableHead>Work Hours</TableHead>
+                            <TableHead>Late (min)</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {summary.dailySummaries.map(day => (
+                            <TableRow key={day.date.toISOString()} className="bg-background">
+                              <TableCell>{format(day.date, 'eee, dd MMM')}</TableCell>
+                              <TableCell>{getStatusBadge(day.status, day.leaveType)}</TableCell>
+                              <TableCell>{safeFormat(day.rawIn, 'HH:mm')}</TableCell>
+                              <TableCell>{safeFormat(day.rawOut, 'HH:mm')}</TableCell>
+                              <TableCell>{day.workHours || '-'}</TableCell>
+                              <TableCell>{day.lateMinutes || '-'}</TableCell>
+                              <TableCell className="text-right">
+                                {day.status !== 'HOLIDAY' && day.status !== 'WEEKEND' && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button 
+                                          variant="outline"
+                                          size="icon"
+                                          onClick={() => setAdjustingDayInfo({ user: users.find(u=>u.id===summary.userId)!, day })}
+                                        >
+                                          <Edit className="h-4 w-4"/>
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Adjust Attendance</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
-                </CardHeader>
-                <CardContent className="overflow-x-auto">
-                    {isLoading ? (
-                        <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
-                    ) : attendanceError ? (
-                        <div className="text-destructive text-center p-8">Error loading attendance data. A database index might be required. Check console for details.</div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="sticky left-0 bg-background min-w-[150px]">Employee</TableHead>
-                                    {days.map(day => <TableHead key={day.toString()} className="text-center">{format(day, 'd')}</TableHead>)}
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {summaryData.map(({ user, dailyStatuses }) => (
-                                <TableRow key={user.id}>
-                                    <TableCell className="sticky left-0 bg-background font-medium">{user.displayName}</TableCell>
-                                    {dailyStatuses.map((status, index) => (
-                                    <TableCell key={index} className="text-center p-1">
-                                        {getStatusContent(status)}
-                                    </TableCell>
-                                    ))}
-                                </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
-        </>
-    );
+                  </AccordionContent>
+                </AccordionItem>
+              )) : (
+                <div className="text-center p-8 text-muted-foreground">No active employees found.</div>
+              )}
+            </Accordion>
+          )}
+        </CardContent>
+      </Card>
+      {adjustingDayInfo && (
+          <AttendanceAdjustmentDialog 
+            isOpen={!!adjustingDayInfo}
+            onOpenChange={(isOpen) => !isOpen && setAdjustingDayInfo(null)}
+            dayInfo={adjustingDayInfo.day}
+            user={adjustingDayInfo.user}
+          />
+      )}
+    </>
+  );
 }

@@ -681,6 +681,25 @@
         "updatedAt"
       ]
     },
+    "AttendanceAdjustment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Attendance Adjustment",
+      "description": "Represents a manual adjustment to an attendance record for a specific day.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "date": { "type": "string", "format": "date", "description": "The date being adjusted (YYYY-MM-DD)." },
+        "type": { "type": "string", "enum": ["ADD_RECORD", "FORGIVE_LATE"] },
+        "adjustedIn": { "type": "string", "format": "date-time" },
+        "adjustedOut": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string", "description": "Reason for the adjustment." },
+        "updatedBy": { "type": "string", "description": "Name of the admin who made the change." },
+        "updatedById": { "type": "string", "description": "UID of the admin who made the change." },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "date", "type", "notes", "updatedBy", "updatedById", "updatedAt"]
+    },
     "PayrollRun": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Payroll Run",
@@ -788,6 +807,12 @@
         "$ref": "#/backend/entities/LeaveRequest"
       },
       "description": "Stores employee leave requests."
+    },
+    "/hrAttendanceAdjustments/{adjustmentId}": {
+      "schema": {
+        "$ref": "#/backend/entities/AttendanceAdjustment"
+      },
+      "description": "Stores manual adjustments to attendance records."
     },
     "/payrollRuns/{runId}": {
       "schema": {

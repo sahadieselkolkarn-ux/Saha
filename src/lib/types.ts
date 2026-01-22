@@ -168,6 +168,19 @@ export interface LeaveRequest {
   updatedAt: Timestamp;
 }
 
+export interface AttendanceAdjustment {
+  id: string;
+  userId: string;
+  date: string; // YYYY-MM-DD
+  type: 'ADD_RECORD' | 'FORGIVE_LATE';
+  adjustedIn?: Timestamp;
+  adjustedOut?: Timestamp;
+  notes: string;
+  updatedBy: string; // User's name
+  updatedById: string; // User's UID
+  updatedAt: Timestamp;
+}
+
 export interface PayrollRun {
   id: string;
   year: number;
