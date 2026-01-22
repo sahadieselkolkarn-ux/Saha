@@ -19,6 +19,9 @@ export type LeaveType = (typeof LEAVE_TYPES)[number];
 export const LEAVE_STATUSES = ["SUBMITTED", "APPROVED", "REJECTED", "CANCELLED"] as const;
 export type LeaveStatus = (typeof LEAVE_STATUSES)[number];
 
+export const PAYROLL_STATUSES = ["DRAFT_HR", "SENT_TO_EMPLOYEE", "FINAL"] as const;
+export type PayrollStatus = (typeof PAYROLL_STATUSES)[number];
+
 
 export const TOKEN_TTL_MS = 30000; // 30 seconds
 export const TOKEN_BUFFER_MS = 5000; // 5 seconds buffer

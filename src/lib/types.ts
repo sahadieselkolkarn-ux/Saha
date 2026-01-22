@@ -1,6 +1,6 @@
 
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -186,7 +186,7 @@ export interface PayrollRun {
   year: number;
   month: number; // 1-12
   period: 1 | 2;
-  status: 'DRAFT' | 'FINAL';
+  status: PayrollStatus;
   createdAt: Timestamp;
   finalizedAt?: Timestamp;
 }
@@ -204,8 +204,6 @@ export interface Payslip {
   userName: string;
   baseSalary: number;
   deductions: PayslipDeduction[];
-  ssoEmployee: number;
-  withholdingTax: number;
   netSalary: number;
   isOverridden?: boolean;
   overrideNotes?: string;

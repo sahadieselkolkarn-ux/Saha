@@ -710,7 +710,7 @@
         "year": { "type": "number" },
         "month": { "type": "number" },
         "period": { "type": "number", "description": "1 for first half, 2 for second half." },
-        "status": { "type": "string", "enum": ["DRAFT", "FINAL"] },
+        "status": { "type": "string", "enum": ["DRAFT_HR", "SENT_TO_EMPLOYEE", "FINAL"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "finalizedAt": { "type": "string", "format": "date-time" }
       },
@@ -739,8 +739,6 @@
             "required": ["name", "amount"]
           }
         },
-        "ssoEmployee": { "type": "number", "description": "Employee's SSO contribution." },
-        "withholdingTax": { "type": "number" },
         "netSalary": { "type": "number", "description": "Final salary after all deductions." },
         "isOverridden": { "type": "boolean" },
         "overrideNotes": { "type": "string" }
