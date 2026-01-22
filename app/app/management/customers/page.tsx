@@ -81,7 +81,7 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
     </Card>
 );
 
-function AllCustomersTab() {
+function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -91,7 +91,6 @@ function AllCustomersTab() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
 
   const form = useForm<z.infer<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
@@ -201,17 +200,6 @@ function AllCustomersTab() {
 
   return (
     <>
-      <div className="flex justify-end mb-4">
-        <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-                placeholder="Search by name or phone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-            />
-        </div>
-      </div>
       <Card className="hidden sm:block">
         <CardContent className="pt-6">
           <Table>
@@ -340,12 +328,12 @@ function AllCustomersTab() {
   );
 }
 
-function TaxCustomersTab() {
+
+function TaxCustomersTab({ searchTerm }: { searchTerm: string }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     if (!db) return;
@@ -381,20 +369,7 @@ function TaxCustomersTab() {
 
   return (
      <Card>
-        <CardHeader>
-          <div className="flex justify-end">
-              <div className="relative w-full max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                      placeholder="Search name, phone, or Tax ID..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                  />
-              </div>
-          </div>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
            <Table>
             <TableHeader>
               <TableRow>
@@ -426,7 +401,85 @@ function TaxCustomersTab() {
   )
 }
 
+function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
+  const { db } = useFirebase();
+  const { toast } = useToast();
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "customers"), where("useTax", "==", false));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+      customersData.sort((a, b) => a.name.localeCompare(b.name));
+      setCustomers(customersData);
+      setLoading(false);
+    },
+    (error) => {
+      toast({ variant: "destructive", title: "Failed to load general customers" });
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [db, toast]);
+  
+  const filteredCustomers = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return customers;
+    }
+    const lowercasedFilter = searchTerm.toLowerCase();
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(lowercasedFilter) ||
+      customer.phone.includes(searchTerm)
+    );
+  }, [customers, searchTerm]);
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+
+  return (
+     <Card>
+        <CardContent className="pt-6">
+           <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Phone</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map(customer => (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell>{customer.phone}</TableCell>
+                    </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                    <TableCell colSpan={2} className="h-24 text-center text-muted-foreground">
+                        {searchTerm ? "No customers match your search." : "ไม่พบข้อมูลลูกค้าทั่วไป"}
+                    </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+  )
+}
+
+
 export default function ManagementCustomersPage() {
+    const [searchTerm, setSearchTerm] = useState("");
+    const [activeTab, setActiveTab] = useState("all");
+
+    const placeholder = useMemo(() => {
+        if (activeTab === 'tax') return "Search name, phone, or Tax ID...";
+        return "Search by name or phone...";
+    }, [activeTab]);
+
     return (
         <>
             <PageHeader title="การจัดการลูกค้า" description="จัดการข้อมูลลูกค้าทั้งหมด">
@@ -445,16 +498,32 @@ export default function ManagementCustomersPage() {
                     </Button>
                 </div>
             </PageHeader>
-            <Tabs defaultValue="all" className="space-y-4">
-                <TabsList>
-                    <TabsTrigger value="all">รายชื่อลูกค้าทั้งหมด</TabsTrigger>
-                    <TabsTrigger value="tax">ลูกค้าใช้ภาษี</TabsTrigger>
-                </TabsList>
+            <Tabs defaultValue="all" onValueChange={setActiveTab} className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <TabsList>
+                        <TabsTrigger value="all">รายชื่อลูกค้าทั้งหมด</TabsTrigger>
+                        <TabsTrigger value="tax">ลูกค้าใช้ภาษี</TabsTrigger>
+                        <TabsTrigger value="general">ลูกค้าทั่วไป</TabsTrigger>
+                    </TabsList>
+                    <div className="relative w-full sm:w-auto sm:max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder={placeholder}
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10"
+                        />
+                    </div>
+                </div>
+
                 <TabsContent value="all">
-                    <AllCustomersTab />
+                    <AllCustomersTab searchTerm={searchTerm} />
                 </TabsContent>
                 <TabsContent value="tax">
-                    <TaxCustomersTab />
+                    <TaxCustomersTab searchTerm={searchTerm} />
+                </TabsContent>
+                 <TabsContent value="general">
+                    <GeneralCustomersTab searchTerm={searchTerm}/>
                 </TabsContent>
             </Tabs>
         </>
