@@ -48,6 +48,8 @@ interface AttendanceMonthlySummary {
   reviewNeeded: boolean;
 }
 
+type UserForSummary = Pick<WithId<UserProfile>, "id" | "displayName" | "status">;
+
 export default function ManagementHRAttendanceSummaryPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
@@ -65,7 +67,7 @@ export default function ManagementHRAttendanceSummaryPage() {
   const [adjustingDayInfo, setAdjustingDayInfo] = useState<{ user: WithId<UserProfile>, day: AttendanceDailySummary } | null>(null);
 
   const calculateSummary = useCallback((
-    users: WithId<UserProfile>[],
+    users: UserForSummary[],
     hrSettings: HRSettings,
     holidays: HRHolidayType[],
     yearLeaves: LeaveRequest[],
@@ -74,14 +76,13 @@ export default function ManagementHRAttendanceSummaryPage() {
     dateRange: { from: Date, to: Date }
   ): AttendanceMonthlySummary[] => {
       
-    const activeUsers = users.filter(u => u.status === 'ACTIVE');
     const approvedLeaves = yearLeaves.filter(l => l.status === 'APPROVED');
     const daysInMonth = eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
     const holidaysMap = new Map(holidays.map(h => [h.date, h.name]));
     const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
     const graceMinutes = hrSettings.graceMinutes || 0;
 
-    return activeUsers.map(user => {
+    return users.map(user => {
       const userLeaves = approvedLeaves.filter(l => l.userId === user.id);
       const userAttendance = monthAttendance.filter(a => a.userId === user.id);
       const userAdjustments = monthAdjustments.filter(a => a.userId === user.id);
@@ -117,8 +118,8 @@ export default function ManagementHRAttendanceSummaryPage() {
             return format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr;
         });
         
-        const rawIns = attendanceForDay.filter(a => a.type === 'IN' && a.timestamp).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
-        const rawOuts = attendanceForDay.filter(a => a.type === 'OUT' && a.timestamp).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
+        const rawIns = attendanceForDay.filter(a => a.type === 'IN' && a.timestamp && (a.timestamp instanceof Timestamp)).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
+        const rawOuts = attendanceForDay.filter(a => a.type === 'OUT' && a.timestamp && (a.timestamp instanceof Timestamp)).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
 
         let firstIn = rawIns[0] ?? null;
         let lastOut = rawOuts[rawOuts.length-1] ?? null;
@@ -184,28 +185,17 @@ export default function ManagementHRAttendanceSummaryPage() {
             const dateRange = { from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) };
             const year = currentMonth.getFullYear();
             const startStr = format(dateRange.from, 'yyyy-MM-dd');
-            const endStr = format(dateRange.to, 'yyyy-MM-dd');
-            const nextMonth = addMonths(currentMonth, 1);
-            const firstDayOfNextMonth = startOfMonth(nextMonth);
             
-            const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
+            const nextMonthDate = addMonths(currentMonth, 1);
+            const nextMonthStart = startOfMonth(nextMonthDate);
+            const nextStr = format(nextMonthStart, 'yyyy-MM-dd');
+            
+            const usersQuery = query(collection(db, 'users'), orderBy('displayName','asc'));
             const settingsDocRef = doc(db, 'settings', 'hr');
-            const holidaysQuery = query(collection(db, 'hrHolidays'), 
-              where('date', '>=', startStr), 
-              where('date', '<=', endStr),
-              orderBy('date', 'asc')
-            );
+            const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
-            const attendanceQuery = query(collection(db, 'attendance'), 
-              where('timestamp', '>=', dateRange.from), 
-              where('timestamp', '<', firstDayOfNextMonth),
-              orderBy('timestamp', 'asc')
-            );
-            const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), 
-              where('date', '>=', startStr), 
-              where('date', '<=', endStr),
-              orderBy('date', 'asc')
-            );
+            const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
+            const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
 
             const [
                 usersSnapshot,
@@ -215,37 +205,51 @@ export default function ManagementHRAttendanceSummaryPage() {
                 attendanceSnapshot,
                 adjustmentsSnapshot
             ] = await Promise.all([
-                getDocs(usersQuery),
+                getDocs(usersQuery).catch(e => { console.warn("Could not fetch users:", e); return null; }),
                 getDoc(settingsDocRef),
                 getDocs(holidaysQuery),
-                getDocs(leavesQuery),
+                getDocs(leavesSnapshot),
                 getDocs(attendanceQuery),
                 getDocs(adjustmentsQuery),
             ]);
 
-            const usersData: WithId<UserProfile>[] = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            setAllUsers(usersData); // Save all users for the dialog
-
-            const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
-            const holidaysData: WithId<HRHolidayType>[] = holidaysSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<HRHolidayType>));
-            const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
+            const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
+
+            const userMap = new Map<string, UserForSummary>();
+
+            if (usersSnapshot && !usersSnapshot.empty) {
+                const allUsersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+                setAllUsers(allUsersData);
+                allUsersData.filter(u => u.status === 'ACTIVE').forEach(u => userMap.set(u.id, u));
+            }
+
+            monthAttendanceData.forEach(att => {
+                if (att.userId && att.userName && !userMap.has(att.userId)) {
+                    userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' });
+                }
+            });
+            yearLeavesData.filter(l => l.status === 'APPROVED').forEach(leave => {
+                if (leave.userId && leave.userName && !userMap.has(leave.userId)) {
+                    userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' });
+                }
+            });
+            const usersToProcess = Array.from(userMap.values()).sort((a,b) => a.displayName.localeCompare(b.displayName));
+            
+            const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
+            if (!hrSettingsData) throw new Error("HR Settings not found. Please configure them in the HR settings page.");
+
+            const holidaysData: WithId<HRHolidayType>[] = holidaysSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<HRHolidayType>));
             const monthAdjustmentsData: WithId<AttendanceAdjustment>[] = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
             
-            if (!hrSettingsData) {
-                throw new Error("HR Settings not found. Please configure them in the HR settings page.");
-            }
-            
-            const calculatedData = calculateSummary(usersData, hrSettingsData, holidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
+            const calculatedData = calculateSummary(usersToProcess, hrSettingsData, holidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
             setSummaryData(calculatedData);
 
         } catch (err: any) {
             console.error("Error fetching attendance summary data:", err);
             if (err.message?.includes('requires an index')) {
                 const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-                if (urlMatch) {
-                    setIndexCreationUrl(urlMatch[0]);
-                }
+                if (urlMatch) setIndexCreationUrl(urlMatch[0]);
             }
             setError(err);
         } finally {
@@ -312,7 +316,7 @@ export default function ManagementHRAttendanceSummaryPage() {
     }
 
     if (filteredSummaryData.length === 0) {
-      return <div className="text-center p-8 text-muted-foreground">{searchQuery ? "No employees match your search." : "No attendance data available for this month."}</div>;
+      return <div className="text-center p-8 text-muted-foreground">{searchQuery ? "No employees match your search." : "ยังไม่มีข้อมูลในเดือนนี้"}</div>;
     }
 
     return (
@@ -357,8 +361,8 @@ export default function ManagementHRAttendanceSummaryPage() {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Clock In</TableHead>
-                      <TableHead>Clock Out</TableHead>
+                      <TableHead>IN</TableHead>
+                      <TableHead>OUT</TableHead>
                       <TableHead>Work Hours</TableHead>
                       <TableHead>Late (min)</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -385,6 +389,8 @@ export default function ManagementHRAttendanceSummaryPage() {
                                         const userForDialog = allUsers.find(u=>u.id===summary.userId);
                                         if (userForDialog) {
                                             setAdjustingDayInfo({ user: userForDialog, day })
+                                        } else {
+                                            toast({variant: 'destructive', title: 'Could not open dialog', description: 'User data not fully loaded.'});
                                         }
                                     }}
                                   >
