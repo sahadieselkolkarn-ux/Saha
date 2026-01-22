@@ -96,7 +96,8 @@ export default function ImportCustomersPage() {
         setError("Failed to read the file.");
         setIsProcessing(false);
     };
-    reader.readAsText(fileToParse, 'TIS-620');
+    // Default to UTF-8, which is the standard for web and modern applications.
+    reader.readAsText(fileToParse);
   };
 
   const handleImport = async () => {
@@ -160,7 +161,7 @@ export default function ImportCustomersPage() {
               <br />
               - Ensure there are no commas within individual fields.
               <br />
-              - For Thai language, please save the file with TIS-620 or UTF-8 encoding.
+              - **Important:** For Thai language, please ensure the file is saved with **UTF-8 encoding**.
             </p>
             <p className="text-sm font-semibold mt-4">Example:</p>
             <code className="text-sm p-2 bg-muted rounded-md block my-2">
