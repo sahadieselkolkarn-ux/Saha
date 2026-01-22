@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, MoreHorizontal, PlusCircle, Trash2, CalendarPlus, CheckCircle, XCircle, ShieldAlert, ChevronLeft, ChevronRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DEPARTMENTS, USER_ROLES, USER_STATUSES, LeaveStatus, LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
+import { DEPARTMENTS, USER_ROLES, USER_STATUSES, LeaveStatus, LEAVE_STATUSES, LEAVE_TYPES, LeaveType } from "@/lib/constants";
 import type { UserProfile, HRHoliday as HRHolidayType, LeaveRequest, HRSettings } from "@/lib/types";
 import {
   AlertDialog,
@@ -35,6 +35,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HRSettingsForm } from "@/components/hr-settings-form";
 import { format, isBefore, startOfToday, parseISO, getYear, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, isSaturday, isSunday, subMonths, addMonths } from 'date-fns';
+import { safeFormat } from '@/lib/date-utils';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -1060,10 +1061,27 @@ function AttendanceSummaryTab() {
         let tooltipContent = '';
 
         switch(dayStatus.status) {
-            case 'PRESENT': variant = 'default'; text = 'P'; tooltipContent = `Present. In: ${format(dayStatus.clockIn, 'HH:mm')}${dayStatus.clockOut ? `, Out: ${format(dayStatus.clockOut, 'HH:mm')}`: ''}`; break;
-            case 'LATE': variant = 'destructive'; text = 'L'; tooltipContent = `Late. In: ${format(dayStatus.clockIn, 'HH:mm')}`; break;
+            case 'PRESENT':
+                variant = 'default';
+                text = 'P';
+                tooltipContent = `Present. In: ${safeFormat(dayStatus.clockIn, 'HH:mm')}${dayStatus.clockOut ? `, Out: ${safeFormat(dayStatus.clockOut, 'HH:mm')}`: ''}`;
+                break;
+            case 'LATE':
+                variant = 'destructive';
+                text = 'L';
+                tooltipContent = `Late. In: ${safeFormat(dayStatus.clockIn, 'HH:mm')}`;
+                break;
             case 'ABSENT': variant = 'destructive'; text = 'A'; tooltipContent = 'Absent'; break;
-            case 'LEAVE': variant = 'secondary'; text = 'LV'; tooltipContent = `On Leave (${dayStatus.type})`; break;
+            case 'LEAVE':
+                variant = 'secondary';
+                const leaveTypeMap: Record<LeaveType, string> = {
+                    SICK: "ป่วย",
+                    BUSINESS: "กิจ",
+                    VACATION: "พัก",
+                };
+                text = leaveTypeMap[dayStatus.type as LeaveType] || "ลา";
+                tooltipContent = `On Leave (${dayStatus.type})`;
+                break;
             case 'HOLIDAY': variant = 'secondary'; text = 'H'; tooltipContent = `Holiday: ${dayStatus.name}`; break;
             case 'WEEKEND': return <div className="w-full h-8 flex items-center justify-center text-muted-foreground text-xs"></div>;
             default: return null;
