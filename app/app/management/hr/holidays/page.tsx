@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,6 +34,7 @@ const holidaySchema = z.object({
 export default function ManagementHRHolidaysPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   
   const form = useForm<z.infer<typeof holidaySchema>>({
     resolver: zodResolver(holidaySchema),
@@ -97,7 +98,7 @@ export default function ManagementHRHolidaysPage() {
                     render={({ field }) => (
                         <FormItem className="flex flex-col">
                         <FormLabel>Date</FormLabel>
-                        <Popover>
+                        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
                                 <Button
@@ -116,7 +117,10 @@ export default function ManagementHRHolidaysPage() {
                             <Calendar
                                 mode="single"
                                 selected={field.value}
-                                onSelect={field.onChange}
+                                onSelect={(date) => {
+                                  field.onChange(date);
+                                  setIsCalendarOpen(false);
+                                }}
                                 disabled={(date) => isBefore(date, today)}
                                 initialFocus
                             />
