@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Menu, Settings, LogOut, FileText } from "lucide-react"
+import { Menu, Settings, LogOut, FileText, Receipt } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
@@ -67,6 +67,9 @@ export function AppHeader() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link href="/app/settings/my-leaves"><FileText className="mr-2 h-4 w-4"/> ใบลาของฉัน</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+                <Link href="/app/settings/my-payslips"><Receipt className="mr-2 h-4 w-4"/> ใบเงินเดือนของฉัน</Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut}>
