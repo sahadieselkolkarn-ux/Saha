@@ -6,11 +6,11 @@ import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval,
-  isSaturday, isSunday, subMonths, addMonths, parseISO, differenceInMinutes, setHours, setMinutes
+  isSaturday, isSunday, subMonths, addMonths, parseISO, differenceInMinutes, setHours, setMinutes, isBefore, isAfter
 } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 
-import type { UserProfile, Attendance, LeaveRequest, HRHoliday as HRHolidayType, HRSettings, AttendanceAdjustment } from "@/lib/types";
+import type { UserProfile, Attendance, LeaveRequest, HRHoliday as HRHolidayType, HRSettings, AttendanceAdjustment, UserStatus } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
 
 import { PageHeader } from "@/components/page-header";
@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input";
 // Helper types for this component
 interface AttendanceDailySummary {
   date: Date;
-  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'LEAVE' | 'HOLIDAY' | 'WEEKEND' | 'NO_DATA';
+  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'LEAVE' | 'HOLIDAY' | 'WEEKEND' | 'NO_DATA' | 'NOT_STARTED' | 'ENDED' | 'SUSPENDED';
   workHours?: string;
   lateMinutes?: number;
   rawIn?: Date | null;
@@ -46,9 +46,11 @@ interface AttendanceMonthlySummary {
   totalLateMinutes: number;
   dailySummaries: AttendanceDailySummary[];
   reviewNeeded: boolean;
+  startDate?: string | null;
+  endDate?: string | null;
+  status: UserStatus;
 }
 
-type UserForSummary = Pick<WithId<UserProfile>, "id" | "displayName" | "status">;
 
 export default function ManagementHRAttendanceSummaryPage() {
   const { db } = useFirebase();
@@ -67,7 +69,7 @@ export default function ManagementHRAttendanceSummaryPage() {
   const [adjustingDayInfo, setAdjustingDayInfo] = useState<{ user: WithId<UserProfile>, day: AttendanceDailySummary } | null>(null);
 
   const calculateSummary = useCallback((
-    users: UserForSummary[],
+    users: WithId<UserProfile>[],
     hrSettings: HRSettings,
     holidays: HRHolidayType[],
     yearLeaves: LeaveRequest[],
@@ -89,10 +91,28 @@ export default function ManagementHRAttendanceSummaryPage() {
       const userAdjustments = monthAdjustments.filter(a => a.userId === user.id);
       
       let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalLeave = 0, totalLateMinutes = 0, reviewNeeded = false;
+      
+      const startDate = user.hr?.startDate ? parseISO(user.hr.startDate) : null;
+      const endDate = user.hr?.endDate ? parseISO(user.hr.endDate) : null;
 
       const dailySummaries: AttendanceDailySummary[] = daysInMonth.map(day => {
         const dayStr = format(day, 'yyyy-MM-dd');
         let daily: AttendanceDailySummary = { date: day, status: 'NO_DATA' };
+
+        if (startDate && isBefore(day, startDate)) {
+          daily.status = 'NOT_STARTED';
+          return daily;
+        }
+
+        if (endDate && isAfter(day, endDate)) {
+          daily.status = 'ENDED';
+          return daily;
+        }
+        
+        if (user.status === 'SUSPENDED') {
+          daily.status = 'SUSPENDED';
+          return daily;
+        }
 
         if (holidaysMap.has(dayStr)) {
           daily.status = 'HOLIDAY';
@@ -170,6 +190,9 @@ export default function ManagementHRAttendanceSummaryPage() {
 
       return {
         userId: user.id, userName: user.displayName,
+        status: user.status,
+        startDate: user.hr?.startDate,
+        endDate: user.hr?.endDate,
         totalPresent, totalLate, totalAbsent, totalLeave, totalLateMinutes,
         dailySummaries, reviewNeeded
       };
@@ -200,19 +223,21 @@ export default function ManagementHRAttendanceSummaryPage() {
             const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
             const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
 
+            let usersSnapshot = null;
+            try {
+                usersSnapshot = await getDocs(usersQuery);
+            } catch(e) {
+                console.warn("Could not fetch user list:", e);
+                toast({ variant: 'destructive', title: "Could not load user list", description: "Falling back to attendance data for user names."});
+            }
+
             const [
-                usersSnapshot,
                 settingsDocSnap,
                 holidaysSnapshot,
                 leavesSnapshot,
                 attendanceSnapshot,
                 adjustmentsSnapshot
             ] = await Promise.all([
-                getDocs(usersQuery).catch(e => { 
-                    toast({ variant: 'destructive', title: "Could not load user list", description: "Falling back to attendance data for user names."});
-                    console.warn("Could not fetch users:", e); 
-                    return null; 
-                }),
                 getDoc(settingsDocRef),
                 getDocs(holidaysQuery),
                 getDocs(leavesQuery),
@@ -224,23 +249,35 @@ export default function ManagementHRAttendanceSummaryPage() {
             setAllUsers(allUsersData);
             
             const activeUsers = allUsersData.filter(u => u.status === 'ACTIVE');
-            const userMap = new Map<string, UserForSummary>();
+            const userMap = new Map<string, WithId<UserProfile>>();
             activeUsers.forEach(u => userMap.set(u.id, u));
             
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             
-            // Fallback for user list
+            // Fallback: Ensure any user with attendance or approved leave is in the map
             monthAttendanceData.forEach(att => {
-                if (att.userId && att.userName && !userMap.has(att.userId)) {
-                    userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' });
+                if (att.userId && !userMap.has(att.userId)) {
+                    // Try to find the full user profile, otherwise create a minimal one
+                    const fullUser = allUsersData.find(u => u.id === att.userId);
+                    if (fullUser) {
+                        userMap.set(att.userId, fullUser);
+                    } else if (att.userName) {
+                         userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' } as WithId<UserProfile>);
+                    }
                 }
             });
             yearLeavesData.filter(l => l.status === 'APPROVED').forEach(leave => {
-                if (leave.userId && leave.userName && !userMap.has(leave.userId)) {
-                    userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' });
+                if (leave.userId && !userMap.has(leave.userId)) {
+                     const fullUser = allUsersData.find(u => u.id === leave.userId);
+                    if (fullUser) {
+                        userMap.set(leave.userId, fullUser);
+                    } else if (leave.userName) {
+                         userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' } as WithId<UserProfile>);
+                    }
                 }
             });
+
             const usersToProcess = Array.from(userMap.values()).sort((a,b) => a.displayName.localeCompare(b.displayName));
             
             const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
@@ -283,6 +320,9 @@ export default function ManagementHRAttendanceSummaryPage() {
       case 'ABSENT': return <Badge variant="destructive">Absent</Badge>;
       case 'LEAVE': return <Badge variant="secondary">{leaveType || 'Leave'}</Badge>;
       case 'NO_DATA': return <Badge variant="outline">No Data</Badge>;
+      case 'NOT_STARTED': return <span className="text-muted-foreground text-xs">Not Started</span>;
+      case 'ENDED': return <span className="text-muted-foreground text-xs">Ended</span>;
+      case 'SUSPENDED': return <Badge variant="destructive">Suspended</Badge>;
       default: return <span className="text-muted-foreground text-xs">{status}</span>
     }
   };
@@ -332,6 +372,8 @@ export default function ManagementHRAttendanceSummaryPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-[200px]">Employee</TableHead>
+              <TableHead>Start Date</TableHead>
+              <TableHead>End Date</TableHead>
               <TableHead>Present</TableHead>
               <TableHead>Late</TableHead>
               <TableHead>Absent</TableHead>
@@ -348,13 +390,19 @@ export default function ManagementHRAttendanceSummaryPage() {
                 <TableBody>
                   <TableRow className="border-none hover:bg-transparent">
                     <TableCell className="w-[200px] font-medium">{summary.userName}</TableCell>
+                    <TableCell>{summary.startDate ? safeFormat(parseISO(summary.startDate), 'dd/MM/yy') : '-'}</TableCell>
+                    <TableCell>{summary.endDate ? safeFormat(parseISO(summary.endDate), 'dd/MM/yy') : 'Present'}</TableCell>
                     <TableCell>{summary.totalPresent}</TableCell>
                     <TableCell>{summary.totalLate}</TableCell>
                     <TableCell>{summary.totalAbsent}</TableCell>
                     <TableCell>{summary.totalLeave}</TableCell>
                     <TableCell>{summary.totalLateMinutes}</TableCell>
                     <TableCell>
-                      {summary.reviewNeeded && <Badge variant="destructive">Review Needed</Badge>}
+                      {summary.status === 'SUSPENDED' ? (
+                          <Badge variant="destructive">Suspended</Badge>
+                      ) : summary.reviewNeeded ? (
+                          <Badge variant="destructive">Review Needed</Badge>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -385,7 +433,7 @@ export default function ManagementHRAttendanceSummaryPage() {
                         <TableCell>{day.workHours || '-'}</TableCell>
                         <TableCell>{day.lateMinutes || '-'}</TableCell>
                         <TableCell className="text-right">
-                          {day.status !== 'HOLIDAY' && day.status !== 'WEEKEND' && (
+                          {day.status !== 'HOLIDAY' && day.status !== 'WEEKEND' && day.status !== 'NOT_STARTED' && day.status !== 'ENDED' && day.status !== 'SUSPENDED' && (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -464,5 +512,3 @@ export default function ManagementHRAttendanceSummaryPage() {
     </>
   );
 }
-
-    
