@@ -213,27 +213,29 @@ export default function ManagementHRAttendanceSummaryPage() {
                 getDocs(adjustmentsQuery),
             ]);
 
+            const allUsersData = usersSnapshot?.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>)) || [];
+            setAllUsers(allUsersData);
+            
+            const activeUsers = allUsersData.filter(u => u.status === 'ACTIVE');
+            const userMap = new Map<string, UserForSummary>();
+            activeUsers.forEach(u => userMap.set(u.id, u));
+            
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
-
-            const userMap = new Map<string, UserForSummary>();
-
-            if (usersSnapshot && !usersSnapshot.empty) {
-                const allUsersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-                setAllUsers(allUsersData);
-                allUsersData.filter(u => u.status === 'ACTIVE').forEach(u => userMap.set(u.id, u));
+            
+            // Fallback for user list
+            if (userMap.size === 0) {
+                 monthAttendanceData.forEach(att => {
+                    if (att.userId && att.userName && !userMap.has(att.userId)) {
+                        userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' });
+                    }
+                });
+                yearLeavesData.filter(l => l.status === 'APPROVED').forEach(leave => {
+                    if (leave.userId && leave.userName && !userMap.has(leave.userId)) {
+                        userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' });
+                    }
+                });
             }
-
-            monthAttendanceData.forEach(att => {
-                if (att.userId && att.userName && !userMap.has(att.userId)) {
-                    userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' });
-                }
-            });
-            yearLeavesData.filter(l => l.status === 'APPROVED').forEach(leave => {
-                if (leave.userId && leave.userName && !userMap.has(leave.userId)) {
-                    userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' });
-                }
-            });
             const usersToProcess = Array.from(userMap.values()).sort((a,b) => a.displayName.localeCompare(b.displayName));
             
             const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
