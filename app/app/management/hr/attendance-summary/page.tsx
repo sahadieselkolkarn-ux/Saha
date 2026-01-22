@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -209,12 +208,16 @@ export default function ManagementHRAttendanceSummaryPage() {
                 attendanceSnapshot,
                 adjustmentsSnapshot
             ] = await Promise.all([
-                getDocs(usersQuery).catch(e => { console.warn("Could not fetch users:", e); return null; }),
+                getDocs(usersQuery).catch(e => { 
+                    toast({ variant: 'destructive', title: "Could not load user list", description: "Falling back to attendance data for user names."});
+                    console.warn("Could not fetch users:", e); 
+                    return null; 
+                }),
                 getDoc(settingsDocRef),
                 getDocs(holidaysQuery),
-                getDocs(leavesSnapshot),
+                getDocs(leavesQuery),
                 getDocs(attendanceQuery),
-                getDocs(adjustmentsSnapshot),
+                getDocs(adjustmentsQuery),
             ]);
 
             const allUsersData = usersSnapshot?.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>)) || [];
@@ -228,14 +231,7 @@ export default function ManagementHRAttendanceSummaryPage() {
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             
             // Fallback for user list
-            if (usersSnapshot === null) {
-              toast({
-                variant: "default",
-                title: "Could not load full user list",
-                description: "Using attendance data as a fallback. Not all users may be shown.",
-              });
-            }
-             monthAttendanceData.forEach(att => {
+            monthAttendanceData.forEach(att => {
                 if (att.userId && att.userName && !userMap.has(att.userId)) {
                     userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' });
                 }
@@ -468,3 +464,5 @@ export default function ManagementHRAttendanceSummaryPage() {
     </>
   );
 }
+
+    
