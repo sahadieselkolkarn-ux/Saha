@@ -225,7 +225,7 @@ function EmployeesTab() {
         };
         
         if (isManager) {
-            finalUpdate['hr.salaryMonthly'] = formValues.hr?.salaryMonthly === undefined || formValues.hr.salaryMonthly === '' ? null : Number(formValues.hr.salaryMonthly);
+            finalUpdate['hr.salaryMonthly'] = formValues.hr?.salaryMonthly === undefined || (formValues.hr.salaryMonthly as any) === '' ? null : Number(formValues.hr.salaryMonthly);
         }
         
         const userDoc = doc(db, "users", editingUser.id);
@@ -599,32 +599,47 @@ function HolidaysTab() {
                         <TableCell className="font-medium">{format(holidayDate, 'dd MMM yyyy')}</TableCell>
                         <TableCell>{holiday.name}</TableCell>
                         <TableCell className="text-right">
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                disabled={isPast}
-                                className={cn(isPast && "cursor-not-allowed")}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This will permanently delete the holiday: <span className="font-semibold">{holiday.name}</span> on {format(holidayDate, 'PPP')}.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => deleteHoliday(holiday.id)} className="bg-destructive hover:bg-destructive/90">
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          {isPast ? (
+                              <TooltipProvider delayDuration={100}>
+                                  <Tooltip>
+                                      <TooltipTrigger asChild>
+                                          <span tabIndex={0}>
+                                              <Button variant="ghost" size="icon" disabled className="cursor-not-allowed">
+                                                  <Trash2 className="h-4 w-4 text-muted-foreground" />
+                                              </Button>
+                                          </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                          <p>ไม่สามารถลบวันหยุดที่ผ่านมาแล้ว</p>
+                                      </TooltipContent>
+                                  </Tooltip>
+                              </TooltipProvider>
+                          ) : (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will permanently delete the holiday: <span className="font-semibold">{holiday.name}</span> on {format(holidayDate, 'PPP')}.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => deleteHoliday(holiday.id)} className="bg-destructive hover:bg-destructive/90">
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
@@ -684,13 +699,13 @@ function LeavesTab() {
 
     // 2. Create a map of approved leave days per user for the selected year
     const approvedLeaveDaysMap = new Map<string, { SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }>();
+    users.forEach(user => {
+        approvedLeaveDaysMap.set(user.id, { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 });
+    });
     allLeaves.forEach(leave => {
         if (leave.status === 'APPROVED' && leave.year === selectedYear) {
-            if (!approvedLeaveDaysMap.has(leave.userId)) {
-                approvedLeaveDaysMap.set(leave.userId, { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 });
-            }
-            const userLeave = approvedLeaveDaysMap.get(leave.userId)!;
-            if (leave.leaveType in userLeave) {
+            const userLeave = approvedLeaveDaysMap.get(leave.userId);
+            if (userLeave && leave.leaveType in userLeave) {
                 (userLeave as any)[leave.leaveType] += leave.days;
                 userLeave.TOTAL += leave.days;
             }
