@@ -324,9 +324,10 @@ function TaxCustomersTab() {
 
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "customers"), where("useTax", "==", true), orderBy("name", "asc"));
+    const q = query(collection(db, "customers"), where("useTax", "==", true));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+      customersData.sort((a, b) => a.name.localeCompare(b.name));
       setCustomers(customersData);
       setLoading(false);
     },
@@ -383,9 +384,10 @@ function GeneralCustomersTab() {
 
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "customers"), where("useTax", "==", false), orderBy("name", "asc"));
+    const q = query(collection(db, "customers"), where("useTax", "==", false));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+      customersData.sort((a, b) => a.name.localeCompare(b.name));
       setCustomers(customersData);
       setLoading(false);
     },
@@ -462,3 +464,5 @@ export default function CustomersPage() {
         </>
     );
 }
+
+    
