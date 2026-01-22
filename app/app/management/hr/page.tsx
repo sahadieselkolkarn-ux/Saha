@@ -1,9 +1,7 @@
-
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, addDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, addDoc, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -19,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MoreHorizontal, PlusCircle, Trash2, CalendarPlus, CheckCircle, XCircle, ShieldAlert } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Trash2, CalendarPlus, CheckCircle, XCircle, ShieldAlert, ChevronLeft, ChevronRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEPARTMENTS, USER_ROLES, USER_STATUSES, LeaveStatus, LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
 import type { UserProfile, HRHoliday as HRHolidayType, LeaveRequest, HRSettings } from "@/lib/types";
@@ -36,13 +34,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HRSettingsForm } from "@/components/hr-settings-form";
-import { format, isBefore, startOfToday, parseISO, getYear } from 'date-fns';
+import { format, isBefore, startOfToday, parseISO, getYear, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval, isSaturday, isSunday, subMonths, addMonths } from 'date-fns';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useCollection, WithId } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { Badge } from "@/components/ui/badge";
+import { DateRange } from "react-day-picker";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 const userProfileSchema = z.object({
@@ -659,7 +659,7 @@ function LeavesTab() {
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
   
   const usersQuery = useMemo(() => db ? query(collection(db, 'users'), orderBy('displayName', 'asc')) : null, [db]);
-  const { data: users, isLoading: isLoadingUsers } = useCollection<UserProfile>(usersQuery);
+  const { data: users, isLoading: isLoadingUsers } = useCollection<WithId<UserProfile>>(usersQuery);
 
   const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), orderBy('createdAt', 'desc')) : null, [db]);
   const { data: allLeaves, isLoading: isLoadingLeaves } = useCollection<LeaveRequest>(leavesQuery);
@@ -904,7 +904,7 @@ function LeavesTab() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {overLimitDetails && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+            <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
                 <div className="flex items-start gap-3">
                     <ShieldAlert className="h-5 w-5 text-destructive mt-0.5" />
                     <div>
@@ -946,6 +946,188 @@ function LeavesTab() {
   );
 }
 
+function AttendanceSummaryTab() {
+    const { db } = useFirebase();
+    const { toast } = useToast();
+    const [currentMonth, setCurrentMonth] = useState(new Date());
+
+    const dateRange: DateRange | undefined = useMemo(() => ({
+        from: startOfMonth(currentMonth),
+        to: endOfMonth(currentMonth),
+    }), [currentMonth]);
+
+    const usersQuery = useMemo(() => db ? query(collection(db, 'users'), where('status', '==', 'ACTIVE'), orderBy('displayName', 'asc')) : null, [db]);
+    const { data: users, isLoading: isLoadingUsers } = useCollection<WithId<UserProfile>>(usersQuery);
+
+    const attendanceQuery = useMemo(() => {
+        if (!db || !dateRange?.from || !dateRange?.to) return null;
+        return query(collection(db, 'attendance'), 
+            where('timestamp', '>=', dateRange.from), 
+            where('timestamp', '<=', dateRange.to),
+            orderBy('timestamp', 'asc')
+        );
+    }, [db, dateRange]);
+    const { data: attendance, isLoading: isLoadingAttendance, error: attendanceError } = useCollection<any>(attendanceQuery);
+
+    const approvedLeavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), where('status', '==', 'APPROVED')) : null, [db]);
+    const { data: approvedLeaves, isLoading: isLoadingLeaves } = useCollection<LeaveRequest>(approvedLeavesQuery);
+
+    const holidaysQuery = useMemo(() => db ? query(collection(db, 'hrHolidays')) : null, [db]);
+    const { data: holidays, isLoading: isLoadingHolidays } = useCollection<HRHolidayType>(holidaysQuery);
+
+    const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
+    const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
+    
+    const isLoading = isLoadingUsers || isLoadingAttendance || isLoadingLeaves || isLoadingHolidays || isLoadingSettings;
+
+    const { days, summaryData } = useMemo(() => {
+        if (isLoading || !dateRange?.from || !dateRange.to || !users || !attendance || !approvedLeaves || !holidays || !hrSettings) {
+            return { days: [], summaryData: [] };
+        }
+
+        const intervalDays = eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
+        const holidaysMap = new Map(holidays.map(h => [h.date, h.name]));
+        const leavesMap = new Map<string, LeaveRequest[]>();
+        approvedLeaves.forEach(leave => {
+            if (!leavesMap.has(leave.userId)) leavesMap.set(leave.userId, []);
+            leavesMap.get(leave.userId)!.push(leave);
+        });
+        
+        const attendanceByUser = new Map<string, any[]>();
+        attendance.forEach(att => {
+            if (!attendanceByUser.has(att.userId)) attendanceByUser.set(att.userId, []);
+            attendanceByUser.get(att.userId)!.push(att);
+        });
+
+        const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
+        const graceMinutes = hrSettings.graceMinutes || 0;
+
+        const processedData = users.map(user => {
+            const dailyStatuses = intervalDays.map(day => {
+                const dayStr = format(day, 'yyyy-MM-dd');
+                
+                if (holidaysMap.has(dayStr)) return { status: 'HOLIDAY', name: holidaysMap.get(dayStr) };
+                if (isSaturday(day) || isSunday(day)) return { status: 'WEEKEND' };
+
+                const userLeaves = leavesMap.get(user.id) || [];
+                const onLeave = userLeaves.find(leave => 
+                    isWithinInterval(day, { start: parseISO(leave.startDate), end: parseISO(leave.endDate) })
+                );
+                if (onLeave) return { status: 'LEAVE', type: onLeave.leaveType };
+                
+                const userAttendanceToday = (attendanceByUser.get(user.id) || []).filter(att => 
+                    att.timestamp && format(att.timestamp.toDate(), 'yyyy-MM-dd') === dayStr
+                );
+                
+                const clockIns = userAttendanceToday.filter(a => a.type === 'IN').map(a => a.timestamp.toDate()).sort((a, b) => a.getTime() - b.getTime());
+                const clockOuts = userAttendanceToday.filter(a => a.type === 'OUT').map(a => a.timestamp.toDate()).sort((a, b) => a.getTime() - b.getTime());
+
+                if (clockIns.length === 0) return { status: 'ABSENT' };
+
+                const firstClockIn = clockIns[0];
+                const lastClockOut = clockOuts.length > 0 ? clockOuts[clockOuts.length - 1] : undefined;
+                
+                let status: 'PRESENT' | 'LATE' = 'PRESENT';
+                const clockInTime = firstClockIn.getHours() * 60 + firstClockIn.getMinutes();
+                const workStartTime = workStartHour * 60 + workStartMinute + graceMinutes;
+                if (clockInTime > workStartTime) {
+                    status = 'LATE';
+                }
+                
+                return { status, clockIn: firstClockIn, clockOut: lastClockOut };
+            });
+            return { user, dailyStatuses };
+        });
+
+        return { days: intervalDays, summaryData: processedData };
+    }, [isLoading, dateRange, users, attendance, approvedLeaves, holidays, hrSettings]);
+
+    useEffect(() => {
+        if (attendanceError?.message?.includes('requires an index')) {
+          const urlMatch = attendanceError.message.match(/https?:\/\/[^\s]+/);
+          toast({
+            variant: "destructive",
+            title: "Database Index Required",
+            description: `The attendance query needs an index. Please create it in Firebase. ${urlMatch ? `Link: ${urlMatch[0]}`: ''}`,
+            duration: 20000,
+          });
+        }
+    }, [attendanceError, toast]);
+    
+    const getStatusContent = (dayStatus: any) => {
+        let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'outline';
+        let text: string | React.ReactNode = '';
+        let tooltipContent = '';
+
+        switch(dayStatus.status) {
+            case 'PRESENT': variant = 'default'; text = 'P'; tooltipContent = `Present. In: ${format(dayStatus.clockIn, 'HH:mm')}${dayStatus.clockOut ? `, Out: ${format(dayStatus.clockOut, 'HH:mm')}`: ''}`; break;
+            case 'LATE': variant = 'destructive'; text = 'L'; tooltipContent = `Late. In: ${format(dayStatus.clockIn, 'HH:mm')}`; break;
+            case 'ABSENT': variant = 'destructive'; text = 'A'; tooltipContent = 'Absent'; break;
+            case 'LEAVE': variant = 'secondary'; text = 'LV'; tooltipContent = `On Leave (${dayStatus.type})`; break;
+            case 'HOLIDAY': variant = 'secondary'; text = 'H'; tooltipContent = `Holiday: ${dayStatus.name}`; break;
+            case 'WEEKEND': return <div className="w-full h-8 flex items-center justify-center text-muted-foreground text-xs"></div>;
+            default: return null;
+        }
+
+        return (
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Badge variant={variant} className="w-8 h-8 flex items-center justify-center cursor-default">{text}</Badge>
+                    </TooltipTrigger>
+                    <TooltipContent><p>{tooltipContent}</p></TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        );
+    };
+
+    const handlePrevMonth = () => setCurrentMonth(prev => subMonths(prev, 1));
+    const handleNextMonth = () => setCurrentMonth(prev => addMonths(prev, 1));
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Attendance Summary</CardTitle>
+                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <CardDescription>Daily attendance summary for all active employees.</CardDescription>
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                        <Button variant="outline" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
+                        <span className="font-semibold text-lg text-center w-32">{format(currentMonth, 'MMMM yyyy')}</span>
+                        <Button variant="outline" size="icon" onClick={handleNextMonth}><ChevronRight className="h-4 w-4" /></Button>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+                 {isLoading ? (
+                    <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
+                ) : attendanceError ? (
+                    <div className="text-destructive text-center p-8">Error loading attendance data. A database index might be required. Check console for details.</div>
+                ) : (
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="sticky left-0 bg-background min-w-[150px]">Employee</TableHead>
+                                {days.map(day => <TableHead key={day.toString()} className="text-center">{format(day, 'd')}</TableHead>)}
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {summaryData.map(({ user, dailyStatuses }) => (
+                            <TableRow key={user.id}>
+                                <TableCell className="sticky left-0 bg-background font-medium">{user.displayName}</TableCell>
+                                {dailyStatuses.map((status, index) => (
+                                <TableCell key={index} className="text-center p-1">
+                                    {getStatusContent(status)}
+                                </TableCell>
+                                ))}
+                            </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                 )}
+            </CardContent>
+        </Card>
+    );
+}
 
 export default function ManagementHRPage() {
     return (
@@ -972,16 +1154,13 @@ export default function ManagementHRPage() {
                      <LeavesTab />
                 </TabsContent>
                 <TabsContent value="attendance-summary">
-                     <Card>
-                        <CardHeader>
-                            <CardTitle>สรุปลงเวลา</CardTitle>
-                            <CardDescription>สรุปข้อมูลการลงเวลาทำงานของพนักงาน</CardDescription>
-                        </CardHeader>
-                        <CardContent><p>Coming soon.</p></CardContent>
-                    </Card>
+                     <AttendanceSummaryTab />
                 </TabsContent>
             </Tabs>
         </>
     );
 }
 
+
+
+    
