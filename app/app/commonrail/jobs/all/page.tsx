@@ -10,8 +10,6 @@ export default function CommonrailAllJobsPage() {
       <JobList 
         department="COMMONRAIL" 
         status={['RECEIVED', 'IN_PROGRESS']} 
-        orderByField="status" 
-        orderByDirection="asc" 
       />
     </>
   );

@@ -10,8 +10,6 @@ export default function MechanicAllJobsPage() {
       <JobList 
         department="MECHANIC" 
         status={['RECEIVED', 'IN_PROGRESS']} 
-        orderByField="status" 
-        orderByDirection="asc" 
       />
     </>
   );
