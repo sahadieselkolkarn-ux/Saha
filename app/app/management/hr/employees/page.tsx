@@ -66,24 +66,26 @@ const userProfileSchema = z.object({
 
 type UserWithId = WithId<UserProfile>;
 
-const UserCard = ({ user, onEdit, onDelete }: { user: UserWithId, onEdit: (user: UserWithId) => void, onDelete: (userId: string) => void }) => (
+const UserCard = ({ user, onEdit, onDelete, isManager }: { user: UserWithId, onEdit: (user: UserWithId) => void, onDelete: (userId: string) => void, isManager: boolean }) => (
     <Card>
         <CardHeader>
             <div className="flex justify-between items-start">
                 <CardTitle className="text-lg">{user.displayName}</CardTitle>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(user)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onDelete(user.id)} className="text-destructive focus:text-destructive">
-                            Delete
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                {isManager && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => onEdit(user)}>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onDelete(user.id)} className="text-destructive focus:text-destructive">
+                                Delete
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </div>
             <CardDescription>{user.phone}</CardDescription>
         </CardHeader>
@@ -282,8 +284,7 @@ export default function ManagementHREmployeesPage() {
                 <TableHead>Department</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Salary</TableHead>
-                <TableHead><span className="sr-only">Actions</span></TableHead>
+                {isManager && <TableHead><span className="sr-only">Actions</span></TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -295,21 +296,22 @@ export default function ManagementHREmployeesPage() {
                     <TableCell>{user.department || 'N/A'}</TableCell>
                     <TableCell>{user.role}</TableCell>
                     <TableCell>{user.status}</TableCell>
-                    <TableCell>{user.hr?.salaryMonthly?.toLocaleString() || '-'}</TableCell>
-                    <TableCell>
-                        <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openDialog(user)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeleteRequest(user.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
-                        </DropdownMenu>
-                    </TableCell>
+                    {isManager && (
+                        <TableCell>
+                            <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openDialog(user)}>Edit</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleDeleteRequest(user.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                            </DropdownMenuContent>
+                            </DropdownMenu>
+                        </TableCell>
+                    )}
                     </TableRow>
                 ))
               ) : (
                 <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={isManager ? 6 : 5} className="h-24 text-center text-muted-foreground">
                        No users found. New users will appear here after they sign up.
                     </TableCell>
                 </TableRow>
@@ -322,7 +324,7 @@ export default function ManagementHREmployeesPage() {
       <div className="grid gap-4 sm:hidden">
         {users.length > 0 ? (
             users.map(user => (
-                <UserCard key={user.id} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} />
+                <UserCard key={user.id} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} isManager={isManager} />
             ))
         ) : (
             <Card className="text-center py-12">
