@@ -84,7 +84,21 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                                 <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
-                        <SubNavLink href="/app/management/hr" label="บริหารงานบุคคล" onClick={onLinkClick} />
+                        <Collapsible defaultOpen={pathname.startsWith('/app/management/hr')}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={pathname.startsWith('/app/management/hr') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
+                                    บริหารงานบุคคล
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                <SubNavLink href="/app/management/hr/employees" label="ผู้ใช้และพนักงาน" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/hr/settings" label="ตั้งค่า HR" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/hr/holidays" label="วันหยุด" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/hr/leaves" label="วันลา" onClick={onLinkClick} />
+                                <SubNavLink href="/app/management/hr/attendance-summary" label="สรุปลงเวลา" onClick={onLinkClick} />
+                            </CollapsibleContent>
+                        </Collapsible>
                         <Collapsible defaultOpen={pathname.startsWith('/app/management/settings')}>
                             <CollapsibleTrigger asChild>
                                 <Button variant={pathname.startsWith('/app/management/settings') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
