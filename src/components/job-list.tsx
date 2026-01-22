@@ -61,27 +61,24 @@ export function JobList({
 
   const jobsQuery = useMemo(() => {
     if (!db) return null;
-    
+
     const constraints: QueryConstraint[] = [];
     if (department) {
-      constraints.push(where("department", "==", department));
+      constraints.push(where('department', '==', department));
     }
-    if (status) {
-        if (Array.isArray(status)) {
-            constraints.push(where("status", "in", status));
-        } else {
-            constraints.push(where("status", "==", status));
-        }
+    // Only apply status filter if it's a single string, not an array.
+    // Array statuses will be filtered on the client-side to avoid complex queries.
+    if (status && !Array.isArray(status)) {
+      constraints.push(where('status', '==', status));
     }
     if (assigneeUid) {
-        constraints.push(where("assigneeUid", "==", assigneeUid));
+      constraints.push(where('assigneeUid', '==', assigneeUid));
     }
     constraints.push(orderBy(orderByField, orderByDirection));
-    
-    return query(collection(db, "jobs"), ...constraints);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, department, status, assigneeUid, orderByField, orderByDirection, retry]);
+    return query(collection(db, 'jobs'), ...constraints);
+  }, [db, department, Array.isArray(status) ? null : status, assigneeUid, orderByField, orderByDirection, retry]);
+
 
   useEffect(() => {
     if (!jobsQuery) {
@@ -89,14 +86,19 @@ export function JobList({
       return;
     };
 
-    // On new query, reset state before loading
     setLoading(true);
     setError(null);
     setIndexState('ok');
     setIndexCreationUrl(null);
 
     const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
-      const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+      let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+      
+      // If status is an array, perform client-side filtering
+      if (status && Array.isArray(status)) {
+        jobsData = jobsData.filter(job => status.includes(job.status));
+      }
+
       setJobs(jobsData);
       setLoading(false);
       setError(null);
@@ -109,7 +111,7 @@ export function JobList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery]);
+  }, [jobsQuery, status]);
 
   useEffect(() => {
     if (error?.message?.includes('requires an index')) {
