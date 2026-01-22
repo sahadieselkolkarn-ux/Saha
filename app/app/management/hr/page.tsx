@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -878,7 +879,7 @@ function LeavesTab() {
                   <TableRow key={leave.id}>
                     <TableCell>{leave.userName}</TableCell>
                     <TableCell>{leave.leaveType}</TableCell>
-                    <TableCell>{format(parseISO(leave.startDate), 'dd/MM/yy')} - {format(parseISO(leave.endDate), 'dd/MM/yy')}</TableCell>
+                    <TableCell>{safeFormat(parseISO(leave.startDate), 'dd/MM/yy')} - {safeFormat(parseISO(leave.endDate), 'dd/MM/yy')}</TableCell>
                     <TableCell>{leave.days}</TableCell>
                     <TableCell><Badge variant={getStatusVariant(leave.status)}>{leave.status}</Badge></TableCell>
                     <TableCell className="space-x-2">
@@ -1016,12 +1017,12 @@ function AttendanceSummaryTab() {
                 );
                 if (onLeave) return { status: 'LEAVE', type: onLeave.leaveType };
                 
-                const userAttendanceToday = (attendanceByUser.get(user.id) || []).filter(att => 
+                const userAttendanceToday = (attendanceByUser.get(user.id) || []).filter((att: any) => 
                     att.timestamp && format(att.timestamp.toDate(), 'yyyy-MM-dd') === dayStr
                 );
                 
-                const clockIns = userAttendanceToday.filter(a => a.type === 'IN').map(a => a.timestamp.toDate()).sort((a, b) => a.getTime() - b.getTime());
-                const clockOuts = userAttendanceToday.filter(a => a.type === 'OUT').map(a => a.timestamp.toDate()).sort((a, b) => a.getTime() - b.getTime());
+                const clockIns = userAttendanceToday.filter((a: any) => a.type === 'IN').map((a: any) => a.timestamp.toDate()).sort((a: Date, b: Date) => a.getTime() - b.getTime());
+                const clockOuts = userAttendanceToday.filter((a: any) => a.type === 'OUT').map((a: any) => a.timestamp.toDate()).sort((a: Date, b: Date) => a.getTime() - b.getTime());
 
                 if (clockIns.length === 0) return { status: 'ABSENT' };
 
@@ -1178,7 +1179,3 @@ export default function ManagementHRPage() {
         </>
     );
 }
-
-
-
-    

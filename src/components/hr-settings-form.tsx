@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -182,7 +183,7 @@ export function HRSettingsForm() {
         leaveTypes: {
           SICK: { annualEntitlement: 30, overLimitHandling: { mode: 'DEDUCT_SALARY', salaryDeductionBaseDays: 26 } },
           BUSINESS: { annualEntitlement: 7, overLimitHandling: { mode: 'DEDUCT_SALARY', salaryDeductionBaseDays: 26 } },
-          VACATION: { annualEntitlement: 6, overLimitHandling: { mode: 'DISALLOW', salaryDeductionBaseDays: 26 } },
+          VACATION: { annualEntitlement: 6, overLimitHandling: { mode: 'DISALLOW' } },
         }
       }
     },
