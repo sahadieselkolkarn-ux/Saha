@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where } from "firebase/firestore";
+import { useState, useMemo, useEffect } from "react";
+import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -29,8 +29,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCollection, WithId } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
+import { WithId } from "@/firebase/firestore/use-collection";
 import { Badge } from "@/components/ui/badge";
 
 export default function ManagementHRLeavesPage() {
@@ -40,19 +40,54 @@ export default function ManagementHRLeavesPage() {
 
   const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
   const [filters, setFilters] = useState({ status: 'ALL', userId: 'ALL' });
-  const [rejectingLeave, setRejectingLeave] = useState<LeaveRequest | null>(null);
+  const [rejectingLeave, setRejectingLeave] = useState<WithId<LeaveRequest> | null>(null);
   const [rejectReason, setRejectReason] = useState('');
-  const [approvingLeave, setApprovingLeave] = useState<LeaveRequest | null>(null);
+  const [approvingLeave, setApprovingLeave] = useState<WithId<LeaveRequest> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Use state for one-time fetches
+  const [allLeaves, setAllLeaves] = useState<WithId<LeaveRequest>[]>([]);
+  const [isLoadingLeaves, setIsLoadingLeaves] = useState(true);
+  const [users, setUsers] = useState<WithId<UserProfile>[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+
+  // Still use useDoc for single, low-traffic documents
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
   
-  const usersQuery = useMemo(() => db ? query(collection(db, 'users'), orderBy('displayName', 'asc')) : null, [db]);
-  const { data: users, isLoading: isLoadingUsers } = useCollection<WithId<UserProfile>>(usersQuery);
+  // Fetch users and leaves once
+  useEffect(() => {
+    if (!db) return;
 
-  const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), orderBy('createdAt', 'desc')) : null, [db]);
-  const { data: allLeaves, isLoading: isLoadingLeaves } = useCollection<LeaveRequest>(leavesQuery);
+    const fetchData = async () => {
+      setIsLoadingLeaves(true);
+      setIsLoadingUsers(true);
+      try {
+        const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
+        const leavesQuery = query(collection(db, 'hrLeaves'), orderBy('createdAt', 'desc'));
+
+        const [usersSnapshot, leavesSnapshot] = await Promise.all([
+          getDocs(usersQuery),
+          getDocs(leavesQuery)
+        ]);
+
+        const usersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+        setUsers(usersData);
+
+        const leavesData = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
+        setAllLeaves(leavesData);
+
+      } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Error fetching data', description: error.message });
+      } finally {
+        setIsLoadingLeaves(false);
+        setIsLoadingUsers(false);
+      }
+    };
+    
+    fetchData();
+  }, [db, toast]);
+
 
   const isLoading = isLoadingSettings || isLoadingUsers || isLoadingLeaves;
 
@@ -132,13 +167,16 @@ export default function ManagementHRLeavesPage() {
 
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'hrLeaves', approvingLeave.id), {
+      const leaveRef = doc(db, 'hrLeaves', approvingLeave.id);
+      await updateDoc(leaveRef, {
         status: 'APPROVED',
         approvedByName: adminProfile.displayName,
         approvedAt: serverTimestamp(),
         overLimit: !!overLimitDetails,
         updatedAt: serverTimestamp(),
       });
+      // Manually update local state to reflect change immediately
+      setAllLeaves(prevLeaves => prevLeaves.map(l => l.id === approvingLeave.id ? {...l, status: 'APPROVED', overLimit: !!overLimitDetails } as WithId<LeaveRequest> : l));
       toast({ title: 'Leave Approved' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Approval Failed', description: error.message });
@@ -152,13 +190,16 @@ export default function ManagementHRLeavesPage() {
     if (!db || !adminProfile || !rejectingLeave || !rejectReason) return;
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'hrLeaves', rejectingLeave.id), {
+      const leaveRef = doc(db, 'hrLeaves', rejectingLeave.id);
+      await updateDoc(leaveRef, {
         status: 'REJECTED',
         rejectedByName: adminProfile.displayName,
         rejectedAt: serverTimestamp(),
         rejectReason,
         updatedAt: serverTimestamp(),
       });
+      // Manually update local state
+      setAllLeaves(prevLeaves => prevLeaves.map(l => l.id === rejectingLeave.id ? {...l, status: 'REJECTED', rejectReason } as WithId<LeaveRequest> : l));
       toast({ title: 'Leave Rejected' });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'Rejection Failed', description: error.message });
