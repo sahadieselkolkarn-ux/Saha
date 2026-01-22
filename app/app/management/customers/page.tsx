@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -381,12 +381,20 @@ export default function ManagementCustomersPage() {
     return (
         <>
             <PageHeader title="การจัดการลูกค้า" description="จัดการข้อมูลลูกค้าทั้งหมด">
-                 <Button asChild>
-                    <Link href="/app/office/customers/new">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        Add Customer
-                    </Link>
-                </Button>
+                 <div className="flex items-center gap-2">
+                    <Button asChild variant="outline">
+                        <Link href="/app/management/customers/import">
+                            <Upload className="mr-2 h-4 w-4" />
+                            Import Customers
+                        </Link>
+                    </Button>
+                    <Button asChild>
+                        <Link href="/app/office/customers/new">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Add Customer
+                        </Link>
+                    </Button>
+                </div>
             </PageHeader>
             <Tabs defaultValue="all" className="space-y-4">
                 <TabsList>
@@ -403,5 +411,3 @@ export default function ManagementCustomersPage() {
         </>
     );
 }
-
-    
