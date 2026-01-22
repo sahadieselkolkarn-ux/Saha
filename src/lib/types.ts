@@ -212,4 +212,13 @@ export interface Payslip {
   netSalary: number;
   isOverridden?: boolean;
   overrideNotes?: string;
+  // Fields for employee review flow
+  employeeStatus?: 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED';
+  employeeAccepted?: boolean;
+  employeeAcceptedAt?: Timestamp | null;
+  employeeNote?: string | null;
+  // Fields for HR audit
+  hrCheckedByName?: string;
+  hrCheckedAt?: Timestamp;
+  hrNote?: string | null;
 }

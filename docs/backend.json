@@ -743,28 +743,89 @@
       "description": "Represents an individual employee's payslip for a specific payroll run.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "payrollRunId": { "type": "string" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "baseSalary": { "type": "number", "description": "The base salary for the period before deductions." },
+        "id": {
+          "type": "string"
+        },
+        "payrollRunId": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "userName": {
+          "type": "string"
+        },
+        "baseSalary": {
+          "type": "number",
+          "description": "The base salary for the period before deductions."
+        },
         "deductions": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "name": { "type": "string" },
-              "amount": { "type": "number" },
-              "notes": { "type": "string" }
+              "name": {
+                "type": "string"
+              },
+              "amount": {
+                "type": "number"
+              },
+              "notes": {
+                "type": "string"
+              }
             },
-            "required": ["name", "amount"]
+            "required": [
+              "name",
+              "amount"
+            ]
           }
         },
-        "netSalary": { "type": "number", "description": "Final salary after all deductions." },
-        "isOverridden": { "type": "boolean" },
-        "overrideNotes": { "type": "string" }
+        "netSalary": {
+          "type": "number",
+          "description": "Final salary after all deductions."
+        },
+        "isOverridden": {
+          "type": "boolean"
+        },
+        "overrideNotes": {
+          "type": "string"
+        },
+        "employeeStatus": {
+          "type": "string",
+          "enum": [
+            "PENDING_REVIEW",
+            "ACCEPTED",
+            "REJECTED"
+          ]
+        },
+        "employeeAccepted": {
+          "type": "boolean"
+        },
+        "employeeAcceptedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "employeeNote": {
+          "type": "string"
+        },
+        "hrCheckedByName": {
+          "type": "string"
+        },
+        "hrCheckedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "hrNote": {
+          "type": "string"
+        }
       },
-      "required": ["id", "payrollRunId", "userId", "baseSalary", "netSalary"]
+      "required": [
+        "id",
+        "payrollRunId",
+        "userId",
+        "baseSalary",
+        "netSalary"
+      ]
     }
   },
   "auth": {

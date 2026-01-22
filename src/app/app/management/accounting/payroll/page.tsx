@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useCollection, WithId } from "@/firebase/firestore/use-collection";
 import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO } from "date-fns";
@@ -14,8 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction } from "@/lib/types";
 
 function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, end: Date}) {
@@ -30,6 +32,7 @@ function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, 
 export default function ManagementAccountingPayrollPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile: adminProfile } = useAuth();
   const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
   const [period, setPeriod] = useState<1 | 2>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,11 +43,13 @@ export default function ManagementAccountingPayrollPage() {
   const [users, setUsers] = useState<WithId<UserProfile>[] | null>(null);
   const [allYearLeaves, setAllYearLeaves] = useState<LeaveRequest[] | null>(null);
 
-  // Real-time data for settings (single doc, low risk)
+  // State for editing HR Notes
+  const [editingPayslipId, setEditingPayslipId] = useState<string | null>(null);
+  const [currentHrNote, setCurrentHrNote] = useState("");
+
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
 
-  // Fetch users and leaves once when month changes
   useEffect(() => {
     if (!db) return;
 
@@ -81,12 +86,10 @@ export default function ManagementAccountingPayrollPage() {
   }, [db, currentMonthDate, toast]);
 
 
-  // Real-time data for the specific payroll run we are viewing/editing (targeted, low risk)
   const payrollRunId = useMemo(() => `${format(currentMonthDate, 'yyyy-MM')}-${period}`, [currentMonthDate, period]);
   const payrollRunRef = useMemo(() => db ? doc(db, 'payrollRuns', payrollRunId) : null, [db, payrollRunId]);
   const { data: payrollRun, isLoading: isLoadingRun } = useDoc<PayrollRun>(payrollRunRef);
 
-  // Real-time data for payslips of the current run (subcollection, low risk)
   const payslipsQuery = useMemo(() => db && payrollRun ? query(collection(db, 'payrollRuns', payrollRunId, 'payslips')) : null, [db, payrollRun, payrollRunId]);
   const { data: payslips, isLoading: isLoadingPayslips } = useCollection<WithId<Payslip>>(payslipsQuery);
 
@@ -125,7 +128,6 @@ export default function ManagementAccountingPayrollPage() {
         }
       });
       
-      // SSO Calculation
       const ssoPolicy = hrSettings.sso;
       if (ssoPolicy?.employeePercent && ssoPolicy.monthlyCap) {
           const fullMonthSSO = Math.min((salary * (ssoPolicy.employeePercent / 100)), ssoPolicy.monthlyCap);
@@ -133,7 +135,6 @@ export default function ManagementAccountingPayrollPage() {
           deductions.push({ name: 'Social Security (SSO)', amount: ssoEmployeeDeduction, notes: `${ssoPolicy.employeePercent}% of salary, capped and split.` });
       }
       
-      // Withholding Tax Calculation
       const whPolicy = hrSettings.withholding;
       if (whPolicy?.enabled && whPolicy.defaultPercent) {
           const whDeduction = (baseSalaryForPeriod * (whPolicy.defaultPercent / 100));
@@ -155,7 +156,7 @@ export default function ManagementAccountingPayrollPage() {
   }, [hrSettings, users, allYearLeaves, currentMonthDate, period, payrollRunId]);
 
   const handleCreateDraft = async () => {
-    if (!db || calculatedPayrollData.length === 0) return;
+    if (!db || calculatedPayrollData.length === 0 || !adminProfile) return;
     setIsSubmitting(true);
     try {
         const batch = writeBatch(db);
@@ -172,7 +173,17 @@ export default function ManagementAccountingPayrollPage() {
         
         calculatedPayrollData.forEach(payslipData => {
             const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', payslipData.userId);
-            batch.set(payslipRef, { id: payslipRef.id, ...payslipData });
+            batch.set(payslipRef, { 
+                id: payslipRef.id, 
+                ...payslipData,
+                employeeStatus: "PENDING_REVIEW",
+                employeeAccepted: false,
+                employeeAcceptedAt: null,
+                employeeNote: null,
+                hrCheckedByName: adminProfile.displayName,
+                hrCheckedAt: serverTimestamp(),
+                hrNote: null,
+            });
         });
 
         await batch.commit();
@@ -198,6 +209,21 @@ export default function ManagementAccountingPayrollPage() {
         setIsSubmitting(false);
      }
   }
+
+  const handleSaveHrNote = async (payslipId: string) => {
+    if (!db || !payrollRun) return;
+    const payslipRef = doc(db, 'payrollRuns', payrollRun.id, 'payslips', payslipId);
+    try {
+      await updateDoc(payslipRef, {
+        hrNote: currentHrNote,
+      });
+      toast({ title: "Note saved successfully." });
+    } catch(e: any) {
+      toast({ variant: 'destructive', title: 'Error saving note', description: e.message });
+    } finally {
+      setEditingPayslipId(null);
+    }
+  };
 
   const handlePrevMonth = () => setCurrentMonthDate(prev => subMonths(prev, 1));
   const handleNextMonth = () => setCurrentMonthDate(prev => addMonths(prev, 1));
@@ -249,6 +275,41 @@ export default function ManagementAccountingPayrollPage() {
                                 </TableRow>
                             </TableBody>
                         </Table>
+                         {payrollRun && payrollRun.status === 'DRAFT_HR' && 'hrNote' in p && (
+                            <div className="mt-4 pt-4 border-t">
+                            <h5 className="font-semibold text-sm mb-2">HR Notes & Adjustments</h5>
+                            {editingPayslipId === p.userId ? (
+                                <div className="space-y-2">
+                                <Textarea
+                                    defaultValue={p.hrNote || ""}
+                                    onChange={(e) => setCurrentHrNote(e.target.value)}
+                                    placeholder="Add manual adjustments or notes..."
+                                />
+                                <div className="flex gap-2">
+                                    <Button size="sm" onClick={() => handleSaveHrNote(p.userId)}>Save Note</Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setEditingPayslipId(null)}>Cancel</Button>
+                                </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-2 group">
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md p-2 bg-background min-h-10">
+                                    {p.hrNote || "No notes added."}
+                                </p>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                    setEditingPayslipId(p.userId);
+                                    setCurrentHrNote(p.hrNote || "");
+                                    }}
+                                >
+                                    <Edit className="mr-2 h-3 w-3"/>
+                                    Edit Note
+                                </Button>
+                                </div>
+                            )}
+                            </div>
+                        )}
                     </AccordionContent>
             </AccordionItem>
         )) : (
