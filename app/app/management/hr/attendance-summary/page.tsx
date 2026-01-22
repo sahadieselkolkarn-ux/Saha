@@ -70,7 +70,8 @@ export default function ManagementHRAttendanceSummaryPage() {
   const { data: holidays, isLoading: isLoadingHolidays } = useCollection<HRHolidayType>(holidaysQuery);
 
   // Fetch leaves and attendance for the entire year to simplify calculations, then filter in-memory.
-  const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED')) : null, [db, year]);
+  // Fetch all leaves for the year and filter by status on the client to avoid complex composite indexes.
+  const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), where('year', '==', year)) : null, [db, year]);
   const { data: yearLeaves, isLoading: isLoadingLeaves, error: leavesError } = useCollection<LeaveRequest>(leavesQuery);
 
   const attendanceQuery = useMemo(() => db ? query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<=', dateRange.to)) : null, [db, dateRange]);
@@ -85,13 +86,14 @@ export default function ManagementHRAttendanceSummaryPage() {
   const summaryData = useMemo((): AttendanceMonthlySummary[] => {
     if (isLoading || !users || !hrSettings || !holidays || !yearLeaves || !monthAttendance || !monthAdjustments) return [];
 
+    const approvedLeaves = yearLeaves.filter(l => l.status === 'APPROVED');
     const daysInMonth = eachDayOfInterval({ start: dateRange.from, end: dateRange.to });
     const holidaysMap = new Map(holidays.map(h => [h.date, h.name]));
     const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
     const graceMinutes = hrSettings.graceMinutes || 0;
 
     return users.map(user => {
-      const userLeaves = yearLeaves.filter(l => l.userId === user.id);
+      const userLeaves = approvedLeaves.filter(l => l.userId === user.id);
       const userAttendance = monthAttendance.filter(a => a.userId === user.id);
       const userAdjustments = monthAdjustments.filter(a => a.userId === user.id);
       

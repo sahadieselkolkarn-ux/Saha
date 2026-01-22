@@ -46,14 +46,14 @@ export default function ManagementAccountingPayrollPage() {
     return activeUsers.filter(u => u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
   }, [activeUsers]);
   
+  // Fetch all leaves for the year and filter by status on the client to avoid complex composite indexes.
   const yearLeavesQuery = useMemo(() => {
     if (!db) return null;
     return query(collection(db, 'hrLeaves'), 
-        where('status', '==', 'APPROVED'),
         where('year', '==', currentMonthDate.getFullYear())
     );
   }, [db, currentMonthDate]);
-  const { data: approvedLeaves, error: leavesError } = useCollection<LeaveRequest>(yearLeavesQuery);
+  const { data: allYearLeaves, error: leavesError } = useCollection<LeaveRequest>(yearLeavesQuery);
 
   // Data fetching for existing payroll run
   const payrollRunId = useMemo(() => `${format(currentMonthDate, 'yyyy-MM')}-${period}`, [currentMonthDate, period]);
@@ -63,11 +63,12 @@ export default function ManagementAccountingPayrollPage() {
   const payslipsQuery = useMemo(() => db && payrollRun ? query(collection(db, 'payrollRuns', payrollRunId, 'payslips')) : null, [db, payrollRun, payrollRunId]);
   const { data: payslips, isLoading: isLoadingPayslips } = useCollection<WithId<Payslip>>(payslipsQuery);
 
-  const isLoading = !hrSettings || !users || !approvedLeaves || isLoadingRun || isLoadingPayslips;
+  const isLoading = !hrSettings || !users || !allYearLeaves || isLoadingRun || isLoadingPayslips;
 
   const calculatedPayrollData = useMemo(() => {
-    if (!hrSettings || !users || !approvedLeaves) return [];
+    if (!hrSettings || !users || !allYearLeaves) return [];
 
+    const approvedLeaves = allYearLeaves.filter(l => l.status === 'APPROVED');
     const periodStartDate = period === 1 ? new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), hrSettings.payroll?.period1Start || 1) : new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), hrSettings.payroll?.period2Start || 16);
     const periodEndDate = period === 1 ? new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), hrSettings.payroll?.period1End || 15) : endOfMonth(currentMonthDate);
     const payPeriod = { start: periodStartDate, end: periodEndDate };
@@ -124,7 +125,7 @@ export default function ManagementAccountingPayrollPage() {
         payrollRunId,
       };
     });
-  }, [hrSettings, users, approvedLeaves, currentMonthDate, period, payrollRunId]);
+  }, [hrSettings, users, allYearLeaves, currentMonthDate, period, payrollRunId]);
 
   const handleCreateDraft = async () => {
     if (!db || calculatedPayrollData.length === 0) return;
