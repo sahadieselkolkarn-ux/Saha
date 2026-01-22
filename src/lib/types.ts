@@ -111,6 +111,9 @@ export interface HRSettings {
   graceMinutes?: number;
   absentCutoffTime?: string;
   minSecondsBetweenScans?: number;
+  weekendPolicy?: {
+    mode?: 'SAT_SUN' | 'SUN_ONLY';
+  };
   payroll?: {
     payday1?: number;
     payday2?: string;

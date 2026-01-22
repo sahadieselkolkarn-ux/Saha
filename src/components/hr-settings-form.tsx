@@ -52,6 +52,9 @@ const hrSettingsSchema = z.object({
   graceMinutes: z.coerce.number().min(0).optional(),
   absentCutoffTime: z.string().optional(),
   minSecondsBetweenScans: z.coerce.number().min(0).optional(),
+  weekendPolicy: z.object({
+    mode: z.enum(["SAT_SUN", "SUN_ONLY"]).optional(),
+  }).optional(),
   payroll: z.object({
     payday1: z.coerce.number().min(1).max(31).optional(),
     period1Start: z.coerce.number().min(1).max(31).optional(),
@@ -160,6 +163,9 @@ export function HRSettingsForm() {
       graceMinutes: 0,
       absentCutoffTime: "",
       minSecondsBetweenScans: 60,
+      weekendPolicy: {
+        mode: 'SAT_SUN',
+      },
       payroll: {
         payday1: 15,
         period1Start: 1,
@@ -200,6 +206,7 @@ export function HRSettingsForm() {
         graceMinutes: settings.graceMinutes ?? 0,
         absentCutoffTime: settings.absentCutoffTime || "",
         minSecondsBetweenScans: settings.minSecondsBetweenScans ?? 60,
+        weekendPolicy: { ...defaultValues.weekendPolicy, ...settings.weekendPolicy },
         payroll: { ...defaultValues.payroll, ...settings.payroll },
         sso: { ...defaultValues.sso, ...settings.sso },
         withholding: { ...defaultValues.withholding, ...settings.withholding },
@@ -302,6 +309,38 @@ export function HRSettingsForm() {
             <FormField control={form.control} name="graceMinutes" render={({ field }) => (<FormItem><FormLabel>Grace Period (minutes)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl><FormDescription>นาทีที่อนุญาตให้สายได้</FormDescription></FormItem>)} />
             <FormField control={form.control} name="absentCutoffTime" render={({ field }) => (<FormItem><FormLabel>Absent Cutoff Time</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl><FormDescription>หลังเวลานี้ถือว่าขาด</FormDescription></FormItem>)} />
             <FormField control={form.control} name="minSecondsBetweenScans" render={({ field }) => (<FormItem><FormLabel>Scan Cooldown (seconds)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl><FormDescription>กันการสแกนซ้ำ</FormDescription></FormItem>)} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Weekend Settings</CardTitle>
+            <CardDescription>
+              Define which days are considered non-working weekend days.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FormField
+              control={form.control}
+              name="weekendPolicy.mode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Weekend Days</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select weekend setup" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="SAT_SUN">Saturday & Sunday</SelectItem>
+                      <SelectItem value="SUN_ONLY">Sunday only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>This setting affects future attendance summary calculations.</FormDescription>
+                </FormItem>
+              )}
+            />
           </CardContent>
         </Card>
 

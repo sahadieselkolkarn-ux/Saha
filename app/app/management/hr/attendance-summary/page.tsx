@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -81,6 +82,7 @@ export default function ManagementHRAttendanceSummaryPage() {
     const holidaysMap = new Map(holidays.map(h => [h.date, h.name]));
     const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
     const graceMinutes = hrSettings.graceMinutes || 0;
+    const weekendMode = hrSettings.weekendPolicy?.mode || 'SAT_SUN';
 
     return users.map(user => {
       const userLeaves = approvedLeaves.filter(l => l.userId === user.id);
@@ -97,9 +99,11 @@ export default function ManagementHRAttendanceSummaryPage() {
           daily.status = 'HOLIDAY';
           return daily;
         }
-        if (isSaturday(day) || isSunday(day)) {
-          daily.status = 'WEEKEND';
-          return daily;
+
+        const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
+        if (isWeekendDay) {
+            daily.status = 'WEEKEND';
+            return daily;
         }
 
         const onLeave = userLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
@@ -205,20 +209,12 @@ export default function ManagementHRAttendanceSummaryPage() {
                 attendanceSnapshot,
                 adjustmentsSnapshot
             ] = await Promise.all([
-                getDocs(usersQuery).catch(e => { 
-                    console.warn("Could not fetch user list:", e);
-                    toast({
-                        variant: "default",
-                        title: "Could not load user list",
-                        description: "Using attendance data as a fallback.",
-                    });
-                    return null; 
-                }),
+                getDocs(usersQuery).catch(e => { console.warn("Could not fetch users:", e); return null; }),
                 getDoc(settingsDocRef),
                 getDocs(holidaysQuery),
-                getDocs(leavesQuery),
+                getDocs(leavesSnapshot),
                 getDocs(attendanceQuery),
-                getDocs(adjustmentsQuery),
+                getDocs(adjustmentsSnapshot),
             ]);
 
             const allUsersData = usersSnapshot?.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>)) || [];
@@ -231,15 +227,22 @@ export default function ManagementHRAttendanceSummaryPage() {
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             
-            // Fallback & Augment: Ensure anyone who scanned or has approved leave is on the list
-            monthAttendanceData.forEach(att => {
+            // Fallback for user list
+            if (usersSnapshot === null) {
+              toast({
+                variant: "default",
+                title: "Could not load full user list",
+                description: "Using attendance data as a fallback. Not all users may be shown.",
+              });
+            }
+             monthAttendanceData.forEach(att => {
                 if (att.userId && att.userName && !userMap.has(att.userId)) {
-                    userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' }); // Assume active for display
+                    userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' });
                 }
             });
             yearLeavesData.filter(l => l.status === 'APPROVED').forEach(leave => {
                 if (leave.userId && leave.userName && !userMap.has(leave.userId)) {
-                    userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' }); // Assume active for display
+                    userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' });
                 }
             });
             const usersToProcess = Array.from(userMap.values()).sort((a,b) => a.displayName.localeCompare(b.displayName));

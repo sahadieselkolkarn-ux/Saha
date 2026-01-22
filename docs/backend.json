@@ -466,6 +466,17 @@
           "type": "number",
           "description": "Minimum seconds between two attendance scans for the same user."
         },
+        "weekendPolicy": {
+            "type": "object",
+            "description": "Defines which days are considered weekends.",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["SAT_SUN", "SUN_ONLY"],
+                    "description": "Determines which days are weekends."
+                }
+            }
+        },
         "payroll": {
           "type": "object",
           "properties": {
