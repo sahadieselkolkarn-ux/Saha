@@ -96,7 +96,7 @@ export default function ImportCustomersPage() {
         setError("Failed to read the file.");
         setIsProcessing(false);
     };
-    reader.readAsText(fileToParse);
+    reader.readAsText(fileToParse, 'TIS-620');
   };
 
   const handleImport = async () => {
@@ -159,6 +159,8 @@ export default function ImportCustomersPage() {
               - `useTax` should be `true` or `false`.
               <br />
               - Ensure there are no commas within individual fields.
+              <br />
+              - For Thai language, please save the file with TIS-620 or UTF-8 encoding.
             </p>
             <p className="text-sm font-semibold mt-4">Example:</p>
             <code className="text-sm p-2 bg-muted rounded-md block my-2">
