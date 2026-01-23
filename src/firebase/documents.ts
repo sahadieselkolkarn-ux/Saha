@@ -9,7 +9,7 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
-import type { DocumentSettings, Document, DocType, DocumentCounters, JobStatus } from '@/lib/types';
+import type { DocumentSettings, Document, DocType, DocumentCounters, JobStatus, UserProfile } from '@/lib/types';
 
 const docTypeToCounterField: Record<DocType, keyof Omit<DocumentCounters, 'year'>> = {
     QUOTATION: 'quotation',
@@ -26,12 +26,15 @@ const docTypeToCounterField: Record<DocType, keyof Omit<DocumentCounters, 'year'
  * @param db The Firestore instance.
  * @param docType The type of the document to create.
  * @param data The document data, excluding fields that will be generated (id, docNo, createdAt, etc.).
+ * @param userProfile The profile of the user creating the document.
+ * @param newJobStatus Optional new status to set for the associated job.
  * @returns The full document number.
  */
 export async function createDocument(
   db: Firestore,
   docType: DocType,
   data: Omit<Document, 'id' | 'docNo' | 'docType' | 'createdAt' | 'updatedAt' | 'status'>,
+  userProfile: UserProfile,
   newJobStatus?: JobStatus
 ): Promise<string> {
     const year = new Date(data.docDate).getFullYear();
@@ -48,7 +51,6 @@ export async function createDocument(
         }
         
         const settingsData = docSettingsDoc.data() as DocumentSettings;
-        // The key for quotationPrefix is "quotationPrefix" not "QUOTATIONPrefix"
         const prefixKey = `${docType.charAt(0).toLowerCase()}${docType.slice(1).replace(/_/g, '')}Prefix` as keyof DocumentSettings;
         const prefix = settingsData[prefixKey] || docType.substring(0, 2);
 
@@ -75,10 +77,24 @@ export async function createDocument(
         transaction.set(newDocRef, newDocumentData);
         transaction.set(counterRef, { ...currentCounters, [counterField]: newCount }, { merge: true });
 
-        // Update Job status if provided
-        if (data.jobId && newJobStatus) {
+        // Update Job status and add activity log if there's a Job ID
+        if (data.jobId) {
             const jobRef = doc(db, 'jobs', data.jobId);
-            transaction.update(jobRef, { status: newJobStatus, lastActivityAt: serverTimestamp() });
+            
+            // 1. Update job status if a new status is provided
+            if (newJobStatus) {
+                transaction.update(jobRef, { status: newJobStatus, lastActivityAt: serverTimestamp() });
+            }
+
+            // 2. Add an activity log entry for document creation
+            const activityRef = doc(collection(db, 'jobs', data.jobId, 'activities'));
+            transaction.set(activityRef, {
+                text: `Created ${docType} document: ${docNo}`,
+                userName: userProfile.displayName,
+                userId: userProfile.uid,
+                createdAt: serverTimestamp(),
+                photos: [],
+            });
         }
 
         return docNo;
@@ -86,5 +102,3 @@ export async function createDocument(
 
     return documentNumber;
 }
-
-    

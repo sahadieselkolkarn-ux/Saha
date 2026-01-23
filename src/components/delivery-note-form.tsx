@@ -5,8 +5,9 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, onSnapshot, collection, query, orderBy } from "firebase/firestore";
+import { doc, collection, onSnapshot } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -33,11 +34,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer } from "@/lib/types";
+import type { Job, StoreSettings, Customer, UserProfile } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
   quantity: z.coerce.number().min(0.01, "Quantity must be > 0."),
+  unitPrice: z.number().optional(),
+  total: z.number().optional(),
 });
 
 const deliveryNoteFormSchema = z.object({
@@ -56,6 +59,7 @@ export default function DeliveryNoteForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
 
   const jobId = useMemo(() => searchParams.get("jobId"), [searchParams]);
@@ -88,14 +92,19 @@ export default function DeliveryNoteForm() {
   const customer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
 
   useEffect(() => {
-    if (job && customers.length > 0) {
+    if (job) {
         form.setValue('customerId', job.customerId);
+        form.setValue('items', [{ description: job.description, quantity: 1 }]);
+        form.setValue('receiverName', job.customerSnapshot.name);
     }
-  }, [job, customers, form]);
+    if (profile) {
+        form.setValue('senderName', profile.displayName);
+    }
+  }, [job, profile, form]);
 
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "customers"), orderBy("name", "asc"));
+    const q = collection(db, "customers");
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
@@ -120,7 +129,7 @@ export default function DeliveryNoteForm() {
   });
   
   const onSubmit = async (data: DeliveryNoteFormData) => {
-    if (!db || !customer || !storeSettings) {
+    if (!db || !customer || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing data for document creation." });
         return;
     }
@@ -146,13 +155,15 @@ export default function DeliveryNoteForm() {
             receiverName: data.receiverName,
         };
 
-        const docNo = await createDocument(
+        await createDocument(
             db,
             'DELIVERY_NOTE',
             documentData,
+            profile,
+            data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
         );
 
-        toast({ title: "Delivery Note Created", description: `Successfully created ${docNo}` });
+        toast({ title: "Delivery Note Created" });
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
@@ -238,7 +249,7 @@ export default function DeliveryNoteForm() {
             <CardHeader><CardTitle>รายการ</CardTitle></CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="text-right">จำนวน</TableHead><TableHead/></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="text-right w-32">จำนวน</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
                     <TableBody>
                         {fields.map((field, index) => (
                             <TableRow key={field.id}>

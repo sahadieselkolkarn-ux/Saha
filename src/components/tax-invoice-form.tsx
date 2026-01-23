@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, Document } from "@/lib/types";
+import type { Job, StoreSettings, Customer, UserProfile } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -51,6 +52,7 @@ export function TaxInvoiceForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
 
   const jobId = useMemo(() => searchParams.get("jobId"), [searchParams]);
@@ -78,6 +80,17 @@ export function TaxInvoiceForm() {
       notes: "",
     },
   });
+
+  useEffect(() => {
+    if (job) {
+      const defaultItem = { description: job.description, quantity: 1, unitPrice: 0, total: 0 };
+      if (job.technicalReport) {
+        form.setValue('items', [{ ...defaultItem, description: job.technicalReport }]);
+      } else {
+        form.setValue('items', [defaultItem]);
+      }
+    }
+  }, [job, form]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -110,7 +123,7 @@ export function TaxInvoiceForm() {
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: TaxInvoiceFormData) => {
-    if (!db || !jobId || !job || !customer || !storeSettings) {
+    if (!db || !jobId || !job || !customer || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing data for invoice creation." });
         return;
     }
@@ -140,6 +153,7 @@ export function TaxInvoiceForm() {
             db,
             'TAX_INVOICE',
             documentData,
+            profile,
             'WAITING_CUSTOMER_PICKUP'
         );
 
@@ -263,5 +277,3 @@ export function TaxInvoiceForm() {
     </Form>
   );
 }
-
-    

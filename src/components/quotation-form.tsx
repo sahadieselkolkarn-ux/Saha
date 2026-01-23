@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -33,7 +34,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, Document } from "@/lib/types";
+import type { Job, StoreSettings, Customer, UserProfile } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -62,13 +63,13 @@ export function QuotationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
 
   const jobId = useMemo(() => searchParams.get("jobId"), [searchParams]);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
-  const docSettingsRef = useMemo(() => (db ? doc(db, "settings", "documents") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(db && job?.customerId ? doc(db, 'customers', job.customerId) : null);
@@ -90,6 +91,12 @@ export function QuotationForm() {
       notes: "",
     },
   });
+
+  useEffect(() => {
+    if (job) {
+      form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
+    }
+  }, [job, form]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -122,7 +129,7 @@ export function QuotationForm() {
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: QuotationFormData) => {
-    if (!db || !jobId || !job || !customer || !storeSettings) {
+    if (!db || !jobId || !job || !customer || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing data for quotation creation." });
         return;
     }
@@ -152,7 +159,8 @@ export function QuotationForm() {
             db,
             'QUOTATION',
             documentData,
-            'WAITING_APPROVE' // New job status
+            profile,
+            'WAITING_APPROVE'
         );
 
         toast({ title: "Quotation Created", description: `Successfully created quotation ${docNo}` });
@@ -279,5 +287,3 @@ export function QuotationForm() {
     </Form>
   );
 }
-
-    
