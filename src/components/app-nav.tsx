@@ -35,6 +35,27 @@ const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onC
     );
 };
 
+const AccountingDocumentsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
+    const pathname = usePathname();
+    const isOpen = pathname.startsWith('/app/management/accounting/documents');
+    return (
+        <Collapsible defaultOpen={isOpen}>
+            <CollapsibleTrigger asChild>
+                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
+                    เอกสาร
+                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                <SubNavLink href="/app/management/accounting/documents/receipt" label="ใบเสร็จรับเงิน" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/documents/billing-note" label="ใบวางบิล" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/documents/credit-note" label="ใบลดหนี้" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/documents/withholding-tax" label="ใบหัก ณ ที่จ่าย" onClick={onLinkClick} />
+            </CollapsibleContent>
+        </Collapsible>
+    );
+};
+
 const AccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
     const isOpen = pathname.startsWith('/app/management/accounting');
@@ -53,6 +74,7 @@ const AccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
                 <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
+                <AccountingDocumentsSubMenu onLinkClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
