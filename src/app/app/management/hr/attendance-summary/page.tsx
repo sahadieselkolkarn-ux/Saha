@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -259,27 +258,7 @@ export default function ManagementHRAttendanceSummaryPage() {
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             
-            const userMap = new Map<string, WithId<UserProfile>>();
-            
-            allUsersData.forEach(u => userMap.set(u.id, u));
-            
-            // Always enrich the map with users who have attendance, in case the main user query fails or is out of date.
-            monthAttendanceData.forEach(att => {
-                if (att.userId && !userMap.has(att.userId)) {
-                    if (att.userName) {
-                         userMap.set(att.userId, { id: att.userId, displayName: att.userName, status: 'ACTIVE' } as WithId<UserProfile>);
-                    }
-                }
-            });
-            yearLeavesData.filter(l => l.status === 'APPROVED').forEach(leave => {
-                if (leave.userId && !userMap.has(leave.userId)) {
-                     if (leave.userName) {
-                         userMap.set(leave.userId, { id: leave.userId, displayName: leave.userName, status: 'ACTIVE' } as WithId<UserProfile>);
-                    }
-                }
-            });
-
-            const usersToProcess = Array.from(userMap.values()).sort((a,b) => a.displayName.localeCompare(b.displayName));
+            const usersToProcess = allUsersData;
             
             const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
             if (!hrSettingsData) throw new Error("HR Settings not found. Please configure them in the HR settings page.");
