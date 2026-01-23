@@ -62,7 +62,7 @@ export default function SettingsPage() {
     const { toast } = useToast();
     const [isEditing, setIsEditing] = useState(false);
 
-    const isManager = profile?.role === 'MANAGER';
+    const isManagerOrAdmin = profile?.role === 'MANAGER' || profile?.role === 'ADMIN';
     
     const form = useForm<z.infer<typeof profileSchema>>({
         resolver: zodResolver(profileSchema),
@@ -119,7 +119,7 @@ export default function SettingsPage() {
                 updatedAt: serverTimestamp()
             };
 
-            if (isManager) {
+            if (isManagerOrAdmin) {
                 finalUpdate['hr.salaryMonthly'] = values.hr?.salaryMonthly === undefined || (values.hr.salaryMonthly as any) === '' ? null : Number(values.hr.salaryMonthly);
             }
 
@@ -162,8 +162,8 @@ export default function SettingsPage() {
                 <PageHeader title="Edit Profile" description="Update your personal information." />
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-4xl mx-auto">
-                        <ScrollArea className="max-h-[70vh] p-1">
-                          <div className="space-y-6 pr-6">
+                        <ScrollArea className="max-h-[70vh] p-4">
+                          <div className="space-y-6">
                             <Card>
                                 <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
@@ -200,12 +200,12 @@ export default function SettingsPage() {
                                         <FormItem>
                                             <FormLabel>Monthly Salary</FormLabel>
                                             <FormControl>
-                                                <Input type="number" {...field} disabled={!isManager} value={field.value ?? ''} onChange={(e) => {
+                                                <Input type="number" {...field} disabled={!isManagerOrAdmin} value={field.value ?? ''} onChange={(e) => {
                                                     const value = e.target.value;
                                                     field.onChange(value === '' ? undefined : Number(value));
                                                 }} />
                                             </FormControl>
-                                            {!isManager && <FormDescription>Only Managers can edit salary.</FormDescription>}
+                                            {!isManagerOrAdmin && <FormDescription>แก้เงินเดือนได้เฉพาะ Manager หรือ Admin</FormDescription>}
                                             <FormMessage />
                                         </FormItem>
                                         )}
@@ -213,7 +213,14 @@ export default function SettingsPage() {
                                     <FormField name="hr.payType" control={form.control} render={({ field }) => (
                                         <FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>
                                     )} />
-                                    <FormField control={form.control} name="hr.ssoHospital" render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="hr.ssoHospital" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>SSO Hospital</FormLabel>
+                                            <FormControl><Input {...field} value={field.value ?? ''} disabled={!isManagerOrAdmin} /></FormControl>
+                                            {!isManagerOrAdmin && <FormDescription>แก้โรงพยาบาลประกันสังคมได้เฉพาะ Manager หรือ Admin</FormDescription>}
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
                                     <FormField control={form.control} name="hr.note" render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                                 </CardContent>
                             </Card>

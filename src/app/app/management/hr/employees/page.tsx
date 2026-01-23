@@ -425,7 +425,14 @@ export default function ManagementHREmployeesPage() {
                                 )}
                               />
                             <FormField name="hr.payType" control={form.control} render={({ field }) => (<FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                             <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (<FormItem><FormLabel>SSO Hospital</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                             <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>SSO Hospital</FormLabel>
+                                    <FormControl><Input {...field} value={field.value ?? ''} disabled={!isManagerOrAdmin} /></FormControl>
+                                    {!isManagerOrAdmin && <FormDescription>แก้โรงพยาบาลประกันสังคมได้เฉพาะ Manager หรือ Admin</FormDescription>}
+                                    <FormMessage />
+                                </FormItem>
+                             )} />
                              <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
                     </Card>
