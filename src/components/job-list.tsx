@@ -303,7 +303,7 @@ export function JobList({
           </CardContent>
           <CardFooter className={cn(
             "mt-auto grid gap-2 p-4", 
-            (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') ? "grid-cols-2" : "grid-cols-1"
+            (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE') ? "grid-cols-2" : "grid-cols-1"
           )}>
             <Button asChild variant="outline" className="w-full">
               <Link href={`/app/jobs/${job.id}`}>
@@ -327,6 +327,14 @@ export function JobList({
                 <Link href={`/app/jobs/${job.id}`}>
                   <Receipt />
                   Quote Price
+                </Link>
+              </Button>
+            )}
+            {job.status === 'DONE' && (
+              <Button asChild variant="default" className="w-full">
+                <Link href={`/app/jobs/${job.id}`}>
+                  <Receipt />
+                  Billing
                 </Link>
               </Button>
             )}
