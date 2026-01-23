@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import React from "react"
+import React, { useMemo } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
   ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation,
@@ -221,6 +221,29 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const { profile } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
+    const departmentsToShow = useMemo(() => {
+        if (!profile) return [];
+
+        if (profile.role === 'ADMIN') {
+            return DEPARTMENTS;
+        }
+
+        const visible = new Set<Department>();
+        
+        // Add user's own department
+        if (profile.department) {
+            visible.add(profile.department);
+        }
+
+        // Add MANAGEMENT for managers and officers
+        if (profile.role === 'MANAGER' || profile.role === 'OFFICER') {
+            visible.add('MANAGEMENT');
+        }
+
+        // Return in the order defined in DEPARTMENTS
+        return DEPARTMENTS.filter(d => visible.has(d));
+    }, [profile]);
+
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
             <Collapsible defaultOpen={isAttendanceOpen}>
@@ -244,7 +267,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             
             <div className="my-2 border-t"></div>
 
-            {DEPARTMENTS.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
+            {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
         </nav>
     );
 }
