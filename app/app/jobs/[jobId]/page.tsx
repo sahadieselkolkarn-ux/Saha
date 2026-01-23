@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -38,6 +39,7 @@ export default function JobDetailsPage() {
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
+  const [isAddingPhotos, setIsAddingPhotos] = useState(false);
 
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
   const [transferDepartment, setTransferDepartment] = useState<JobDepartment | ''>('');
@@ -55,6 +57,7 @@ export default function JobDetailsPage() {
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
+  const canAddPhotos = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
 
   useEffect(() => {
     if (!jobId || !db) return;
@@ -215,6 +218,70 @@ export default function JobDetailsPage() {
     }
   };
 
+  const handleQuickPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !jobId || !db || !storage || !profile) return;
+    setIsAddingPhotos(true);
+
+    const files = Array.from(e.target.files);
+    
+    const totalPhotos = (job?.photos?.length || 0) + files.length;
+    if (totalPhotos > 4) {
+      toast({ variant: "destructive", title: "You can only have up to 4 photos in total." });
+      setIsAddingPhotos(false);
+      return;
+    }
+    
+    const validFiles = files.filter(file => {
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            toast({ variant: "destructive", title: `File ${file.name} is too large.`, description: "Max size is 5MB." });
+            return false;
+        }
+        return true;
+    });
+
+    if (validFiles.length === 0) {
+        setIsAddingPhotos(false);
+        return;
+    }
+
+    try {
+        const jobDocRef = doc(db, "jobs", jobId as string);
+        const activitiesColRef = collection(db, "jobs", jobId as string, "activities");
+
+        const photoURLs: string[] = [];
+        for (const photo of validFiles) {
+            const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
+            await uploadBytes(photoRef, photo);
+            photoURLs.push(await getDownloadURL(photoRef));
+        }
+        
+        const batch = writeBatch(db);
+        
+        // 1. Add activity log
+        batch.set(doc(activitiesColRef), {
+            text: `Added ${validFiles.length} photo(s).`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: photoURLs,
+        });
+        
+        // 2. Update main job document
+        batch.update(jobDocRef, { 
+            photos: arrayUnion(...photoURLs),
+            lastActivityAt: serverTimestamp() 
+        });
+        
+        await batch.commit();
+        toast({title: `${validFiles.length} photo(s) added successfully`});
+    } catch(error: any) {
+        toast({variant: "destructive", title: "Failed to add photos", description: error.message});
+    } finally {
+        setIsAddingPhotos(false);
+        e.target.value = ''; // Reset file input
+    }
+  }
+
   const handleTransferJob = async () => {
     if (!transferDepartment || !job || !db || !profile) return;
     setIsTransferring(true);
@@ -315,7 +382,27 @@ export default function JobDetailsPage() {
           )}
 
           <Card>
-            <CardHeader><CardTitle>Photos ({job.photos?.length ?? 0}/4)</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Photos ({job.photos?.length ?? 0}/4)</CardTitle>
+                {canAddPhotos && (
+                    <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4}>
+                        <label htmlFor="quick-photo-upload" className="cursor-pointer flex items-center">
+                            {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                            Add Photo
+                            <Input 
+                                id="quick-photo-upload" 
+                                type="file" 
+                                className="hidden" 
+                                multiple 
+                                accept="image/*" 
+                                capture="environment" 
+                                onChange={handleQuickPhotoUpload}
+                                disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4}
+                            />
+                        </label>
+                    </Button>
+                )}
+            </CardHeader>
             <CardContent>
                 {job.photos && job.photos.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -352,7 +439,7 @@ export default function JobDetailsPage() {
                     ))}
                   </div>
                 )}
-                <Button onClick={handleAddActivity} disabled={isSubmittingNote || (!newNote.trim() && newPhotos.length === 0)}>
+                <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0)}>
                   {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />}
                   Add Activity
                 </Button>
