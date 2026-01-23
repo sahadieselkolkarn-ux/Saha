@@ -256,7 +256,7 @@
         },
         "status": {
           "type": "string",
-          "description": "The job's status (RECEIVED, IN_PROGRESS, DONE, CLOSED)."
+          "description": "The job's status (RECEIVED, IN_PROGRESS, WAITING_QUOTATION, WAITING_APPROVE, IN_REPAIR_PROCESS, DONE, WAITING_CUSTOMER_PICKUP, CLOSED)."
         },
         "description": {
           "type": "string",

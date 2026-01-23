@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
+import { JOB_STATUS_DISPLAY } from "@/lib/constants";
 
 interface JobListProps {
   department?: JobDepartment;
@@ -29,11 +30,20 @@ interface JobListProps {
 
 const getStatusVariant = (status: Job['status']) => {
   switch (status) {
-    case 'RECEIVED': return 'secondary';
-    case 'IN_PROGRESS': return 'default';
-    case 'DONE': return 'outline';
-    case 'CLOSED': return 'destructive';
-    default: return 'outline';
+    case 'RECEIVED':
+    case 'WAITING_QUOTATION':
+    case 'WAITING_APPROVE':
+      return 'secondary';
+    case 'IN_PROGRESS':
+    case 'IN_REPAIR_PROCESS':
+      return 'default';
+    case 'DONE':
+    case 'WAITING_CUSTOMER_PICKUP':
+      return 'outline';
+    case 'CLOSED':
+      return 'destructive';
+    default:
+      return 'outline';
   }
 }
 
@@ -273,7 +283,7 @@ export function JobList({
           <CardHeader>
             <div className="flex justify-between items-start">
               <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-              <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
+              <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{JOB_STATUS_DISPLAY[job.status]}</Badge>
             </div>
             <CardDescription>
               Dept: {job.department}

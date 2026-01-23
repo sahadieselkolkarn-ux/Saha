@@ -20,11 +20,30 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { JOB_DEPARTMENTS, JOB_STATUSES } from "@/lib/constants";
+import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY, type JobStatus } from "@/lib/constants";
 import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera } from "lucide-react";
-import type { Job, JobActivity, JobDepartment, JobStatus } from "@/lib/types";
+import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+
+const getStatusVariant = (status: Job['status']) => {
+  switch (status) {
+    case 'RECEIVED':
+    case 'WAITING_QUOTATION':
+    case 'WAITING_APPROVE':
+      return 'secondary';
+    case 'IN_PROGRESS':
+    case 'IN_REPAIR_PROCESS':
+      return 'default';
+    case 'DONE':
+    case 'WAITING_CUSTOMER_PICKUP':
+      return 'outline';
+    case 'CLOSED':
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+}
 
 export default function JobDetailsPage() {
   const { jobId } = useParams();
@@ -48,7 +67,6 @@ export default function JobDetailsPage() {
 
   const [techReport, setTechReport] = useState("");
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
@@ -80,25 +98,22 @@ export default function JobDetailsPage() {
     return () => unsubscribe();
   }, [jobId, toast, db]);
 
-  const handleStatusChange = async (newStatus: JobStatus) => {
+  const handleMarkAsDone = async () => {
     if (!jobId || !db || !job || !profile) return;
-    if (job.status === newStatus) return; // Don't do anything if status is the same
 
-    setIsUpdatingStatus(true);
+    setIsSubmittingNote(true);
     try {
         const batch = writeBatch(db);
         const jobDocRef = doc(db, "jobs", jobId as string);
         const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
         
-        // 1. Update job status
         batch.update(jobDocRef, {
-            status: newStatus,
+            status: 'DONE',
             lastActivityAt: serverTimestamp()
         });
 
-        // 2. Add activity log
         batch.set(activityDocRef, {
-            text: `เปลี่ยนสถานะจาก ${job.status} เป็น ${newStatus}`,
+            text: `เปลี่ยนสถานะเป็น "${JOB_STATUS_DISPLAY['DONE']}"`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
@@ -106,11 +121,11 @@ export default function JobDetailsPage() {
         });
 
         await batch.commit();
-        toast({ title: `Job status updated to ${newStatus}` });
+        toast({ title: "Job Marked as Done" });
     } catch (error: any) {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
     } finally {
-        setIsUpdatingStatus(false);
+        setIsSubmittingNote(false);
     }
   };
 
@@ -173,7 +188,7 @@ export default function JobDetailsPage() {
   };
   
   const handleAddActivity = async () => {
-    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile) return;
+    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile || !job) return;
     setIsSubmittingNote(true);
     
     try {
@@ -189,9 +204,21 @@ export default function JobDetailsPage() {
         
         const batch = writeBatch(db);
         
+        // --- Status change logic ---
+        const jobUpdates: any = { 
+            photos: arrayUnion(...photoURLs),
+            lastActivityAt: serverTimestamp() 
+        };
+        let activityText = newNote;
+        
+        if (job.status === 'IN_PROGRESS' && profile.department !== 'OFFICE') {
+            jobUpdates.status = 'WAITING_QUOTATION';
+            activityText = `อัปเดตงาน, สถานะเปลี่ยนเป็น "${JOB_STATUS_DISPLAY['WAITING_QUOTATION']}"\n\n${newNote}`;
+        }
+        
         // 1. Add new activity document
         batch.set(doc(activitiesColRef), {
-            text: newNote,
+            text: activityText,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
@@ -199,10 +226,7 @@ export default function JobDetailsPage() {
         });
         
         // 2. Update main job document
-        batch.update(jobDocRef, { 
-            photos: arrayUnion(...photoURLs),
-            lastActivityAt: serverTimestamp() 
-        });
+        batch.update(jobDocRef, jobUpdates);
         
         await batch.commit();
 
@@ -488,13 +512,15 @@ export default function JobDetailsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base font-semibold">Status</CardTitle>
-              <Badge variant={job.status === 'DONE' ? 'default' : job.status === 'CLOSED' ? 'destructive' : 'secondary'}>{job.status}</Badge>
+              <Badge variant={getStatusVariant(job.status)}>{JOB_STATUS_DISPLAY[job.status]}</Badge>
             </CardHeader>
-            <CardContent>
-              <Select value={job.status} onValueChange={(v) => handleStatusChange(v as JobStatus)} disabled={isUpdatingStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{JOB_STATUSES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
+            <CardContent className="space-y-2">
+              {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
+                <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport} className="w-full">
+                    {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    งานเรียบร้อย (Mark as Done)
+                </Button>
+              )}
             </CardContent>
           </Card>
           <Card>

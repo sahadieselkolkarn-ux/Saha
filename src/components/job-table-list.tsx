@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, AlertCircle, ExternalLink } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
+import { JOB_STATUS_DISPLAY } from "@/lib/constants";
 
 interface JobTableListProps {
   department?: JobDepartment;
@@ -26,11 +27,20 @@ interface JobTableListProps {
 
 const getStatusVariant = (status: Job['status']) => {
   switch (status) {
-    case 'RECEIVED': return 'secondary';
-    case 'IN_PROGRESS': return 'default';
-    case 'DONE': return 'outline';
-    case 'CLOSED': return 'destructive';
-    default: return 'outline';
+    case 'RECEIVED':
+    case 'WAITING_QUOTATION':
+    case 'WAITING_APPROVE':
+      return 'secondary';
+    case 'IN_PROGRESS':
+    case 'IN_REPAIR_PROCESS':
+      return 'default';
+    case 'DONE':
+    case 'WAITING_CUSTOMER_PICKUP':
+      return 'outline';
+    case 'CLOSED':
+      return 'destructive';
+    default:
+      return 'outline';
   }
 }
 
@@ -223,7 +233,7 @@ export function JobTableList({
                             <TableCell>{job.department}</TableCell>
                             <TableCell className="max-w-xs truncate">{job.description}</TableCell>
                             <TableCell>
-                                <Badge variant={getStatusVariant(job.status)}>{job.status}</Badge>
+                                <Badge variant={getStatusVariant(job.status)}>{JOB_STATUS_DISPLAY[job.status]}</Badge>
                             </TableCell>
                             <TableCell>{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
                             <TableCell className="text-right">
