@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
@@ -301,7 +301,10 @@ export function JobList({
           <CardContent className="flex-grow">
             <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
           </CardContent>
-          <CardFooter className={cn("mt-auto grid gap-2 p-4", job.status === 'RECEIVED' ? "grid-cols-2" : "grid-cols-1")}>
+          <CardFooter className={cn(
+            "mt-auto grid gap-2 p-4", 
+            (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') ? "grid-cols-2" : "grid-cols-1"
+          )}>
             <Button asChild variant="outline" className="w-full">
               <Link href={`/app/jobs/${job.id}`}>
                 View Details
@@ -317,6 +320,14 @@ export function JobList({
               >
                 {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
                 รับงาน
+              </Button>
+            )}
+            {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && (
+              <Button asChild variant="default" className="w-full">
+                <Link href={`/app/jobs/${job.id}`}>
+                  <Receipt />
+                  Quote Price
+                </Link>
               </Button>
             )}
           </CardFooter>

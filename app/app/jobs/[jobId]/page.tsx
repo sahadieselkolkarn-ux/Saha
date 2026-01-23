@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft } from "lucide-react";
 import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -46,6 +46,7 @@ const getStatusVariant = (status: Job['status']) => {
 }
 
 export default function JobDetailsPage() {
+  const router = useRouter();
   const { jobId } = useParams();
   const searchParams = useSearchParams();
   const { db, storage } = useFirebase();
@@ -399,6 +400,10 @@ export default function JobDetailsPage() {
   
   return (
     <>
+      <Button variant="outline" size="sm" className="mb-4" onClick={() => router.back()}>
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        ย้อนกลับ
+      </Button>
       <PageHeader title={`Job: ${job.customerSnapshot.name}`} description={isViewOnly ? `VIEW-ONLY | ID: ${job.id.substring(0,8)}...` : `ID: ${job.id.substring(0,8)}...`} />
       
       <div className="grid gap-6 lg:grid-cols-3">
