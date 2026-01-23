@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -10,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 
@@ -248,7 +249,21 @@ export function JobList({
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {jobs.map(job => (
-        <Card key={job.id} className="flex flex-col">
+        <Card key={job.id} className="flex flex-col overflow-hidden">
+          <div className="relative aspect-[16/10] w-full bg-muted">
+            {job.photos && job.photos.length > 0 ? (
+                <Image
+                    src={job.photos[0]}
+                    alt={job.description || "Job image"}
+                    fill
+                    className="object-cover"
+                />
+            ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                    <FileImage className="h-10 w-10 text-muted-foreground/50" />
+                </div>
+            )}
+          </div>
           <CardHeader>
             <div className="flex justify-between items-start">
               <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
@@ -262,9 +277,9 @@ export function JobList({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
-            <p className="line-clamp-3 text-sm text-muted-foreground">{job.description}</p>
+            <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
           </CardContent>
-          <CardFooter className="flex flex-col sm:flex-row gap-2">
+          <CardFooter className="mt-auto flex flex-col sm:flex-row gap-2">
             <Button asChild variant="outline" className="w-full">
               <Link href={`/app/jobs/${job.id}`}>
                 View Details <ArrowRight className="ml-auto" />
@@ -287,3 +302,4 @@ export function JobList({
     </div>
   );
 }
+
