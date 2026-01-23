@@ -567,9 +567,9 @@ export default function JobDetailsPage() {
                     </Button>
                   )}
                   {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
-                    <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport} className="w-full">
+                    <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport} className="w-full" variant="outline">
                         {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
-                        งานเรียบร้อย (Mark as Done)
+                        งานเรียบร้อย
                     </Button>
                   )}
               </CardContent>
