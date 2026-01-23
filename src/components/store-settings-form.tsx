@@ -1,13 +1,14 @@
 
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, setDoc } from "firebase/firestore";
 
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import type { StoreSettings } from "@/lib/types";
@@ -17,8 +18,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Edit, X } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
+import { Separator } from "./ui/separator";
 
 const storeSettingsSchema = z.object({
   taxName: z.string().optional(),
@@ -30,9 +32,20 @@ const storeSettingsSchema = z.object({
   openingHours: z.string().optional(),
 });
 
+const InfoRow = ({ label, value }: { label: string, value: React.ReactNode }) => (
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between py-3">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
+        <div className="text-sm sm:text-right break-words max-w-md">{value || '-'}</div>
+    </div>
+);
+
 export function StoreSettingsForm() {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile } = useAuth();
+  const [isEditing, setIsEditing] = useState(false);
+
+  const isUserAdmin = profile?.role === 'ADMIN';
 
   const settingsDocRef = useMemo(() => {
     if (!db) return null;
@@ -60,6 +73,7 @@ export function StoreSettingsForm() {
         title: "Settings Saved",
         description: "Store settings have been updated successfully.",
       });
+      setIsEditing(false);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -72,13 +86,51 @@ export function StoreSettingsForm() {
   if (isLoading) {
     return <Skeleton className="h-96 w-full" />;
   }
+  
+  if (!isEditing) {
+    return (
+        <div className="space-y-8">
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle>ข้อมูลร้าน</CardTitle>
+                        <CardDescription>ข้อมูลสำหรับออกเอกสารและข้อมูลทั่วไปของร้าน</CardDescription>
+                    </div>
+                    {isUserAdmin && <Button variant="outline" onClick={() => setIsEditing(true)}><Edit /> Edit</Button>}
+                </CardHeader>
+                <CardContent className="space-y-1">
+                    <Separator />
+                    <InfoRow label="ชื่อสำหรับออกภาษี" value={settings?.taxName} />
+                    <Separator />
+                    <InfoRow label="ที่อยู่" value={<span className="whitespace-pre-wrap">{settings?.taxAddress}</span>} />
+                    <Separator />
+                    <InfoRow label="สาขา" value={settings?.branch} />
+                    <Separator />
+                    <InfoRow label="เบอร์โทร" value={settings?.phone} />
+                    <Separator />
+                    <InfoRow label="เลขที่ผู้เสียภาษี" value={settings?.taxId} />
+                    <Separator />
+                    <InfoRow label="ชื่อไม่เป็นทางการ" value={settings?.informalName} />
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>เวลาทำการ</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <InfoRow label="รายละเอียดเวลาทำการ" value={<span className="whitespace-pre-wrap">{settings?.openingHours}</span>} />
+                </CardContent>
+            </Card>
+        </div>
+    );
+  }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
         <Card>
           <CardHeader>
-            <CardTitle>ข้อมูลร้าน</CardTitle>
+            <CardTitle>แก้ไขข้อมูลร้าน</CardTitle>
             <CardDescription>ข้อมูลสำหรับออกเอกสารและข้อมูลทั่วไปของร้าน</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -100,7 +152,8 @@ export function StoreSettingsForm() {
                 <FormField control={form.control} name="openingHours" render={({ field }) => (<FormItem><FormLabel>รายละเอียดเวลาทำการ</FormLabel><FormControl><Textarea placeholder="เช่น จันทร์-เสาร์: 8:00 - 17:00" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
             </CardContent>
         </Card>
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-4">
+            <Button type="button" variant="ghost" onClick={() => setIsEditing(false)} disabled={form.formState.isSubmitting}><X className="mr-2 h-4 w-4" /> Cancel</Button>
             <Button type="submit" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4"/>}
               Save Settings
@@ -110,5 +163,3 @@ export function StoreSettingsForm() {
     </Form>
   );
 }
-
-    
