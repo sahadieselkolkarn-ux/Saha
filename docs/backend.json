@@ -425,7 +425,7 @@
         "receiverName": { "type": "string" },
         "paymentMethod": { "type": "string" },
         "paymentDate": { "type": "string", "format": "date" },
-        "referencesInvoiceId": { "type": "string" },
+        "referencesDocIds": { "type": "array", "items": { "type": "string"} },
         "reason": { "type": "string" },
         "invoiceIds": { "type": "array", "items": { "type": "string"} },
         "totalAmount": { "type": "number" }
@@ -1029,7 +1029,7 @@
       "schema": { "$ref": "#/backend/entities/DocumentSettings" },
       "description": "Stores document numbering settings."
     },
-    "/settings/documentCounters/{year}": {
+    "/documentCounters/{year}": {
         "schema": { "$ref": "#/backend/entities/DocumentCounters"},
         "description": "Stores the auto-incrementing counters for document numbers for each year."
     },
@@ -1065,4 +1065,6 @@
     }
   }
 }
+    
+
     

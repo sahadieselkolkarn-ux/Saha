@@ -21,6 +21,17 @@ const docTypeToCounterField: Record<DocType, keyof Omit<DocumentCounters, 'year'
     WITHHOLDING_TAX: 'withholdingTax',
 };
 
+const docTypeToPrefixKey: Record<DocType, keyof DocumentSettings> = {
+    QUOTATION: 'quotationPrefix',
+    DELIVERY_NOTE: 'deliveryNotePrefix',
+    TAX_INVOICE: 'taxInvoicePrefix',
+    RECEIPT: 'receiptPrefix',
+    BILLING_NOTE: 'billingNotePrefix',
+    CREDIT_NOTE: 'creditNotePrefix',
+    WITHHOLDING_TAX: 'withholdingTaxPrefix',
+};
+
+
 /**
  * Creates a new document in the 'documents' collection with a transactionally-generated document number.
  * @param db The Firestore instance.
@@ -38,7 +49,7 @@ export async function createDocument(
   newJobStatus?: JobStatus
 ): Promise<string> {
     const year = new Date(data.docDate).getFullYear();
-    const counterRef = doc(db, 'settings/documentCounters', String(year));
+    const counterRef = doc(db, 'documentCounters', String(year));
     const docSettingsRef = doc(db, 'settings', 'documents');
     const newDocRef = doc(collection(db, 'documents'));
 
@@ -51,7 +62,7 @@ export async function createDocument(
         }
         
         const settingsData = docSettingsDoc.data() as DocumentSettings;
-        const prefixKey = `${docType.charAt(0).toLowerCase()}${docType.slice(1).replace(/_/g, '')}Prefix` as keyof DocumentSettings;
+        const prefixKey = docTypeToPrefixKey[docType];
         const prefix = settingsData[prefixKey] || docType.substring(0, 2);
 
         let currentCounters: DocumentCounters = { year };
