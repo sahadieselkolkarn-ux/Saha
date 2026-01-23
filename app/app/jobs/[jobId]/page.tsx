@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle } from "lucide-react";
 import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -67,6 +67,7 @@ export default function JobDetailsPage() {
 
   const [techReport, setTechReport] = useState("");
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
+  const [isRequestingQuotation, setIsRequestingQuotation] = useState(false);
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
@@ -126,6 +127,37 @@ export default function JobDetailsPage() {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
     } finally {
         setIsSubmittingNote(false);
+    }
+  };
+
+  const handleRequestQuotation = async () => {
+    if (!jobId || !db || !job || !profile) return;
+
+    setIsRequestingQuotation(true);
+    try {
+        const batch = writeBatch(db);
+        const jobDocRef = doc(db, "jobs", jobId as string);
+        const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+        
+        batch.update(jobDocRef, {
+            status: 'WAITING_QUOTATION',
+            lastActivityAt: serverTimestamp()
+        });
+
+        batch.set(activityDocRef, {
+            text: `แจ้งขอเสนอราคา`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
+        });
+
+        await batch.commit();
+        toast({ title: "Quotation Requested", description: "Job status has been updated to WAITING_QUOTATION." });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Request Failed", description: error.message });
+    } finally {
+        setIsRequestingQuotation(false);
     }
   };
 
@@ -514,14 +546,6 @@ export default function JobDetailsPage() {
               <CardTitle className="text-base font-semibold">Status</CardTitle>
               <Badge variant={getStatusVariant(job.status)}>{JOB_STATUS_DISPLAY[job.status]}</Badge>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
-                <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport} className="w-full">
-                    {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    งานเรียบร้อย (Mark as Done)
-                </Button>
-              )}
-            </CardContent>
           </Card>
           <Card>
               <CardHeader><CardTitle className="text-base font-semibold">Timestamps</CardTitle></CardHeader>
@@ -531,11 +555,23 @@ export default function JobDetailsPage() {
               </CardContent>
           </Card>
           <Card>
-              <CardHeader><CardTitle className="text-base font-semibold">Transfer Job</CardTitle></CardHeader>
-              <CardContent>
+              <CardHeader><CardTitle className="text-base font-semibold">แจ้งความประสงค์</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
                   <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline">
-                      <Send className="mr-2 h-4 w-4" /> Transfer to another Department
+                      <Send className="mr-2 h-4 w-4" /> ส่งต่อแผนกอื่น
                   </Button>
+                  {job.status === 'IN_PROGRESS' && (
+                     <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isSavingTechReport} className="w-full" variant="outline">
+                        {isRequestingQuotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4"/>}
+                        แจ้งเสนอราคา
+                    </Button>
+                  )}
+                  {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
+                    <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport} className="w-full">
+                        {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+                        งานเรียบร้อย (Mark as Done)
+                    </Button>
+                  )}
               </CardContent>
           </Card>
         </div>
