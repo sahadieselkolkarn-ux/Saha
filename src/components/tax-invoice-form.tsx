@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -44,6 +43,8 @@ const taxInvoiceFormSchema = z.object({
   vatAmount: z.coerce.number(),
   grandTotal: z.coerce.number(),
   notes: z.string().optional(),
+  senderName: z.string().optional(),
+  receiverName: z.string().optional(),
 });
 
 type TaxInvoiceFormData = z.infer<typeof taxInvoiceFormSchema>;
@@ -78,6 +79,8 @@ export function TaxInvoiceForm() {
       vatAmount: 0,
       grandTotal: 0,
       notes: "",
+      senderName: "",
+      receiverName: "",
     },
   });
 
@@ -90,7 +93,13 @@ export function TaxInvoiceForm() {
         form.setValue('items', [defaultItem]);
       }
     }
-  }, [job, form]);
+     if (profile) {
+      form.setValue('senderName', profile.displayName);
+    }
+    if (job?.customerSnapshot) {
+      form.setValue('receiverName', job.customerSnapshot.name);
+    }
+  }, [job, profile, form]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -147,6 +156,8 @@ export function TaxInvoiceForm() {
             grandTotal: data.grandTotal,
             notes: data.notes,
             dueDate: data.dueDate,
+            senderName: data.senderName,
+            receiverName: data.receiverName,
         };
 
         const docNo = await createDocument(
@@ -272,6 +283,10 @@ export function TaxInvoiceForm() {
                     <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{form.watch('grandTotal').toLocaleString()}</span></div>
                  </div>
             </div>
+        </div>
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
         </div>
       </form>
     </Form>

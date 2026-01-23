@@ -29,7 +29,7 @@ function DocumentView({ document }: { document: Document }) {
         WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
     };
 
-    const hasFinancials = document.docType !== 'DELIVERY_NOTE';
+    const hasFinancials = document.grandTotal > 0 || document.items.some(i => i.unitPrice > 0);
 
     return (
         <div className="space-y-6">

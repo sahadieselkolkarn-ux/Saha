@@ -10,19 +10,8 @@ import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/ui/form";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown } from "lucide-react";
@@ -31,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
@@ -39,8 +29,8 @@ import type { Job, StoreSettings, Customer, UserProfile } from "@/lib/types";
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
   quantity: z.coerce.number().min(0.01, "Quantity must be > 0."),
-  unitPrice: z.number().optional(),
-  total: z.number().optional(),
+  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative."),
+  total: z.coerce.number(),
 });
 
 const deliveryNoteFormSchema = z.object({
@@ -48,6 +38,10 @@ const deliveryNoteFormSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
+  subtotal: z.coerce.number(),
+  discountAmount: z.coerce.number().min(0).optional(),
+  net: z.coerce.number(),
+  grandTotal: z.coerce.number(),
   notes: z.string().optional(),
   senderName: z.string().optional(),
   receiverName: z.string().optional(),
@@ -81,7 +75,11 @@ export default function DeliveryNoteForm() {
       jobId: jobId || "",
       customerId: "",
       issueDate: new Date().toISOString().split("T")[0],
-      items: [{ description: "", quantity: 1 }],
+      items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
+      subtotal: 0,
+      discountAmount: 0,
+      net: 0,
+      grandTotal: 0,
       notes: "",
       senderName: "",
       receiverName: "",
@@ -94,7 +92,7 @@ export default function DeliveryNoteForm() {
   useEffect(() => {
     if (job) {
         form.setValue('customerId', job.customerId);
-        form.setValue('items', [{ description: job.description, quantity: 1 }]);
+        form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
         form.setValue('receiverName', job.customerSnapshot.name);
     }
     if (profile) {
@@ -128,6 +126,28 @@ export default function DeliveryNoteForm() {
     name: "items",
   });
   
+  const watchedItems = form.watch("items");
+  const watchedDiscount = form.watch("discountAmount");
+
+  useEffect(() => {
+    let subtotal = 0;
+    watchedItems.forEach((item, index) => {
+      const quantity = item.quantity || 0;
+      const unitPrice = item.unitPrice || 0;
+      const total = quantity * unitPrice;
+      form.setValue(`items.${index}.total`, total);
+      subtotal += total;
+    });
+
+    const discount = watchedDiscount || 0;
+    const net = subtotal - discount;
+    const grandTotal = net; // No VAT for delivery note
+
+    form.setValue("subtotal", subtotal);
+    form.setValue("net", net);
+    form.setValue("grandTotal", grandTotal);
+  }, [watchedItems, watchedDiscount, form]);
+
   const onSubmit = async (data: DeliveryNoteFormData) => {
     if (!db || !customer || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing data for document creation." });
@@ -135,21 +155,19 @@ export default function DeliveryNoteForm() {
     }
 
     try {
-        const itemsWithTotals = data.items.map(item => ({...item, unitPrice: 0, total: 0}));
-
         const documentData = {
             docDate: data.issueDate,
             jobId: data.jobId,
             customerSnapshot: { ...customer },
             carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : {},
             storeSnapshot: { ...storeSettings },
-            items: itemsWithTotals,
-            subtotal: 0,
-            discountAmount: 0,
-            net: 0,
+            items: data.items,
+            subtotal: data.subtotal,
+            discountAmount: data.discountAmount || 0,
+            net: data.net,
             withTax: false,
             vatAmount: 0,
-            grandTotal: 0,
+            grandTotal: data.grandTotal,
             notes: data.notes,
             senderName: data.senderName,
             receiverName: data.receiverName,
@@ -249,30 +267,41 @@ export default function DeliveryNoteForm() {
             <CardHeader><CardTitle>รายการ</CardTitle></CardHeader>
             <CardContent>
                 <Table>
-                    <TableHeader><TableRow><TableHead>#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="text-right w-32">จำนวน</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
                     <TableBody>
                         {fields.map((field, index) => (
                             <TableRow key={field.id}>
                                 <TableCell>{index + 1}</TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="Product or service details" />)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
+                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`).toLocaleString()}</TableCell>
                                 <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive"/></Button></TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1})}><PlusCircle/> Add Item</Button>
-            </CardContent>
-        </Card>
-
-        <Card>
-            <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
-            <CardContent>
-                <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไข หรืออื่นๆ" rows={3} />)} />
+                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle/> Add Item</Button>
             </CardContent>
         </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <Card>
+                <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
+                <CardContent>
+                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไข หรืออื่นๆ" rows={3} />)} />
+                </CardContent>
+            </Card>
+             <div className="space-y-4">
+                 <div className="space-y-2 p-4 border rounded-lg">
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{form.watch('subtotal').toLocaleString()}</span></div>
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} className="w-32 text-right"/>)}/></div>
+                     <Separator/>
+                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{form.watch('grandTotal').toLocaleString()}</span></div>
+                 </div>
+            </div>
+        </div>
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
             <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
         </div>
