@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, QueryConstraint } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,21 +23,25 @@ export function DocumentList({ docType }: DocumentListProps) {
   const { toast } = useToast();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [error, setError] = useState<FirestoreError | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     if (!db) return;
     setLoading(true);
 
+    // The query without orderBy to avoid needing a composite index
     const q = query(
       collection(db, "documents"),
-      where("docType", "==", docType),
-      orderBy("docDate", "desc")
+      where("docType", "==", docType)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
+      
+      // Sort documents by date on the client-side
+      docsData.sort((a, b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
+
       setDocuments(docsData);
       setLoading(false);
     }, (err) => {
