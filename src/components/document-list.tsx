@@ -97,13 +97,15 @@ export function DocumentList({ docType }: DocumentListProps) {
               </TableHeader>
               <TableBody>
                 {filteredDocuments.length > 0 ? filteredDocuments.map(doc => (
-                  <TableRow key={doc.id} className="cursor-pointer" onClick={() => window.location.href = `/app/office/documents/${doc.id}`}>
-                    <TableCell className="font-medium">{doc.docNo}</TableCell>
-                    <TableCell>{safeFormat(new Date(doc.docDate), 'dd/MM/yyyy')}</TableCell>
-                    <TableCell>{doc.customerSnapshot.name}</TableCell>
-                    <TableCell>{doc.jobId ? doc.jobId.substring(0, 8) + '...' : 'N/A'}</TableCell>
-                    <TableCell className="text-right">{doc.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                    <TableCell><Badge>{doc.status}</Badge></TableCell>
+                  <TableRow key={doc.id} asChild className="cursor-pointer">
+                    <Link href={`/app/office/documents/${doc.id}`}>
+                        <TableCell className="font-medium">{doc.docNo}</TableCell>
+                        <TableCell>{safeFormat(new Date(doc.docDate), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell>{doc.customerSnapshot.name}</TableCell>
+                        <TableCell>{doc.jobId ? doc.jobId.substring(0, 8) + '...' : 'N/A'}</TableCell>
+                        <TableCell className="text-right">{doc.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell><Badge>{doc.status}</Badge></TableCell>
+                    </Link>
                   </TableRow>
                 )) : (
                   <TableRow>

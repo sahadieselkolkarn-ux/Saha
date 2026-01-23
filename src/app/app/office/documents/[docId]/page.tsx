@@ -30,7 +30,6 @@ function DocumentView({ document }: { document: Document }) {
     };
 
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
-    const isBillingNote = document.docType === 'BILLING_NOTE';
 
     return (
         <div className="space-y-6">
@@ -51,7 +50,6 @@ function DocumentView({ document }: { document: Document }) {
                         <h1 className="text-2xl font-bold text-right">{docTypeDisplay[document.docType]}</h1>
                         <div className="flex justify-between text-sm"><span className="font-medium">เลขที่:</span><span>{document.docNo}</span></div>
                         <div className="flex justify-between text-sm"><span className="font-medium">วันที่:</span><span>{safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</span></div>
-                         {isBillingNote && document.dueDate && <div className="flex justify-between text-sm"><span className="font-medium">วันนัดรับเงิน:</span><span>{safeFormat(new Date(document.dueDate), 'dd/MM/yyyy')}</span></div>}
                     </div>
                 </div>
 
@@ -67,49 +65,28 @@ function DocumentView({ document }: { document: Document }) {
                     </CardContent>
                 </Card>
 
-                {isBillingNote ? (
-                    <Table className="mb-8">
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-12">#</TableHead>
-                                <TableHead>รายการ</TableHead>
-                                <TableHead className="text-right">จำนวนเงิน</TableHead>
+                <Table className="mb-8">
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="w-12">#</TableHead>
+                            <TableHead>รายการ</TableHead>
+                            <TableHead className="text-right">จำนวน</TableHead>
+                            {!isDeliveryNote && <TableHead className="text-right">ราคา/หน่วย</TableHead>}
+                            {!isDeliveryNote && <TableHead className="text-right">จำนวนเงิน</TableHead>}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {document.items.map((item, index) => (
+                            <TableRow key={index}>
+                                <TableCell>{index + 1}</TableCell>
+                                <TableCell>{item.description}</TableCell>
+                                <TableCell className="text-right">{item.quantity}</TableCell>
+                                {!isDeliveryNote && <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
+                                {!isDeliveryNote && <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
                             </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {document.items.map((item, index) => (
-                                <TableRow key={index}>
-                                    <TableCell>{index + 1}</TableCell>
-                                    <TableCell>{item.description}</TableCell>
-                                    <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                ) : (
-                    <Table className="mb-8">
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead className="w-12">#</TableHead>
-                                <TableHead>รายการ</TableHead>
-                                <TableHead className="text-right">จำนวน</TableHead>
-                                <TableHead className="text-right">ราคา/หน่วย</TableHead>
-                                <TableHead className="text-right">จำนวนเงิน</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {document.items.map((item, index) => (
-                                <TableRow key={index}>
-                                    <TableCell>{index + 1}</TableCell>
-                                    <TableCell>{item.description}</TableCell>
-                                    <TableCell className="text-right">{item.quantity}</TableCell>
-                                    <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                    <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                )}
+                        ))}
+                    </TableBody>
+                </Table>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-4">
@@ -137,11 +114,11 @@ function DocumentView({ document }: { document: Document }) {
                  <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">
                     <div className="space-y-16">
                         <p>.................................................</p>
-                        <p>({document.senderName || (isBillingNote ? 'ผู้วางบิล' : 'ผู้ส่งของ')})</p>
+                        <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
                     </div>
                      <div className="space-y-16">
                         <p>.................................................</p>
-                        <p>({document.receiverName || (isBillingNote ? 'ผู้รับวางบิล' : 'ผู้รับของ')})</p>
+                        <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
                     </div>
                 </div>
 

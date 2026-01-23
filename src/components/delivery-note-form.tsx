@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -5,7 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot } from "firebase/firestore";
+import { doc, collection, onSnapshot, query } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -101,7 +102,7 @@ export default function DeliveryNoteForm() {
 
   useEffect(() => {
     if (!db) return;
-    const q = collection(db, "customers");
+    const q = query(collection(db, "customers"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
@@ -137,12 +138,11 @@ export default function DeliveryNoteForm() {
       subtotal += total;
     });
 
-    const discount = form.watch("discountAmount") || 0;
-    const net = subtotal - discount;
-    const grandTotal = net;
+    // For delivery note, grand total is just the subtotal
+    const grandTotal = subtotal;
 
     form.setValue("subtotal", subtotal);
-    form.setValue("net", net);
+    form.setValue("net", grandTotal);
     form.setValue("grandTotal", grandTotal);
   }, [watchedItems, form]);
 
@@ -161,8 +161,8 @@ export default function DeliveryNoteForm() {
             storeSnapshot: { ...storeSettings },
             items: data.items,
             subtotal: data.subtotal,
-            discountAmount: data.discountAmount || 0,
-            net: data.net,
+            discountAmount: 0,
+            net: data.grandTotal,
             withTax: false,
             vatAmount: 0,
             grandTotal: data.grandTotal,
