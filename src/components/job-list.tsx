@@ -1,10 +1,9 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +23,7 @@ interface JobListProps {
   assigneeUid?: string;
   orderByField?: string;
   orderByDirection?: OrderByDirection;
+  limit?: number;
   emptyTitle?: string;
   emptyDescription?: string;
   children?: React.ReactNode;
@@ -55,6 +55,7 @@ export function JobList({
   assigneeUid,
   orderByField = "lastActivityAt",
   orderByDirection = "desc",
+  limit: limitProp,
   emptyTitle = "No Jobs Found",
   emptyDescription = "There are no jobs that match the current criteria.",
   children
@@ -90,8 +91,12 @@ export function JobList({
     }
     constraints.push(orderBy(orderByField, orderByDirection));
 
+    if (limitProp) {
+      constraints.push(limit(limitProp));
+    }
+
     return query(collection(db, 'jobs'), ...constraints);
-  }, [db, department, Array.isArray(status) ? null : status, assigneeUid, orderByField, orderByDirection, retry]);
+  }, [db, department, Array.isArray(status) ? null : status, assigneeUid, orderByField, orderByDirection, retry, limitProp]);
 
 
   useEffect(() => {
@@ -296,7 +301,7 @@ export function JobList({
           <CardContent className="flex-grow">
             <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
           </CardContent>
-          <CardFooter className={cn("mt-auto grid gap-2 p-4", job.status === 'RECEIVED' ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
+          <CardFooter className={cn("mt-auto grid gap-2 p-4", job.status === 'RECEIVED' ? "grid-cols-2" : "grid-cols-1")}>
             <Button asChild variant="outline" className="w-full">
               <Link href={`/app/jobs/${job.id}`}>
                 View Details
