@@ -235,10 +235,8 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             visible.add(profile.department);
         }
 
-        // Add MANAGEMENT for managers and officers
-        if (profile.role === 'MANAGER' || profile.role === 'OFFICER') {
-            visible.add('MANAGEMENT');
-        }
+        // The special case for MANAGER and OFFICER has been removed to tighten security.
+        // Now, only ADMINs or users assigned to the MANAGEMENT department can see its menu.
 
         // Return in the order defined in DEPARTMENTS
         return DEPARTMENTS.filter(d => visible.has(d));
