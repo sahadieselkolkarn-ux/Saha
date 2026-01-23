@@ -296,19 +296,19 @@ export function JobList({
             <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
           </CardContent>
           <CardFooter className="mt-auto flex flex-col sm:flex-row gap-2">
-            <Button asChild variant="outline" className="w-full">
+            <Button asChild variant="outline" className="w-full sm:flex-1">
               <Link href={`/app/jobs/${job.id}`}>
-                View Details <ArrowRight className="ml-auto" />
+                View Details <ArrowRight />
               </Link>
             </Button>
             {job.status === 'RECEIVED' && (
               <Button 
                 variant="default" 
-                className="w-full"
+                className="w-full sm:flex-1"
                 onClick={() => handleAcceptJob(job.id)}
                 disabled={isAccepting !== null}
               >
-                {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck className="mr-2" />}
+                {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
                 รับงาน
               </Button>
             )}
