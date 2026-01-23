@@ -7,7 +7,7 @@ export type Role = (typeof USER_ROLES)[number];
 export const USER_STATUSES = ["ACTIVE", "PENDING", "SUSPENDED"] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
 
-export const JOB_STATUSES = ["RECEIVED", "IN_PROGRESS", "WAITING_QUOTATION", "WAITING_APPROVE", "IN_REPAIR_PROCESS", "DONE", "WAITING_CUSTOMER_PICKUP", "CLOSED"] as const;
+export const JOB_STATUSES = ["RECEIVED", "IN_PROGRESS", "WAITING_QUOTATION", "WAITING_APPROVE", "PENDING_PARTS", "IN_REPAIR_PROCESS", "DONE", "WAITING_CUSTOMER_PICKUP", "CLOSED"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
@@ -15,6 +15,7 @@ export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
   IN_PROGRESS: "เริ่มดำเนินการ",
   WAITING_QUOTATION: "รอเสนอราคา",
   WAITING_APPROVE: "รอลูกค้าอนุมัติ",
+  PENDING_PARTS: "กำลังจัดอะไหล่",
   IN_REPAIR_PROCESS: "ดำเนินการซ่อม",
   DONE: "งานเรียบร้อย",
   WAITING_CUSTOMER_PICKUP: "รอลูกค้ารับสินค้า",

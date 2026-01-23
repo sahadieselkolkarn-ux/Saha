@@ -6,11 +6,11 @@ import { JobList } from "@/components/job-list";
 export default function OfficeJobManagementQuotationPage() {
   return (
     <>
-      <PageHeader title="บริหารงานซ่อม - งานเสนอราคา" description="งานที่รอเสนอราคา หรือรอลูกค้าอนุมัติ" />
+      <PageHeader title="บริหารงานซ่อม - งานเสนอราคา" description="งานที่รอการสร้างใบเสนอราคา" />
       <JobList 
-        status={['WAITING_QUOTATION', 'WAITING_APPROVE']}
+        status='WAITING_QUOTATION'
         emptyTitle="ไม่มีงานที่รอเสนอราคา"
-        emptyDescription="ไม่มีงานที่อยู่ในสถานะ WAITING_QUOTATION หรือ WAITING_APPROVE"
+        emptyDescription="ไม่มีงานที่อยู่ในสถานะ WAITING_QUOTATION ในขณะนี้"
       />
     </>
   );

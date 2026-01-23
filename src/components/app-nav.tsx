@@ -154,6 +154,8 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                                 <SubNavLink href="/app/office/jobs/management/mechanic" label="งานแผนกแมคคานิค" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/jobs/management/outsource" label="งานส่งออกร้านนอก" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/jobs/management/quotation" label="งานเสนอราคา" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/jobs/management/waiting-approve" label="รอลูกค้าอนุมัติ" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/jobs/management/pending-parts" label="กำลังจัดอะไหล่" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/jobs/management/done" label="งานเสร็จรอทำบิล" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/jobs/management/pickup" label="รอลูกค้ารับสินค้า" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/jobs/management/history" label="ประวัติงานซ่อม" onClick={onLinkClick} />
