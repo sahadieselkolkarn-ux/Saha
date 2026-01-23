@@ -324,7 +324,7 @@ export function JobList({
             )}
             {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && (
               <Button asChild variant="default" className="w-full">
-                <Link href={`/app/jobs/${job.id}`}>
+                <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
                   <Receipt />
                   Quote Price
                 </Link>
@@ -332,7 +332,7 @@ export function JobList({
             )}
             {job.status === 'DONE' && (
               <Button asChild variant="default" className="w-full">
-                <Link href={`/app/jobs/${job.id}`}>
+                <Link href={`/app/office/documents/tax-invoice/new?jobId=${job.id}`}>
                   <Receipt />
                   Billing
                 </Link>
