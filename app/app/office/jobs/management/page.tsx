@@ -1,54 +1,58 @@
 "use client";
 
 import { PageHeader } from "@/components/page-header";
-import { JobList } from "@/components/job-list";
+import { JobTableList } from "@/components/job-table-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 export default function OfficeJobManagementPage() {
   return (
     <>
       <PageHeader title="บริหารงานซ่อม" description="จัดการและติดตามสถานะงานซ่อมทั้งหมด" />
-      <Tabs defaultValue="all" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="all">งานทั้งหมด</TabsTrigger>
-          <TabsTrigger value="pending">งานรอดำเนินการ</TabsTrigger>
-          <TabsTrigger value="waiting">งานรออะไหล่/รอส่งต่อ</TabsTrigger>
-          <TabsTrigger value="closing">งานเสร็จรอปิด</TabsTrigger>
+      <Tabs defaultValue="car_service" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+          <TabsTrigger value="car_service">งานซ่อมหน้าร้าน</TabsTrigger>
+          <TabsTrigger value="commonrail">งานคอมมอนเรล</TabsTrigger>
+          <TabsTrigger value="mechanic">งานแมคคานิค</TabsTrigger>
+          <TabsTrigger value="done">งานเสร็จรอทำบิล</TabsTrigger>
+          <TabsTrigger value="history">ประวัติงานซ่อม</TabsTrigger>
         </TabsList>
-        <TabsContent value="all">
-            <JobList 
-                orderByField="createdAt" 
-                emptyTitle="No Jobs Found"
-                emptyDescription="There are no jobs to display."
-            />
+        <TabsContent value="car_service">
+          <JobTableList 
+            department="CAR_SERVICE" 
+            excludeStatus={["CLOSED"]}
+            emptyTitle="ไม่มีงานในแผนกซ่อมหน้าร้าน"
+            emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
+          />
         </TabsContent>
-        <TabsContent value="pending">
-             <JobList
-                status="RECEIVED"
-                orderByField="createdAt"
-                emptyTitle="No Pending Jobs"
-                emptyDescription="There are no jobs awaiting action."
-            />
+        <TabsContent value="commonrail">
+          <JobTableList 
+            department="COMMONRAIL" 
+            excludeStatus={["CLOSED"]}
+            emptyTitle="ไม่มีงานในแผนกคอมมอนเรล"
+            emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
+          />
         </TabsContent>
-        <TabsContent value="waiting">
-            <Card>
-                <CardHeader>
-                    <CardTitle>งานรออะไหล่/รอส่งต่อ</CardTitle>
-                    <CardDescription>รายการงานที่อยู่ระหว่างรอชิ้นส่วนหรือรอส่งต่อ</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <p>Coming soon. This feature requires a specific status or tag on the job to filter correctly.</p>
-                </CardContent>
-            </Card>
+        <TabsContent value="mechanic">
+          <JobTableList 
+            department="MECHANIC" 
+            excludeStatus={["CLOSED"]}
+            emptyTitle="ไม่มีงานในแผนกแมคคานิค"
+            emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
+          />
         </TabsContent>
-        <TabsContent value="closing">
-             <JobList
-                status="DONE"
-                orderByField="lastActivityAt"
-                emptyTitle="No Jobs Ready for Closing"
-                emptyDescription="There are no jobs with status DONE."
-            />
+        <TabsContent value="done">
+          <JobTableList 
+            status="DONE"
+            emptyTitle="ไม่มีงานที่เสร็จแล้ว"
+            emptyDescription="ยังไม่มีงานที่อยู่ในสถานะ 'DONE' รอทำบิล"
+          />
+        </TabsContent>
+        <TabsContent value="history">
+          <JobTableList 
+            status="CLOSED"
+            emptyTitle="ไม่มีประวัติงานซ่อม"
+            emptyDescription="ยังไม่มีงานที่ถูกปิดในระบบ"
+          />
         </TabsContent>
       </Tabs>
     </>
