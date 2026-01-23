@@ -1,25 +1,25 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs, Timestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useCollection, WithId } from "@/firebase/firestore/use-collection";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit, View } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction } from "@/lib/types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment } from "@/lib/types";
 
 function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, end: Date}) {
   const start = max([range1.start, range2.start]);
@@ -56,8 +56,12 @@ export default function ManagementAccountingPayrollPage() {
   const [manualError, setManualError] = useState<Error | null>(null);
   const [allUsers, setAllUsers] = useState<WithId<UserProfile>[] | null>(null);
   const [allYearLeaves, setAllYearLeaves] = useState<LeaveRequest[] | null>(null);
-
-  // State for editing HR Notes
+  const [allHolidays, setAllHolidays] = useState<WithId<HRHoliday>[] | null>(null);
+  const [monthAttendance, setMonthAttendance] = useState<WithId<Attendance>[] | null>(null);
+  const [monthAdjustments, setMonthAdjustments] = useState<WithId<AttendanceAdjustment>[] | null>(null);
+  
+  // State for UI
+  const [viewingPayslip, setViewingPayslip] = useState<any | null>(null);
   const [editingPayslipId, setEditingPayslipId] = useState<string | null>(null);
   const [currentHrNote, setCurrentHrNote] = useState("");
 
@@ -71,14 +75,26 @@ export default function ManagementAccountingPayrollPage() {
       setManualLoading(true);
       setManualError(null);
       try {
+        const dateRange = { from: startOfMonth(currentMonthDate), to: endOfMonth(currentMonthDate) };
         const year = currentMonthDate.getFullYear();
+        const startStr = format(dateRange.from, 'yyyy-MM-dd');
+        const nextMonthDate = addMonths(currentMonthDate, 1);
+        const nextMonthStart = startOfMonth(nextMonthDate);
+        const nextStr = format(nextMonthStart, 'yyyy-MM-dd');
         
         const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
         const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
+        const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<', nextStr));
+        const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart));
+        const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr));
 
-        const [usersSnapshot, leavesSnapshot] = await Promise.all([
+
+        const [usersSnapshot, leavesSnapshot, holidaysSnapshot, attendanceSnapshot, adjustmentsSnapshot] = await Promise.all([
             getDocs(usersQuery),
-            getDocs(leavesQuery)
+            getDocs(leavesQuery),
+            getDocs(holidaysQuery),
+            getDocs(attendanceQuery),
+            getDocs(adjustmentsQuery),
         ]);
 
         const usersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
@@ -86,6 +102,15 @@ export default function ManagementAccountingPayrollPage() {
         
         const leavesData = leavesSnapshot.docs.map(d => d.data() as LeaveRequest);
         setAllYearLeaves(leavesData);
+
+        const holidaysData = holidaysSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<HRHoliday>));
+        setAllHolidays(holidaysData);
+
+        const attendanceData = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
+        setMonthAttendance(attendanceData);
+        
+        const adjustmentsData = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
+        setMonthAdjustments(adjustmentsData);
 
       } catch (e: any) {
         setManualError(e);
@@ -113,45 +138,114 @@ export default function ManagementAccountingPayrollPage() {
   const isLoading = isLoadingSettings || manualLoading || isLoadingRun || isLoadingPayslips;
 
   const calculatedPayrollData = useMemo(() => {
-    if (!hrSettings || !users || !allYearLeaves) return [];
+    if (!hrSettings || !users || !allYearLeaves || !allHolidays || !monthAttendance || !monthAdjustments) return [];
 
+    const today = startOfToday();
     const approvedLeaves = allYearLeaves.filter(l => l.status === 'APPROVED');
-    const periodStartDate = period === 1 ? new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), hrSettings.payroll?.period1Start || 1) : new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), hrSettings.payroll?.period2Start || 16);
-    const periodEndDate = period === 1 ? new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), hrSettings.payroll?.period1End || 15) : endOfMonth(currentMonthDate);
+    const holidaysMap = new Map(allHolidays.map(h => [h.date, h.name]));
+    const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
+    const graceMinutes = hrSettings.graceMinutes || 0;
+    const weekendMode = hrSettings.weekendPolicy?.mode || 'SAT_SUN';
+    
+    const period1StartDay = hrSettings.payroll?.period1Start || 1;
+    const period1EndDay = hrSettings.payroll?.period1End || 15;
+    const period2StartDay = hrSettings.payroll?.period2Start || 16;
+    
+    const periodStartDate = period === 1 
+      ? new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), period1StartDay) 
+      : new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), period2StartDay);
+    const periodEndDate = period === 1 
+      ? new Date(currentMonthDate.getFullYear(), currentMonthDate.getMonth(), period1EndDay) 
+      : endOfMonth(currentMonthDate);
+
     const payPeriod = { start: periodStartDate, end: periodEndDate };
+    const daysInPeriod = eachDayOfInterval(payPeriod);
 
     return users.map(user => {
       const salary = user.hr?.salaryMonthly || 0;
       const baseSalaryForPeriod = salary / 2;
       const deductions: PayslipDeduction[] = [];
+      
+      const userLeaves = approvedLeaves.filter(l => l.userId === user.id);
+      const userAttendance = monthAttendance.filter(a => a.userId === user.id);
+      const userAdjustments = monthAdjustments.filter(a => a.userId === user.id);
+      
+      let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalLeaveInPeriod = 0, totalLateMinutes = 0;
+      
+      daysInPeriod.forEach(day => {
+        const dayStr = format(day, 'yyyy-MM-dd');
+        
+        if (isAfter(day, today)) return;
+        if (holidaysMap.has(dayStr)) return;
+        const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
+        if (isWeekendDay) return;
 
-      // Leave Deduction Calculation
-      const overLimitLeaves = approvedLeaves.filter(l => l.userId === user.id && l.overLimit === true);
-      overLimitLeaves.forEach(leave => {
-        const leaveDateRange = { start: parseISO(leave.startDate), end: parseISO(leave.endDate) };
-        const overlappingDays = getOverlapDays(payPeriod, leaveDateRange);
-        if (overlappingDays > 0) {
-          const policy = hrSettings.leavePolicy?.leaveTypes?.[leave.leaveType];
-          if (policy?.overLimitHandling?.mode === 'DEDUCT_SALARY') {
-            const deductionBaseDays = policy.salaryDeductionBaseDays || 26;
-            const dailyRate = salary / deductionBaseDays;
-            const deductionAmount = overlappingDays * dailyRate;
-            deductions.push({
-              name: `Deduction: ${leave.leaveType} Leave`,
-              amount: deductionAmount,
-              notes: `${overlappingDays} over-limit day(s) in this period.`
-            });
-          }
+        const onLeave = userLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+        if (onLeave) {
+          totalLeaveInPeriod += 1;
+          return;
+        }
+
+        const adjustmentForDay = userAdjustments.find(a => a.date === dayStr);
+
+        const attendanceForDay = userAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
+        let firstIn = attendanceForDay.filter(a=>a.type === 'IN').sort((a,b)=>a.timestamp.toMillis() - b.timestamp.toMillis())[0]?.timestamp.toDate();
+
+        if (adjustmentForDay?.type === 'ADD_RECORD' && adjustmentForDay.adjustedIn) {
+            firstIn = adjustmentForDay.adjustedIn.toDate();
+        }
+
+        if (!firstIn) {
+            totalAbsent += 1;
+            return;
+        }
+        
+        const workStartTimeWithGrace = setMinutes(setHours(day, workStartHour), workStartMinute + graceMinutes);
+        let lateMins = differenceInMinutes(firstIn, workStartTimeWithGrace);
+        if (lateMins < 0) lateMins = 0;
+        if (adjustmentForDay?.type === 'FORGIVE_LATE') lateMins = 0;
+
+        if (lateMins > 0) {
+            totalLate += 1;
+            totalLateMinutes += lateMins;
+        } else {
+            totalPresent += 1;
         }
       });
       
+      // Leave Deduction
+      const overLimitLeaves = userLeaves.filter(l => l.overLimit === true);
+      overLimitLeaves.forEach(leave => {
+          const leaveDateRange = { start: parseISO(leave.startDate), end: parseISO(leave.endDate) };
+          const overlappingDays = getOverlapDays(payPeriod, leaveDateRange);
+          if (overlappingDays > 0) {
+            const policy = hrSettings.leavePolicy?.leaveTypes?.[leave.leaveType];
+            if (policy?.overLimitHandling?.mode === 'DEDUCT_SALARY') {
+              const deductionBaseDays = policy.salaryDeductionBaseDays || 26;
+              const dailyRate = salary / deductionBaseDays;
+              const deductionAmount = overlappingDays * dailyRate;
+              deductions.push({ name: `Deduction: ${leave.leaveType} Leave`, amount: deductionAmount, notes: `${overlappingDays} over-limit day(s)` });
+            }
+          }
+      });
+
+      // Absent Deduction
+      if (totalAbsent > 0) {
+        const sickLeavePolicy = hrSettings.leavePolicy?.leaveTypes?.SICK;
+        const deductionBaseDays = sickLeavePolicy?.overLimitHandling?.salaryDeductionBaseDays || 26;
+        const dailyRate = salary / deductionBaseDays;
+        deductions.push({ name: 'Deduction: Absent', amount: dailyRate * totalAbsent, notes: `${totalAbsent} absent day(s)` });
+      }
+      
+      // SSO Deduction
       const ssoPolicy = hrSettings.sso;
       if (ssoPolicy?.employeePercent && ssoPolicy.monthlyCap) {
           const fullMonthSSO = Math.min((salary * (ssoPolicy.employeePercent / 100)), ssoPolicy.monthlyCap);
           const ssoEmployeeDeduction = fullMonthSSO / 2;
-          deductions.push({ name: 'Social Security (SSO)', amount: ssoEmployeeDeduction, notes: `${ssoPolicy.employeePercent}% of salary, capped and split.` });
+          deductions.push({ name: 'Social Security (SSO)', amount: ssoEmployeeDeduction, notes: `${ssoPolicy.employeePercent}% of salary, capped & split.` });
       }
       
+      // Withholding Tax
       const whPolicy = hrSettings.withholding;
       if (whPolicy?.enabled && whPolicy.defaultPercent) {
           const whDeduction = (baseSalaryForPeriod * (whPolicy.defaultPercent / 100));
@@ -168,9 +262,15 @@ export default function ManagementAccountingPayrollPage() {
         deductions,
         netSalary,
         payrollRunId,
+        totalPresent,
+        totalLate,
+        totalAbsent,
+        totalLeave: totalLeaveInPeriod,
+        totalLateMinutes,
       };
     });
-  }, [hrSettings, users, allYearLeaves, currentMonthDate, period, payrollRunId]);
+  }, [hrSettings, users, allYearLeaves, allHolidays, monthAttendance, monthAdjustments, currentMonthDate, period]);
+
 
   const handleCreateDraft = async () => {
     if (!db || calculatedPayrollData.length === 0 || !adminProfile) return;
@@ -189,10 +289,11 @@ export default function ManagementAccountingPayrollPage() {
         });
         
         calculatedPayrollData.forEach(payslipData => {
-            const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', payslipData.userId);
+            const { totalPresent, totalLate, totalAbsent, totalLeave, totalLateMinutes, ...slipDataToSave } = payslipData;
+            const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', slipDataToSave.userId);
             batch.set(payslipRef, { 
                 id: payslipRef.id, 
-                ...payslipData,
+                ...slipDataToSave,
                 employeeStatus: "PENDING_REVIEW",
                 hrNote: null,
             });
@@ -261,102 +362,7 @@ export default function ManagementAccountingPayrollPage() {
         default: return <Badge variant="outline">{status}</Badge>;
     }
   }
-
-  const renderPayrollTable = (data: (WithId<Payslip> | (typeof calculatedPayrollData)[0])[]) => {
-     if (!isLoading && data.length === 0) {
-        return (
-            <div className="text-center text-muted-foreground p-8">
-                No active employees with salary found for this period.
-                <br/>
-                (ยังไม่มีพนักงานที่แอคทีฟและมีการตั้งเงินเดือนในงวดนี้)
-            </div>
-        );
-     }
-     return (
-        <Accordion type="single" collapsible className="w-full">
-            {data.map(p => (
-                <AccordionItem value={p.userId} key={p.userId}>
-                        <AccordionTrigger>
-                            <div className="flex justify-between w-full pr-4 items-center">
-                                <span className="font-medium">{p.userName}</span>
-                                <div className="flex items-center gap-4">
-                                    {payrollRun && payrollRun.status !== 'DRAFT_HR' && 'employeeStatus' in p && (
-                                        <PayslipStatusBadge status={p.employeeStatus} />
-                                    )}
-                                    <span className="font-mono text-primary">Net: {p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</span>
-                                </div>
-                            </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="p-4 bg-muted/50">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Description</TableHead>
-                                        <TableHead className="text-right">Amount (THB)</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    <TableRow>
-                                        <TableCell className="font-medium">Base Salary (for period)</TableCell>
-                                        <TableCell className="text-right">{p.baseSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                    </TableRow>
-                                    {p.deductions.map((ded, i) => (
-                                        <TableRow key={i}>
-                                        <TableCell>
-                                            <p className="font-medium text-destructive">(-) {ded.name}</p>
-                                            {ded.notes && <p className="text-xs text-muted-foreground">{ded.notes}</p>}
-                                        </TableCell>
-                                        <TableCell className="text-right text-destructive">- {ded.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                    <TableRow className="bg-background font-bold text-base">
-                                        <TableCell>Net Salary</TableCell>
-                                        <TableCell className="text-right">{p.netSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                    </TableRow>
-                                </TableBody>
-                            </Table>
-                             {payrollRun && payrollRun.status === 'DRAFT_HR' && 'hrNote' in p && (
-                                <div className="mt-4 pt-4 border-t">
-                                <h5 className="font-semibold text-sm mb-2">HR Notes & Adjustments</h5>
-                                {editingPayslipId === p.userId ? (
-                                    <div className="space-y-2">
-                                    <Textarea
-                                        defaultValue={p.hrNote || ""}
-                                        onChange={(e) => setCurrentHrNote(e.target.value)}
-                                        placeholder="Add manual adjustments or notes..."
-                                    />
-                                    <div className="flex gap-2">
-                                        <Button size="sm" onClick={() => handleSaveHrNote(p.userId)}>Save Note</Button>
-                                        <Button size="sm" variant="ghost" onClick={() => setEditingPayslipId(null)}>Cancel</Button>
-                                    </div>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2 group">
-                                    <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md p-2 bg-background min-h-10">
-                                        {p.hrNote || "No notes added."}
-                                    </p>
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => {
-                                        setEditingPayslipId(p.userId);
-                                        setCurrentHrNote(p.hrNote || "");
-                                        }}
-                                    >
-                                        <Edit className="mr-2 h-3 w-3"/>
-                                        Edit Note
-                                    </Button>
-                                    </div>
-                                )}
-                                </div>
-                            )}
-                        </AccordionContent>
-                </AccordionItem>
-            ))}
-        </Accordion>
-     );
-  }
-
+  
   const renderContent = () => {
     if (isLoading) {
       return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
@@ -382,7 +388,50 @@ export default function ManagementAccountingPayrollPage() {
             </div>
         )
     }
-    return payrollRun ? renderPayrollTable(payslips || []) : renderPayrollTable(calculatedPayrollData);
+
+    const data = payrollRun ? payslips : calculatedPayrollData;
+    
+     if (!isLoading && data.length === 0) {
+        return (
+            <div className="text-center text-muted-foreground p-8">
+                No active employees with salary found for this period.
+                <br/>
+                (ยังไม่มีพนักงานที่แอคทีฟและมีการตั้งเงินเดือนในงวดนี้)
+            </div>
+        );
+     }
+
+     return (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Net Salary</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {data.map(p => (
+                    <TableRow key={p.userId}>
+                        <TableCell className="font-medium">{p.userName}</TableCell>
+                        <TableCell className="font-mono">{p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
+                        <TableCell>
+                            {payrollRun && payrollRun.status !== 'DRAFT_HR' && 'employeeStatus' in p && (
+                                <PayslipStatusBadge status={p.employeeStatus} />
+                            )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                            <Button variant="outline" size="sm" onClick={() => setViewingPayslip(p)}>
+                                <View className="mr-2 h-4 w-4"/>
+                                View Slip
+                            </Button>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+     );
   }
 
   return (
@@ -420,7 +469,7 @@ export default function ManagementAccountingPayrollPage() {
             {renderContent()}
         </CardContent>
         {!isLoading && !manualError && hrSettings && (
-             <CardContent>
+             <CardFooter>
                 {!payrollRun && (
                     <Button onClick={handleCreateDraft} disabled={isSubmitting || (calculatedPayrollData && calculatedPayrollData.length === 0)}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FilePlus className="mr-2 h-4 w-4"/>}
@@ -433,9 +482,97 @@ export default function ManagementAccountingPayrollPage() {
                         Send to Employees for Review
                     </Button>
                 )}
-            </CardContent>
+            </CardFooter>
         )}
       </Card>
+      
+      <Dialog open={!!viewingPayslip} onOpenChange={(open) => !open && setViewingPayslip(null)}>
+        <DialogContent className="sm:max-w-md">
+           <DialogHeader>
+             <DialogTitle>Draft Salary Slip</DialogTitle>
+             <DialogDescription>
+                {viewingPayslip?.userName} - {format(currentMonthDate, 'MMMM yyyy')} Period {period}
+             </DialogDescription>
+           </DialogHeader>
+           {viewingPayslip && (
+            <>
+                <div className="mb-2 text-center grid grid-cols-5 gap-1 text-xs">
+                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.totalPresent}</p><p className="text-green-600">Present</p></div>
+                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.totalLate}</p><p className="text-yellow-600">Late</p></div>
+                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.totalAbsent}</p><p className="text-red-600">Absent</p></div>
+                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.totalLeave}</p><p className="text-blue-600">Leave</p></div>
+                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">Late (min)</p></div>
+                </div>
+
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Description</TableHead>
+                            <TableHead className="text-right">Amount (THB)</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        <TableRow>
+                            <TableCell className="font-medium">Base Salary (for period)</TableCell>
+                            <TableCell className="text-right">{viewingPayslip.baseSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                        </TableRow>
+                        {viewingPayslip.deductions.map((ded: any, i: number) => (
+                            <TableRow key={i}>
+                            <TableCell>
+                                <p className="font-medium text-destructive">(-) {ded.name}</p>
+                                {ded.notes && <p className="text-xs text-muted-foreground">{ded.notes}</p>}
+                            </TableCell>
+                            <TableCell className="text-right text-destructive">- {ded.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            </TableRow>
+                        ))}
+                        <TableRow className="bg-background font-bold text-base">
+                            <TableCell>Net Salary</TableCell>
+                            <TableCell className="text-right">{viewingPayslip.netSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                        </TableRow>
+                    </TableBody>
+                </Table>
+                {payrollRun && payrollRun.status === 'DRAFT_HR' && 'hrNote' in viewingPayslip && (
+                    <div className="mt-4 pt-4 border-t">
+                    <h5 className="font-semibold text-sm mb-2">HR Notes & Adjustments</h5>
+                    {editingPayslipId === viewingPayslip.userId ? (
+                        <div className="space-y-2">
+                        <Textarea
+                            defaultValue={viewingPayslip.hrNote || ""}
+                            onChange={(e) => setCurrentHrNote(e.target.value)}
+                            placeholder="Add manual adjustments or notes..."
+                        />
+                        <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleSaveHrNote(viewingPayslip.userId)}>Save Note</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingPayslipId(null)}>Cancel</Button>
+                        </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-2 group">
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md p-2 bg-muted min-h-10">
+                            {viewingPayslip.hrNote || "No notes added."}
+                        </p>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                            setEditingPayslipId(viewingPayslip.userId);
+                            setCurrentHrNote(viewingPayslip.hrNote || "");
+                            }}
+                        >
+                            <Edit className="mr-2 h-3 w-3"/>
+                            Edit Note
+                        </Button>
+                        </div>
+                    )}
+                    </div>
+                )}
+            </>
+           )}
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setViewingPayslip(null)}>Close</Button>
+           </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
