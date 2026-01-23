@@ -49,6 +49,11 @@ export default function IntakePage() {
   
   const form = useForm<z.infer<typeof intakeSchema>>({
     resolver: zodResolver(intakeSchema),
+    defaultValues: {
+      customerId: "",
+      department: "",
+      description: ""
+    }
   });
 
   const filteredCustomers = useMemo(() => {
@@ -155,7 +160,13 @@ export default function IntakePage() {
         await batch.commit();
 
         toast({ title: "Job created successfully", description: `Job ID: ${jobId}` });
-        router.push(`/app/jobs/${jobId}`);
+        
+        form.reset();
+        setPhotos([]);
+        photoPreviews.forEach(url => URL.revokeObjectURL(url));
+        setPhotoPreviews([]);
+        setCustomerSearch("");
+
     } catch (error: any) {
         toast({ variant: "destructive", title: "Failed to create job", description: error.message });
     } finally {
@@ -253,7 +264,7 @@ export default function IntakePage() {
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
                   <FormLabel>Department</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="Select a department" /></SelectTrigger></FormControl>
                     <SelectContent>{JOB_DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
                   </Select>
@@ -285,7 +296,7 @@ export default function IntakePage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                     {photoPreviews.map((src, index) => (
                       <div key={index} className="relative">
-                        <Image src={`Preview ${index}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
+                        <Image src={src} alt={`Preview ${index + 1}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
                         <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePhoto(index)}>
                           <X className="h-4 w-4" />
                         </Button>
