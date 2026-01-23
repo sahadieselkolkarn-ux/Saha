@@ -15,6 +15,7 @@ import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage } 
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 interface JobListProps {
   department?: JobDepartment;
@@ -295,16 +296,17 @@ export function JobList({
           <CardContent className="flex-grow">
             <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
           </CardContent>
-          <CardFooter className="mt-auto flex flex-col sm:flex-row gap-2">
-            <Button asChild variant="outline" className="w-full sm:flex-1">
+          <CardFooter className={cn("mt-auto grid gap-2 p-4", job.status === 'RECEIVED' ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1")}>
+            <Button asChild variant="outline" className="w-full">
               <Link href={`/app/jobs/${job.id}`}>
-                View Details <ArrowRight />
+                View Details
+                <ArrowRight />
               </Link>
             </Button>
             {job.status === 'RECEIVED' && (
               <Button 
                 variant="default" 
-                className="w-full sm:flex-1"
+                className="w-full"
                 onClick={() => handleAcceptJob(job.id)}
                 disabled={isAccepting !== null}
               >
