@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -49,14 +49,11 @@ const deliveryNoteFormSchema = z.object({
 
 type DeliveryNoteFormData = z.infer<typeof deliveryNoteFormSchema>;
 
-export default function DeliveryNoteForm() {
+export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
-
-  const jobId = useMemo(() => searchParams.get("jobId"), [searchParams]);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
@@ -237,8 +234,8 @@ export default function DeliveryNoteForm() {
                             </FormControl>
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                <div className="p-2">
-                                    <Input autoFocus placeholder="Search..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
+                                <div className="p-2 border-b">
+                                    <Input autoFocus placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-fit max-h-60">
                                     {filteredCustomers.map((c) => (

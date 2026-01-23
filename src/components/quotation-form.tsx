@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -44,7 +44,7 @@ const lineItemSchema = z.object({
 });
 
 const quotationFormSchema = z.object({
-  jobId: z.string(),
+  jobId: z.string().optional(),
   issueDate: z.string().min(1),
   expiryDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
@@ -59,14 +59,11 @@ const quotationFormSchema = z.object({
 
 type QuotationFormData = z.infer<typeof quotationFormSchema>;
 
-export function QuotationForm() {
+export function QuotationForm({ jobId }: { jobId: string | null }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
-
-  const jobId = useMemo(() => searchParams.get("jobId"), [searchParams]);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
