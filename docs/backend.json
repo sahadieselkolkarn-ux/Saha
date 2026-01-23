@@ -291,6 +291,15 @@
             "registrationNumber": { "type": "string" }
           }
         },
+        "mechanicDetails": {
+          "type": "object",
+          "description": "Details specific to Mechanic jobs.",
+          "properties": {
+            "brand": { "type": "string" },
+            "partNumber": { "type": "string" },
+            "registrationNumber": { "type": "string" }
+          }
+        },
         "createdAt": {
           "type": "string",
           "description": "Timestamp of when the job was created.",

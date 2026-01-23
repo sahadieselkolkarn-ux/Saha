@@ -77,6 +77,11 @@ export interface Job {
     partNumber?: string;
     registrationNumber?: string;
   };
+  mechanicDetails?: {
+    brand?: string;
+    partNumber?: string;
+    registrationNumber?: string;
+  };
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastActivityAt: Timestamp;

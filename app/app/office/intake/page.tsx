@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -43,6 +42,11 @@ const intakeSchema = z.object({
     partNumber: z.string().optional(),
     registrationNumber: z.string().optional(),
   }).optional(),
+  mechanicDetails: z.object({
+    brand: z.string().optional(),
+    partNumber: z.string().optional(),
+    registrationNumber: z.string().optional(),
+  }).optional(),
 });
 
 export default function IntakePage() {
@@ -64,6 +68,7 @@ export default function IntakePage() {
       description: "",
       carServiceDetails: { brand: '', model: '', licensePlate: '' },
       commonrailDetails: { brand: '', partNumber: '', registrationNumber: '' },
+      mechanicDetails: { brand: '', partNumber: '', registrationNumber: '' },
     }
   });
 
@@ -165,6 +170,9 @@ export default function IntakePage() {
         }
         if (values.department === 'COMMONRAIL') {
           jobData.commonrailDetails = values.commonrailDetails;
+        }
+        if (values.department === 'MECHANIC') {
+            jobData.mechanicDetails = values.mechanicDetails;
         }
 
         batch.set(jobDocRef, jobData);
@@ -313,6 +321,17 @@ export default function IntakePage() {
                         <FormField name="commonrailDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="e.g., Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="commonrailDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่</FormLabel><FormControl><Input placeholder="Part Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="commonrailDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </CardContent>
+                </Card>
+              )}
+
+              {selectedDepartment === 'MECHANIC' && (
+                 <Card>
+                    <CardHeader><CardTitle>Mechanic Details</CardTitle></CardHeader>
+                    <CardContent className="space-y-4">
+                        <FormField name="mechanicDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="e.g., Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="mechanicDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่</FormLabel><FormControl><Input placeholder="Part Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="mechanicDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </CardContent>
                 </Card>
               )}
