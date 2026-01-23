@@ -6,35 +6,27 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc } from "firebase/firestore";
+import { doc, collection, onSnapshot, query } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/ui/form";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, UserProfile } from "@/lib/types";
+import type { Job, StoreSettings, Customer } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -45,6 +37,7 @@ const lineItemSchema = z.object({
 
 const quotationFormSchema = z.object({
   jobId: z.string().optional(),
+  customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1),
   expiryDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
@@ -65,11 +58,15 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   const { profile } = useAuth();
   const { toast } = useToast();
 
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
+
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
-  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(db && job?.customerId ? doc(db, 'customers', job.customerId) : null);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
   const form = useForm<QuotationFormData>({
@@ -89,8 +86,34 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     },
   });
 
+  const selectedCustomerId = form.watch('customerId');
+  const customer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
+
+  // Fetch all customers if no job is provided
+  useEffect(() => {
+    if (jobId || !db) return;
+    const q = query(collection(db, "customers"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+      setIsLoadingCustomers(false);
+    });
+    return () => unsubscribe();
+  }, [db, jobId]);
+
+  // Fetch job's customer if job is provided
+  const { data: jobCustomer, isLoading: isLoadingJobCustomer } = useDoc<Customer>(db && job?.customerId ? doc(db, 'customers', job.customerId) : null);
+
+  useEffect(() => {
+    if (jobId && jobCustomer) {
+      setCustomers([jobCustomer]);
+      setIsLoadingCustomers(false);
+    }
+  }, [jobId, jobCustomer]);
+
+
   useEffect(() => {
     if (job) {
+      form.setValue('customerId', job.customerId);
       form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
     }
   }, [job, form]);
@@ -126,7 +149,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: QuotationFormData) => {
-    if (!db || !jobId || !job || !customer || !storeSettings || !profile) {
+    if (!db || !customer || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing data for quotation creation." });
         return;
     }
@@ -136,10 +159,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
             docDate: data.issueDate,
             jobId: data.jobId,
             customerSnapshot: { ...customer },
-            carSnapshot: {
-                licensePlate: job.carServiceDetails?.licensePlate,
-                details: job.description
-            },
+            carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : {},
             storeSnapshot: { ...storeSettings },
             items: data.items,
             subtotal: data.subtotal,
@@ -157,7 +177,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
             'QUOTATION',
             documentData,
             profile,
-            'WAITING_APPROVE'
+            jobId ? 'WAITING_APPROVE' : undefined
         );
 
         toast({ title: "Quotation Created", description: `Successfully created quotation ${docNo}` });
@@ -168,17 +188,13 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     }
   };
 
-  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomer;
+  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingJobCustomer;
 
   if (isLoading) {
     return <Skeleton className="h-96" />;
   }
-
-  if (!jobId) {
-      return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>No Job ID provided. Please create a quotation from a job.</div>
-  }
   
-  if (jobError) {
+  if (jobId && jobError) {
       return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>Error loading job: {jobError.message}</div>
   }
 
@@ -186,9 +202,9 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back to Job</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
             <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
+              {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
               Save Quotation
             </Button>
         </div>
@@ -212,12 +228,51 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                 <CardTitle>ข้อมูลลูกค้า</CardTitle>
             </CardHeader>
             <CardContent>
-                <p className="font-semibold">{customer?.name}</p>
-                <p className="text-sm text-muted-foreground">{customer?.taxAddress || 'N/A'}</p>
-                <p className="text-sm text-muted-foreground">โทร: {customer?.phone}</p>
-                <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {customer?.taxId || 'N/A'}</p>
-                 <Separator className="my-4" />
-                <p className="font-semibold">เรื่อง: {job?.description}</p>
+               <FormField
+                    name="customerId"
+                    control={form.control}
+                    render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                        <FormLabel>Customer</FormLabel>
+                        <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                            <PopoverTrigger asChild>
+                            <FormControl>
+                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId}>
+                                {customer ? `${customer.name} (${customer.phone})` : "Select a customer..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <div className="p-2 border-b">
+                                    <Input autoFocus placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                </div>
+                                <ScrollArea className="h-fit max-h-60">
+                                    {customers.map((c) => (
+                                    <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
+                                        <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
+                                    </Button>
+                                    ))}
+                                </ScrollArea>
+                            </PopoverContent>
+                        </Popover>
+                        </FormItem>
+                    )}
+                    />
+                 {customer && (
+                    <>
+                        <p className="text-sm text-muted-foreground mt-2">{customer.taxAddress || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">โทร: {customer.phone}</p>
+                        <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {customer.taxId || 'N/A'}</p>
+                    </>
+                 )}
+                 {job && (
+                    <>
+                        <Separator className="my-4" />
+                        <p className="font-semibold">เรื่อง: {job.description}</p>
+                        {job.carServiceDetails?.licensePlate && <p className="text-sm text-muted-foreground">ทะเบียนรถ: {job.carServiceDetails.licensePlate}</p>}
+                    </>
+                 )}
             </CardContent>
         </Card>
 
@@ -244,13 +299,13 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                                 <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="Service or product" />)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
-                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`).toLocaleString()}</TableCell>
-                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive"/></Button></TableCell>
+                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
+                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle/> Add Item</Button>
+                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> Add Item</Button>
             </CardContent>
         </Card>
 
@@ -263,9 +318,9 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
             </Card>
             <div className="space-y-4">
                  <div className="space-y-2 p-4 border rounded-lg">
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{form.watch('subtotal').toLocaleString()}</span></div>
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{form.watch('subtotal').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
                     <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} className="w-32 text-right"/>)}/></div>
-                    <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{form.watch('net').toLocaleString()}</span></div>
+                    <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{form.watch('net').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
                     <div className="flex justify-between items-center">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
@@ -273,10 +328,10 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                                 <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>
-                        <span>{form.watch('vatAmount').toLocaleString()}</span>
+                        <span>{form.watch('vatAmount').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                      <Separator/>
-                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{form.watch('grandTotal').toLocaleString()}</span></div>
+                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{form.watch('grandTotal').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
                  </div>
             </div>
         </div>
@@ -284,3 +339,5 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     </Form>
   );
 }
+
+    

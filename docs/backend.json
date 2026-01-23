@@ -963,7 +963,9 @@
         "deliveryNotePrefix": { "type": "string" },
         "taxInvoicePrefix": { "type": "string" },
         "receiptPrefix": { "type": "string" },
-        "billingNotePrefix": { "type": "string" }
+        "billingNotePrefix": { "type": "string" },
+        "creditNotePrefix": { "type": "string" },
+        "withholdingTaxPrefix": { "type": "string" }
       }
     }
   },
@@ -1030,8 +1032,8 @@
       "description": "Stores document numbering settings."
     },
     "/documentCounters/{year}": {
-        "schema": { "$ref": "#/backend/entities/DocumentCounters"},
-        "description": "Stores the auto-incrementing counters for document numbers for each year."
+      "schema": { "$ref": "#/backend/entities/DocumentCounters"},
+      "description": "Stores the auto-incrementing counters for document numbers for each year."
     },
     "/hrHolidays/{holidayId}": {
       "schema": {

@@ -1,4 +1,5 @@
 
+
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus } from './constants';
 
@@ -299,9 +300,7 @@ export interface Document {
   dueDate?: string; // For TaxInvoice
   paymentMethod?: string; // For Receipt
   paymentDate?: string; // For Receipt
-  senderName?: string; // For DeliveryNote
-  receiverName?: string; // For DeliveryNote
-  referencesInvoiceId?: string; // For CreditNote
+  referencesDocIds?: string[]; // For CreditNote and Receipt
   reason?: string; // For CreditNote
   invoiceIds?: string[]; // For BillingNote
   totalAmount?: number; // For BillingNote
@@ -317,5 +316,7 @@ export interface DocumentCounters {
   creditNote?: number;
   withholdingTax?: number;
 }
+
+    
 
     

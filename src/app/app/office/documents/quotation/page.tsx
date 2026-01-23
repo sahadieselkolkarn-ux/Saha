@@ -11,12 +11,19 @@ export default function OfficeQuotationPage() {
     return (
         <>
             <PageHeader title="ใบเสนอราคา" description="ค้นหาและจัดการใบเสนอราคาทั้งหมด">
-                <Button asChild>
-                    <Link href="/app/office/jobs/management/quotation">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        New Quotation from Job
-                    </Link>
-                </Button>
+                <div className="flex items-center gap-2">
+                     <Button asChild>
+                        <Link href="/app/office/documents/quotation/new">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            New Quotation
+                        </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                        <Link href="/app/office/jobs/management/quotation">
+                            New from Job
+                        </Link>
+                    </Button>
+                </div>
             </PageHeader>
             <DocumentList
                 docType="QUOTATION"
@@ -24,3 +31,5 @@ export default function OfficeQuotationPage() {
         </>
     );
 }
+
+    
