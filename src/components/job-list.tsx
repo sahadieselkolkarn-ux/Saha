@@ -18,6 +18,7 @@ import { safeFormat } from '@/lib/date-utils';
 interface JobListProps {
   department?: JobDepartment;
   status?: JobStatus | JobStatus[];
+  excludeStatus?: JobStatus | JobStatus[];
   assigneeUid?: string;
   orderByField?: string;
   orderByDirection?: OrderByDirection;
@@ -39,6 +40,7 @@ const getStatusVariant = (status: Job['status']) => {
 export function JobList({ 
   department, 
   status,
+  excludeStatus,
   assigneeUid,
   orderByField = "lastActivityAt",
   orderByDirection = "desc",
@@ -99,12 +101,16 @@ export function JobList({
       if (status && Array.isArray(status)) {
         jobsData = jobsData.filter(job => status.includes(job.status));
       }
+      
+      if (excludeStatus) {
+        const statusesToExclude = Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
+        jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
+      }
 
       setJobs(jobsData);
       setLoading(false);
       setError(null);
       setIndexState('ok');
-      setIndexCreationUrl(null);
     }, (err) => {
         console.error(err);
         setError(err);
@@ -112,7 +118,7 @@ export function JobList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, status]);
+  }, [jobsQuery, status, excludeStatus]);
 
   useEffect(() => {
     if (error?.message?.includes('requires an index')) {
@@ -302,4 +308,3 @@ export function JobList({
     </div>
   );
 }
-
