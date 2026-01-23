@@ -74,7 +74,7 @@ export default function ManagementAccountingPayrollPage() {
         const year = currentMonthDate.getFullYear();
         
         const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
-        const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
+        const leavesQuery = query(collection(db, 'hrLeaves')); // Fetch all leaves
 
         const [usersSnapshot, leavesSnapshot] = await Promise.all([
             getDocs(usersQuery),
@@ -85,8 +85,9 @@ export default function ManagementAccountingPayrollPage() {
         const activeUsersWithSalary = allUsersData.filter(u => u.status === 'ACTIVE' && u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
         setUsers(activeUsersWithSalary);
         
-        const leavesData = leavesSnapshot.docs.map(d => d.data() as LeaveRequest);
-        setAllYearLeaves(leavesData);
+        const allLeavesData = leavesSnapshot.docs.map(d => d.data() as LeaveRequest);
+        const leavesForYear = allLeavesData.filter(l => l.year === year);
+        setAllYearLeaves(leavesForYear);
 
       } catch (e: any) {
         setManualError(e);
