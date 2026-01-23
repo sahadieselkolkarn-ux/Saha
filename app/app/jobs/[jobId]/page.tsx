@@ -241,21 +241,16 @@ export default function JobDetailsPage() {
         
         const batch = writeBatch(db);
         
-        // --- Status change logic ---
         const jobUpdates: any = { 
-            photos: arrayUnion(...photoURLs),
             lastActivityAt: serverTimestamp() 
         };
-        let activityText = newNote;
-        
-        if (job.status === 'IN_PROGRESS' && profile.department !== 'OFFICE') {
-            jobUpdates.status = 'WAITING_QUOTATION';
-            activityText = `อัปเดตงาน, สถานะเปลี่ยนเป็น "${JOB_STATUS_DISPLAY['WAITING_QUOTATION']}"\n\n${newNote}`;
+        if (photoURLs.length > 0) {
+            jobUpdates.photos = arrayUnion(...photoURLs);
         }
         
         // 1. Add new activity document
         batch.set(doc(activitiesColRef), {
-            text: activityText,
+            text: newNote,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
