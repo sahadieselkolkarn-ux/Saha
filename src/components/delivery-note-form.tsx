@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useEffect, useMemo, Suspense, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,7 +52,7 @@ const deliveryNoteFormSchema = z.object({
 
 type DeliveryNoteFormData = z.infer<typeof deliveryNoteFormSchema>;
 
-function DeliveryNoteFormComponent() {
+export default function DeliveryNoteForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { db } = useFirebase();
@@ -269,12 +268,4 @@ function DeliveryNoteFormComponent() {
       </form>
     </Form>
   );
-}
-
-export function DeliveryNoteForm() {
-    return (
-        <Suspense fallback={<Skeleton className="h-96" />}>
-            <DeliveryNoteFormComponent />
-        </Suspense>
-    )
 }
