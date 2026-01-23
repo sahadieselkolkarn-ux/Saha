@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ interface JobTableListProps {
   searchTerm?: string;
   orderByField?: string;
   orderByDirection?: OrderByDirection;
+  limit?: number;
   emptyTitle?: string;
   emptyDescription?: string;
   children?: React.ReactNode;
@@ -51,6 +52,7 @@ export function JobTableList({
   searchTerm = "",
   orderByField = "lastActivityAt",
   orderByDirection = "desc",
+  limit: limitProp,
   emptyTitle = "No Jobs Found",
   emptyDescription = "There are no jobs that match the current criteria.",
   children
@@ -77,8 +79,12 @@ export function JobTableList({
     
     constraints.push(orderBy(orderByField, orderByDirection));
 
+    if (limitProp) {
+      constraints.push(limit(limitProp));
+    }
+
     return query(collection(db, 'jobs'), ...constraints);
-  }, [db, department, status, orderByField, orderByDirection, retry]);
+  }, [db, department, status, orderByField, orderByDirection, retry, limitProp]);
 
 
   useEffect(() => {
