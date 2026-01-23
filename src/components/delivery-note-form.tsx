@@ -20,11 +20,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, UserProfile } from "@/lib/types";
+import type { Job, StoreSettings, Customer } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -39,7 +38,7 @@ const deliveryNoteFormSchema = z.object({
   issueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
   subtotal: z.coerce.number(),
-  discountAmount: z.coerce.number().min(0).optional(),
+  discountAmount: z.coerce.number().min(0).optional().default(0),
   net: z.coerce.number(),
   grandTotal: z.coerce.number(),
   notes: z.string().optional(),
@@ -127,7 +126,6 @@ export default function DeliveryNoteForm() {
   });
   
   const watchedItems = form.watch("items");
-  const watchedDiscount = form.watch("discountAmount");
 
   useEffect(() => {
     let subtotal = 0;
@@ -139,14 +137,14 @@ export default function DeliveryNoteForm() {
       subtotal += total;
     });
 
-    const discount = watchedDiscount || 0;
+    const discount = form.watch("discountAmount") || 0;
     const net = subtotal - discount;
-    const grandTotal = net; // No VAT for delivery note
+    const grandTotal = net;
 
     form.setValue("subtotal", subtotal);
     form.setValue("net", net);
     form.setValue("grandTotal", grandTotal);
-  }, [watchedItems, watchedDiscount, form]);
+  }, [watchedItems, form]);
 
   const onSubmit = async (data: DeliveryNoteFormData) => {
     if (!db || !customer || !storeSettings || !profile) {
@@ -213,7 +211,7 @@ export default function DeliveryNoteForm() {
                 <p className="text-sm text-muted-foreground">โทร: {storeSettings?.phone}</p>
             </div>
             <div className="space-y-4">
-                 <h1 className="text-2xl font-bold text-right">ใบส่งของ</h1>
+                 <h1 className="text-2xl font-bold text-right">ใบส่งของชั่วคราว</h1>
                  <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
             </div>
         </div>
@@ -293,11 +291,11 @@ export default function DeliveryNoteForm() {
                 </CardContent>
             </Card>
              <div className="space-y-4">
-                 <div className="space-y-2 p-4 border rounded-lg">
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{form.watch('subtotal').toLocaleString()}</span></div>
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} className="w-32 text-right"/>)}/></div>
-                     <Separator/>
-                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{form.watch('grandTotal').toLocaleString()}</span></div>
+                 <div className="space-y-2 p-4 border rounded-lg h-full flex items-end justify-end">
+                    <div className="flex justify-between items-center text-lg font-bold border-t border-b py-2 px-4 w-64">
+                        <span>รวมเงิน</span>
+                        <span>{form.watch('grandTotal').toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                    </div>
                  </div>
             </div>
         </div>

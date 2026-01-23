@@ -21,7 +21,7 @@ function DocumentView({ document }: { document: Document }) {
 
     const docTypeDisplay: Record<Document['docType'], string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
-        DELIVERY_NOTE: "ใบส่งของ / Delivery Note",
+        DELIVERY_NOTE: "ใบส่งของชั่วคราว",
         TAX_INVOICE: "ใบกำกับภาษี / Tax Invoice",
         RECEIPT: "ใบเสร็จรับเงิน / Receipt",
         BILLING_NOTE: "ใบวางบิล / Billing Note",
@@ -29,7 +29,7 @@ function DocumentView({ document }: { document: Document }) {
         WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
     };
 
-    const hasFinancials = document.grandTotal > 0 || document.items.some(i => i.unitPrice > 0);
+    const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
 
     return (
         <div className="space-y-6">
@@ -71,8 +71,8 @@ function DocumentView({ document }: { document: Document }) {
                             <TableHead className="w-12">#</TableHead>
                             <TableHead>รายการ</TableHead>
                             <TableHead className="text-right">จำนวน</TableHead>
-                            {hasFinancials && <TableHead className="text-right">ราคา/หน่วย</TableHead>}
-                            {hasFinancials && <TableHead className="text-right">จำนวนเงิน</TableHead>}
+                            <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                            <TableHead className="text-right">จำนวนเงิน</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -81,8 +81,8 @@ function DocumentView({ document }: { document: Document }) {
                                 <TableCell>{index + 1}</TableCell>
                                 <TableCell>{item.description}</TableCell>
                                 <TableCell className="text-right">{item.quantity}</TableCell>
-                                {hasFinancials && <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
-                                {hasFinancials && <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
+                                <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -92,7 +92,14 @@ function DocumentView({ document }: { document: Document }) {
                     <div className="space-y-4">
                         {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
                     </div>
-                    {hasFinancials && (
+                     {isDeliveryNote ? (
+                        <div className="space-y-2 flex justify-end items-end">
+                            <div className="flex justify-between items-center text-lg font-bold border-t border-b py-2 px-4 w-64">
+                                <span>รวมเงิน</span>
+                                <span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        </div>
+                    ) : (
                         <div className="space-y-2">
                             <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                             <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
@@ -107,11 +114,11 @@ function DocumentView({ document }: { document: Document }) {
                  <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">
                     <div className="space-y-16">
                         <p>.................................................</p>
-                        <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
+                        <p>({document.senderName || 'ผู้ส่งของ'})</p>
                     </div>
                      <div className="space-y-16">
                         <p>.................................................</p>
-                        <p>({document.receiverName || 'ผู้รับของ/บริการ'})</p>
+                        <p>({document.receiverName || 'ผู้รับของ'})</p>
                     </div>
                 </div>
 
