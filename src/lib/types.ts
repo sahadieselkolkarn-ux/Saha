@@ -299,6 +299,8 @@ export interface Document {
   dueDate?: string; // For TaxInvoice
   paymentMethod?: string; // For Receipt
   paymentDate?: string; // For Receipt
+  senderName?: string; // For DeliveryNote
+  receiverName?: string; // For DeliveryNote
   referencesInvoiceId?: string; // For CreditNote
   reason?: string; // For CreditNote
   invoiceIds?: string[]; // For BillingNote

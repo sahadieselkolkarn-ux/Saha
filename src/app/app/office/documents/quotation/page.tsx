@@ -1,37 +1,16 @@
 
 "use client";
 
-import { useMemo } from "react";
 import Link from "next/link";
-import { collection, query, where, orderBy } from "firebase/firestore";
-import { useCollection } from "@/firebase/firestore/use-collection";
-import { useFirebase } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { safeFormat } from "@/lib/date-utils";
-import type { Document } from "@/lib/types";
+import { PlusCircle } from "lucide-react";
+import { DocumentList } from "@/components/document-list";
 
 export default function OfficeQuotationPage() {
-    const { db } = useFirebase();
-
-    const q = useMemo(() => {
-        if (!db) return null;
-        return query(
-            collection(db, 'documents'),
-            where('docType', '==', 'QUOTATION'),
-            orderBy('docDate', 'desc')
-        );
-    }, [db]);
-
-    const { data: quotations, isLoading } = useCollection<Document>(q);
-
     return (
         <>
-            <PageHeader title="ใบเสนอราคา" description="สร้างและจัดการใบเสนอราคา">
+            <PageHeader title="ใบเสนอราคา" description="ค้นหาและจัดการใบเสนอราคาทั้งหมด">
                 <Button asChild>
                     <Link href="/app/office/jobs/management/quotation">
                         <PlusCircle className="mr-2 h-4 w-4" />
@@ -39,45 +18,9 @@ export default function OfficeQuotationPage() {
                     </Link>
                 </Button>
             </PageHeader>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Quotation List</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="flex justify-center items-center h-48"><Loader2 className="animate-spin" /></div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Doc No.</TableHead>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Customer</TableHead>
-                                    <TableHead>Total</TableHead>
-                                    <TableHead>Status</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {quotations && quotations.length > 0 ? quotations.map(qt => (
-                                    <TableRow key={qt.id}>
-                                        <TableCell className="font-medium">{qt.docNo}</TableCell>
-                                        <TableCell>{safeFormat(new Date(qt.docDate), 'dd/MM/yyyy')}</TableCell>
-                                        <TableCell>{qt.customerSnapshot.name}</TableCell>
-                                        <TableCell className="text-right">{qt.grandTotal.toLocaleString()}</TableCell>
-                                        <TableCell><Badge>{qt.status}</Badge></TableCell>
-                                    </TableRow>
-                                )) : (
-                                    <TableRow>
-                                        <TableCell colSpan={5} className="text-center h-24">No quotations found.</TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
+            <DocumentList
+                docType="QUOTATION"
+            />
         </>
     );
 }
-
-    

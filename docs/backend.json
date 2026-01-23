@@ -421,6 +421,8 @@
         "updatedAt": { "type": "string", "format": "date-time" },
         "expiryDate": { "type": "string", "format": "date" },
         "dueDate": { "type": "string", "format": "date" },
+        "senderName": { "type": "string" },
+        "receiverName": { "type": "string" },
         "paymentMethod": { "type": "string" },
         "paymentDate": { "type": "string", "format": "date" },
         "referencesInvoiceId": { "type": "string" },
@@ -1063,5 +1065,4 @@
     }
   }
 }
-
     
