@@ -1,8 +1,8 @@
-
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
 import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs } from "firebase/firestore";
+import Link from "next/link";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -54,7 +54,7 @@ export default function ManagementAccountingPayrollPage() {
   // State for one-time fetches
   const [manualLoading, setManualLoading] = useState(true);
   const [manualError, setManualError] = useState<Error | null>(null);
-  const [users, setUsers] = useState<WithId<UserProfile>[] | null>(null);
+  const [allUsers, setAllUsers] = useState<WithId<UserProfile>[] | null>(null);
   const [allYearLeaves, setAllYearLeaves] = useState<LeaveRequest[] | null>(null);
 
   // State for editing HR Notes
@@ -67,39 +67,41 @@ export default function ManagementAccountingPayrollPage() {
   useEffect(() => {
     if (!db) return;
 
-    const fetchPayrollPrerequisites = async () => {
+    const fetchPrerequisites = async () => {
       setManualLoading(true);
       setManualError(null);
       try {
         const year = currentMonthDate.getFullYear();
         
         const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
-        const leavesQuery = query(collection(db, 'hrLeaves')); // Fetch all leaves
+        const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
 
         const [usersSnapshot, leavesSnapshot] = await Promise.all([
             getDocs(usersQuery),
             getDocs(leavesQuery)
         ]);
 
-        const allUsersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-        const activeUsersWithSalary = allUsersData.filter(u => u.status === 'ACTIVE' && u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
-        setUsers(activeUsersWithSalary);
+        const usersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+        setAllUsers(usersData);
         
-        const allLeavesData = leavesSnapshot.docs.map(d => d.data() as LeaveRequest);
-        const leavesForYear = allLeavesData.filter(l => l.year === year);
-        setAllYearLeaves(leavesForYear);
+        const leavesData = leavesSnapshot.docs.map(d => d.data() as LeaveRequest);
+        setAllYearLeaves(leavesData);
 
       } catch (e: any) {
         setManualError(e);
-        toast({ variant: 'destructive', title: 'Error Fetching Prerequisite Data', description: e.message });
+        toast({ variant: 'destructive', title: 'Error Fetching Data', description: e.message });
       } finally {
         setManualLoading(false);
       }
     };
     
-    fetchPayrollPrerequisites();
+    fetchPrerequisites();
   }, [db, currentMonthDate, toast]);
 
+  const users = useMemo(() => {
+    if (!allUsers) return null;
+    return allUsers.filter(u => u.status === 'ACTIVE' && u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
+  }, [allUsers]);
 
   const payrollRunId = useMemo(() => `${format(currentMonthDate, 'yyyy-MM')}-${period}`, [currentMonthDate, period]);
   const payrollRunRef = useMemo(() => db ? doc(db, 'payrollRuns', payrollRunId) : null, [db, payrollRunId]);
@@ -192,11 +194,6 @@ export default function ManagementAccountingPayrollPage() {
                 id: payslipRef.id, 
                 ...payslipData,
                 employeeStatus: "PENDING_REVIEW",
-                employeeAccepted: false,
-                employeeAcceptedAt: null,
-                employeeNote: null,
-                hrCheckedByName: adminProfile.displayName,
-                hrCheckedAt: serverTimestamp(),
                 hrNote: null,
             });
         });
@@ -216,13 +213,11 @@ export default function ManagementAccountingPayrollPage() {
      try {
         const batch = writeBatch(db);
 
-        // 1. Update the main run status
         const runRef = doc(db, 'payrollRuns', payrollRun.id);
         batch.update(runRef, {
             status: 'SENT_TO_EMPLOYEE'
         });
 
-        // 2. Get all current payslips and update them
         const payslipsSnapshot = await getDocs(payslipsQuery);
         payslipsSnapshot.forEach(payslipDoc => {
             batch.update(payslipDoc.ref, {
@@ -267,91 +262,100 @@ export default function ManagementAccountingPayrollPage() {
     }
   }
 
-  const renderPayrollTable = (data: (WithId<Payslip> | (typeof calculatedPayrollData)[0])[]) => (
-     <Accordion type="single" collapsible className="w-full">
-        {data.length > 0 ? data.map(p => (
-            <AccordionItem value={p.userId} key={p.userId}>
-                    <AccordionTrigger>
-                        <div className="flex justify-between w-full pr-4 items-center">
-                            <span className="font-medium">{p.userName}</span>
-                            <div className="flex items-center gap-4">
-                                {payrollRun && payrollRun.status !== 'DRAFT_HR' && 'employeeStatus' in p && (
-                                    <PayslipStatusBadge status={p.employeeStatus} />
-                                )}
-                                <span className="font-mono text-primary">Net: {p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</span>
+  const renderPayrollTable = (data: (WithId<Payslip> | (typeof calculatedPayrollData)[0])[]) => {
+     if (!isLoading && data.length === 0) {
+        return (
+            <div className="text-center text-muted-foreground p-8">
+                No active employees with salary found for this period.
+                <br/>
+                (ยังไม่มีพนักงานที่แอคทีฟและมีการตั้งเงินเดือนในงวดนี้)
+            </div>
+        );
+     }
+     return (
+        <Accordion type="single" collapsible className="w-full">
+            {data.map(p => (
+                <AccordionItem value={p.userId} key={p.userId}>
+                        <AccordionTrigger>
+                            <div className="flex justify-between w-full pr-4 items-center">
+                                <span className="font-medium">{p.userName}</span>
+                                <div className="flex items-center gap-4">
+                                    {payrollRun && payrollRun.status !== 'DRAFT_HR' && 'employeeStatus' in p && (
+                                        <PayslipStatusBadge status={p.employeeStatus} />
+                                    )}
+                                    <span className="font-mono text-primary">Net: {p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</span>
+                                </div>
                             </div>
-                        </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="p-4 bg-muted/50">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Description</TableHead>
-                                    <TableHead className="text-right">Amount (THB)</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow>
-                                    <TableCell className="font-medium">Base Salary (for period)</TableCell>
-                                    <TableCell className="text-right">{p.baseSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                </TableRow>
-                                {p.deductions.map((ded, i) => (
-                                    <TableRow key={i}>
-                                    <TableCell>
-                                        <p className="font-medium text-destructive">(-) {ded.name}</p>
-                                        {ded.notes && <p className="text-xs text-muted-foreground">{ded.notes}</p>}
-                                    </TableCell>
-                                    <TableCell className="text-right text-destructive">- {ded.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                        </AccordionTrigger>
+                        <AccordionContent className="p-4 bg-muted/50">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Description</TableHead>
+                                        <TableHead className="text-right">Amount (THB)</TableHead>
                                     </TableRow>
-                                ))}
-                                <TableRow className="bg-background font-bold text-base">
-                                    <TableCell>Net Salary</TableCell>
-                                    <TableCell className="text-right">{p.netSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
-                         {payrollRun && payrollRun.status === 'DRAFT_HR' && 'hrNote' in p && (
-                            <div className="mt-4 pt-4 border-t">
-                            <h5 className="font-semibold text-sm mb-2">HR Notes & Adjustments</h5>
-                            {editingPayslipId === p.userId ? (
-                                <div className="space-y-2">
-                                <Textarea
-                                    defaultValue={p.hrNote || ""}
-                                    onChange={(e) => setCurrentHrNote(e.target.value)}
-                                    placeholder="Add manual adjustments or notes..."
-                                />
-                                <div className="flex gap-2">
-                                    <Button size="sm" onClick={() => handleSaveHrNote(p.userId)}>Save Note</Button>
-                                    <Button size="sm" variant="ghost" onClick={() => setEditingPayslipId(null)}>Cancel</Button>
-                                </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-2 group">
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md p-2 bg-background min-h-10">
-                                    {p.hrNote || "No notes added."}
-                                </p>
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                    setEditingPayslipId(p.userId);
-                                    setCurrentHrNote(p.hrNote || "");
-                                    }}
-                                >
-                                    <Edit className="mr-2 h-3 w-3"/>
-                                    Edit Note
-                                </Button>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow>
+                                        <TableCell className="font-medium">Base Salary (for period)</TableCell>
+                                        <TableCell className="text-right">{p.baseSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                    </TableRow>
+                                    {p.deductions.map((ded, i) => (
+                                        <TableRow key={i}>
+                                        <TableCell>
+                                            <p className="font-medium text-destructive">(-) {ded.name}</p>
+                                            {ded.notes && <p className="text-xs text-muted-foreground">{ded.notes}</p>}
+                                        </TableCell>
+                                        <TableCell className="text-right text-destructive">- {ded.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                    <TableRow className="bg-background font-bold text-base">
+                                        <TableCell>Net Salary</TableCell>
+                                        <TableCell className="text-right">{p.netSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                             {payrollRun && payrollRun.status === 'DRAFT_HR' && 'hrNote' in p && (
+                                <div className="mt-4 pt-4 border-t">
+                                <h5 className="font-semibold text-sm mb-2">HR Notes & Adjustments</h5>
+                                {editingPayslipId === p.userId ? (
+                                    <div className="space-y-2">
+                                    <Textarea
+                                        defaultValue={p.hrNote || ""}
+                                        onChange={(e) => setCurrentHrNote(e.target.value)}
+                                        placeholder="Add manual adjustments or notes..."
+                                    />
+                                    <div className="flex gap-2">
+                                        <Button size="sm" onClick={() => handleSaveHrNote(p.userId)}>Save Note</Button>
+                                        <Button size="sm" variant="ghost" onClick={() => setEditingPayslipId(null)}>Cancel</Button>
+                                    </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 group">
+                                    <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md p-2 bg-background min-h-10">
+                                        {p.hrNote || "No notes added."}
+                                    </p>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                        setEditingPayslipId(p.userId);
+                                        setCurrentHrNote(p.hrNote || "");
+                                        }}
+                                    >
+                                        <Edit className="mr-2 h-3 w-3"/>
+                                        Edit Note
+                                    </Button>
+                                    </div>
+                                )}
                                 </div>
                             )}
-                            </div>
-                        )}
-                    </AccordionContent>
-            </AccordionItem>
-        )) : (
-            <div className="text-center text-muted-foreground p-8">No active employees with salary found for this period.</div>
-        )}
-    </Accordion>
-  );
+                        </AccordionContent>
+                </AccordionItem>
+            ))}
+        </Accordion>
+     );
+  }
 
   const renderContent = () => {
     if (isLoading) {
@@ -365,6 +369,18 @@ export default function ManagementAccountingPayrollPage() {
             <p className="text-sm">{manualError.message}</p>
         </div>
       );
+    }
+    if (!isLoading && !hrSettings) {
+        return (
+            <div className="text-center p-8">
+                <AlertCircle className="mx-auto h-8 w-8 mb-2 text-destructive" />
+                <h3 className="font-semibold">HR Settings Not Found</h3>
+                <p className="text-muted-foreground text-sm">Please configure HR settings before calculating payroll.</p>
+                <Button asChild variant="link" className="mt-2">
+                    <Link href="/app/management/hr/settings">Go to HR Settings</Link>
+                </Button>
+            </div>
+        )
     }
     return payrollRun ? renderPayrollTable(payslips || []) : renderPayrollTable(calculatedPayrollData);
   }
@@ -403,7 +419,7 @@ export default function ManagementAccountingPayrollPage() {
         <CardContent>
             {renderContent()}
         </CardContent>
-        {!isLoading && !manualError && (
+        {!isLoading && !manualError && hrSettings && (
              <CardContent>
                 {!payrollRun && (
                     <Button onClick={handleCreateDraft} disabled={isSubmitting || (calculatedPayrollData && calculatedPayrollData.length === 0)}>
