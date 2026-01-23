@@ -257,6 +257,63 @@ export interface DocumentSettings {
   taxInvoicePrefix?: string;
   receiptPrefix?: string;
   billingNotePrefix?: string;
+  creditNotePrefix?: string;
+  withholdingTaxPrefix?: string;
+}
+
+export interface DocumentItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export type DocType = 'QUOTATION' | 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'RECEIPT' | 'BILLING_NOTE' | 'CREDIT_NOTE' | 'WITHHOLDING_TAX';
+
+export interface Document {
+  id: string;
+  docType: DocType;
+  docNo: string;
+  docDate: string; // YYYY-MM-DD
+  jobId?: string;
+  customerSnapshot: Partial<Customer>;
+  carSnapshot?: {
+    licensePlate?: string;
+    details?: string;
+  };
+  storeSnapshot: Partial<StoreSettings>;
+  items: DocumentItem[];
+  subtotal: number;
+  discountAmount: number;
+  net: number; // subtotal - discount
+  withTax: boolean;
+  vatAmount: number;
+  grandTotal: number;
+  notes?: string;
+  status: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  
+  // Doc-specific fields
+  expiryDate?: string; // For Quotation
+  dueDate?: string; // For TaxInvoice
+  paymentMethod?: string; // For Receipt
+  paymentDate?: string; // For Receipt
+  referencesInvoiceId?: string; // For CreditNote
+  reason?: string; // For CreditNote
+  invoiceIds?: string[]; // For BillingNote
+  totalAmount?: number; // For BillingNote
+}
+
+export interface DocumentCounters {
+  year: number;
+  quotation?: number;
+  deliveryNote?: number;
+  taxInvoice?: number;
+  receipt?: number;
+  billingNote?: number;
+  creditNote?: number;
+  withholdingTax?: number;
 }
 
     

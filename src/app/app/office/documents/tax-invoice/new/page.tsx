@@ -1,24 +1,10 @@
+
 "use client";
 
 import { Suspense } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { Loader2 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-
-// This is a placeholder for now. The logic would be similar to QuotationForm.
-function TaxInvoiceForm() {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>New Tax Invoice</CardTitle>
-                <CardDescription>This feature is under development.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <p>The form to create a new tax invoice from a job will be here.</p>
-            </CardContent>
-        </Card>
-    );
-}
+import { TaxInvoiceForm } from '@/components/tax-invoice-form';
 
 
 function NewTaxInvoicePage() {
@@ -33,3 +19,5 @@ function NewTaxInvoicePage() {
 }
 
 export default NewTaxInvoicePage;
+
+    

@@ -10,19 +10,8 @@ import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-} from "@/components/ui/form";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle } from "lucide-react";
@@ -42,10 +31,10 @@ const lineItemSchema = z.object({
   total: z.coerce.number(),
 });
 
-const quotationFormSchema = z.object({
+const taxInvoiceFormSchema = z.object({
   jobId: z.string(),
   issueDate: z.string().min(1),
-  expiryDate: z.string().min(1),
+  dueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
   subtotal: z.coerce.number(),
   discountAmount: z.coerce.number().min(0).optional(),
@@ -56,9 +45,9 @@ const quotationFormSchema = z.object({
   notes: z.string().optional(),
 });
 
-type QuotationFormData = z.infer<typeof quotationFormSchema>;
+type TaxInvoiceFormData = z.infer<typeof taxInvoiceFormSchema>;
 
-export function QuotationForm() {
+export function TaxInvoiceForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { db } = useFirebase();
@@ -68,18 +57,17 @@ export function QuotationForm() {
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
-  const docSettingsRef = useMemo(() => (db ? doc(db, "settings", "documents") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(db && job?.customerId ? doc(db, 'customers', job.customerId) : null);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
-  const form = useForm<QuotationFormData>({
-    resolver: zodResolver(quotationFormSchema),
+  const form = useForm<TaxInvoiceFormData>({
+    resolver: zodResolver(taxInvoiceFormSchema),
     defaultValues: {
       jobId: jobId || "",
       issueDate: new Date().toISOString().split("T")[0],
-      expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
+      dueDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       subtotal: 0,
       discountAmount: 0,
@@ -106,7 +94,7 @@ export function QuotationForm() {
       const quantity = item.quantity || 0;
       const unitPrice = item.unitPrice || 0;
       const total = quantity * unitPrice;
-      form.setValue(`items.${index}.total`, total, { shouldValidate: true });
+      form.setValue(`items.${index}.total`, total);
       subtotal += total;
     });
 
@@ -121,9 +109,9 @@ export function QuotationForm() {
     form.setValue("grandTotal", grandTotal);
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
-  const onSubmit = async (data: QuotationFormData) => {
+  const onSubmit = async (data: TaxInvoiceFormData) => {
     if (!db || !jobId || !job || !customer || !storeSettings) {
-        toast({ variant: "destructive", title: "Missing data for quotation creation." });
+        toast({ variant: "destructive", title: "Missing data for invoice creation." });
         return;
     }
 
@@ -145,21 +133,21 @@ export function QuotationForm() {
             vatAmount: data.vatAmount,
             grandTotal: data.grandTotal,
             notes: data.notes,
-            expiryDate: data.expiryDate,
+            dueDate: data.dueDate,
         };
 
         const docNo = await createDocument(
             db,
-            'QUOTATION',
+            'TAX_INVOICE',
             documentData,
-            'WAITING_APPROVE' // New job status
+            'WAITING_CUSTOMER_PICKUP'
         );
 
-        toast({ title: "Quotation Created", description: `Successfully created quotation ${docNo}` });
-        router.push('/app/office/documents/quotation');
+        toast({ title: "Tax Invoice Created", description: `Successfully created invoice ${docNo}` });
+        router.push('/app/office/documents/tax-invoice');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Failed to create quotation", description: error.message });
+        toast({ variant: "destructive", title: "Failed to create invoice", description: error.message });
     }
   };
 
@@ -170,7 +158,7 @@ export function QuotationForm() {
   }
 
   if (!jobId) {
-      return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>No Job ID provided. Please create a quotation from a job.</div>
+      return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>No Job ID provided. Please create an invoice from a job.</div>
   }
   
   if (jobError) {
@@ -181,10 +169,10 @@ export function QuotationForm() {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back to Job</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
             <Button type="submit" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
-              Save Quotation
+              Save Invoice
             </Button>
         </div>
         
@@ -196,16 +184,14 @@ export function QuotationForm() {
                 <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {storeSettings?.taxId}</p>
             </div>
             <div className="space-y-4">
-                 <h1 className="text-2xl font-bold text-right">ใบเสนอราคา</h1>
+                 <h1 className="text-2xl font-bold text-right">ใบกำกับภาษี</h1>
                  <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
-                 <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
+                 <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>ครบกำหนดชำระ</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
             </div>
         </div>
 
         <Card>
-            <CardHeader>
-                <CardTitle>ข้อมูลลูกค้า</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
             <CardContent>
                 <p className="font-semibold">{customer?.name}</p>
                 <p className="text-sm text-muted-foreground">{customer?.taxAddress || 'N/A'}</p>
@@ -217,19 +203,17 @@ export function QuotationForm() {
         </Card>
 
         <Card>
-            <CardHeader>
-                <CardTitle>รายการ</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>รายการ</CardTitle></CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-12">#</TableHead>
+                            <TableHead>#</TableHead>
                             <TableHead>รายละเอียด</TableHead>
-                            <TableHead className="w-32 text-right">จำนวน</TableHead>
-                            <TableHead className="w-40 text-right">ราคา/หน่วย</TableHead>
-                            <TableHead className="w-40 text-right">ยอดรวม</TableHead>
-                            <TableHead className="w-12"></TableHead>
+                            <TableHead className="text-right">จำนวน</TableHead>
+                            <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                            <TableHead className="text-right">ยอดรวม</TableHead>
+                            <TableHead/>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
