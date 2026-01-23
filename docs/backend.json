@@ -273,6 +273,24 @@
           "type": "string",
           "description": "Technical report or test results, mainly for COMMONRAIL and MECHANIC jobs."
         },
+        "carServiceDetails": {
+          "type": "object",
+          "description": "Details specific to Car Service jobs.",
+          "properties": {
+            "brand": { "type": "string" },
+            "model": { "type": "string" },
+            "licensePlate": { "type": "string" }
+          }
+        },
+        "commonrailDetails": {
+          "type": "object",
+          "description": "Details specific to Commonrail jobs.",
+          "properties": {
+            "brand": { "type": "string" },
+            "partNumber": { "type": "string" },
+            "registrationNumber": { "type": "string" }
+          }
+        },
         "createdAt": {
           "type": "string",
           "description": "Timestamp of when the job was created.",

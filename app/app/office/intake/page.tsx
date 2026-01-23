@@ -16,7 +16,7 @@ import Link from "next/link";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,8 +31,18 @@ import { cn } from "@/lib/utils";
 
 const intakeSchema = z.object({
   customerId: z.string().min(1, "Customer is required"),
-  department: z.string().min(1, "Department is required"),
+  department: z.enum(JOB_DEPARTMENTS),
   description: z.string().min(1, "Description is required"),
+  carServiceDetails: z.object({
+    brand: z.string().optional(),
+    model: z.string().optional(),
+    licensePlate: z.string().optional(),
+  }).optional(),
+  commonrailDetails: z.object({
+    brand: z.string().optional(),
+    partNumber: z.string().optional(),
+    registrationNumber: z.string().optional(),
+  }).optional(),
 });
 
 export default function IntakePage() {
@@ -51,10 +61,13 @@ export default function IntakePage() {
     resolver: zodResolver(intakeSchema),
     defaultValues: {
       customerId: "",
-      department: "",
-      description: ""
+      description: "",
+      carServiceDetails: { brand: '', model: '', licensePlate: '' },
+      commonrailDetails: { brand: '', partNumber: '', registrationNumber: '' },
     }
   });
+
+  const selectedDepartment = form.watch("department");
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) {
@@ -135,15 +148,25 @@ export default function IntakePage() {
 
         // 3. Define job data and set it in the batch
         const jobData = {
-            ...values,
             id: jobId,
+            customerId: values.customerId,
+            department: values.department,
+            description: values.description,
             customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
             status: "RECEIVED",
             photos: photoURLs,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
             lastActivityAt: serverTimestamp(),
-        };
+        } as any;
+
+        if (values.department === 'CAR_SERVICE') {
+          jobData.carServiceDetails = values.carServiceDetails;
+        }
+        if (values.department === 'COMMONRAIL') {
+          jobData.commonrailDetails = values.commonrailDetails;
+        }
+
         batch.set(jobDocRef, jobData);
         
         // 4. Create and set the initial activity log
@@ -271,6 +294,29 @@ export default function IntakePage() {
                   <FormMessage />
                 </FormItem>
               )} />
+              
+              {selectedDepartment === 'CAR_SERVICE' && (
+                <Card>
+                    <CardHeader><CardTitle>Car Details</CardTitle></CardHeader>
+                    <CardContent className="space-y-4">
+                        <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อรถ</FormLabel><FormControl><Input placeholder="e.g., Toyota" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (<FormItem><FormLabel>รุ่นรถ</FormLabel><FormControl><Input placeholder="e.g., Hilux Revo" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="carServiceDetails.licensePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>ทะเบียนรถ</FormLabel><FormControl><Input placeholder="e.g., 1กข 1234" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </CardContent>
+                </Card>
+              )}
+
+              {selectedDepartment === 'COMMONRAIL' && (
+                 <Card>
+                    <CardHeader><CardTitle>Commonrail Details</CardTitle></CardHeader>
+                    <CardContent className="space-y-4">
+                        <FormField name="commonrailDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="e.g., Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="commonrailDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่</FormLabel><FormControl><Input placeholder="Part Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="commonrailDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                    </CardContent>
+                </Card>
+              )}
+
               <FormField name="description" control={form.control} render={({ field }) => (
                 <FormItem>
                   <FormLabel>Description / Symptoms</FormLabel>

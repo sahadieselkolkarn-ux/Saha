@@ -67,6 +67,16 @@ export interface Job {
   technicalReport?: string;
   assigneeUid?: string;
   assigneeName?: string;
+  carServiceDetails?: {
+    brand?: string;
+    model?: string;
+    licensePlate?: string;
+  };
+  commonrailDetails?: {
+    brand?: string;
+    partNumber?: string;
+    registrationNumber?: string;
+  };
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastActivityAt: Timestamp;
