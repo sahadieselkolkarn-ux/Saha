@@ -858,6 +858,34 @@
         "baseSalary",
         "netSalary"
       ]
+    },
+    "StoreSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Store Settings",
+      "description": "General settings for the store, including tax info and opening hours.",
+      "type": "object",
+      "properties": {
+        "taxName": { "type": "string" },
+        "taxAddress": { "type": "string" },
+        "branch": { "type": "string" },
+        "phone": { "type": "string" },
+        "taxId": { "type": "string" },
+        "informalName": { "type": "string" },
+        "openingHours": { "type": "string" }
+      }
+    },
+    "DocumentSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Document Settings",
+      "description": "Settings for document numbering and prefixes.",
+      "type": "object",
+      "properties": {
+        "quotationPrefix": { "type": "string" },
+        "deliveryNotePrefix": { "type": "string" },
+        "taxInvoicePrefix": { "type": "string" },
+        "receiptPrefix": { "type": "string" },
+        "billingNotePrefix": { "type": "string" }
+      }
     }
   },
   "auth": {
@@ -902,11 +930,19 @@
       },
       "description": "Stores temporary tokens for kiosk attendance."
     },
-    "/settings/{settingId}": {
+    "/settings/hr": {
       "schema": {
         "$ref": "#/backend/entities/HRSettings"
       },
       "description": "Stores application settings, like 'hr' settings."
+    },
+     "/settings/store": {
+      "schema": { "$ref": "#/backend/entities/StoreSettings" },
+      "description": "Stores general store settings."
+    },
+    "/settings/documents": {
+      "schema": { "$ref": "#/backend/entities/DocumentSettings" },
+      "description": "Stores document numbering settings."
     },
     "/hrHolidays/{holidayId}": {
       "schema": {
@@ -940,3 +976,5 @@
     }
   }
 }
+
+    

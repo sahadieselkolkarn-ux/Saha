@@ -238,3 +238,25 @@ export interface Payslip {
   hrCheckedAt?: Timestamp;
   hrNote?: string | null;
 }
+
+export interface StoreSettings {
+  id?: 'store';
+  taxName?: string;
+  taxAddress?: string;
+  branch?: string;
+  phone?: string;
+  taxId?: string;
+  informalName?: string;
+  openingHours?: string;
+}
+
+export interface DocumentSettings {
+  id?: 'documents';
+  quotationPrefix?: string;
+  deliveryNotePrefix?: string;
+  taxInvoicePrefix?: string;
+  receiptPrefix?: string;
+  billingNotePrefix?: string;
+}
+
+    
