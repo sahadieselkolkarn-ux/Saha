@@ -379,6 +379,171 @@
         "createdAt"
       ]
     },
+    "DocumentItem": {
+      "title": "Document Line Item",
+      "description": "Represents a single line item in a financial document like an invoice or quotation.",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string", "description": "Description of the service or product." },
+        "quantity": { "type": "number" },
+        "unitPrice": { "type": "number", "description": "Price per unit." },
+        "total": { "type": "number", "description": "Total for this line (quantity * unitPrice)." }
+      },
+      "required": ["description", "quantity", "unitPrice", "total"]
+    },
+    "Quotation": {
+      "title": "Quotation",
+      "description": "A price quotation document for a job.",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string", "description": "The running ID of the document (e.g., 2024-0001)." },
+        "documentNumber": { "type": "string", "description": "The full document number including prefix (e.g., QT2024-0001)." },
+        "jobId": { "type": "string", "description": "Reference to the original Job ID." },
+        "customerSnapshot": { "type": "object", "properties": {"name": {"type": "string"},"phone": {"type": "string"},"taxName": {"type": "string"},"taxAddress": {"type": "string"},"taxId": {"type": "string"}}},
+        "jobSnapshot": { "type": "object", "properties": {"description": {"type": "string"},"vehicleDetails": {"type": "string"}}},
+        "issueDate": { "type": "string", "format": "date" },
+        "expiryDate": { "type": "string", "format": "date" },
+        "items": { "type": "array", "items": { "$ref": "#/backend/entities/DocumentItem" } },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "subtotalAfterDiscount": { "type": "number" },
+        "isVat": { "type": "boolean" },
+        "vatAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "DeliveryNote": {
+      "title": "Delivery Note",
+      "description": "A document confirming the delivery of goods or completion of service.",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "jobId": { "type": "string" },
+        "customerSnapshot": { "type": "object", "properties": {"name": {"type": "string"},"phone": {"type": "string"},"taxName": {"type": "string"},"taxAddress": {"type": "string"},"taxId": {"type": "string"}}},
+        "jobSnapshot": { "type": "object", "properties": {"description": {"type": "string"},"vehicleDetails": {"type": "string"}}},
+        "issueDate": { "type": "string", "format": "date" },
+        "items": { "type": "array", "items": { "$ref": "#/backend/entities/DocumentItem" } },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "ISSUED", "DELIVERED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "TaxInvoice": {
+      "title": "Tax Invoice",
+      "description": "A formal tax invoice for a job.",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "jobId": { "type": "string" },
+        "quotationId": { "type": "string", "description": "Optional reference to the quotation." },
+        "customerSnapshot": { "type": "object", "properties": {"name": {"type": "string"},"phone": {"type": "string"},"taxName": {"type": "string"},"taxAddress": {"type": "string"},"taxId": {"type": "string"}}},
+        "jobSnapshot": { "type": "object", "properties": {"description": {"type": "string"},"vehicleDetails": {"type": "string"}}},
+        "issueDate": { "type": "string", "format": "date" },
+        "dueDate": { "type": "string", "format": "date" },
+        "items": { "type": "array", "items": { "$ref": "#/backend/entities/DocumentItem" } },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "subtotalAfterDiscount": { "type": "number" },
+        "isVat": { "type": "boolean", "default": true },
+        "vatAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "ISSUED", "PAID", "OVERDUE", "CANCELLED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Receipt": {
+      "title": "Receipt",
+      "description": "A document confirming payment has been received.",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "jobId": { "type": "string" },
+        "taxInvoiceId": { "type": "string", "description": "Reference to the paid Tax Invoice." },
+        "customerSnapshot": { "type": "object", "properties": {"name": {"type": "string"},"phone": {"type": "string"},"taxName": {"type": "string"},"taxAddress": {"type": "string"},"taxId": {"type": "string"}}},
+        "jobSnapshot": { "type": "object", "properties": {"description": {"type": "string"},"vehicleDetails": {"type": "string"}}},
+        "issueDate": { "type": "string", "format": "date" },
+        "paymentDate": { "type": "string", "format": "date" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT_CARD", "CHEQUE"] },
+        "grandTotal": { "type": "number" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["ISSUED", "VOID"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "BillingNote": {
+      "title": "Billing Note",
+      "description": "A note to request payment for one or more invoices.",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "customerSnapshot": { "type": "object", "properties": {"name": {"type": "string"},"phone": {"type": "string"},"taxName": {"type": "string"},"taxAddress": {"type": "string"},"taxId": {"type": "string"}}},
+        "issueDate": { "type": "string", "format": "date" },
+        "dueDate": { "type": "string", "format": "date" },
+        "invoiceIds": { "type": "array", "items": { "type": "string" }, "description": "A list of Tax Invoice document numbers." },
+        "totalAmount": { "type": "number", "description": "Sum of all invoices in this note." },
+        "status": { "type": "string", "enum": ["DRAFT", "SENT", "PAID"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "CreditNote": {
+      "title": "Credit Note",
+      "description": "A document issued to credit a customer's account.",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "referencesInvoiceId": { "type": "string", "description": "The original invoice this note credits." },
+        "customerSnapshot": { "type": "object", "properties": {"name": {"type": "string"},"phone": {"type": "string"},"taxName": {"type": "string"},"taxAddress": {"type": "string"},"taxId": {"type": "string"}}},
+        "issueDate": { "type": "string", "format": "date" },
+        "reason": { "type": "string" },
+        "items": { "type": "array", "items": { "$ref": "#/backend/entities/DocumentItem" } },
+        "subtotal": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "status": { "type": "string", "enum": ["DRAFT", "ISSUED", "APPLIED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "WithholdingTaxCertificate": {
+      "title": "Withholding Tax Certificate",
+      "description": "A certificate for withholding tax.",
+      "type": "object",
+      "properties": {
+        "documentNumber": { "type": "string" },
+        "issueDate": { "type": "string", "format": "date" },
+        "payer": { "type": "object", "description": "Who paid the tax.", "properties": { "name": {"type": "string"}, "address": {"type": "string"}, "taxId": {"type": "string"} } },
+        "payee": { "type": "object", "description": "Who received the income.", "properties": { "name": {"type": "string"}, "address": {"type": "string"}, "taxId": {"type": "string"} } },
+        "items": { 
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "incomeDate": { "type": "string", "format": "date" },
+              "incomeType": { "type": "string" },
+              "amount": { "type": "number" },
+              "taxRate": { "type": "number" },
+              "taxAmount": { "type": "number" }
+            }
+          } 
+        },
+        "totalTaxAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "Attendance": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Attendance",
@@ -984,6 +1149,34 @@
         "$ref": "#/backend/entities/Payslip"
       },
       "description": "Stores individual payslips for a payroll run."
+    },
+    "/quotations/{quotationId}": {
+      "schema": { "$ref": "#/backend/entities/Quotation" },
+      "description": "Stores quotation documents."
+    },
+    "/deliveryNotes/{deliveryNoteId}": {
+      "schema": { "$ref": "#/backend/entities/DeliveryNote" },
+      "description": "Stores delivery note documents."
+    },
+    "/taxInvoices/{taxInvoiceId}": {
+      "schema": { "$ref": "#/backend/entities/TaxInvoice" },
+      "description": "Stores tax invoice documents."
+    },
+    "/receipts/{receiptId}": {
+      "schema": { "$ref": "#/backend/entities/Receipt" },
+      "description": "Stores receipt documents."
+    },
+    "/billingNotes/{billingNoteId}": {
+      "schema": { "$ref": "#/backend/entities/BillingNote" },
+      "description": "Stores billing note documents."
+    },
+    "/creditNotes/{creditNoteId}": {
+      "schema": { "$ref": "#/backend/entities/CreditNote" },
+      "description": "Stores credit note documents."
+    },
+    "/withholdingTaxCertificates/{certificateId}": {
+      "schema": { "$ref": "#/backend/entities/WithholdingTaxCertificate" },
+      "description": "Stores withholding tax certificate documents."
     }
   }
 }
