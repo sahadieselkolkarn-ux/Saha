@@ -39,8 +39,6 @@ const deliveryNoteFormSchema = z.object({
   issueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
   subtotal: z.coerce.number(),
-  discountAmount: z.coerce.number().min(0).optional().default(0),
-  net: z.coerce.number(),
   grandTotal: z.coerce.number(),
   notes: z.string().optional(),
   senderName: z.string().optional(),
@@ -55,16 +53,16 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
   const { profile } = useAuth();
   const { toast } = useToast();
 
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
+  
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob } = useDoc<Job>(jobDocRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
-  
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
-  const [customerSearch, setCustomerSearch] = useState("");
-  const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   
   const form = useForm<DeliveryNoteFormData>({
     resolver: zodResolver(deliveryNoteFormSchema),
@@ -74,8 +72,6 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
       issueDate: new Date().toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       subtotal: 0,
-      discountAmount: 0,
-      net: 0,
       grandTotal: 0,
       notes: "",
       senderName: "",
@@ -84,7 +80,14 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
   });
 
   const selectedCustomerId = form.watch('customerId');
-  const customer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
+  
+  const customerDocRef = useMemo(() => {
+    if (!db || !selectedCustomerId) return null;
+    return doc(db, 'customers', selectedCustomerId);
+  }, [db, selectedCustomerId]);
+
+  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
+
 
   useEffect(() => {
     if (job) {
@@ -135,11 +138,9 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
       subtotal += total;
     });
 
-    // For delivery note, grand total is just the subtotal
     const grandTotal = subtotal;
 
     form.setValue("subtotal", subtotal);
-    form.setValue("net", grandTotal);
     form.setValue("grandTotal", grandTotal);
   }, [watchedItems, form]);
 
@@ -184,9 +185,11 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
     }
   };
 
-  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers;
+  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer;
+  const isFormLoading = form.formState.isSubmitting || isLoading;
+  const displayCustomer = customer || (job ? { id: job.customerId, ...job.customerSnapshot } : null);
 
-  if (isLoading) {
+  if (isLoading && !job) {
     return <Skeleton className="h-96" />;
   }
 
@@ -195,8 +198,8 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex justify-between items-center">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
+            <Button type="submit" disabled={isFormLoading}>
+              {isFormLoading ? <Loader2 className="animate-spin" /> : <Save />}
               Save Delivery Note
             </Button>
         </div>
@@ -214,9 +217,7 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
         </div>
 
         <Card>
-            <CardHeader>
-                <CardTitle>ข้อมูลลูกค้า</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
             <CardContent>
                 <FormField
                     name="customerId"
@@ -228,7 +229,7 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
                             <PopoverTrigger asChild>
                             <FormControl>
                                 <Button variant="outline" role="combobox" className={cn("w-full justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId}>
-                                {customer ? `${customer.name} (${customer.phone})` : "Select a customer..."}
+                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "Select a customer..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </FormControl>
@@ -237,11 +238,9 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
                                 <div className="p-2 border-b">
                                     <Input autoFocus placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
-                                <ScrollArea className="h-fit max-h-60">
-                                    {filteredCustomers.map((c) => (
-                                    <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
-                                        <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
-                                    </Button>
+                                <ScrollArea className="h-60">
+                                    {filteredCustomers.map(c => (
+                                        <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
                                     ))}
                                 </ScrollArea>
                             </PopoverContent>
@@ -249,10 +248,10 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
                         </FormItem>
                     )}
                     />
-                 {customer && (
+                 {displayCustomer && (
                     <>
-                        <p className="text-sm text-muted-foreground mt-2">{customer.taxAddress || 'N/A'}</p>
-                        <p className="text-sm text-muted-foreground">โทร: {customer.phone}</p>
+                        <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
                     </>
                  )}
             </CardContent>

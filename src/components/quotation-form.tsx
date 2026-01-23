@@ -87,7 +87,14 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   });
 
   const selectedCustomerId = form.watch('customerId');
-  const customer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
+  
+  // Memoize the customer doc ref to prevent re-renders
+  const customerDocRef = useMemo(() => {
+    if (!db || !selectedCustomerId) return null;
+    return doc(db, 'customers', selectedCustomerId);
+  }, [db, selectedCustomerId]);
+  
+  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
 
   // Fetch all customers if no job is provided
   useEffect(() => {
@@ -189,8 +196,10 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   };
 
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingJobCustomer;
+  const isFormLoading = form.formState.isSubmitting || isLoading;
+  const displayCustomer = customer || (job ? { id: job.customerId, ...job.customerSnapshot } : null);
 
-  if (isLoading) {
+  if (isLoading && !job) {
     return <Skeleton className="h-96" />;
   }
   
@@ -203,8 +212,8 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex justify-between items-center">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+            <Button type="submit" disabled={isFormLoading}>
+              {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
               Save Quotation
             </Button>
         </div>
@@ -238,7 +247,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                             <PopoverTrigger asChild>
                             <FormControl>
                                 <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId}>
-                                {customer ? `${customer.name} (${customer.phone})` : "Select a customer..."}
+                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "Select a customer..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </FormControl>
@@ -259,11 +268,11 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                         </FormItem>
                     )}
                     />
-                 {customer && (
+                 {displayCustomer && (
                     <>
-                        <p className="text-sm text-muted-foreground mt-2">{customer.taxAddress || 'N/A'}</p>
-                        <p className="text-sm text-muted-foreground">โทร: {customer.phone}</p>
-                        <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {customer.taxId || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
+                        <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId || 'N/A'}</p>
                     </>
                  )}
                  {job && (
@@ -339,5 +348,3 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     </Form>
   );
 }
-
-    

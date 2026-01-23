@@ -113,5 +113,3 @@ export async function createDocument(
 
     return documentNumber;
 }
-
-    

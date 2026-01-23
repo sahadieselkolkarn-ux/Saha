@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,7 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, UserProfile } from "@/lib/types";
+import type { Job, StoreSettings, Customer } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -60,7 +60,8 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
-  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(db && job?.customerId ? doc(db, 'customers', job.customerId) : null);
+  const customerDocRef = useMemo(() => (db && job?.customerId ? doc(db, 'customers', job.customerId) : null), [db, job]);
+  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
   const form = useForm<TaxInvoiceFormData>({
@@ -175,8 +176,9 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
   };
 
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomer;
+  const isFormLoading = form.formState.isSubmitting || isLoading;
 
-  if (isLoading) {
+  if (isLoading && !job) {
     return <Skeleton className="h-96" />;
   }
 
@@ -193,8 +195,8 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex justify-between items-center">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
+            <Button type="submit" disabled={isFormLoading}>
+              {isFormLoading ? <Loader2 className="animate-spin" /> : <Save />}
               Save Invoice
             </Button>
         </div>
