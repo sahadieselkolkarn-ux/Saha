@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -47,6 +47,7 @@ const getStatusVariant = (status: Job['status']) => {
 
 export default function JobDetailsPage() {
   const { jobId } = useParams();
+  const searchParams = useSearchParams();
   const { db, storage } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -77,6 +78,10 @@ export default function JobDetailsPage() {
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
   const canAddPhotos = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
+
+  const isUserAdmin = profile?.role === 'ADMIN';
+  const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
+  const isViewOnly = job?.status === 'CLOSED' && !allowEditing;
 
   useEffect(() => {
     if (!jobId || !db) return;
@@ -399,7 +404,7 @@ export default function JobDetailsPage() {
   
   return (
     <>
-      <PageHeader title={`Job: ${job.customerSnapshot.name}`} description={`ID: ${job.id.substring(0,8)}...`} />
+      <PageHeader title={`Job: ${job.customerSnapshot.name}`} description={isViewOnly ? `VIEW-ONLY | ID: ${job.id.substring(0,8)}...` : `ID: ${job.id.substring(0,8)}...`} />
       
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
@@ -428,8 +433,9 @@ export default function JobDetailsPage() {
                   value={techReport}
                   onChange={(e) => setTechReport(e.target.value)}
                   rows={6}
+                  disabled={isViewOnly}
                 />
-                <Button onClick={handleSaveTechReport} disabled={isSavingTechReport}>
+                <Button onClick={handleSaveTechReport} disabled={isSavingTechReport || isViewOnly}>
                   {isSavingTechReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   Save Report
                 </Button>
@@ -441,7 +447,7 @@ export default function JobDetailsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Photos ({job.photos?.length ?? 0}/4)</CardTitle>
                 {canAddPhotos && (
-                    <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4}>
+                    <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
                         <label htmlFor="quick-photo-upload" className="cursor-pointer flex items-center">
                             {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                             Add Photo
@@ -453,7 +459,7 @@ export default function JobDetailsPage() {
                                 accept="image/*" 
                                 capture="environment" 
                                 onChange={handleQuickPhotoUpload}
-                                disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4}
+                                disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}
                             />
                         </label>
                     </Button>
@@ -475,14 +481,14 @@ export default function JobDetailsPage() {
           <Card>
               <CardHeader><CardTitle>Add Activity / Photos</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <Textarea placeholder="Type your note here..." value={newNote} onChange={e => setNewNote(e.target.value)} />
+                <Textarea placeholder="Type your note here..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={isViewOnly} />
                 <div className="flex items-center justify-center w-full">
-                    <label htmlFor="activity-dropzone-file" className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg ${((job?.photos?.length || 0) + newPhotos.length) >= 4 ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer bg-muted hover:bg-secondary"}`}>
+                    <label htmlFor="activity-dropzone-file" className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg ${((job?.photos?.length || 0) + newPhotos.length) >= 4 || isViewOnly ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer bg-muted hover:bg-secondary"}`}>
                         <div className="flex flex-col items-center justify-center">
                         <Camera className="w-8 h-8 text-muted-foreground" />
                         <p className="text-xs text-muted-foreground">Add Photos (up to 4 total)</p>
                         </div>
-                        <Input id="activity-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={((job?.photos?.length || 0) + newPhotos.length) >= 4} />
+                        <Input id="activity-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={((job?.photos?.length || 0) + newPhotos.length) >= 4 || isViewOnly} />
                     </label>
                 </div>
                 {(photoPreviews.length > 0) && (
@@ -490,12 +496,12 @@ export default function JobDetailsPage() {
                     {photoPreviews.map((src, i) => (
                       <div key={i} className="relative">
                         <Image src={src} alt="preview" width={100} height={100} className="rounded-md object-cover w-full aspect-square" />
-                        <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-5 w-5" onClick={() => removeNewPhoto(i)}><X className="h-3 w-3" /></Button>
+                        <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-5 w-5" onClick={() => removeNewPhoto(i)} disabled={isViewOnly}><X className="h-3 w-3" /></Button>
                       </div>
                     ))}
                   </div>
                 )}
-                <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0)}>
+                <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || isViewOnly}>
                   {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />}
                   Add Activity
                 </Button>
@@ -557,17 +563,17 @@ export default function JobDetailsPage() {
           <Card>
               <CardHeader><CardTitle className="text-base font-semibold">แจ้งความประสงค์</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                  <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline">
+                  <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline" disabled={isViewOnly}>
                       <Send className="mr-2 h-4 w-4" /> ส่งต่อแผนกอื่น
                   </Button>
                   {job.status === 'IN_PROGRESS' && (
-                     <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isSavingTechReport} className="w-full" variant="outline">
+                     <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isSavingTechReport || isViewOnly} className="w-full" variant="outline">
                         {isRequestingQuotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4"/>}
                         แจ้งเสนอราคา
                     </Button>
                   )}
                   {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
-                    <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport} className="w-full" variant="outline">
+                    <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport || isViewOnly} className="w-full" variant="outline">
                         {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
                         งานเรียบร้อย
                     </Button>

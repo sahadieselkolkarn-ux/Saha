@@ -2,16 +2,34 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit, doc, deleteDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, AlertCircle, ExternalLink } from "lucide-react";
+import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2 } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface JobTableListProps {
   department?: JobDepartment;
@@ -58,6 +76,9 @@ export function JobTableList({
   children
 }: JobTableListProps) {
   const { db } = useFirebase();
+  const { profile } = useAuth();
+  const { toast } = useToast();
+
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FirestoreError | null>(null);
@@ -65,6 +86,11 @@ export function JobTableList({
   const [indexState, setIndexState] = useState<'ok' | 'missing' | 'building'>('ok');
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [jobToDelete, setJobToDelete] = useState<string | null>(null);
+
+  const isUserAdmin = profile?.role === 'ADMIN';
 
   const jobsQuery = useMemo(() => {
     if (!db) return null;
@@ -152,6 +178,25 @@ export function JobTableList({
     }
   }, [error]);
 
+  const handleDeleteRequest = (jobId: string) => {
+    setJobToDelete(jobId);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!db || !jobToDelete) return;
+    
+    try {
+      await deleteDoc(doc(db, "jobs", jobToDelete));
+      toast({title: "Job deleted successfully"});
+    } catch (error: any) {
+      toast({variant: "destructive", title: "Deletion Failed", description: error.message});
+    } finally {
+      setIsDeleteAlertOpen(false);
+      setJobToDelete(null);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
@@ -219,41 +264,78 @@ export function JobTableList({
   }
 
   return (
-    <Card>
-        <CardContent className="pt-6">
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead className="w-[200px]">Customer</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Last Updated</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {filteredJobs.map(job => (
-                        <TableRow key={job.id}>
-                            <TableCell className="font-medium">{job.customerSnapshot.name}</TableCell>
-                            <TableCell>{job.department}</TableCell>
-                            <TableCell className="max-w-xs truncate">{job.description}</TableCell>
-                            <TableCell>
-                                <Badge variant={getStatusVariant(job.status)}>{JOB_STATUS_DISPLAY[job.status]}</Badge>
-                            </TableCell>
-                            <TableCell>{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
-                            <TableCell className="text-right">
-                                <Button asChild variant="outline" size="sm">
-                                    <Link href={`/app/jobs/${job.id}`}>
-                                        Details
-                                    </Link>
-                                </Button>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </CardContent>
-    </Card>
+    <>
+      <Card>
+          <CardContent className="pt-6">
+              <Table>
+                  <TableHeader>
+                      <TableRow>
+                          <TableHead className="w-[200px]">Customer</TableHead>
+                          <TableHead>Department</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Last Updated</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                      {filteredJobs.map(job => (
+                          <TableRow key={job.id}>
+                              <TableCell className="font-medium">{job.customerSnapshot.name}</TableCell>
+                              <TableCell>{job.department}</TableCell>
+                              <TableCell className="max-w-xs truncate">{job.description}</TableCell>
+                              <TableCell>
+                                  <Badge variant={getStatusVariant(job.status)}>{JOB_STATUS_DISPLAY[job.status]}</Badge>
+                              </TableCell>
+                              <TableCell>{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
+                              <TableCell className="text-right">
+                                  <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" className="h-8 w-8 p-0">
+                                              <span className="sr-only">Open menu</span>
+                                              <MoreHorizontal className="h-4 w-4" />
+                                          </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                          <DropdownMenuItem asChild>
+                                              <Link href={`/app/jobs/${job.id}`}>Details</Link>
+                                          </DropdownMenuItem>
+                                          {isUserAdmin && (
+                                              <>
+                                                  <DropdownMenuItem asChild>
+                                                      <Link href={`/app/jobs/${job.id}?edit=true`}><Edit className="mr-2 h-4 w-4" />Edit</Link>
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem
+                                                      className="text-destructive focus:text-destructive"
+                                                      onSelect={() => handleDeleteRequest(job.id)}
+                                                  >
+                                                      <Trash2 className="mr-2 h-4 w-4" />Delete
+                                                  </DropdownMenuItem>
+                                              </>
+                                          )}
+                                      </DropdownMenuContent>
+                                  </DropdownMenu>
+                              </TableCell>
+                          </TableRow>
+                      ))}
+                  </TableBody>
+              </Table>
+          </CardContent>
+      </Card>
+       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    This will permanently delete this job and all its related activities. This action cannot be undone.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
