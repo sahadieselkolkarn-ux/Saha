@@ -16,6 +16,7 @@ interface JobTableListProps {
   department?: JobDepartment;
   status?: JobStatus;
   excludeStatus?: JobStatus | JobStatus[];
+  searchTerm?: string;
   orderByField?: string;
   orderByDirection?: OrderByDirection;
   emptyTitle?: string;
@@ -37,6 +38,7 @@ export function JobTableList({
   department, 
   status,
   excludeStatus,
+  searchTerm = "",
   orderByField = "lastActivityAt",
   orderByDirection = "desc",
   emptyTitle = "No Jobs Found",
@@ -100,6 +102,20 @@ export function JobTableList({
 
     return () => unsubscribe();
   }, [jobsQuery, excludeStatus]);
+  
+  const filteredJobs = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return jobs;
+    }
+    const lowercasedFilter = searchTerm.toLowerCase();
+    return jobs.filter(job =>
+      job.customerSnapshot.name.toLowerCase().includes(lowercasedFilter) ||
+      job.customerSnapshot.phone.includes(searchTerm) ||
+      job.description.toLowerCase().includes(lowercasedFilter) ||
+      job.id.toLowerCase().includes(lowercasedFilter)
+    );
+  }, [jobs, searchTerm]);
+
 
   useEffect(() => {
     if (error?.message?.includes('requires an index')) {
@@ -174,12 +190,12 @@ export function JobTableList({
        );
   }
 
-  if (jobs.length === 0) {
+  if (filteredJobs.length === 0) {
      return (
         <Card>
             <CardContent className="pt-6 text-center text-muted-foreground h-48 flex flex-col justify-center items-center">
-                <h3 className="font-semibold text-lg text-foreground">{emptyTitle}</h3>
-                <p>{emptyDescription}</p>
+                <h3 className="font-semibold text-lg text-foreground">{searchTerm ? 'No jobs match your search' : emptyTitle}</h3>
+                <p>{searchTerm ? 'Try a different search term.' : emptyDescription}</p>
                 {children}
             </CardContent>
         </Card>
@@ -201,7 +217,7 @@ export function JobTableList({
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {jobs.map(job => (
+                    {filteredJobs.map(job => (
                         <TableRow key={job.id}>
                             <TableCell className="font-medium">{job.customerSnapshot.name}</TableCell>
                             <TableCell>{job.department}</TableCell>
