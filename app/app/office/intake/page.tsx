@@ -221,76 +221,81 @@ export default function IntakePage() {
               <FormField
                 name="customerId"
                 control={form.control}
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Customer</FormLabel>
-                    <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            className={cn(
-                              "w-full justify-between",
-                              !field.value && "text-muted-foreground"
+                render={({ field }) => {
+                  const selectedCustomer = field.value
+                    ? customers.find(
+                        (customer) => customer.id === field.value
+                      )
+                    : null;
+                  return (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Customer</FormLabel>
+                      <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className={cn(
+                                "w-full justify-between",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {selectedCustomer
+                                ? `${selectedCustomer.name} (${selectedCustomer.phone})`
+                                : "Search name or phone..."}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                          <div className="p-2">
+                            <Input
+                              autoFocus
+                              placeholder="Search by name or phone..."
+                              value={customerSearch}
+                              onChange={(e) => setCustomerSearch(e.target.value)}
+                            />
+                          </div>
+                          <ScrollArea className="h-fit max-h-60">
+                            {filteredCustomers.length > 0 ? (
+                              filteredCustomers.map((customer) => (
+                                <Button
+                                  variant="ghost"
+                                  key={customer.id}
+                                  onClick={() => {
+                                    field.onChange(customer.id);
+                                    setIsCustomerPopoverOpen(false);
+                                    setCustomerSearch('');
+                                  }}
+                                  className="w-full justify-start h-auto py-2 px-3"
+                                >
+                                  <div className="flex flex-col items-start">
+                                    <p>{customer.name}</p>
+                                    <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                                  </div>
+                                </Button>
+                              ))
+                            ) : (
+                              <div className="py-6 text-center text-sm text-muted-foreground">
+                                No customer found.
+                              </div>
                             )}
-                          >
-                            {field.value
-                              ? customers.find(
-                                  (customer) => customer.id === field.value
-                                )?.name
-                              : "Search name or phone..."}
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                        <div className="p-2">
-                          <Input
-                            autoFocus
-                            placeholder="Search by name or phone..."
-                            value={customerSearch}
-                            onChange={(e) => setCustomerSearch(e.target.value)}
-                          />
-                        </div>
-                        <ScrollArea className="h-fit max-h-60">
-                          {filteredCustomers.length > 0 ? (
-                            filteredCustomers.map((customer) => (
-                              <Button
-                                variant="ghost"
-                                key={customer.id}
-                                onClick={() => {
-                                  field.onChange(customer.id);
-                                  setIsCustomerPopoverOpen(false);
-                                  setCustomerSearch('');
-                                }}
-                                className="w-full justify-start h-auto py-2 px-3"
-                              >
-                                <div className="flex flex-col items-start">
-                                  <p>{customer.name}</p>
-                                  <p className="text-xs text-muted-foreground">{customer.phone}</p>
-                                </div>
-                              </Button>
-                            ))
-                          ) : (
-                            <div className="py-6 text-center text-sm text-muted-foreground">
-                              No customer found.
-                            </div>
-                          )}
-                        </ScrollArea>
-                        <div className="border-t p-2">
-                          <Button asChild variant="outline" className="w-full">
-                            <Link href="/app/office/customers/new">
-                              <PlusCircle className="mr-2 h-4 w-4" />
-                              New Customer
-                            </Link>
-                          </Button>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                          </ScrollArea>
+                          <div className="border-t p-2">
+                            <Button asChild variant="outline" className="w-full">
+                              <Link href="/app/office/customers/new">
+                                <PlusCircle className="mr-2 h-4 w-4" />
+                                New Customer
+                              </Link>
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
@@ -361,7 +366,7 @@ export default function IntakePage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                     {photoPreviews.map((src, index) => (
                       <div key={index} className="relative">
-                        <Image src={src} alt={`Preview ${index + 1}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
+                        <Image src={`'${src}'`} alt={`'Preview ${index + 1}'`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
                         <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePhoto(index)}>
                           <X className="h-4 w-4" />
                         </Button>
