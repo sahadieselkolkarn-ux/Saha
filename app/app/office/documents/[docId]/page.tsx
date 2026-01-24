@@ -22,19 +22,33 @@ function DocumentView({ document, isPrintMode }: { document: Document; isPrintMo
     const { toast } = useToast();
 
     const handlePrint = () => {
-        document.documentElement.classList.remove('prevent-scroll');
-        document.body.style.pointerEvents = '';
-        
-        const printUrl = window.location.href + (window.location.search ? '&' : '?') + 'print=1';
-        const printWindow = window.open(printUrl, '_blank');
+        try {
+            // Defensively remove styles that might prevent interaction.
+            document?.documentElement?.classList.remove('prevent-scroll');
+            if (document?.body?.style) {
+                 document.body.style.pointerEvents = '';
+            }
+            
+            const printUrl = window.location.href + (window.location.search ? '&' : '?') + 'print=1';
+            // Added 'noopener,noreferrer' as requested for security.
+            const printWindow = window.open(printUrl, '_blank', 'noopener,noreferrer');
 
-        if (!printWindow) {
+            if (!printWindow) {
+                toast({
+                    variant: 'destructive',
+                    title: 'ไม่สามารถเปิดหน้าต่างพิมพ์ได้',
+                    description: 'กรุณาอนุญาต pop-ups สำหรับเว็บไซต์นี้ แล้วลองใหม่อีกครั้ง',
+                });
+                window.print(); // Fallback to same-window print
+            }
+        } catch (error) {
+            console.error("Print failed:", error);
             toast({
                 variant: 'destructive',
-                title: 'ไม่สามารถเปิดหน้าต่างพิมพ์ได้',
-                description: 'กรุณาอนุญาต pop-ups สำหรับเว็บไซต์นี้ แล้วลองใหม่อีกครั้ง',
+                title: 'เกิดข้อผิดพลาดในการพิมพ์',
+                description: 'กำลังลองพิมพ์ในหน้าต่างปัจจุบัน',
             });
-            window.print();
+            window.print(); // Fallback to same-window print
         }
     };
 
