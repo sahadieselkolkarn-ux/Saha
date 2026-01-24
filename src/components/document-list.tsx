@@ -101,7 +101,7 @@ export function DocumentList({ docType }: DocumentListProps) {
       });
 
       // 2. If there's a linked job, revert its status to DONE
-      if (docToAction.jobId) {
+      if (docToAction.jobId && typeof docToAction.jobId === 'string' && docToAction.jobId.length > 0) {
         const jobRef = doc(db, "jobs", docToAction.jobId);
         batch.update(jobRef, {
           status: 'DONE',
