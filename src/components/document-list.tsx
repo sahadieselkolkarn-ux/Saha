@@ -204,13 +204,13 @@ export function DocumentList({ docType }: DocumentListProps) {
                              <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${docItem.id}`)}>
                               แก้ไข
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => handleCancelRequest(docItem)} disabled={docItem.status === 'CANCELLED'}>
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED'}>
                               <XCircle className="mr-2 h-4 w-4"/>
                               ยกเลิก
                             </DropdownMenuItem>
                             {isUserAdmin && (
                               <DropdownMenuItem
-                                onSelect={() => handleDeleteRequest(docItem)}
+                                onSelect={(e) => { e.preventDefault(); handleDeleteRequest(docItem); }}
                                 className="text-destructive focus:text-destructive"
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
