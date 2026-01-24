@@ -235,7 +235,7 @@ export default function ManagementHRAttendanceSummaryPage() {
                 usersSnapshot = await getDocs(usersQuery);
             } catch(e) {
                 console.warn("Could not fetch user list:", e);
-                toast({ variant: 'destructive', title: "Could not load user list", description: "Falling back to attendance data for user names."});
+                toast({ variant: 'destructive', title: "Could not load user list", description: "An error occurred fetching the user list."});
             }
 
             const [
@@ -247,7 +247,7 @@ export default function ManagementHRAttendanceSummaryPage() {
             ] = await Promise.all([
                 getDoc(settingsDocRef),
                 getDocs(holidaysQuery),
-                getDocs(leavesQuery),
+                getDocs(leavesSnapshot),
                 getDocs(attendanceQuery),
                 getDocs(adjustmentsQuery),
             ]);
@@ -258,6 +258,7 @@ export default function ManagementHRAttendanceSummaryPage() {
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             
+            // Only use users from the 'users' collection as the source of truth.
             const usersToProcess = allUsersData;
             
             const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
