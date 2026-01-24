@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, updateDoc, serverTimestamp, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -65,6 +65,10 @@ const taxInvoiceFormSchema = z.object({
 
 type TaxInvoiceFormData = z.infer<typeof taxInvoiceFormSchema>;
 
+const formatCurrency = (value: number | null | undefined) => {
+  return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, editDocId: string | null }) {
   const router = useRouter();
   const { db } = useFirebase();
@@ -96,6 +100,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       isVat: true,
       isBackfill: false,
+      subtotal: 0,
+      discountAmount: 0,
+      net: 0,
+      vatAmount: 0,
+      grandTotal: 0,
     },
   });
 
@@ -159,10 +168,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         items: docToEdit.items.map(item => ({...item})),
         notes: docToEdit.notes ?? '',
         isVat: docToEdit.withTax,
-        discountAmount: docToEdit.discountAmount,
+        discountAmount: docToEdit.discountAmount || 0,
         senderName: profile?.displayName || docToEdit.senderName,
         receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
         isBackfill: false,
+        subtotal: docToEdit.subtotal || 0,
+        net: docToEdit.net || 0,
+        vatAmount: docToEdit.vatAmount || 0,
+        grandTotal: docToEdit.grandTotal || 0,
       });
     } else if (job) {
       const defaultItem = { description: job.description, quantity: 1, unitPrice: 0, total: 0 };
@@ -419,7 +432,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                 <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="Service or product" />)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
-                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`, 0).toLocaleString()}</TableCell>
+                                <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
                                 <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                             </TableRow>
                         ))}
@@ -438,9 +451,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             </Card>
             <div className="space-y-4">
                  <div className="space-y-2 p-4 border rounded-lg">
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{form.watch('subtotal').toLocaleString()}</span></div>
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
                     <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="w-32 text-right"/>)}/></div>
-                    <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{form.watch('net').toLocaleString()}</span></div>
+                    <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div>
                     <div className="flex justify-between items-center">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
@@ -448,10 +461,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                 <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>
-                        <span>{form.watch('vatAmount').toLocaleString()}</span>
+                        <span>{formatCurrency(form.watch('vatAmount'))}</span>
                     </div>
                      <Separator/>
-                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{form.watch('grandTotal').toLocaleString()}</span></div>
+                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                  </div>
             </div>
         </div>
