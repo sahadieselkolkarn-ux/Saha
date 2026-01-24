@@ -134,13 +134,14 @@ export default function ManagementAccountingAccountsPage() {
                   <TableHead>ประเภท</TableHead>
                   <TableHead>ธนาคาร</TableHead>
                   <TableHead>เลขที่บัญชี</TableHead>
+                  <TableHead>ยอดยกมา</TableHead>
                   <TableHead>สถานะ</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={6} className="h-24 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="h-24 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
                 ) : filteredAccounts.length > 0 ? (
                   filteredAccounts.map(account => (
                     <TableRow key={account.id}>
@@ -148,6 +149,7 @@ export default function ManagementAccountingAccountsPage() {
                       <TableCell>{account.type}</TableCell>
                       <TableCell>{account.bankName || '-'}</TableCell>
                       <TableCell>{account.accountNo || '-'}</TableCell>
+                      <TableCell className="text-right">{(account.openingBalance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell>
                         <Badge variant={account.isActive ? 'default' : 'secondary'}>{account.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}</Badge>
                       </TableCell>
@@ -166,7 +168,7 @@ export default function ManagementAccountingAccountsPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={6} className="h-24 text-center">ยังไม่มีบัญชี กรุณากด ‘เพิ่มบัญชี’</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="h-24 text-center">ยังไม่มีบัญชี กรุณากด ‘เพิ่มบัญชี’</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

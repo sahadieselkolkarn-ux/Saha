@@ -7,14 +7,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
+import { safeFormat } from "@/lib/date-utils";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -28,6 +30,8 @@ const accountSchema = z.object({
   bankName: z.string().optional(),
   accountNo: z.string().optional(),
   isActive: z.boolean().default(true),
+  openingBalance: z.coerce.number().optional(),
+  openingBalanceDate: z.string().optional(),
 }).refine(data => data.type !== 'BANK' || (data.bankName && data.bankName.length > 0 && data.accountNo && data.accountNo.length > 0), {
   message: "กรุณากรอกชื่อธนาคารและเลขบัญชี",
   path: ["bankName"], 
@@ -40,7 +44,10 @@ export default function EditAccountPage() {
   const params = useParams();
   const accountId = params.accountId as string;
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
+
+  const isUserAdmin = profile?.role === 'ADMIN';
 
   const accountDocRef = useMemo(() => {
     if (!db || !accountId) return null;
@@ -52,12 +59,14 @@ export default function EditAccountPage() {
   const form = useForm<AccountFormData>({
     resolver: zodResolver(accountSchema),
     defaultValues: {
-      name: "",
-      type: "CASH",
-      bankName: "",
-      accountNo: "",
-      isActive: true,
-    }
+        name: "",
+        type: "CASH",
+        bankName: "",
+        accountNo: "",
+        isActive: true,
+        openingBalance: 0,
+        openingBalanceDate: "",
+    },
   });
 
   useEffect(() => {
@@ -68,6 +77,8 @@ export default function EditAccountPage() {
         bankName: account.bankName || "",
         accountNo: account.accountNo || "",
         isActive: account.isActive,
+        openingBalance: account.openingBalance ?? 0,
+        openingBalanceDate: account.openingBalanceDate || "",
       });
     }
   }, [account, form]);
@@ -75,15 +86,32 @@ export default function EditAccountPage() {
   const accountType = form.watch("type");
 
   const onSubmit = async (values: AccountFormData) => {
-    if (!db || !accountDocRef) {
+    if (!db || !accountDocRef || !profile) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ยังไม่พร้อมเชื่อมต่อฐานข้อมูล" });
         return;
     }
+    
     try {
-      await updateDoc(accountDocRef, {
-        ...values,
+      const dataToUpdate: any = {
+        name: values.name,
+        type: values.type,
+        bankName: values.bankName,
+        accountNo: values.accountNo,
+        isActive: values.isActive,
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      if (isUserAdmin) {
+        dataToUpdate.openingBalance = values.openingBalance;
+        dataToUpdate.openingBalanceDate = values.openingBalanceDate;
+        // Update audit fields only if the balance has actually changed
+        if (values.openingBalance !== account?.openingBalance || values.openingBalanceDate !== account?.openingBalanceDate) {
+            dataToUpdate.openingBalanceSetByUid = profile.uid;
+            dataToUpdate.openingBalanceSetAt = serverTimestamp();
+        }
+      }
+
+      await updateDoc(accountDocRef, dataToUpdate);
       toast({ title: "บันทึกการแก้ไขสำเร็จ" });
       router.push("/app/management/accounting/accounts");
     } catch (error: any) {
@@ -119,6 +147,7 @@ export default function EditAccountPage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
           <Card>
+            <CardHeader><CardTitle>ข้อมูลบัญชี</CardTitle></CardHeader>
             <CardContent className="pt-6 space-y-4">
                <FormField
                 control={form.control}
@@ -160,7 +189,7 @@ export default function EditAccountPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>ชื่อธนาคาร</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
+                        <FormControl><Input {...field} value={field.value ?? ''} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -171,7 +200,7 @@ export default function EditAccountPage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>เลขที่บัญชี</FormLabel>
-                        <FormControl><Input {...field} /></FormControl>
+                        <FormControl><Input {...field} value={field.value ?? ''} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -197,6 +226,43 @@ export default function EditAccountPage() {
                 />
             </CardContent>
           </Card>
+
+           <Card>
+                <CardHeader>
+                    <CardTitle>ยอดยกมา</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                     <FormField
+                        control={form.control}
+                        name="openingBalance"
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>ยอดยกมา</FormLabel>
+                            <FormControl><Input type="number" {...field} disabled={!isUserAdmin} value={field.value ?? 0} /></FormControl>
+                            {!isUserAdmin && <FormDescription>แก้ไขได้เฉพาะแอดมิน</FormDescription>}
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="openingBalanceDate"
+                        render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>วันที่ยอดยกมา</FormLabel>
+                            <FormControl><Input type="date" {...field} disabled={!isUserAdmin} value={field.value ?? ''} /></FormControl>
+                             {account.openingBalanceSetAt && (
+                                <FormDescription>
+                                    อัปเดตล่าสุด: {safeFormat(account.openingBalanceSetAt, 'dd MMM yyyy, HH:mm')}
+                                </FormDescription>
+                            )}
+                            <FormMessage />
+                        </FormItem>
+                        )}
+                    />
+                </CardContent>
+            </Card>
+
           <div className="flex gap-4">
             <Button type="submit" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

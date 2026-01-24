@@ -327,6 +327,10 @@ export interface AccountingAccount {
   isActive: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  openingBalance?: number;
+  openingBalanceDate?: string; // YYYY-MM-DD
+  openingBalanceSetByUid?: string;
+  openingBalanceSetAt?: Timestamp;
 }
 
 export interface AccountingEntry {

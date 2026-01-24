@@ -87,14 +87,15 @@ export function BillingNoteForm() {
         return;
     }
     // Note: In a real app, you'd likely filter by payment status e.g., where("paymentStatus", "!=", "PAID")
-    // For now, we fetch all tax invoices for the customer.
+    // Query by customer ID first, then filter by docType on the client to avoid needing a composite index.
     const q = query(
         collection(db, "documents"),
-        where("docType", "==", "TAX_INVOICE"),
         where("customerSnapshot.id", "==", selectedCustomerId)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setInvoices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType)));
+      const allCustomerDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType));
+      const taxInvoices = allCustomerDocs.filter(doc => doc.docType === 'TAX_INVOICE');
+      setInvoices(taxInvoices);
     });
     return () => unsubscribe();
   }, [db, selectedCustomerId]);

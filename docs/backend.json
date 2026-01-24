@@ -982,7 +982,11 @@
         "accountNo": { "type": "string" },
         "isActive": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "openingBalance": { "type": "number" },
+        "openingBalanceDate": { "type": "string", "format": "date" },
+        "openingBalanceSetByUid": { "type": "string" },
+        "openingBalanceSetAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "type", "isActive", "createdAt", "updatedAt"]
     },
