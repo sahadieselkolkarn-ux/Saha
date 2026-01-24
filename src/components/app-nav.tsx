@@ -49,6 +49,36 @@ const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onC
     );
 };
 
+const OfficeJobManagementSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
+    const pathname = usePathname();
+    const isOpen = pathname.startsWith('/app/office/jobs/management');
+    return (
+        <Collapsible defaultOpen={isOpen}>
+            <CollapsibleTrigger asChild>
+                 <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
+                    บริหารงานซ่อม
+                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                <p className="px-2 py-1 text-xs font-semibold text-muted-foreground/80">ตามแผนก</p>
+                <SubNavLink href="/app/office/jobs/management/car-service" label="งานซ่อมหน้าร้าน" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/commonrail" label="งานแผนกคอมมอนเรล" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/mechanic" label="งานแผนกแมคคานิค" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/outsource" label="งานส่งออกร้านนอก" onClick={onLinkClick} />
+                <p className="px-2 pt-2 pb-1 text-xs font-semibold text-muted-foreground/80">ตามสถานะงาน</p>
+                <SubNavLink href="/app/office/jobs/management/quotation" label="งานเสนอราคา" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/waiting-approve" label="รอลูกค้าอนุมัติ" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/pending-parts" label="กำลังจัดอะไหล่" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/done" label="งานเสร็จรอทำบิล" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/pickup" label="รอลูกค้ารับสินค้า" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/history" label="ประวัติงานซ่อม/ค้นหา" onClick={onLinkClick} />
+            </CollapsibleContent>
+        </Collapsible>
+    );
+};
+
+
 const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
     const isOpen = pathname.startsWith('/app/management/accounting') && !pathname.startsWith('/app/management/accounting/documents');
@@ -244,7 +274,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'OFFICE' && (
                      <>
                         <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/jobs/management" label="บริหารงานซ่อม" onClick={onLinkClick} />
+                        <OfficeJobManagementSubMenu onLinkClick={onLinkClick} />
                         <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
 
@@ -372,7 +402,3 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         </nav>
     );
 }
-
-    
-
-    
