@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo } from "react";
@@ -43,7 +42,7 @@ function DocumentView({ document }: { document: Document }) {
                     <div className="lg:col-span-2 space-y-2">
                         {isDeliveryNote ? (
                              <>
-                                <h2 className="text-xl font-bold">{document.storeSnapshot.informalName}</h2>
+                                <h2 className="text-xl font-bold">{document.storeSnapshot.informalName || document.storeSnapshot.taxName}</h2>
                                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
                                 <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
                             </>
