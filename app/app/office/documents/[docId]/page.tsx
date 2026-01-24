@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useMemo, Suspense, useEffect } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -15,9 +15,28 @@ import { AlertCircle, ArrowLeft, Printer } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
+import { useToast } from "@/hooks/use-toast";
 
-function DocumentView({ document }: { document: Document }) {
+function DocumentView({ document, isPrintMode }: { document: Document; isPrintMode: boolean }) {
     const router = useRouter();
+    const { toast } = useToast();
+
+    const handlePrint = () => {
+        document.documentElement.classList.remove('prevent-scroll');
+        document.body.style.pointerEvents = '';
+        
+        const printUrl = window.location.href + (window.location.search ? '&' : '?') + 'print=1';
+        const printWindow = window.open(printUrl, '_blank');
+
+        if (!printWindow) {
+            toast({
+                variant: 'destructive',
+                title: 'ไม่สามารถเปิดหน้าต่างพิมพ์ได้',
+                description: 'กรุณาอนุญาต pop-ups สำหรับเว็บไซต์นี้ แล้วลองใหม่อีกครั้ง',
+            });
+            window.print();
+        }
+    };
 
     const docTypeDisplay: Record<Document['docType'], string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
@@ -33,10 +52,12 @@ function DocumentView({ document }: { document: Document }) {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center print:hidden">
-                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-                <Button onClick={() => window.print()}><Printer/> Print</Button>
-            </div>
+            {!isPrintMode && (
+                <div className="flex justify-between items-center print:hidden">
+                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
+                    <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                </div>
+            )}
 
             <div className="p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -128,10 +149,12 @@ function DocumentView({ document }: { document: Document }) {
     );
 }
 
-
-export default function DocumentPage() {
+function DocumentPageContent() {
     const { docId } = useParams();
+    const searchParams = useSearchParams();
     const { db } = useFirebase();
+
+    const isPrintMode = searchParams.get('print') === '1';
 
     const docRef = useMemo(() => {
         if (!db || typeof docId !== 'string') return null;
@@ -139,6 +162,22 @@ export default function DocumentPage() {
     }, [db, docId]);
 
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
+
+    useEffect(() => {
+        if (isPrintMode && document && !isLoading) {
+            const handleAfterPrint = () => window.close();
+            window.addEventListener('afterprint', handleAfterPrint);
+
+            const timer = setTimeout(() => {
+                window.print();
+            }, 300);
+
+            return () => {
+                clearTimeout(timer);
+                window.removeEventListener('afterprint', handleAfterPrint);
+            }
+        }
+    }, [isPrintMode, document, isLoading]);
 
     if (isLoading) {
         return <Skeleton className="h-screen w-full" />;
@@ -162,5 +201,13 @@ export default function DocumentPage() {
         );
     }
 
-    return <DocumentView document={document} />;
+    return <DocumentView document={document} isPrintMode={isPrintMode} />;
+}
+
+export default function DocumentPageWrapper() {
+  return (
+    <Suspense fallback={<Skeleton className="h-screen w-full" />}>
+      <DocumentPageContent />
+    </Suspense>
+  )
 }
