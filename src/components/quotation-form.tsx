@@ -59,7 +59,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   const { toast } = useToast();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(!jobId);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
 
@@ -88,35 +88,40 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
 
   const selectedCustomerId = form.watch('customerId');
   
-  // Memoize the customer doc ref to prevent re-renders
   const customerDocRef = useMemo(() => {
     if (!db || !selectedCustomerId) return null;
     return doc(db, 'customers', selectedCustomerId);
   }, [db, selectedCustomerId]);
-  
-  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
+  const { data: customer } = useDoc<Customer>(customerDocRef);
 
-  // Fetch all customers if no job is provided
+  const jobCustomerDocRef = useMemo(() => {
+    if (!db || !job?.customerId) return null;
+    return doc(db, 'customers', job.customerId);
+  }, [db, job?.customerId]);
+  const { data: jobCustomer } = useDoc<Customer>(jobCustomerDocRef);
+
   useEffect(() => {
-    if (jobId || !db) return;
+    if (jobId || !db) {
+      setIsLoadingCustomers(false);
+      return;
+    };
+    setIsLoadingCustomers(true);
     const q = query(collection(db, "customers"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
+    }, (error) => {
+      toast({ variant: "destructive", title: "Failed to load customers" });
+      setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
-  }, [db, jobId]);
-
-  // Fetch job's customer if job is provided
-  const { data: jobCustomer, isLoading: isLoadingJobCustomer } = useDoc<Customer>(db && job?.customerId ? doc(db, 'customers', job.customerId) : null);
+  }, [db, jobId, toast]);
 
   useEffect(() => {
     if (jobId && jobCustomer) {
       setCustomers([jobCustomer]);
-      setIsLoadingCustomers(false);
     }
   }, [jobId, jobCustomer]);
-
 
   useEffect(() => {
     if (job) {
@@ -124,6 +129,18 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
       form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
     }
   }, [job, form]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch) {
+      return customers;
+    }
+    const lowercasedFilter = customerSearch.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(lowercasedFilter) ||
+        c.phone.includes(customerSearch)
+    );
+  }, [customers, customerSearch]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -156,8 +173,10 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: QuotationFormData) => {
-    if (!db || !customer || !storeSettings || !profile) {
-        toast({ variant: "destructive", title: "Missing data for quotation creation." });
+    const customerForDoc = customer ?? jobCustomer ?? customers.find(c => c.id === selectedCustomerId) ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
+
+    if (!db || !customerForDoc || !storeSettings || !profile) {
+        toast({ variant: "destructive", title: "Missing critical data", description: "Cannot create quotation. Customer or store settings are missing." });
         return;
     }
 
@@ -165,7 +184,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
         const documentData = {
             docDate: data.issueDate,
             jobId: data.jobId,
-            customerSnapshot: { ...customer },
+            customerSnapshot: { ...customerForDoc },
             carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : {},
             storeSnapshot: { ...storeSettings },
             items: data.items,
@@ -194,12 +213,12 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
         toast({ variant: "destructive", title: "Failed to create quotation", description: error.message });
     }
   };
-
-  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingJobCustomer;
+  
+  const isLoading = isLoadingJob || isLoadingStore || (!jobId && isLoadingCustomers);
   const isFormLoading = form.formState.isSubmitting || isLoading;
-  const displayCustomer = customer || (job ? { id: job.customerId, ...job.customerSnapshot } : null);
+  const displayCustomer = customer ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
 
-  if (isLoading && !job) {
+  if (isLoading) {
     return <Skeleton className="h-96" />;
   }
   
@@ -233,9 +252,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
         </div>
 
         <Card>
-            <CardHeader>
-                <CardTitle>ข้อมูลลูกค้า</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
             <CardContent>
                <FormField
                     name="customerId"
@@ -257,7 +274,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                                     <Input autoFocus placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-fit max-h-60">
-                                    {customers.map((c) => (
+                                    {filteredCustomers.map((c) => (
                                     <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
                                         <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
                                     </Button>
@@ -286,9 +303,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
         </Card>
 
         <Card>
-            <CardHeader>
-                <CardTitle>รายการ</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>รายการ</CardTitle></CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>
