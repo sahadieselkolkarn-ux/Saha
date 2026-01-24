@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, writeBatch } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
@@ -88,14 +88,40 @@ export function DocumentList({ docType }: DocumentListProps) {
   };
 
   const confirmCancel = async () => {
-    if (!db || !docToAction) return;
+    if (!db || !docToAction || !profile) return;
     setIsActionLoading(true);
     try {
-      await updateDoc(doc(db, "documents", docToAction.id), {
+      const batch = writeBatch(db);
+
+      // 1. Update the document status to CANCELLED
+      const docRef = doc(db, "documents", docToAction.id);
+      batch.update(docRef, {
         status: 'CANCELLED',
         updatedAt: serverTimestamp(),
       });
-      toast({ title: "Document Cancelled" });
+
+      // 2. If there's a linked job, revert its status to DONE
+      if (docToAction.jobId) {
+        const jobRef = doc(db, "jobs", docToAction.jobId);
+        batch.update(jobRef, {
+          status: 'DONE',
+          lastActivityAt: serverTimestamp(),
+        });
+        
+        const activityRef = doc(collection(db, "jobs", docToAction.jobId, "activities"));
+        batch.set(activityRef, {
+            text: `ยกเลิกเอกสาร ${docToAction.docNo} สถานะงานกลับไปเป็น "งานเรียบร้อย"`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
+        });
+      }
+      
+      await batch.commit();
+
+      toast({ title: "Document Cancelled", description: docToAction.jobId ? "Job status has been reverted to 'DONE'." : "" });
+
     } catch (e: any) {
       toast({ variant: "destructive", title: "Action Failed", description: e.message });
     } finally {
