@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo } from "react";
@@ -27,7 +28,7 @@ function DocumentView({ document }: { document: Document }) {
         CREDIT_NOTE: "ใบลดหนี้ / Credit Note",
         WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
     };
-
+    
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
 
     return (

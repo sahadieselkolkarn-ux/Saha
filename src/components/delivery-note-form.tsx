@@ -180,7 +180,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     };
 
     try {
-        if (isEditing) {
+        if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
                 ...documentData,
@@ -230,7 +230,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 <p className="text-sm text-muted-foreground">โทร: {storeSettings?.phone}</p>
             </div>
             <div className="space-y-4">
-                 <h1 className="text-2xl font-bold text-right">ใบส่งของชั่วคราว</h1>
                  <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
             </div>
         </div>
