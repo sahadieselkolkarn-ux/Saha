@@ -85,7 +85,7 @@ export default function ManagementAccountingPayrollPage() {
         const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
         const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
         const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<', nextStr));
-        const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart));
+        const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
         const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr));
 
 
