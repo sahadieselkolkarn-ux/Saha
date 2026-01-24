@@ -51,6 +51,13 @@ export default function EditAccountPage() {
 
   const form = useForm<AccountFormData>({
     resolver: zodResolver(accountSchema),
+    defaultValues: {
+      name: "",
+      type: "CASH",
+      bankName: "",
+      accountNo: "",
+      isActive: true,
+    }
   });
 
   useEffect(() => {
