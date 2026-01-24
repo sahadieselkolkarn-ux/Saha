@@ -21,15 +21,15 @@ function DocumentView({ document }: { document: Document }) {
 
     const docTypeDisplay: Record<Document['docType'], string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
-        DELIVERY_NOTE: "ใบส่งของ / Delivery Note",
+        DELIVERY_NOTE: "ใบส่งของชั่วคราว",
         TAX_INVOICE: "ใบกำกับภาษี / Tax Invoice",
         RECEIPT: "ใบเสร็จรับเงิน / Receipt",
         BILLING_NOTE: "ใบวางบิล / Billing Note",
         CREDIT_NOTE: "ใบลดหนี้ / Credit Note",
         WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
     };
-
-    const hasFinancials = document.docType !== 'DELIVERY_NOTE';
+    
+    const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
 
     return (
         <div className="space-y-6">
@@ -41,10 +41,20 @@ function DocumentView({ document }: { document: Document }) {
             <div className="p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <div className="lg:col-span-2 space-y-2">
-                        <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
-                        <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
-                        <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
+                        {isDeliveryNote ? (
+                             <>
+                                <h2 className="text-xl font-bold">{document.storeSnapshot.informalName || document.storeSnapshot.taxName}</h2>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                            </>
+                        ) : (
+                             <>
+                                <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                                <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
+                            </>
+                        )}
                     </div>
                     <div className="space-y-2">
                         <h1 className="text-2xl font-bold text-right">{docTypeDisplay[document.docType]}</h1>
@@ -61,7 +71,7 @@ function DocumentView({ document }: { document: Document }) {
                         <p className="font-semibold">{document.customerSnapshot.name}</p>
                         <p className="text-muted-foreground whitespace-pre-wrap">{document.customerSnapshot.taxAddress || 'N/A'}</p>
                         <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
-                        <p className="text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>
+                        {!isDeliveryNote && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
                     </CardContent>
                 </Card>
 
@@ -71,8 +81,8 @@ function DocumentView({ document }: { document: Document }) {
                             <TableHead className="w-12">#</TableHead>
                             <TableHead>รายการ</TableHead>
                             <TableHead className="text-right">จำนวน</TableHead>
-                            {hasFinancials && <TableHead className="text-right">ราคา/หน่วย</TableHead>}
-                            {hasFinancials && <TableHead className="text-right">จำนวนเงิน</TableHead>}
+                            <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                            <TableHead className="text-right">จำนวนเงิน</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -81,8 +91,8 @@ function DocumentView({ document }: { document: Document }) {
                                 <TableCell>{index + 1}</TableCell>
                                 <TableCell>{item.description}</TableCell>
                                 <TableCell className="text-right">{item.quantity}</TableCell>
-                                {hasFinancials && <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
-                                {hasFinancials && <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
+                                <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
@@ -92,16 +102,14 @@ function DocumentView({ document }: { document: Document }) {
                     <div className="space-y-4">
                         {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
                     </div>
-                    {hasFinancials && (
-                        <div className="space-y-2">
-                            <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                            <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                            <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                            {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
-                            <Separator />
-                            <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        </div>
-                    )}
+                    <div className="space-y-2">
+                        <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                        <Separator />
+                        <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    </div>
                 </div>
                 
                  <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">

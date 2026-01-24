@@ -11,7 +11,7 @@ import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -86,6 +86,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       discountAmount: 0,
       net: 0,
       grandTotal: 0,
+      notes: '',
+      senderName: '',
+      receiverName: '',
     },
   });
 
@@ -99,28 +102,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
 
   useEffect(() => {
-    if (docToEdit) {
-      form.reset({
-        jobId: docToEdit.jobId || undefined,
-        customerId: docToEdit.customerSnapshot.id,
-        issueDate: docToEdit.docDate,
-        items: docToEdit.items.map(item => ({...item})),
-        notes: docToEdit.notes,
-        senderName: profile?.displayName || docToEdit.senderName,
-        receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
-        discountAmount: docToEdit.discountAmount || 0,
-      })
-    } else if (job) {
-        form.setValue('customerId', job.customerId);
-        form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
-        form.setValue('receiverName', job.customerSnapshot.name);
-    }
-    if (profile) {
-        form.setValue('senderName', profile.displayName);
-    }
-  }, [job, docToEdit, profile, form]);
-
-  useEffect(() => {
     if (!db) return;
     const q = query(collection(db, "customers"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -132,7 +113,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     });
     return () => unsubscribe();
   }, [db, toast]);
-
+  
   useEffect(() => {
     if (!db || !jobId) {
       setQuotations([]);
@@ -148,7 +129,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const fetchedQuotations = snapshot.docs.map(d => d.data() as DocumentType);
-        // Sort by date client-side to avoid composite index
         fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
         setQuotations(fetchedQuotations);
     });
@@ -156,14 +136,28 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   }, [db, jobId]);
 
-  const filteredCustomers = useMemo(() => {
-    if (!customerSearch) return customers;
-    return customers.filter(c =>
-        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        c.phone.includes(customerSearch)
-    );
-  }, [customers, customerSearch]);
-
+  useEffect(() => {
+    if (docToEdit) {
+      form.reset({
+        jobId: docToEdit.jobId || undefined,
+        customerId: docToEdit.customerSnapshot.id,
+        issueDate: docToEdit.docDate,
+        items: docToEdit.items.map(item => ({...item})),
+        notes: docToEdit.notes || '',
+        senderName: (profile?.displayName || docToEdit.senderName) || '',
+        receiverName: (docToEdit.customerSnapshot.name || docToEdit.receiverName) || '',
+        discountAmount: docToEdit.discountAmount || 0,
+      })
+    } else if (job) {
+        form.setValue('customerId', job.customerId);
+        form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
+        form.setValue('receiverName', job.customerSnapshot.name || '');
+    }
+    if (profile) {
+        form.setValue('senderName', profile.displayName || '');
+    }
+  }, [job, docToEdit, profile, form]);
+  
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "items",
@@ -193,7 +187,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   const handleFetchFromQuotation = () => {
     if (quotations.length > 0) {
-      // Use the most recent quotation
       const latestQuotation = quotations[0];
       form.setValue('items', latestQuotation.items);
       form.setValue('discountAmount', latestQuotation.discountAmount);
@@ -253,6 +246,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     }
   };
 
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch) return customers;
+    return customers.filter(c =>
+        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        c.phone.includes(customerSearch)
+    );
+  }, [customers, customerSearch]);
+
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer || isLoadingDocToEdit;
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
@@ -282,12 +283,11 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                     name="customerId"
                     control={form.control}
                     render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                        <FormLabel>ลูกค้า</FormLabel>
+                        <FormItem>
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
-                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId}>
+                                <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={!!jobId || !!editDocId}>
                                 {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -330,9 +330,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                         {fields.map((field, index) => (
                             <TableRow key={field.id}>
                                 <TableCell>{index + 1}</TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" />)}/></TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" />)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
                                 <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
                                 <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                             </TableRow>
@@ -347,20 +347,20 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
              <Card>
                 <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
                 <CardContent>
-                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไข หรืออื่นๆ" rows={3} />)} />
+                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไข หรืออื่นๆ" rows={3} />)} />
                 </CardContent>
             </Card>
              <div className="space-y-4">
                  <div className="space-y-2 p-4 border rounded-lg h-full flex flex-col justify-end">
                     <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} className="w-32 text-right"/>)}/></div>
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="w-32 text-right"/>)}/></div>
                     <div className="flex justify-between items-center text-lg font-bold border-t border-b py-2"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                  </div>
             </div>
         </div>
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
         </div>
 
         <div className="flex justify-end gap-4">

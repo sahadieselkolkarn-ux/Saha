@@ -10,7 +10,7 @@ import { DocumentList } from "@/components/document-list";
 export default function OfficeDeliveryNotePage() {
   return (
     <>
-      <PageHeader title="ใบส่งของชั่วคราว" description="สร้างและจัดการใบส่งของ (บิลสด)">
+      <PageHeader title="ใบส่งของชั่วคราว" description="สร้างและจัดการใบส่งของชั่วคราว">
         <Button asChild>
           <Link href="/app/office/documents/delivery-note/new">
             <PlusCircle className="mr-2 h-4 w-4" />
