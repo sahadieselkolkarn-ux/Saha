@@ -24,6 +24,15 @@ import { useFirebase } from "@/firebase"
 import type { UserProfile } from "@/lib/types"
 
 
+const departmentNames: Record<Department, string> = {
+    MANAGEMENT: "ผู้บริหาร",
+    OFFICE: "ออฟฟิศ",
+    CAR_SERVICE: "หน้าร้าน",
+    COMMONRAIL: "คอมมอนเรล",
+    MECHANIC: "แมคคานิค",
+    OUTSOURCE: "งานนอก",
+};
+
 // Helper components for navigation
 const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onClick?: () => void }) => {
     const pathname = usePathname();
@@ -182,7 +191,7 @@ const CarServiceByWorkerNav = ({ onLinkClick }: { onLinkClick?: () => void }) =>
             />
           ))
         ) : (
-          <p className="p-2 text-xs text-muted-foreground">No workers found.</p>
+          <p className="p-2 text-xs text-muted-foreground">ไม่พบรายชื่อช่าง</p>
         )}
       </CollapsibleContent>
     </Collapsible>
@@ -212,7 +221,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between">
                     <span className="flex items-center gap-2">
                         <Icon className="h-4 w-4" />
-                        {department}
+                        {departmentNames[department]}
                     </span>
                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                 </Button>
@@ -220,7 +229,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
             <CollapsibleContent className="py-1 pl-6 space-y-1">
                 {department === 'MANAGEMENT' && (
                     <>
-                        <SubNavLink href="/app/management/overview" label="Dashboard" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/overview" label="แดชบอร์ด" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs" label="ภาพรวมงานซ่อม" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" onClick={onLinkClick} />
@@ -239,13 +248,13 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
                             <CollapsibleTrigger asChild>
                                 <Button variant={pathname.startsWith('/app/office/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
-                                    งานเอกสาร
+                                    เอกสาร
                                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                                 </Button>
                             </CollapsibleTrigger>
                             <CollapsibleContent className="py-1 pl-4 space-y-1">
                                 <SubNavLink href="/app/office/documents/quotation" label="ใบเสนอราคา" onClick={onLinkClick} />
-                                <SubNavLink href="/app/office/documents/delivery-note" label="ใบส่งสินค้า" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/documents/delivery-note" label="ใบส่งของชั่วคราว" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/documents/tax-invoice" label="ใบกำกับภาษี" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
@@ -347,9 +356,9 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="py-1 pl-6 space-y-1">
                     {profile?.role === 'OFFICER' && (
-                        <SubNavLink href="/app/kiosk" label="Kiosk (คอมกลาง)" onClick={onLinkClick} />
+                        <SubNavLink href="/app/kiosk" label="คอมกลาง (คีออส)" onClick={onLinkClick} />
                     )}
-                    <SubNavLink href="/app/attendance/scan" label="Scan (มือถือ)" onClick={onLinkClick} />
+                    <SubNavLink href="/app/attendance/scan" label="สแกน (มือถือ)" onClick={onLinkClick} />
                     <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
                 </CollapsibleContent>
             </Collapsible>
@@ -360,3 +369,5 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         </nav>
     );
 }
+
+    
