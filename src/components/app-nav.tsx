@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import React, { useMemo } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation,
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -124,6 +124,7 @@ const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
 
 const DepartmentMenu = ({ department, onLinkClick }: { department: Department, onLinkClick?: () => void }) => {
     const pathname = usePathname();
+    const { profile } = useAuth();
     const departmentPath = `/app/${department.toLowerCase().replace('_', '-')}`
     const isOpen = pathname.startsWith(departmentPath)
 
@@ -219,7 +220,11 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'CAR_SERVICE' && (
                     <>
                        <SubNavLink href="/app/car-service/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
-                       <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
+                       {profile?.role === 'OFFICER' ? (
+                            <SubNavLink href="/app/car-service/jobs/by-worker" label="งานตามพนักงาน" onClick={onLinkClick} />
+                       ) : (
+                            <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
+                       )}
                     </>
                 )}
                 {department === 'COMMONRAIL' && (
@@ -272,15 +277,10 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
 
         const visible = new Set<Department>();
         
-        // Add user's own department
         if (profile.department) {
             visible.add(profile.department);
         }
 
-        // The special case for MANAGER and OFFICER has been removed to tighten security.
-        // Now, only ADMINs or users assigned to the MANAGEMENT department can see its menu.
-
-        // Return in the order defined in DEPARTMENTS
         return DEPARTMENTS.filter(d => visible.has(d));
     }, [profile]);
 

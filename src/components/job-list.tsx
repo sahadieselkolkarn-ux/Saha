@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -11,10 +11,26 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt } from "lucide-react";
-import type { Job, JobStatus, JobDepartment } from "@/lib/types";
+import type { Job, JobStatus, JobDepartment, UserProfile } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 
 interface JobListProps {
   department?: JobDepartment;
@@ -73,6 +89,13 @@ export function JobList({
   const [retry, setRetry] = useState(0);
 
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
+  
+  const isOfficer = profile?.role === 'OFFICER';
+  const [assigningJob, setAssigningJob] = useState<Job | null>(null);
+  const [workers, setWorkers] = useState<UserProfile[]>([]);
+  const [isFetchingWorkers, setIsFetchingWorkers] = useState(false);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
+
 
   const jobsQuery = useMemo(() => {
     if (!db) return null;
@@ -81,8 +104,6 @@ export function JobList({
     if (department) {
       constraints.push(where('department', '==', department));
     }
-    // Only apply status filter if it's a single string, not an array.
-    // Array statuses will be filtered on the client-side to avoid complex queries.
     if (status && !Array.isArray(status)) {
       constraints.push(where('status', '==', status));
     }
@@ -113,7 +134,6 @@ export function JobList({
     const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
       
-      // If status is an array, perform client-side filtering
       if (status && Array.isArray(status)) {
         jobsData = jobsData.filter(job => status.includes(job.status));
       }
@@ -144,7 +164,7 @@ export function JobList({
       }
       if (error.message.includes('currently building')) {
         setIndexState('building');
-        const timer = setTimeout(() => setRetry(r => r + 1), 10000); // Poll every 10 seconds
+        const timer = setTimeout(() => setRetry(r => r + 1), 10000); 
         return () => clearTimeout(timer);
       } else {
         setIndexState('missing');
@@ -165,7 +185,6 @@ export function JobList({
     try {
       const batch = writeBatch(db);
 
-      // Update job document
       const jobDocRef = doc(db, "jobs", jobId);
       batch.update(jobDocRef, {
         status: "IN_PROGRESS",
@@ -174,7 +193,6 @@ export function JobList({
         lastActivityAt: serverTimestamp(),
       });
 
-      // Add activity log
       const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
       batch.set(activityDocRef, {
           text: `รับงานเข้าดำเนินการ`,
@@ -193,6 +211,71 @@ export function JobList({
       setIsAccepting(null);
     }
   };
+
+  const openAssignDialog = async (job: Job) => {
+    if (!db) return;
+    setAssigningJob(job);
+    setSelectedWorkerId(null);
+    setIsFetchingWorkers(true);
+    try {
+      const workersQuery = query(
+        collection(db, "users"),
+        where("department", "==", job.department),
+        where("role", "==", "WORKER"),
+        where("status", "==", "ACTIVE")
+      );
+      const querySnapshot = await getDocs(workersQuery);
+      const fetchedWorkers = querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      setWorkers(fetchedWorkers);
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Could not fetch workers' });
+        setWorkers([]);
+    } finally {
+        setIsFetchingWorkers(false);
+    }
+  };
+
+  const handleConfirmAssignment = async () => {
+    if (!db || !profile || !assigningJob || !selectedWorkerId) return;
+    
+    const selectedWorker = workers.find(w => w.uid === selectedWorkerId);
+    if (!selectedWorker) {
+        toast({ variant: "destructive", title: "Worker not found." });
+        return;
+    }
+
+    setIsAccepting(assigningJob.id);
+    try {
+        const batch = writeBatch(db);
+        const jobDocRef = doc(db, "jobs", assigningJob.id);
+
+        batch.update(jobDocRef, {
+            status: "IN_PROGRESS",
+            assigneeUid: selectedWorker.uid,
+            assigneeName: selectedWorker.displayName,
+            lastActivityAt: serverTimestamp(),
+        });
+
+        const activityDocRef = doc(collection(db, "jobs", assigningJob.id, "activities"));
+        batch.set(activityDocRef, {
+            text: `มอบหมายงานให้ ${selectedWorker.displayName}`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
+        });
+
+        await batch.commit();
+
+        toast({ title: "มอบหมายงานสำเร็จ", description: `งานได้ถูกมอบหมายให้ ${selectedWorker.displayName}` });
+        setAssigningJob(null);
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "การมอบหมายงานล้มเหลว", description: error.message });
+    } finally {
+        setIsAccepting(null);
+    }
+  };
+
 
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -237,7 +320,7 @@ export function JobList({
             </CardHeader>
             <CardContent>
                 <Button asChild>
-                    <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
+                    <a href={indexCreationUrl!} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="mr-2 h-4 w-4" />
                         เปิดหน้าสร้าง Index
                     </a>
@@ -269,6 +352,7 @@ export function JobList({
   }
 
   return (
+    <>
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {jobs.map(job => (
         <Card key={job.id} className="flex flex-col overflow-hidden">
@@ -311,15 +395,15 @@ export function JobList({
                 <ArrowRight />
               </Link>
             </Button>
-            {job.status === 'RECEIVED' && (
+            {job.status === 'RECEIVED' && profile?.department === job.department && (
               <Button 
                 variant="default" 
                 className="w-full"
-                onClick={() => handleAcceptJob(job.id)}
+                onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
                 disabled={isAccepting !== null}
               >
                 {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
-                รับงาน
+                {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
               </Button>
             )}
             {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && (
@@ -342,5 +426,45 @@ export function JobList({
         </Card>
       ))}
     </div>
+    <Dialog open={!!assigningJob} onOpenChange={(isOpen) => { if (!isOpen) setAssigningJob(null) }}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>มอบหมายงาน</DialogTitle>
+                <DialogDescription>
+                    เลือกพนักงานเพื่อรับผิดชอบงานนี้
+                </DialogDescription>
+            </DialogHeader>
+            {isFetchingWorkers ? (
+                <div className="flex justify-center items-center h-24">
+                    <Loader2 className="animate-spin" />
+                </div>
+            ) : workers.length > 0 ? (
+                <div className="py-4">
+                    <Select onValueChange={setSelectedWorkerId} value={selectedWorkerId || ""}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="เลือกพนักงาน..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {workers.map(worker => (
+                                <SelectItem key={worker.uid} value={worker.uid}>
+                                    {worker.displayName}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            ) : (
+                <p className="py-4 text-muted-foreground">ไม่พบพนักงานในแผนกนี้</p>
+            )}
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setAssigningJob(null)}>ยกเลิก</Button>
+                <Button onClick={handleConfirmAssignment} disabled={!selectedWorkerId || isAccepting !== null}>
+                    {isAccepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    ยืนยันการมอบหมาย
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+    </>
   );
 }

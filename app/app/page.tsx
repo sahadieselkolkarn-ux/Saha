@@ -22,7 +22,11 @@ export default function AppRedirectPage() {
     }
 
     if (role === 'OFFICER') {
-      router.replace('/app/kiosk');
+      if (department === 'CAR_SERVICE') {
+        router.replace('/app/car-service/jobs/all');
+      } else {
+        router.replace('/app/kiosk');
+      }
       return;
     }
 
@@ -47,14 +51,12 @@ export default function AppRedirectPage() {
           router.replace('/app/outsource/export/new');
           break;
         default:
-          // Fallback to a general page if department is not set or matched
           router.replace('/app/jobs');
           break;
       }
       return;
     }
 
-    // Default fallback for any other roles/scenarios
     router.replace('/app/jobs');
 
   }, [profile, loading, router]);
