@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -15,6 +16,14 @@ import type { Job, JobStatus, JobDepartment, UserProfile } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -79,6 +88,7 @@ export function JobList({
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +99,7 @@ export function JobList({
   const [retry, setRetry] = useState(0);
 
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
+  const [billingJob, setBillingJob] = useState<Job | null>(null);
   
   const isOfficer = profile?.role === 'OFFICER';
   const [assigningJob, setAssigningJob] = useState<Job | null>(null);
@@ -276,6 +287,14 @@ export function JobList({
     }
   };
 
+  const handleBillingClick = (job: Job) => {
+    if (job.customerSnapshot.useTax === true) {
+      setBillingJob(job);
+    } else {
+      router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`);
+    }
+  };
+
 
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -415,11 +434,13 @@ export function JobList({
               </Button>
             )}
             {job.status === 'DONE' && (
-              <Button asChild variant="default" className="w-full">
-                <Link href={`/app/office/documents/tax-invoice/new?jobId=${job.id}`}>
-                  <Receipt />
-                  Billing
-                </Link>
+               <Button
+                variant="default"
+                className="w-full"
+                onClick={() => handleBillingClick(job)}
+              >
+                <Receipt />
+                Billing
               </Button>
             )}
           </CardFooter>
@@ -465,6 +486,34 @@ export function JobList({
             </DialogFooter>
         </DialogContent>
     </Dialog>
+     <AlertDialog open={!!billingJob} onOpenChange={(isOpen) => !isOpen && setBillingJob(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>ต้องการออกใบกำกับภาษีหรือไม่?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    ลูกค้า &quot;{billingJob?.customerSnapshot.name}&quot; เป็นลูกค้าที่ใช้ใบกำกับภาษี
+                    กรุณาเลือกประเภทเอกสารที่ต้องการออก
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <Button variant="outline" onClick={() => setBillingJob(null)}>Cancel</Button>
+                <Button variant="secondary" onClick={() => {
+                    if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`);
+                    setBillingJob(null);
+                }}>
+                    ใบส่งของ
+                </Button>
+                <Button onClick={() => {
+                    if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`);
+                    setBillingJob(null);
+                }}>
+                    ใบกำกับภาษี
+                </Button>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
+
+    

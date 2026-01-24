@@ -60,6 +60,7 @@ export interface Job {
   customerSnapshot: {
     name: string;
     phone: string;
+    useTax?: boolean;
   };
   department: JobDepartment;
   status: JobStatus;
@@ -316,6 +317,8 @@ export interface DocumentCounters {
   creditNote?: number;
   withholdingTax?: number;
 }
+
+    
 
     
 

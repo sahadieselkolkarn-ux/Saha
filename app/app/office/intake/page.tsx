@@ -157,7 +157,7 @@ export default function IntakePage() {
             customerId: values.customerId,
             department: values.department,
             description: values.description,
-            customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone },
+            customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone, useTax: selectedCustomer.useTax },
             status: "RECEIVED",
             photos: photoURLs,
             createdAt: serverTimestamp(),
@@ -386,3 +386,5 @@ export default function IntakePage() {
     </>
   );
 }
+
+    
