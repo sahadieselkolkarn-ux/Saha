@@ -11,12 +11,19 @@ export default function OfficeTaxInvoicePage() {
     return (
         <>
             <PageHeader title="ใบกำกับภาษี" description="สร้างและจัดการใบกำกับภาษี">
-                <Button asChild>
-                    <Link href="/app/office/jobs/management/done">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        New Invoice from Job
-                    </Link>
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button asChild variant="outline">
+                        <Link href="/app/office/jobs/management/done">
+                            สร้างจากงานซ่อม
+                        </Link>
+                    </Button>
+                    <Button asChild>
+                        <Link href="/app/office/documents/tax-invoice/new">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            สร้าง (ไม่มีงานซ่อม)
+                        </Link>
+                    </Button>
+                </div>
             </PageHeader>
             <DocumentList
                 docType="TAX_INVOICE"

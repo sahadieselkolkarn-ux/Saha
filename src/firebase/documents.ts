@@ -8,6 +8,11 @@ import {
   collection,
   serverTimestamp,
   Timestamp,
+  getDocs,
+  query,
+  where,
+  setDoc,
+  writeBatch,
 } from 'firebase/firestore';
 import type { DocumentSettings, Document, DocType, DocumentCounters, JobStatus, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
@@ -32,6 +37,9 @@ const docTypeToPrefixKey: Record<DocType, keyof DocumentSettings> = {
     WITHHOLDING_TAX: 'withholdingTaxPrefix',
 };
 
+interface CreateDocumentOptions {
+  manualDocNo?: string;
+}
 
 /**
  * Creates a new document in the 'documents' collection with a transactionally-generated document number.
@@ -40,6 +48,7 @@ const docTypeToPrefixKey: Record<DocType, keyof DocumentSettings> = {
  * @param data The document data, excluding fields that will be generated (id, docNo, createdAt, etc.).
  * @param userProfile The profile of the user creating the document.
  * @param newJobStatus Optional new status to set for the associated job.
+ * @param options Optional parameters for manual backfilling.
  * @returns The full document number.
  */
 export async function createDocument(
@@ -47,8 +56,56 @@ export async function createDocument(
   docType: DocType,
   data: Omit<Document, 'id' | 'docNo' | 'docType' | 'createdAt' | 'updatedAt' | 'status'>,
   userProfile: UserProfile,
-  newJobStatus?: JobStatus
+  newJobStatus?: JobStatus,
+  options?: CreateDocumentOptions
 ): Promise<string> {
+
+  if (options?.manualDocNo) {
+    // --- Manual Mode (Backfill) ---
+    const { manualDocNo } = options;
+
+    const duplicateQuery = query(collection(db, "documents"), where("docNo", "==", manualDocNo));
+    const querySnapshot = await getDocs(duplicateQuery);
+    const isDuplicate = querySnapshot.docs.some(doc => doc.data().docType === docType);
+
+    if (isDuplicate) {
+      throw new Error(`เลขที่เอกสาร '${manualDocNo}' ถูกใช้ไปแล้วสำหรับเอกสารประเภทนี้`);
+    }
+
+    const newDocRef = doc(collection(db, 'documents'));
+    const newDocumentData: Document = {
+        ...data,
+        id: newDocRef.id,
+        docNo: manualDocNo,
+        docType,
+        status: 'DRAFT',
+        createdAt: serverTimestamp() as Timestamp,
+        updatedAt: serverTimestamp() as Timestamp,
+    };
+    
+    await setDoc(newDocRef, sanitizeForFirestore(newDocumentData));
+
+    if (data.jobId) {
+        const jobRef = doc(db, 'jobs', data.jobId);
+        const batch = writeBatch(db);
+        if (newJobStatus) {
+            batch.update(jobRef, { status: newJobStatus, lastActivityAt: serverTimestamp() });
+        }
+        const activityRef = doc(collection(db, 'jobs', data.jobId, 'activities'));
+        batch.set(activityRef, {
+            text: `Created ${docType} document: ${manualDocNo} (backfilled)`,
+            userName: userProfile.displayName,
+            userId: userProfile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
+        });
+        await batch.commit();
+    }
+    
+    return manualDocNo;
+
+  } else {
+    // --- Automatic Mode (Existing Logic) ---
     const year = new Date(data.docDate).getFullYear();
     const counterRef = doc(db, 'documentCounters', String(year));
     const docSettingsRef = doc(db, 'settings', 'documents');
@@ -81,7 +138,7 @@ export async function createDocument(
             id: newDocRef.id,
             docNo,
             docType,
-            status: 'DRAFT', // Default status
+            status: 'DRAFT',
             createdAt: serverTimestamp() as Timestamp,
             updatedAt: serverTimestamp() as Timestamp,
         };
@@ -91,16 +148,11 @@ export async function createDocument(
         transaction.set(newDocRef, sanitizedData);
         transaction.set(counterRef, { ...currentCounters, [counterField]: newCount }, { merge: true });
 
-        // Update Job status and add activity log if there's a Job ID
         if (data.jobId) {
             const jobRef = doc(db, 'jobs', data.jobId);
-            
-            // 1. Update job status if a new status is provided
             if (newJobStatus) {
                 transaction.update(jobRef, { status: newJobStatus, lastActivityAt: serverTimestamp() });
             }
-
-            // 2. Add an activity log entry for document creation
             const activityRef = doc(collection(db, 'jobs', data.jobId, 'activities'));
             transaction.set(activityRef, {
                 text: `Created ${docType} document: ${docNo}`,
@@ -115,4 +167,5 @@ export async function createDocument(
     });
 
     return documentNumber;
+  }
 }

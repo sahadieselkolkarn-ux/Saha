@@ -12,7 +12,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown } from "lucide-react";
@@ -51,6 +51,16 @@ const taxInvoiceFormSchema = z.object({
   notes: z.string().optional(),
   senderName: z.string().optional(),
   receiverName: z.string().optional(),
+  isBackfill: z.boolean().default(false),
+  manualDocNo: z.string().optional(),
+}).superRefine((data, ctx) => {
+    if (data.isBackfill && !data.manualDocNo) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "กรุณากรอกเลขที่เอกสารเดิม",
+            path: ["manualDocNo"],
+        });
+    }
 });
 
 type TaxInvoiceFormData = z.infer<typeof taxInvoiceFormSchema>;
@@ -84,10 +94,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       dueDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       isVat: true,
+      isBackfill: false,
     },
   });
 
   const selectedCustomerId = form.watch('customerId');
+  const isBackfill = form.watch('isBackfill');
   
   const customerDocRef = useMemo(() => {
     if (!db || !selectedCustomerId) return null;
@@ -122,11 +134,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         issueDate: docToEdit.docDate,
         dueDate: docToEdit.dueDate || new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
         items: docToEdit.items.map(item => ({...item})),
-        notes: docToEdit.notes,
+        notes: docToEdit.notes ?? '',
         isVat: docToEdit.withTax,
         discountAmount: docToEdit.discountAmount,
         senderName: profile?.displayName || docToEdit.senderName,
         receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
+        isBackfill: false,
       });
     } else if (job) {
       const defaultItem = { description: job.description, quantity: 1, unitPrice: 0, total: 0 };
@@ -136,10 +149,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         form.setValue('items', [defaultItem]);
       }
       form.setValue('customerId', job.customerId);
-      form.setValue('receiverName', job.customerSnapshot.name);
+      form.setValue('receiverName', job.customerSnapshot.name ?? '');
     }
      if (profile) {
-      form.setValue('senderName', profile.displayName);
+      form.setValue('senderName', profile.displayName ?? '');
     }
   }, [job, docToEdit, profile, form]);
 
@@ -166,7 +179,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       const quantity = item.quantity || 0;
       const unitPrice = item.unitPrice || 0;
       const total = quantity * unitPrice;
-      form.setValue(`items.${index}.total`, total);
+      form.setValue(`items.${index}.total`, total, { shouldValidate: true });
       subtotal += total;
     });
 
@@ -210,6 +223,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         senderName: data.senderName,
         receiverName: data.receiverName,
     };
+
+    const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
     
     try {
         if (isEditing && editDocId) {
@@ -218,20 +233,21 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 ...documentData,
                 updatedAt: serverTimestamp(),
             }));
-            toast({ title: "Tax Invoice Updated" });
+            toast({ title: "อัปเดตใบกำกับภาษีสำเร็จ" });
         } else {
             await createDocument(
                 db,
                 'TAX_INVOICE',
                 documentData,
                 profile,
-                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
+                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
+                backfillOptions
             );
-            toast({ title: "Tax Invoice Created" });
+            toast({ title: "สร้างใบกำกับภาษีสำเร็จ" });
         }
         router.push('/app/office/documents/tax-invoice');
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Failed to save invoice", description: error.message });
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
   };
 
@@ -250,19 +266,47 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
-            <div className="lg:col-span-2 space-y-2">
-                <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Your Company'}</h2>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{storeSettings?.taxAddress}</p>
-                <p className="text-sm text-muted-foreground">โทร: {storeSettings?.phone}</p>
-                <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {storeSettings?.taxId}</p>
-            </div>
-            <div className="space-y-4">
-                 <h1 className="text-2xl font-bold text-right">ใบกำกับภาษี</h1>
-                 <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
-                 <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>ครบกำหนดชำระ</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
-            </div>
-        </div>
+
+      <Card>
+            <CardHeader><CardTitle className="text-base">ข้อมูลทั่วไป</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+                 {!isEditing && (
+                    <FormField
+                        control={form.control}
+                        name="isBackfill"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                                <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                                <FormLabel>
+                                บันทึกย้อนหลัง (Backfill)
+                                </FormLabel>
+                                <FormDescription>
+                                ใช้สำหรับคีย์เอกสารย้อนหลังจากสมุด/ระบบเก่า
+                                </FormDescription>
+                            </div>
+                            </FormItem>
+                        )}
+                    />
+                )}
+                {isBackfill ? (
+                    <div className="grid grid-cols-2 gap-4">
+                         <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่เอกสาร</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                         <FormField control={form.control} name="manualDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่เอกสารเดิม</FormLabel><FormControl><Input placeholder="เช่น INV2024-0001" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                        <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>ครบกำหนดชำระ</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                    </div>
+                )}
+            </CardContent>
+        </Card>
 
         <Card>
             <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
@@ -272,19 +316,19 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                     control={form.control}
                     render={({ field }) => (
                         <FormItem className="flex flex-col">
-                        <FormLabel>Customer</FormLabel>
+                        <FormLabel>ลูกค้า</FormLabel>
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
                                 <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId}>
-                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "Select a customer..."}
+                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </FormControl>
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                 <div className="p-2 border-b">
-                                    <Input autoFocus placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                    <Input autoFocus placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-fit max-h-60">
                                     {filteredCustomers.map((c) => (
@@ -299,11 +343,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                     )}
                 />
                  {displayCustomer && (
-                    <>
-                        <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
-                        <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
-                        <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId || 'N/A'}</p>
-                    </>
+                    <div className="mt-2 text-sm text-muted-foreground">
+                        <p>{displayCustomer.taxAddress || 'N/A'}</p>
+                        <p>โทร: {displayCustomer.phone}</p>
+                        <p>เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId || 'N/A'}</p>
+                    </div>
                  )}
                  {(job || docToEdit?.jobId) && (
                     <>
@@ -333,16 +377,16 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                         {fields.map((field, index) => (
                             <TableRow key={field.id}>
                                 <TableCell>{index + 1}</TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="Service or product" />)}/></TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
-                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`).toLocaleString()}</TableCell>
-                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive"/></Button></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="Service or product" />)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
+                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`, 0).toLocaleString()}</TableCell>
+                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle/> Add Item</Button>
+                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
             </CardContent>
         </Card>
 
@@ -350,18 +394,18 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
              <Card>
                 <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
                 <CardContent>
-                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} />)} />
+                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} />)} />
                 </CardContent>
             </Card>
             <div className="space-y-4">
                  <div className="space-y-2 p-4 border rounded-lg">
                     <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{form.watch('subtotal').toLocaleString()}</span></div>
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} className="w-32 text-right"/>)}/></div>
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="w-32 text-right"/>)}/></div>
                     <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{form.watch('net').toLocaleString()}</span></div>
                     <div className="flex justify-between items-center">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
-                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={true} /></FormControl>
                                 <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>
@@ -373,8 +417,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             </div>
         </div>
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
         </div>
         <div className="flex justify-end gap-4">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>

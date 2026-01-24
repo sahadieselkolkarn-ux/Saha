@@ -12,7 +12,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, FileDown } from "lucide-react";
@@ -22,10 +22,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
+import { safeFormat } from "@/lib/date-utils";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "ต้องกรอกรายละเอียด"),
@@ -46,6 +48,16 @@ const deliveryNoteFormSchema = z.object({
   notes: z.string().optional(),
   senderName: z.string().optional(),
   receiverName: z.string().optional(),
+  isBackfill: z.boolean().default(false),
+  manualDocNo: z.string().optional(),
+}).superRefine((data, ctx) => {
+    if (data.isBackfill && !data.manualDocNo) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "กรุณากรอกเลขที่เอกสารเดิม",
+            path: ["manualDocNo"],
+        });
+    }
 });
 
 type DeliveryNoteFormData = z.infer<typeof deliveryNoteFormSchema>;
@@ -89,10 +101,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       notes: '',
       senderName: '',
       receiverName: '',
+      isBackfill: false,
     },
   });
 
   const selectedCustomerId = form.watch('customerId');
+  const isBackfill = form.watch('isBackfill');
   
   const customerDocRef = useMemo(() => {
     if (!db || !selectedCustomerId) return null;
@@ -147,6 +161,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         senderName: (profile?.displayName || docToEdit.senderName) || '',
         receiverName: (docToEdit.customerSnapshot.name || docToEdit.receiverName) || '',
         discountAmount: docToEdit.discountAmount || 0,
+        isBackfill: false, // Editing doesn't support backfill mode changes
       })
     } else if (job) {
         form.setValue('customerId', job.customerId);
@@ -221,6 +236,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         receiverName: data.receiverName,
     };
 
+    const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
+
     try {
         if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
@@ -235,14 +252,15 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 'DELIVERY_NOTE',
                 documentData,
                 profile,
-                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
+                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
+                backfillOptions
             );
             toast({ title: "สร้างใบส่งของสำเร็จ" });
         }
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
   };
 
@@ -265,16 +283,46 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
-            <div className="lg:col-span-2 space-y-2">
-                <h2 className="text-xl font-bold">{storeSettings?.informalName || storeSettings?.taxName || 'Your Company'}</h2>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{storeSettings?.taxAddress}</p>
-                <p className="text-sm text-muted-foreground">โทร: {storeSettings?.phone}</p>
-            </div>
-            <div className="space-y-4">
-                 <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
-            </div>
-        </div>
+        
+        <Card>
+            <CardHeader><CardTitle className="text-base">ข้อมูลทั่วไป</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+                 {!isEditing && (
+                    <FormField
+                        control={form.control}
+                        name="isBackfill"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl>
+                                <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                                <FormLabel>
+                                บันทึกย้อนหลัง (Backfill)
+                                </FormLabel>
+                                <FormDescription>
+                                ใช้สำหรับคีย์เอกสารย้อนหลังจากสมุด/ระบบเก่า
+                                </FormDescription>
+                            </div>
+                            </FormItem>
+                        )}
+                    />
+                )}
+                {isBackfill ? (
+                    <div className="grid grid-cols-2 gap-4">
+                         <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่เอกสาร</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                         <FormField control={form.control} name="manualDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่เอกสารเดิม</FormLabel><FormControl><Input placeholder="เช่น DN2024-0001" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+                    </div>
+                )}
+            </CardContent>
+        </Card>
 
         <Card>
             <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
