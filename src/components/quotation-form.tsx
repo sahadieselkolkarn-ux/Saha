@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, serverTimestamp } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, Eye, Edit } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,6 +26,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
+import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
@@ -58,6 +59,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const { profile } = useAuth();
   const { toast } = useToast();
   
+  const isEditing = !!editDocId;
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -79,6 +82,11 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       isVat: true,
+      subtotal: 0,
+      discountAmount: 0,
+      net: 0,
+      vatAmount: 0,
+      grandTotal: 0,
     },
   });
 
@@ -105,23 +113,27 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   }, [db, toast]);
 
   useEffect(() => {
-    const dataToLoad = editDocId ? docToEdit : job;
+    const dataToLoad = docToEdit || job;
     if (dataToLoad) {
-      const customerId = 'customerId' in dataToLoad ? dataToLoad.customerId : dataToLoad.customerSnapshot.id;
-      const items = 'items' in dataToLoad && dataToLoad.items.length > 0
-        ? dataToLoad.items.map(item => ({ ...item }))
-        : [{ description: 'description' in dataToLoad ? dataToLoad.description : '', quantity: 1, unitPrice: 0, total: 0 }];
+        const customerId = 'customerId' in dataToLoad ? dataToLoad.customerId : dataToLoad.customerSnapshot.id;
+        const items = 'items' in dataToLoad && dataToLoad.items.length > 0
+            ? dataToLoad.items.map(item => ({ ...item }))
+            : [{ description: 'description' in dataToLoad ? dataToLoad.description : '', quantity: 1, unitPrice: 0, total: 0 }];
 
-      form.reset({
-        jobId: 'jobId' in dataToLoad ? dataToLoad.jobId || undefined : jobId || undefined,
-        customerId: customerId,
-        issueDate: 'docDate' in dataToLoad ? dataToLoad.docDate : new Date().toISOString().split("T")[0],
-        expiryDate: 'expiryDate' in dataToLoad && dataToLoad.expiryDate ? dataToLoad.expiryDate : new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
-        items: items,
-        notes: 'notes' in dataToLoad ? dataToLoad.notes : '',
-        isVat: 'withTax' in dataToLoad ? dataToLoad.withTax : true,
-        discountAmount: 'discountAmount' in dataToLoad ? dataToLoad.discountAmount : 0,
-      });
+        form.reset({
+            jobId: 'jobId' in dataToLoad ? dataToLoad.jobId || undefined : jobId || undefined,
+            customerId: customerId,
+            issueDate: 'docDate' in dataToLoad ? dataToLoad.docDate : new Date().toISOString().split("T")[0],
+            expiryDate: 'expiryDate' in dataToLoad && dataToLoad.expiryDate ? dataToLoad.expiryDate : new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
+            items: items,
+            notes: 'notes' in dataToLoad ? dataToLoad.notes : '',
+            isVat: 'withTax' in dataToLoad ? dataToLoad.withTax : true,
+            discountAmount: 'discountAmount' in dataToLoad ? dataToLoad.discountAmount : 0,
+            subtotal: 'subtotal' in dataToLoad ? dataToLoad.subtotal : 0,
+            net: 'net' in dataToLoad ? dataToLoad.net : 0,
+            vatAmount: 'vatAmount' in dataToLoad ? dataToLoad.vatAmount : 0,
+            grandTotal: 'grandTotal' in dataToLoad ? dataToLoad.grandTotal : 0,
+        });
     }
   }, [job, docToEdit, form, jobId, editDocId]);
 
@@ -150,7 +162,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       const quantity = item.quantity || 0;
       const unitPrice = item.unitPrice || 0;
       const total = quantity * unitPrice;
-      form.setValue(`items.${index}.total`, total, { shouldValidate: true });
+      form.setValue(`items.${index}.total`, total);
       subtotal += total;
     });
 
@@ -190,15 +202,25 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     };
 
     try {
-      await createDocument(
-          db,
-          'QUOTATION',
-          documentData,
-          profile,
-          data.jobId ? 'WAITING_APPROVE' : undefined
-      );
-      toast({ title: "สร้างใบเสนอราคาสำเร็จ" });
-      router.push('/app/office/documents/quotation');
+        if (isEditing && editDocId) {
+            const docRef = doc(db, 'documents', editDocId);
+            await updateDoc(docRef, sanitizeForFirestore({
+                ...documentData,
+                updatedAt: serverTimestamp(),
+            }));
+            toast({ title: "อัปเดตใบเสนอราคาสำเร็จ" });
+        } else {
+            await createDocument(
+                db,
+                'QUOTATION',
+                documentData,
+                profile,
+                data.jobId ? 'WAITING_APPROVE' : undefined
+            );
+            toast({ title: "สร้างใบเสนอราคาสำเร็จ" });
+        }
+        router.push('/app/office/documents/quotation');
+
     } catch (error: any) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
@@ -207,6 +229,10 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
+
+  const formatCurrency = (value: number | null | undefined) => {
+    return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
@@ -223,7 +249,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
             <Button type="submit" disabled={isFormLoading}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              บันทึกใบเสนอราคา
+              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบเสนอราคา'}
             </Button>
         </div>
         
@@ -311,10 +337,10 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                         {fields.map((field, index) => (
                             <TableRow key={field.id}>
                                 <TableCell>{index + 1}</TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายละเอียดสินค้า/บริการ" />)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" />)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
-                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`).toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</TableCell>
+                                <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
                                 <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                             </TableRow>
                         ))}
@@ -333,9 +359,9 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             </Card>
             <div className="space-y-4">
                  <div className="space-y-2 p-4 border rounded-lg">
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{form.watch('subtotal').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
                     <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} className="w-32 text-right"/>)}/></div>
-                    <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{form.watch('net').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div>
                     <div className="flex justify-between items-center">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
@@ -343,10 +369,10 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                 <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>
-                        <span>{form.watch('vatAmount').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                        <span>{formatCurrency(form.watch('vatAmount'))}</span>
                     </div>
                      <Separator/>
-                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{form.watch('grandTotal').toLocaleString('th-TH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></div>
+                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                  </div>
             </div>
         </div>
