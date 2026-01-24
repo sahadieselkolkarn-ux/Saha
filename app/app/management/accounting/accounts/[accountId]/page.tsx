@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -42,8 +42,12 @@ export default function EditAccountPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
 
-  const accountDocRef = doc(db, "accountingAccounts", accountId);
-  const { data: account, isLoading } = useDoc<AccountingAccount>(accountDocRef);
+  const accountDocRef = useMemo(() => {
+    if (!db || !accountId) return null;
+    return doc(db, "accountingAccounts", accountId);
+  }, [db, accountId]);
+
+  const { data: account, isLoading, error } = useDoc<AccountingAccount>(accountDocRef);
 
   const form = useForm<AccountFormData>({
     resolver: zodResolver(accountSchema),
@@ -64,7 +68,10 @@ export default function EditAccountPage() {
   const accountType = form.watch("type");
 
   const onSubmit = async (values: AccountFormData) => {
-    if (!db) return;
+    if (!db || !accountDocRef) {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ยังไม่พร้อมเชื่อมต่อฐานข้อมูล" });
+        return;
+    }
     try {
       await updateDoc(accountDocRef, {
         ...values,
@@ -76,6 +83,15 @@ export default function EditAccountPage() {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
   };
+
+  if (error) {
+    return (
+        <>
+            <PageHeader title="เกิดข้อผิดพลาด" description="โหลดข้อมูลบัญชีไม่สำเร็จ" />
+            <Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>
+        </>
+    )
+  }
 
   if (isLoading) {
     return (
