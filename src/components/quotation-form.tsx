@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, Eye, Edit } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -91,6 +91,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       net: 0,
       vatAmount: 0,
       grandTotal: 0,
+      notes: "",
     },
   });
 
@@ -245,14 +246,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
-            <Button type="submit" disabled={isFormLoading}>
-              {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบเสนอราคา'}
-            </Button>
-        </div>
-        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
             <div className="lg:col-span-2 space-y-2">
                 <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Your Company'}</h2>
@@ -375,6 +368,14 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                     <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                  </div>
             </div>
+        </div>
+
+        <div className="flex justify-end gap-4">
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+            <Button type="submit" disabled={isFormLoading}>
+              {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบเสนอราคา'}
+            </Button>
         </div>
       </form>
     </Form>

@@ -215,14 +215,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-            <Button type="submit" disabled={isFormLoading}>
-              {isFormLoading ? <Loader2 className="animate-spin" /> : <Save />}
-              {isEditing ? 'Save Changes' : 'Save Delivery Note'}
-            </Button>
-        </div>
-        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
             <div className="lg:col-span-2 space-y-2">
                 <h2 className="text-xl font-bold">{storeSettings?.informalName || storeSettings?.taxName || 'Your Company'}</h2>
@@ -316,6 +308,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
             <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+        </div>
+
+        <div className="flex justify-end gap-4">
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>
+            <Button type="submit" disabled={isFormLoading}>
+              {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของชั่วคราว'}
+            </Button>
         </div>
       </form>
     </Form>
