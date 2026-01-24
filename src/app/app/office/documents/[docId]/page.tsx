@@ -102,23 +102,14 @@ function DocumentView({ document }: { document: Document }) {
                     <div className="space-y-4">
                         {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
                     </div>
-                     {isDeliveryNote ? (
-                        <div className="space-y-2 flex justify-end items-end">
-                            <div className="flex justify-between items-center text-lg font-bold border-t border-b py-2 px-4 w-64">
-                                <span>รวมเงิน</span>
-                                <span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="space-y-2">
-                            <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                            <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                            <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                            {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
-                            <Separator />
-                            <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        </div>
-                    )}
+                    <div className="space-y-2">
+                        <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                        <Separator />
+                        <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    </div>
                 </div>
                 
                  <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">
