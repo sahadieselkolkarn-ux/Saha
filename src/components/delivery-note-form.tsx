@@ -137,20 +137,17 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     };
     
     const q = query(
-      collection(db, 'documents'),
-      where('jobId', '==', jobId),
-      where('docType', '==', 'QUOTATION')
+        collection(db, "documents"),
+        where("jobId", "==", jobId)
     );
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchedQuotations = snapshot.docs
+      const fetchedQuotations = snapshot.docs
           .map(d => d.data() as DocumentType)
-          .filter(d => d.status !== 'CANCELLED');
-        fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
-        setQuotations(fetchedQuotations);
+          .filter(d => d.docType === 'QUOTATION' && d.status !== 'CANCELLED');
+      fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
+      setQuotations(fetchedQuotations);
     });
     return () => unsubscribe();
-
   }, [db, jobId]);
   
   useEffect(() => {
@@ -216,32 +213,39 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   const onSubmit = async (data: DeliveryNoteFormData) => {
     const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
-    if (!db || !customerSnapshot || !storeSettings || !profile) {
+    if (!db || !storeSettings || !profile || !customerSnapshot) {
         toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
         return;
     }
 
-    const documentData = {
-        docDate: data.issueDate,
-        jobId: data.jobId,
-        customerSnapshot: { ...customerSnapshot },
-        carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : (docToEdit?.carSnapshot || {}),
-        storeSnapshot: { ...storeSettings },
-        items: data.items,
-        subtotal: data.subtotal,
-        discountAmount: data.discountAmount || 0,
-        net: data.grandTotal,
-        withTax: false,
-        vatAmount: 0,
-        grandTotal: data.grandTotal,
-        notes: data.notes,
-        senderName: data.senderName,
-        receiverName: data.receiverName,
-    };
-
-    const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
+    const itemsForDoc = data.items.map(inv => ({
+        description: inv.description,
+        quantity: inv.quantity,
+        unitPrice: inv.unitPrice,
+        total: inv.total,
+    }));
 
     try {
+        const documentData = {
+            docDate: data.issueDate,
+            jobId: data.jobId,
+            customerSnapshot: { ...customerSnapshot },
+            carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : (docToEdit?.carSnapshot || {}),
+            storeSnapshot: { ...storeSettings },
+            items: itemsForDoc,
+            subtotal: data.subtotal,
+            discountAmount: data.discountAmount || 0,
+            net: data.grandTotal,
+            withTax: false,
+            vatAmount: 0,
+            grandTotal: data.grandTotal,
+            notes: data.notes,
+            senderName: data.senderName,
+            receiverName: data.receiverName,
+        };
+
+        const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
+
         if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
@@ -262,8 +266,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         }
         router.push('/app/office/documents/delivery-note');
 
-    } catch (error: any) {
-         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+    } catch(error: any) {
+         toast({ variant: "destructive", title: "Failed to create Delivery Note", description: error.message });
     }
   };
 
@@ -287,7 +291,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
             <Button type="submit" disabled={isFormLoading}>
               {isFormLoading ? <Loader2 className="animate-spin" /> : <Save />}
               {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
@@ -295,47 +299,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </div>
         
         <Card>
-            <CardHeader><CardTitle className="text-base">ข้อมูลทั่วไป</CardTitle></CardHeader>
-            <CardContent>
-                 {!isEditing && (
-                    <FormField
-                        control={form.control}
-                        name="isBackfill"
-                        render={({ field }) => (
-                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 mb-4">
-                            <FormControl>
-                                <Checkbox
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                                />
-                            </FormControl>
-                            <div className="space-y-1 leading-none">
-                                <FormLabel>
-                                บันทึกย้อนหลัง (Backfill)
-                                </FormLabel>
-                                <FormDescription>
-                                ใช้สำหรับคีย์เอกสารย้อนหลังจากสมุด/ระบบเก่า
-                                </FormDescription>
-                            </div>
-                            </FormItem>
-                        )}
-                    />
-                )}
-                {isBackfill ? (
-                    <div className="grid grid-cols-2 gap-4">
-                         <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่เอกสาร</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
-                         <FormField control={form.control} name="manualDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่เอกสารเดิม</FormLabel><FormControl><Input placeholder="เช่น DN2024-0001" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
-                    </div>
-                )}
-            </CardContent>
-        </Card>
-
-        <Card>
-            <CardHeader><CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">1. Select Customer</CardTitle></CardHeader>
             <CardContent>
                 <FormField
                     name="customerId"
@@ -353,7 +317,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                 <div className="p-2 border-b">
-                                    <Input placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                    <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-60">
                                     {filteredCustomers.map(c => (
@@ -376,7 +340,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
         <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>รายการ</CardTitle>
+                <CardTitle className="text-base">2. Select Invoices to Bill</CardTitle>
                 {jobId && quotations.length > 0 && (
                     <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation}><FileDown/> ดึงจากใบเสนอราคา</Button>
                 )}
@@ -400,34 +364,27 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
             </CardContent>
         </Card>
+        
+        <Card>
+            <CardHeader><CardTitle className="text-base">3. Billing Note Details</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+                 <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>Billing Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
+                    <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>Payment Due Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
+                </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้วางบิล</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+                    <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับวางบิล</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+                </div>
+            </CardContent>
+            <CardFooter className="flex-col items-end gap-2">
+                <div className="flex justify-between w-full max-w-xs">
+                    <span className="text-muted-foreground">Total Amount:</span>
+                    <span className="font-bold text-lg">฿{formatCurrency(form.watch('grandTotal'))}</span>
+                </div>
+            </CardFooter>
+        </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-             <Card>
-                <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
-                <CardContent>
-                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไข หรืออื่นๆ" rows={3} />)} />
-                </CardContent>
-            </Card>
-             <div className="space-y-4">
-                 <div className="space-y-2 p-4 border rounded-lg h-full flex flex-col justify-end">
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="w-32 text-right"/>)}/></div>
-                    <div className="flex justify-between items-center text-lg font-bold border-t border-b py-2"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
-                 </div>
-            </div>
-        </div>
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
-        </div>
-
-        <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>
-            <Button type="submit" disabled={isFormLoading}>
-              {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
-            </Button>
-        </div>
       </form>
     </Form>
   )

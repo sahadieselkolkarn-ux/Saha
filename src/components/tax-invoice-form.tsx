@@ -143,14 +143,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     
     const q = query(
       collection(db, 'documents'),
-      where('jobId', '==', jobId),
-      where('docType', '==', 'QUOTATION')
+      where('jobId', '==', jobId)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const fetchedQuotations = snapshot.docs
           .map(d => d.data() as DocumentType)
-          .filter(d => d.status !== 'CANCELLED');
+          .filter(d => d.docType === 'QUOTATION' && d.status !== 'CANCELLED');
         fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
         setQuotations(fetchedQuotations);
     });
