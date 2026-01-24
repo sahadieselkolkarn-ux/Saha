@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, Suspense, useEffect, useRef } from "react";
@@ -16,9 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
 
-function DocumentView({ document, isPrintMode, onPrint }: { document: Document; isPrintMode: boolean; onPrint: () => void; }) {
-    const router = useRouter();
-
+function DocumentView({ document }: { document: Document }) {
     const docTypeDisplay: Record<Document['docType'], string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
         DELIVERY_NOTE: "ใบส่งของชั่วคราว",
@@ -32,99 +29,89 @@ function DocumentView({ document, isPrintMode, onPrint }: { document: Document; 
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
 
     return (
-        <div className="space-y-6">
-            {!isPrintMode && (
-                <div className="flex justify-between items-center print:hidden">
-                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
-                    <Button type="button" onClick={onPrint}><Printer/> พิมพ์</Button>
+        <div className="p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <div className="lg:col-span-2 space-y-2">
+                    {isDeliveryNote ? (
+                         <>
+                            <h2 className="text-xl font-bold">{document.storeSnapshot.informalName || document.storeSnapshot.taxName}</h2>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                            <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                        </>
+                    ) : (
+                         <>
+                            <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                            <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                            <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
+                        </>
+                    )}
                 </div>
-            )}
-
-            <div className="p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <div className="lg:col-span-2 space-y-2">
-                        {isDeliveryNote ? (
-                             <>
-                                <h2 className="text-xl font-bold">{document.storeSnapshot.informalName || document.storeSnapshot.taxName}</h2>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
-                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
-                            </>
-                        ) : (
-                             <>
-                                <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
-                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
-                                <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
-                            </>
-                        )}
-                    </div>
-                    <div className="space-y-2">
-                        <h1 className="text-2xl font-bold text-right">{docTypeDisplay[document.docType]}</h1>
-                        <div className="flex justify-between text-sm"><span className="font-medium">เลขที่:</span><span>{document.docNo}</span></div>
-                        <div className="flex justify-between text-sm"><span className="font-medium">วันที่:</span><span>{safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</span></div>
-                    </div>
+                <div className="space-y-2">
+                    <h1 className="text-2xl font-bold text-right">{docTypeDisplay[document.docType]}</h1>
+                    <div className="flex justify-between text-sm"><span className="font-medium">เลขที่:</span><span>{document.docNo}</span></div>
+                    <div className="flex justify-between text-sm"><span className="font-medium">วันที่:</span><span>{safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</span></div>
                 </div>
+            </div>
 
-                <Card className="mb-8">
-                    <CardHeader>
-                        <CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm space-y-1">
-                        <p className="font-semibold">{document.customerSnapshot.name}</p>
-                        <p className="text-muted-foreground whitespace-pre-wrap">{document.customerSnapshot.taxAddress || 'N/A'}</p>
-                        <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
-                        {!isDeliveryNote && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
-                    </CardContent>
-                </Card>
+            <Card className="mb-8">
+                <CardHeader>
+                    <CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm space-y-1">
+                    <p className="font-semibold">{document.customerSnapshot.name}</p>
+                    <p className="text-muted-foreground whitespace-pre-wrap">{document.customerSnapshot.taxAddress || 'N/A'}</p>
+                    <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
+                    {!isDeliveryNote && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
+                </CardContent>
+            </Card>
 
-                <Table className="mb-8">
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-12">#</TableHead>
-                            <TableHead>รายการ</TableHead>
-                            <TableHead className="text-right">จำนวน</TableHead>
-                            <TableHead className="text-right">ราคา/หน่วย</TableHead>
-                            <TableHead className="text-right">จำนวนเงิน</TableHead>
+            <Table className="mb-8">
+                <TableHeader>
+                    <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead>รายการ</TableHead>
+                        <TableHead className="text-right">จำนวน</TableHead>
+                        <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                        <TableHead className="text-right">จำนวนเงิน</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {document.items.map((item, index) => (
+                        <TableRow key={index}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>{item.description}</TableCell>
+                            <TableCell className="text-right">{item.quantity}</TableCell>
+                            <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                         </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {document.items.map((item, index) => (
-                            <TableRow key={index}>
-                                <TableCell>{index + 1}</TableCell>
-                                <TableCell>{item.description}</TableCell>
-                                <TableCell className="text-right">{item.quantity}</TableCell>
-                                <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                    ))}
+                </TableBody>
+            </Table>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
-                        {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
-                    </div>
-                    <div className="space-y-2">
-                        <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
-                        <Separator />
-                        <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                    </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                    {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
                 </div>
-                
-                 <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">
-                    <div className="space-y-16">
-                        <p>.................................................</p>
-                        <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
-                    </div>
-                     <div className="space-y-16">
-                        <p>.................................................</p>
-                        <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
-                    </div>
+                <div className="space-y-2">
+                    <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                    <Separator />
+                    <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                 </div>
-
+            </div>
+            
+             <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">
+                <div className="space-y-16">
+                    <p>.................................................</p>
+                    <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
+                </div>
+                 <div className="space-y-16">
+                    <p>.................................................</p>
+                    <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
+                </div>
             </div>
         </div>
     );
@@ -148,28 +135,42 @@ function DocumentPageContent() {
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const handlePrint = () => {
-        router.push(pathname + '?print=1');
+        if (isPrintMode) {
+          try {
+            window.print();
+          } catch (e) {
+            console.error("Failed to trigger print dialog:", e);
+          }
+        } else {
+          router.push(pathname + '?print=1&autoprint=1');
+        }
     };
-
+    
     useEffect(() => {
-        if (isPrintMode && document && !isLoading && !printedRef.current) {
+        const autoprint = searchParams.get('autoprint') === '1';
+        
+        if (isPrintMode && autoprint && document && !isLoading && !printedRef.current) {
             printedRef.current = true;
-            
-            const handleAfterPrint = () => {
-                router.back();
-            };
-            window.addEventListener('afterprint', handleAfterPrint);
-
-            const timer = setTimeout(() => {
-                window.print();
+            setTimeout(() => {
+                try {
+                    window.print();
+                } finally {
+                    router.replace(pathname + '?print=1', { scroll: false });
+                }
             }, 300);
-
+        }
+        
+        const handleAfterPrint = () => {
+            router.replace(pathname);
+        };
+        
+        if (isPrintMode) {
+            window.addEventListener('afterprint', handleAfterPrint);
             return () => {
-                clearTimeout(timer);
                 window.removeEventListener('afterprint', handleAfterPrint);
             };
         }
-    }, [isPrintMode, document, isLoading, router]);
+    }, [isPrintMode, searchParams, document, isLoading, router, pathname]);
 
     if (isLoading) {
         return <Skeleton className="h-screen w-full" />;
@@ -193,7 +194,26 @@ function DocumentPageContent() {
         );
     }
 
-    return <DocumentView document={document} isPrintMode={isPrintMode} onPrint={handlePrint} />;
+    return (
+        <div className="space-y-6">
+             {isPrintMode ? (
+                <div className="print:hidden sticky top-0 z-50 bg-background/80 backdrop-blur-sm p-4 border-b flex justify-between items-center">
+                    <p className="text-sm text-muted-foreground">โหมดพิมพ์: กดปุ่ม ‘พิมพ์’ เพื่อเลือกเครื่องพิมพ์</p>
+                    <div className="flex gap-2">
+                        <Button type="button" variant="outline" onClick={() => router.replace(pathname)}>กลับ</Button>
+                        <Button type="button" onClick={handlePrint}><Printer className="mr-2"/> พิมพ์</Button>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex justify-between items-center print:hidden">
+                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button>
+                    <Button type="button" onClick={handlePrint}><Printer className="mr-2"/> พิมพ์</Button>
+                </div>
+            )}
+            
+            <DocumentView document={document} />
+        </div>
+    );
 }
 
 export default function DocumentPageWrapper() {
