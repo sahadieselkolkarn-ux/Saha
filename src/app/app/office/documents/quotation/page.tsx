@@ -15,12 +15,7 @@ export default function OfficeQuotationPage() {
                      <Button asChild>
                         <Link href="/app/office/documents/quotation/new">
                             <PlusCircle className="mr-2 h-4 w-4" />
-                            New Quotation
-                        </Link>
-                    </Button>
-                    <Button asChild variant="outline">
-                        <Link href="/app/office/jobs/management/quotation">
-                            New from Job
+                            สร้างใบเสนอราคาใหม่
                         </Link>
                     </Button>
                 </div>
@@ -31,5 +26,3 @@ export default function OfficeQuotationPage() {
         </>
     );
 }
-
-    

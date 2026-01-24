@@ -11,13 +11,13 @@ export const JOB_STATUSES = ["RECEIVED", "IN_PROGRESS", "WAITING_QUOTATION", "WA
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
 export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
-  RECEIVED: "งานใหม่",
-  IN_PROGRESS: "เริ่มดำเนินการ",
+  RECEIVED: "งานใหม่รอรับ",
+  IN_PROGRESS: "กำลังตรวจเช็ค",
   WAITING_QUOTATION: "รอเสนอราคา",
   WAITING_APPROVE: "รอลูกค้าอนุมัติ",
-  PENDING_PARTS: "กำลังจัดอะไหล่",
-  IN_REPAIR_PROCESS: "ดำเนินการซ่อม",
-  DONE: "งานเรียบร้อย",
+  PENDING_PARTS: "รอจัดอะไหล่",
+  IN_REPAIR_PROCESS: "กำลังดำเนินการซ่อม",
+  DONE: "งานเสร็จรอทำบิล",
   WAITING_CUSTOMER_PICKUP: "รอลูกค้ารับสินค้า",
   CLOSED: "ปิดงาน",
 };

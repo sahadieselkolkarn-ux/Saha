@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, FileEdit } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { safeFormat } from '@/lib/date-utils';
@@ -65,7 +65,7 @@ export function DocumentList({ docType }: DocumentListProps) {
       console.error(err);
       setError(err);
       setLoading(false);
-      toast({ variant: "destructive", title: "Error loading documents." });
+      toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร" });
     });
 
     return () => unsubscribe();
@@ -94,42 +94,17 @@ export function DocumentList({ docType }: DocumentListProps) {
   };
 
   const confirmCancel = async () => {
-    if (!db || !docToAction || !profile) return;
+    if (!db || !docToAction) return;
     setIsActionLoading(true);
     try {
-      const batch = writeBatch(db);
-
-      // 1. Update the document status to CANCELLED
       const docRef = doc(db, "documents", docToAction.id);
-      batch.update(docRef, {
+      await updateDoc(docRef, {
         status: 'CANCELLED',
         updatedAt: serverTimestamp(),
       });
-
-      // 2. If there's a linked job, revert its status to DONE
-      if (docToAction.jobId && typeof docToAction.jobId === 'string' && docToAction.jobId.length > 0) {
-        const jobRef = doc(db, "jobs", docToAction.jobId);
-        batch.update(jobRef, {
-          status: 'DONE',
-          lastActivityAt: serverTimestamp(),
-        });
-        
-        const activityRef = doc(collection(db, "jobs", docToAction.jobId, "activities"));
-        batch.set(activityRef, {
-            text: `ยกเลิกเอกสาร ${docToAction.docNo} สถานะงานกลับไปเป็น "งานเรียบร้อย"`,
-            userName: profile.displayName,
-            userId: profile.uid,
-            createdAt: serverTimestamp(),
-            photos: [],
-        });
-      }
-      
-      await batch.commit();
-
-      toast({ title: "Document Cancelled", description: docToAction.jobId ? "Job status has been reverted to 'DONE'." : "" });
-
+      toast({ title: "ยกเลิกเอกสารสำเร็จ" });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Action Failed", description: e.message });
+      toast({ variant: "destructive", title: "การยกเลิกล้มเหลว", description: e.message });
     } finally {
       setIsActionLoading(false);
       setIsCancelAlertOpen(false);
@@ -142,9 +117,9 @@ export function DocumentList({ docType }: DocumentListProps) {
     setIsActionLoading(true);
     try {
       await deleteDoc(doc(db, "documents", docToAction.id));
-      toast({ title: "Document Deleted" });
+      toast({ title: "ลบเอกสารสำเร็จ" });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Action Failed", description: e.message });
+      toast({ variant: "destructive", title: "การลบล้มเหลว", description: e.message });
     } finally {
       setIsActionLoading(false);
       setIsDeleteAlertOpen(false);
@@ -160,7 +135,7 @@ export function DocumentList({ docType }: DocumentListProps) {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by doc #, customer, phone, car plate, or job ID..."
+              placeholder="ค้นหาจากเลขที่, ชื่อลูกค้า, เบอร์โทร, ทะเบียนรถ, หรือรหัสงาน..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -172,19 +147,19 @@ export function DocumentList({ docType }: DocumentListProps) {
           ) : error ? (
             <div className="text-center text-destructive flex flex-col items-center gap-2 h-48 justify-center">
               <AlertCircle />
-              <p>Error loading documents.</p>
+              <p>เกิดข้อผิดพลาดในการโหลดเอกสาร</p>
             </div>
           ) : (
             <div className="border rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Doc No.</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right w-[100px]">Actions</TableHead>
+                    <TableHead>เลขที่</TableHead>
+                    <TableHead>วันที่</TableHead>
+                    <TableHead>ลูกค้า</TableHead>
+                    <TableHead>สถานะ</TableHead>
+                    <TableHead className="text-right">ยอดสุทธิ</TableHead>
+                    <TableHead className="text-right w-[100px]">จัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -209,11 +184,11 @@ export function DocumentList({ docType }: DocumentListProps) {
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
-                            {editPath && docItem.status !== 'CANCELLED' && (
-                                <DropdownMenuItem onSelect={() => router.push(`${editPath}?editDocId=${docItem.id}`)}>
-                                    <Edit className="mr-2 h-4 w-4"/>
-                                    แก้ไข
-                                </DropdownMenuItem>
+                            {editPath && (
+                              <DropdownMenuItem onSelect={() => router.push(`${editPath}?editDocId=${docItem.id}`)}>
+                                  <FileEdit className="mr-2 h-4 w-4"/>
+                                  แก้ไข (สร้างใหม่)
+                              </DropdownMenuItem>
                             )}
                             <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED'}>
                               <XCircle className="mr-2 h-4 w-4"/>
@@ -235,7 +210,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                   )}) : (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center h-24">
-                        {searchTerm ? "No documents match your search." : "No documents found."}
+                        {searchTerm ? "ไม่พบเอกสารที่ตรงกับคำค้นหา" : "ไม่พบเอกสาร"}
                       </TableCell>
                     </TableRow>
                   )}
@@ -246,7 +221,6 @@ export function DocumentList({ docType }: DocumentListProps) {
         </CardContent>
       </Card>
 
-      {/* Confirmation Dialogs */}
       <AlertDialog open={isCancelAlertOpen} onOpenChange={setIsCancelAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -256,9 +230,9 @@ export function DocumentList({ docType }: DocumentListProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isActionLoading}>Close</AlertDialogCancel>
+            <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
             <AlertDialogAction onClick={confirmCancel} disabled={isActionLoading}>
-              {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'Confirm Cancel'}
+              {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการยกเลิก'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -273,9 +247,9 @@ export function DocumentList({ docType }: DocumentListProps) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isActionLoading}>Close</AlertDialogCancel>
+            <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90" disabled={isActionLoading}>
-              {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'Confirm Delete'}
+              {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการลบ'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
