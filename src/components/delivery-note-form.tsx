@@ -265,7 +265,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                         </Popover>
                         </FormItem>
                     )}
-                    />
+                />
                  {displayCustomer && (
                     <>
                         <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>

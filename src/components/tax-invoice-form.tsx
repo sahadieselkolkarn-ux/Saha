@@ -212,7 +212,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     };
     
     try {
-        if (isEditing) {
+        if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
                 ...documentData,
@@ -381,8 +381,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             </div>
         </div>
          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
-            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
         </div>
       </form>
     </Form>

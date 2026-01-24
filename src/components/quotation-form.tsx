@@ -197,7 +197,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     };
 
     try {
-        if (isEditing) {
+        if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
                 ...documentData,
