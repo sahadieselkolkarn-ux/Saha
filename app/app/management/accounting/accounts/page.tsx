@@ -33,7 +33,10 @@ export default function ManagementAccountingAccountsPage() {
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
   useEffect(() => {
-    if (!db) return;
+    if (!db) {
+        // Firebase is not ready yet, keep loading
+        return;
+    }
     setLoading(true);
     const q = query(collection(db, "accountingAccounts"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -51,7 +54,7 @@ export default function ManagementAccountingAccountsPage() {
     const lowercasedFilter = searchTerm.toLowerCase();
     return accounts.filter(acc =>
       acc.name.toLowerCase().includes(lowercasedFilter) ||
-      acc.accountNo?.includes(searchTerm)
+      (acc.accountNo && acc.accountNo.includes(searchTerm))
     );
   }, [accounts, searchTerm]);
 
@@ -77,6 +80,14 @@ export default function ManagementAccountingAccountsPage() {
       setAccountToAction(null);
     }
   };
+
+  if (!profile) {
+    return (
+         <div className="flex justify-center items-center h-64">
+            <Loader2 className="mx-auto animate-spin" />
+         </div>
+    )
+  }
 
   if (!hasPermission) {
     return (
