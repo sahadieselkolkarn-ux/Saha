@@ -970,6 +970,41 @@
         "creditNotePrefix": { "type": "string" },
         "withholdingTaxPrefix": { "type": "string" }
       }
+    },
+    "AccountingAccount": {
+      "title": "Accounting Account",
+      "description": "Represents a cash or bank account for accounting purposes.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["CASH", "BANK"] },
+        "bankName": { "type": "string" },
+        "accountNo": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "isActive", "createdAt", "updatedAt"]
+    },
+    "AccountingEntry": {
+      "title": "Accounting Entry",
+      "description": "An immutable record of a financial transaction, like a receipt.",
+      "type": "object",
+      "properties": {
+        "entryType": { "type": "string", "enum": ["RECEIPT"] },
+        "sourceDocType": { "type": "string" },
+        "sourceDocId": { "type": "string" },
+        "sourceDocNo": { "type": "string" },
+        "referenceInvoiceId": { "type": "string" },
+        "amount": { "type": "number" },
+        "accountId": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
+        "entryDate": { "type": "string", "format": "date" },
+        "customerNameSnapshot": { "type": "string" },
+        "jobId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["entryType", "sourceDocId", "sourceDocNo", "amount", "entryDate", "customerNameSnapshot", "createdAt"]
     }
   },
   "auth": {
@@ -1067,9 +1102,19 @@
         "$ref": "#/backend/entities/Payslip"
       },
       "description": "Stores individual payslips for a payroll run."
+    },
+    "/accountingAccounts/{accountId}": {
+      "schema": {
+        "$ref": "#/backend/entities/AccountingAccount"
+      },
+      "description": "Stores cash and bank accounts for accounting."
+    },
+    "/accountingEntries/{entryId}": {
+      "schema": {
+        "$ref": "#/backend/entities/AccountingEntry"
+      },
+      "description": "Stores immutable financial transaction entries."
     }
   }
 }
-    
-
     

@@ -318,6 +318,32 @@ export interface DocumentCounters {
   withholdingTax?: number;
 }
 
+export interface AccountingAccount {
+  id: string;
+  name: string;
+  type: 'CASH' | 'BANK';
+  bankName?: string;
+  accountNo?: string;
+  isActive: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface AccountingEntry {
+  id: string;
+  entryType: 'RECEIPT';
+  sourceDocType: DocType;
+  sourceDocId: string;
+  sourceDocNo: string;
+  referenceInvoiceId?: string;
+  amount: number;
+  accountId?: string;
+  paymentMethod: 'CASH' | 'TRANSFER' | 'CREDIT';
+  entryDate: string; // YYYY-MM-DD
+  customerNameSnapshot: string;
+  jobId?: string;
+  createdAt: Timestamp;
+}
     
 
     
