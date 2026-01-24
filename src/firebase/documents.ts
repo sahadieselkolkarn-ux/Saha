@@ -10,6 +10,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import type { DocumentSettings, Document, DocType, DocumentCounters, JobStatus, UserProfile } from '@/lib/types';
+import { sanitizeForFirestore } from '@/lib/utils';
 
 const docTypeToCounterField: Record<DocType, keyof Omit<DocumentCounters, 'year'>> = {
     QUOTATION: 'quotation',
@@ -84,8 +85,10 @@ export async function createDocument(
             createdAt: serverTimestamp() as Timestamp,
             updatedAt: serverTimestamp() as Timestamp,
         };
+        
+        const sanitizedData = sanitizeForFirestore(newDocumentData);
 
-        transaction.set(newDocRef, newDocumentData);
+        transaction.set(newDocRef, sanitizedData);
         transaction.set(counterRef, { ...currentCounters, [counterField]: newCount }, { merge: true });
 
         // Update Job status and add activity log if there's a Job ID

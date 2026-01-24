@@ -98,7 +98,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     if (!db || !job?.customerId) return null;
     return doc(db, 'customers', job.customerId);
   }, [db, job?.customerId]);
-  const { data: jobCustomer } = useDoc<Customer>(jobCustomerDocRef);
+  const { data: jobCustomer, isLoading: isLoadingJobCustomer } = useDoc<Customer>(jobCustomerDocRef);
 
   useEffect(() => {
     if (jobId || !db) {
@@ -180,12 +180,22 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
         return;
     }
 
+    const carSnapshot: { licensePlate?: string; details?: string; } = {};
+    if (job) {
+        if (job.carServiceDetails?.licensePlate) {
+            carSnapshot.licensePlate = job.carServiceDetails.licensePlate;
+        }
+        if (job.description) {
+            carSnapshot.details = job.description;
+        }
+    }
+
     try {
         const documentData = {
             docDate: data.issueDate,
             jobId: data.jobId,
             customerSnapshot: { ...customerForDoc },
-            carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : {},
+            carSnapshot: carSnapshot,
             storeSnapshot: { ...storeSettings },
             items: data.items,
             subtotal: data.subtotal,
@@ -214,11 +224,11 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     }
   };
   
-  const isLoading = isLoadingJob || isLoadingStore || (!jobId && isLoadingCustomers);
+  const isLoading = isLoadingJob || isLoadingStore || (jobId ? false : isLoadingCustomers);
   const isFormLoading = form.formState.isSubmitting || isLoading;
-  const displayCustomer = customer ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
+  const displayCustomer = customer ?? jobCustomer ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
 
-  if (isLoading) {
+  if (isLoading && (!jobId || isLoadingJob)) {
     return <Skeleton className="h-96" />;
   }
   
