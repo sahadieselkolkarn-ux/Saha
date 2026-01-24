@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, FileEdit } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { safeFormat } from '@/lib/date-utils';
@@ -24,7 +24,7 @@ interface DocumentListProps {
 }
 
 const docTypeToEditPath: Record<string, string> = {
-    QUOTATION: '/app/office/documents/quotation/new',
+    QUOTATION: '/app/office/documents/quotation',
     DELIVERY_NOTE: '/app/office/documents/delivery-note/new',
     TAX_INVOICE: '/app/office/documents/tax-invoice/new',
 };
@@ -164,7 +164,10 @@ export function DocumentList({ docType }: DocumentListProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
-                    const editPath = docTypeToEditPath[docItem.docType];
+                    const editPath = docItem.docType === 'QUOTATION'
+                      ? `/app/office/documents/quotation/${docItem.id}`
+                      : `${docTypeToEditPath[docItem.docType]}?editDocId=${docItem.id}`;
+                    
                     return (
                     <TableRow key={docItem.id}>
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>
@@ -184,12 +187,10 @@ export function DocumentList({ docType }: DocumentListProps) {
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
-                            {editPath && (
-                              <DropdownMenuItem onSelect={() => router.push(`${editPath}?editDocId=${docItem.id}`)}>
-                                  <FileEdit className="mr-2 h-4 w-4"/>
-                                  แก้ไข (สร้างใหม่)
-                              </DropdownMenuItem>
-                            )}
+                            <DropdownMenuItem onSelect={() => router.push(editPath)}>
+                                <Edit className="mr-2 h-4 w-4"/>
+                                แก้ไข
+                            </DropdownMenuItem>
                             <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED'}>
                               <XCircle className="mr-2 h-4 w-4"/>
                               ยกเลิก

@@ -53,6 +53,10 @@ const quotationFormSchema = z.object({
 
 type QuotationFormData = z.infer<typeof quotationFormSchema>;
 
+const formatCurrency = (value: number | null | undefined) => {
+  return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
 export function QuotationForm({ jobId, editDocId }: { jobId: string | null, editDocId: string | null }) {
   const router = useRouter();
   const { db } = useFirebase();
@@ -229,10 +233,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
-
-  const formatCurrency = (value: number | null | undefined) => {
-    return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
