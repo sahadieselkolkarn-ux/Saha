@@ -103,13 +103,21 @@ function ScanPageContent() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
            throw new Error("Camera not supported on this browser.");
         }
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
         setHasCameraPermission(true);
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play(); // Wait for play to start
-          animationFrameId = requestAnimationFrame(tick);
+          try {
+            await videoRef.current.play();
+            animationFrameId = requestAnimationFrame(tick);
+          } catch (error: any) {
+            if (error.name !== 'AbortError') {
+              // Re-throw other errors that are not the expected AbortError
+              throw error;
+            }
+            // Ignore AbortError, as it's expected when navigating away
+          }
         }
       } catch (error: any) {
         console.error('Error accessing camera:', error);
