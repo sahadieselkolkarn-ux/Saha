@@ -41,10 +41,20 @@ function DocumentView({ document }: { document: Document }) {
             <div className="p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                     <div className="lg:col-span-2 space-y-2">
-                        <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
-                        <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
-                        <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
+                        {isDeliveryNote ? (
+                             <>
+                                <h2 className="text-xl font-bold">{document.storeSnapshot.informalName}</h2>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                            </>
+                        ) : (
+                             <>
+                                <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                                <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
+                            </>
+                        )}
                     </div>
                     <div className="space-y-2">
                         <h1 className="text-2xl font-bold text-right">{docTypeDisplay[document.docType]}</h1>
@@ -61,7 +71,7 @@ function DocumentView({ document }: { document: Document }) {
                         <p className="font-semibold">{document.customerSnapshot.name}</p>
                         <p className="text-muted-foreground whitespace-pre-wrap">{document.customerSnapshot.taxAddress || 'N/A'}</p>
                         <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
-                        <p className="text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>
+                        {!isDeliveryNote && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
                     </CardContent>
                 </Card>
 
@@ -71,8 +81,8 @@ function DocumentView({ document }: { document: Document }) {
                             <TableHead className="w-12">#</TableHead>
                             <TableHead>รายการ</TableHead>
                             <TableHead className="text-right">จำนวน</TableHead>
-                            {!isDeliveryNote && <TableHead className="text-right">ราคา/หน่วย</TableHead>}
-                            {!isDeliveryNote && <TableHead className="text-right">จำนวนเงิน</TableHead>}
+                            <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                            <TableHead className="text-right">จำนวนเงิน</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -81,8 +91,8 @@ function DocumentView({ document }: { document: Document }) {
                                 <TableCell>{index + 1}</TableCell>
                                 <TableCell>{item.description}</TableCell>
                                 <TableCell className="text-right">{item.quantity}</TableCell>
-                                {!isDeliveryNote && <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
-                                {!isDeliveryNote && <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>}
+                                <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
