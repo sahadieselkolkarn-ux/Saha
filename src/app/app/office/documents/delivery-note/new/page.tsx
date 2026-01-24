@@ -12,7 +12,7 @@ function NewDeliveryNotePageContent() {
   const jobId = searchParams.get("jobId");
   return (
     <>
-      <PageHeader title="สร้างใบส่งของ" description="กรอกรายละเอียดเพื่อสร้างใบส่งของใหม่" />
+      <PageHeader title="สร้างใบส่งของชั่วคราว" description="กรอกรายละเอียดเพื่อสร้างใบส่งของใหม่" />
       <DeliveryNoteForm jobId={jobId} />
     </>
   );

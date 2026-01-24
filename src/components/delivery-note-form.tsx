@@ -206,12 +206,11 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
             <div className="lg:col-span-2 space-y-2">
-                <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Your Company'}</h2>
+                <h2 className="text-xl font-bold">{storeSettings?.informalName || 'Your Company'}</h2>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{storeSettings?.taxAddress}</p>
                 <p className="text-sm text-muted-foreground">โทร: {storeSettings?.phone}</p>
             </div>
             <div className="space-y-4">
-                 <h1 className="text-2xl font-bold text-right">ใบส่งของชั่วคราว</h1>
                  <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
             </div>
         </div>
@@ -301,5 +300,5 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
         </div>
       </form>
     </Form>
-  );
+  )
 }
