@@ -66,3 +66,80 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  body {
+    background-color: #fff !important;
+    font-size: 10pt;
+    line-height: 1.3;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .printable-document {
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #000 !important;
+  }
+
+  .printable-document .text-muted-foreground {
+    color: #4a5568 !important;
+  }
+
+  .printable-document .mb-8 { margin-bottom: 1rem !important; }
+  .printable-document .mt-16 { margin-top: 2.5rem !important; }
+  .printable-document .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem !important; }
+  .printable-document .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.125rem !important; }
+  
+  .printable-document .p-8 { padding: 0 !important; }
+  
+  .printable-document .gap-6 { gap: 1rem !important; }
+  .printable-document .gap-8 { gap: 1.5rem !important; }
+
+  .printable-document .rounded-lg, .printable-document .rounded-md {
+      border-radius: 0 !important;
+  }
+
+  .printable-document .border {
+      border-width: 1px !important;
+      border-color: #ddd !important;
+  }
+
+  .printable-document .bg-card {
+      background-color: #fff !important;
+  }
+  .printable-document .shadow-sm {
+      box-shadow: none !important;
+  }
+   .printable-document .p-6 {
+      padding: 0.75rem !important;
+   }
+   .printable-document .pt-0 {
+     padding-top: 0 !important;
+   }
+  
+  .printable-document table {
+      width: 100%;
+      border-collapse: collapse;
+  }
+  .printable-document thead {
+      display: table-header-group;
+  }
+  .printable-document tr, .printable-document img {
+      break-inside: avoid;
+  }
+  .printable-document th,
+  .printable-document td {
+    padding: 4px 6px !important;
+    vertical-align: top;
+  }
+  .printable-document hr {
+      margin: 0.25rem 0 !important;
+  }
+}

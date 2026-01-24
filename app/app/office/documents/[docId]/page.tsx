@@ -30,7 +30,7 @@ function DocumentView({ document }: { document: Document }) {
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
 
     return (
-        <div className="p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
+        <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <div className="lg:col-span-2 space-y-2">
                     {isDeliveryNote ? (
@@ -157,7 +157,9 @@ function DocumentPageContent() {
                     window.print();
                 } finally {
                     // Remove autoprint param to prevent re-printing on refresh
-                    router.replace(pathname + '?print=1', { scroll: false });
+                    const newSearchParams = new URLSearchParams(searchParams.toString());
+                    newSearchParams.delete('autoprint');
+                    router.replace(`${pathname}?${newSearchParams.toString()}`, { scroll: false });
                 }
             }, 300);
         }
@@ -199,11 +201,11 @@ function DocumentPageContent() {
     return (
         <div className="space-y-6">
              {isPrintMode ? (
-                <div className="print:hidden sticky top-0 z-50 bg-background/80 backdrop-blur-sm p-4 border-b">
+                <div className="print-hidden sticky top-0 z-50 bg-background/80 backdrop-blur-sm p-4 border-b">
                     <div className="flex justify-between items-center">
                         <div className="text-sm">
                             <p className="text-muted-foreground">โหมดพิมพ์: กด "พิมพ์" เพื่อเปิดหน้าต่างเลือกเครื่องพิมพ์</p>
-                            <p className="text-xs text-muted-foreground">ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
+                            <p className="text-xs text-muted-foreground">ถ้าต้องการไม่ให้มี URL/วันที่บนหัว-ท้ายกระดาษ, ให้ปิด "Headers and footers" ในหน้าต่างพิมพ์ (More settings)</p>
                         </div>
                         <div className="flex items-center gap-2">
                             <Button asChild variant="secondary">
