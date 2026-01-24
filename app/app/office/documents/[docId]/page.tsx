@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useMemo, Suspense, useEffect } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, Suspense, useEffect, useRef } from "react";
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -15,42 +15,9 @@ import { AlertCircle, ArrowLeft, Printer } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
-import { useToast } from "@/hooks/use-toast";
 
-function DocumentView({ document, isPrintMode }: { document: Document; isPrintMode: boolean }) {
+function DocumentView({ document, isPrintMode, onPrint }: { document: Document; isPrintMode: boolean; onPrint: () => void; }) {
     const router = useRouter();
-    const { toast } = useToast();
-
-    const handlePrint = () => {
-        try {
-            // Defensively remove styles that might prevent interaction.
-            document?.documentElement?.classList.remove('prevent-scroll');
-            if (document?.body?.style) {
-                 document.body.style.pointerEvents = '';
-            }
-            
-            const printUrl = window.location.href + (window.location.search ? '&' : '?') + 'print=1';
-            // Added 'noopener,noreferrer' as requested for security.
-            const printWindow = window.open(printUrl, '_blank', 'noopener,noreferrer');
-
-            if (!printWindow) {
-                toast({
-                    variant: 'destructive',
-                    title: 'ไม่สามารถเปิดหน้าต่างพิมพ์ได้',
-                    description: 'กรุณาอนุญาต pop-ups สำหรับเว็บไซต์นี้ แล้วลองใหม่อีกครั้ง',
-                });
-                window.print(); // Fallback to same-window print
-            }
-        } catch (error) {
-            console.error("Print failed:", error);
-            toast({
-                variant: 'destructive',
-                title: 'เกิดข้อผิดพลาดในการพิมพ์',
-                description: 'กำลังลองพิมพ์ในหน้าต่างปัจจุบัน',
-            });
-            window.print(); // Fallback to same-window print
-        }
-    };
 
     const docTypeDisplay: Record<Document['docType'], string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
@@ -69,7 +36,7 @@ function DocumentView({ document, isPrintMode }: { document: Document; isPrintMo
             {!isPrintMode && (
                 <div className="flex justify-between items-center print:hidden">
                     <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
-                    <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                    <Button type="button" onClick={onPrint}><Printer/> พิมพ์</Button>
                 </div>
             )}
 
@@ -165,10 +132,13 @@ function DocumentView({ document, isPrintMode }: { document: Document; isPrintMo
 
 function DocumentPageContent() {
     const { docId } = useParams();
+    const router = useRouter();
+    const pathname = usePathname();
     const searchParams = useSearchParams();
     const { db } = useFirebase();
 
     const isPrintMode = searchParams.get('print') === '1';
+    const printedRef = useRef(false);
 
     const docRef = useMemo(() => {
         if (!db || typeof docId !== 'string') return null;
@@ -177,9 +147,17 @@ function DocumentPageContent() {
 
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
+    const handlePrint = () => {
+        router.push(pathname + '?print=1');
+    };
+
     useEffect(() => {
-        if (isPrintMode && document && !isLoading) {
-            const handleAfterPrint = () => window.close();
+        if (isPrintMode && document && !isLoading && !printedRef.current) {
+            printedRef.current = true;
+            
+            const handleAfterPrint = () => {
+                router.back();
+            };
             window.addEventListener('afterprint', handleAfterPrint);
 
             const timer = setTimeout(() => {
@@ -189,9 +167,9 @@ function DocumentPageContent() {
             return () => {
                 clearTimeout(timer);
                 window.removeEventListener('afterprint', handleAfterPrint);
-            }
+            };
         }
-    }, [isPrintMode, document, isLoading]);
+    }, [isPrintMode, document, isLoading, router]);
 
     if (isLoading) {
         return <Skeleton className="h-screen w-full" />;
@@ -215,7 +193,7 @@ function DocumentPageContent() {
         );
     }
 
-    return <DocumentView document={document} isPrintMode={isPrintMode} />;
+    return <DocumentView document={document} isPrintMode={isPrintMode} onPrint={handlePrint} />;
 }
 
 export default function DocumentPageWrapper() {

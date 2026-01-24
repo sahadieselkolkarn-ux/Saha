@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppSidebar } from '@/components/app-sidebar';
 import { useAuth } from "@/context/auth-context";
 import { Loader2 } from "lucide-react";
 import { FixStuckUI } from "@/components/fix-stuck-ui";
 import { AppHeader } from "@/components/app-header";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  const isPrintMode = searchParams.get('print') === '1';
 
   useEffect(() => {
     if (loading) return; // Wait until loading is false
@@ -18,12 +21,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       router.replace('/login');
     }
   }, [user, loading, router]);
-
+  
   if (loading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
+    );
+  }
+
+  if (isPrintMode) {
+    return (
+      <>
+        <FixStuckUI />
+        <main className="min-h-screen w-full p-0">
+            {children}
+        </main>
+      </>
     );
   }
 
@@ -42,4 +56,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
     </>
   );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+    return (
+        <Suspense fallback={
+            <div className="flex h-screen w-full items-center justify-center bg-background">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        }>
+            <AppLayoutContent>{children}</AppLayoutContent>
+        </Suspense>
+    );
 }
