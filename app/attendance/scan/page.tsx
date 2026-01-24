@@ -1,11 +1,13 @@
 
 "use client";
 
-import { Suspense, useMemo, useRef } from 'react';
+import { Suspense, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
+import jsQR from "jsqr";
+
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -17,7 +19,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, ScanLine } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { KioskToken } from '@/lib/types';
 
@@ -43,7 +45,9 @@ function ScanPageContent() {
 
   // States for camera scanning
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
 
   // States for token-based clock-in
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
@@ -54,33 +58,81 @@ function ScanPageContent() {
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
-  // Effect for camera permission when no token is present
+  // Effect for camera permission and QR scanning when no token is present
   useEffect(() => {
-    if (!kioskToken && hasCameraPermission === null) {
-      const getCameraPermission = async () => {
-        try {
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-             throw new Error("Camera not supported on this browser.");
-          }
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          setHasCameraPermission(true);
-
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        } catch (error: any) {
-          console.error('Error accessing camera:', error);
-          setHasCameraPermission(false);
-          toast({
-            variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: error.message || 'Please enable camera permissions in your browser settings to use this feature.',
-          });
-        }
-      };
-      getCameraPermission();
+    if (kioskToken || hasCameraPermission !== null) {
+      // If we have a token or have already attempted to get camera permission, don't run.
+      return;
     }
-  }, [kioskToken, hasCameraPermission, toast]);
+
+    let stream: MediaStream | null = null;
+    let animationFrameId: number;
+
+    const tick = () => {
+      if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA && canvasRef.current) {
+        setIsScanning(true);
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d");
+        
+        if (ctx) {
+          canvas.height = video.videoHeight;
+          canvas.width = video.videoWidth;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: "dontInvert",
+          });
+
+          if (code && code.data) {
+            console.log("Found QR code", code.data);
+            if (stream) {
+              stream.getTracks().forEach(track => track.stop());
+            }
+            router.push(code.data);
+            return; // Stop the loop
+          }
+        }
+      }
+      animationFrameId = requestAnimationFrame(tick);
+    };
+
+    const getCameraAndScan = async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+           throw new Error("Camera not supported on this browser.");
+        }
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        setHasCameraPermission(true);
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play(); // Wait for play to start
+          animationFrameId = requestAnimationFrame(tick);
+        }
+      } catch (error: any) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: error.message || 'Please enable camera permissions in your browser settings.',
+        });
+      }
+    };
+
+    getCameraAndScan();
+
+    // Cleanup function
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    }
+  }, [kioskToken, hasCameraPermission, router, toast]);
+
   
   // Effect for token verification if token exists
   useEffect(() => {
@@ -246,12 +298,18 @@ function ScanPageContent() {
     return (
       <>
         <PageHeader title="Scan QR Code" description="Point your camera at the QR code on the Kiosk screen." />
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
         <div className="flex justify-center">
           <Card className="w-full max-w-md">
             <CardContent className="p-4">
               <div className="aspect-video w-full bg-muted rounded-md overflow-hidden flex items-center justify-center relative">
                 <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
                 {hasCameraPermission && <div className="absolute w-64 h-64 border-4 border-white/50 rounded-lg" />}
+                {isScanning && (
+                  <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+                    <div className="w-full h-1 bg-red-500/70 animate-pulse shadow-[0_0_10px_red]"></div>
+                  </div>
+                )}
               </div>
               {hasCameraPermission === false && (
                 <Alert variant="destructive" className="mt-4">
@@ -270,8 +328,9 @@ function ScanPageContent() {
               )}
             </CardContent>
             <CardFooter>
-                <p className="text-xs text-muted-foreground text-center w-full">
-                    The app will automatically detect the QR code.
+                <p className="text-xs text-muted-foreground text-center w-full flex items-center justify-center">
+                    <ScanLine className="h-4 w-4 mr-2" />
+                    {isScanning ? 'Scanning for QR code...' : 'Waiting for camera...'}
                 </p>
             </CardFooter>
           </Card>
