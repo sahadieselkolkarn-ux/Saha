@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useEffect, useRef } from "react";
@@ -155,6 +156,7 @@ function DocumentPageContent() {
                 try {
                     window.print();
                 } finally {
+                    // Remove autoprint param to prevent re-printing on refresh
                     router.replace(pathname + '?print=1', { scroll: false });
                 }
             }, 300);
@@ -197,17 +199,27 @@ function DocumentPageContent() {
     return (
         <div className="space-y-6">
              {isPrintMode ? (
-                <div className="print:hidden sticky top-0 z-50 bg-background/80 backdrop-blur-sm p-4 border-b flex justify-between items-center">
-                    <p className="text-sm text-muted-foreground">โหมดพิมพ์: กดปุ่ม ‘พิมพ์’ เพื่อเลือกเครื่องพิมพ์</p>
-                    <div className="flex gap-2">
-                        <Button type="button" variant="outline" onClick={() => router.replace(pathname)}>กลับ</Button>
-                        <Button type="button" onClick={handlePrint}><Printer className="mr-2"/> พิมพ์</Button>
+                <div className="print:hidden sticky top-0 z-50 bg-background/80 backdrop-blur-sm p-4 border-b">
+                    <div className="flex justify-between items-center">
+                        <div className="text-sm">
+                            <p className="text-muted-foreground">โหมดพิมพ์: กด "พิมพ์" เพื่อเปิดหน้าต่างเลือกเครื่องพิมพ์</p>
+                            <p className="text-xs text-muted-foreground">ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button asChild variant="secondary">
+                                <a href={`${pathname}?${searchParams.toString()}`} target="_blank" rel="noopener noreferrer">
+                                    เปิดหน้าพิมพ์ในแท็บใหม่
+                                </a>
+                            </Button>
+                            <Button variant="outline" onClick={() => router.replace(pathname)}>กลับ</Button>
+                            <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4"/> พิมพ์</Button>
+                        </div>
                     </div>
                 </div>
             ) : (
                 <div className="flex justify-between items-center print:hidden">
-                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button>
-                    <Button type="button" onClick={handlePrint}><Printer className="mr-2"/> พิมพ์</Button>
+                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+                    <Button type="button" onClick={handlePrint}><Printer className="mr-2 h-4 w-4"/> พิมพ์</Button>
                 </div>
             )}
             
