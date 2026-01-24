@@ -18,6 +18,11 @@ export default function OfficeQuotationPage() {
                             สร้างใบเสนอราคาใหม่
                         </Link>
                     </Button>
+                    <Button asChild variant="outline">
+                        <Link href="/app/office/jobs/management/quotation">
+                            สร้างจากงานซ่อม
+                        </Link>
+                    </Button>
                 </div>
             </PageHeader>
             <DocumentList
