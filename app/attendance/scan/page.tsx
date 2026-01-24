@@ -1,6 +1,8 @@
+
 "use client";
 
-import { Suspense, useMemo } from 'react';
+import { Suspense, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
@@ -12,11 +14,13 @@ import { safeFormat } from '@/lib/date-utils';
 import { TOKEN_BUFFER_MS } from '@/lib/constants';
 
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, Link2Off } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { KioskToken } from '@/lib/types';
+
 
 const SPAM_DELAY_SECONDS = 60; // 1 minute
 
@@ -32,20 +36,59 @@ function ScanPageContent() {
   const { db } = useFirebase();
   const { profile, loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   
   const searchParams = useSearchParams();
   const kioskToken = useMemo(() => searchParams.get('k') || searchParams.get('token'), [searchParams]);
 
+  // States for camera scanning
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+
+  // States for token-based clock-in
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastAttendance, setLastAttendance] = useState<LastAttendanceInfo | null | undefined>(undefined);
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
+  // Effect for camera permission when no token is present
   useEffect(() => {
+    if (!kioskToken && hasCameraPermission === null) {
+      const getCameraPermission = async () => {
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+             throw new Error("Camera not supported on this browser.");
+          }
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          setHasCameraPermission(true);
+
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (error: any) {
+          console.error('Error accessing camera:', error);
+          setHasCameraPermission(false);
+          toast({
+            variant: 'destructive',
+            title: 'Camera Access Denied',
+            description: error.message || 'Please enable camera permissions in your browser settings to use this feature.',
+          });
+        }
+      };
+      getCameraPermission();
+    }
+  }, [kioskToken, hasCameraPermission, toast]);
+  
+  // Effect for token verification if token exists
+  useEffect(() => {
+    if (!kioskToken) {
+        setTokenStatus("missing");
+        return;
+    }
+
     const RETRY_LIMIT = 5;
     const RETRY_DELAY_MS = 250;
 
@@ -54,38 +97,30 @@ function ScanPageContent() {
     }
 
     async function verifyToken() {
-      if (!kioskToken) {
-        setTokenStatus("missing");
-        return;
-      }
       if (!db) return;
 
       setTokenStatus("verifying");
       setTokenError(null);
       setTokenExpiresIn(null);
       
-      const tokenRef = doc(db, "kioskTokens", kioskToken);
+      const tokenRef = doc(db, "kioskTokens", kioskToken!);
 
       for (let i = 0; i < RETRY_LIMIT; i++) {
         try {
             const tokenSnap = await getDoc(tokenRef);
-
             if (tokenSnap.exists()) {
                 const tokenData = tokenSnap.data() as KioskToken;
-                
                 if (!tokenData.isActive) {
                     setTokenStatus("invalid");
                     setTokenError("ไม่พบโค้ด (โค้ดอาจถูกใช้ไปแล้ว)");
-                    return; // Inactive, treat as not usable
+                    return;
                 }
-
                 if (Date.now() > tokenData.expiresAtMs + TOKEN_BUFFER_MS) {
                     setTokenStatus("invalid");
                     setTokenError("โค้ดหมดอายุ");
                     setTokenExpiresIn(0);
-                    return; // Expired, no need to retry
+                    return;
                 }
-
                 setTokenStatus("valid");
                 setTokenExpiresIn(Math.round((tokenData.expiresAtMs - Date.now())/1000));
                 setTokenError(null);
@@ -94,7 +129,6 @@ function ScanPageContent() {
         } catch (error) {
             console.error(`Token verification attempt ${i + 1} failed`, error);
         }
-
         if (i < RETRY_LIMIT - 1) {
             await sleep(RETRY_DELAY_MS);
         }
@@ -205,6 +239,48 @@ function ScanPageContent() {
     }
   };
 
+  // --- RENDER LOGIC ---
+
+  // If no token, show scanner UI
+  if (!kioskToken) {
+    return (
+      <>
+        <PageHeader title="Scan QR Code" description="Point your camera at the QR code on the Kiosk screen." />
+        <div className="flex justify-center">
+          <Card className="w-full max-w-md">
+            <CardContent className="p-4">
+              <div className="aspect-video w-full bg-muted rounded-md overflow-hidden flex items-center justify-center relative">
+                <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                {hasCameraPermission && <div className="absolute w-64 h-64 border-4 border-white/50 rounded-lg" />}
+              </div>
+              {hasCameraPermission === false && (
+                <Alert variant="destructive" className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Camera Access Required</AlertTitle>
+                  <AlertDescription>
+                    Please allow camera access in your browser settings to use this feature.
+                  </AlertDescription>
+                </Alert>
+              )}
+              {hasCameraPermission === null && (
+                <div className="flex items-center justify-center p-4 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  <span>Requesting camera access...</span>
+                </div>
+              )}
+            </CardContent>
+            <CardFooter>
+                <p className="text-xs text-muted-foreground text-center w-full">
+                    The app will automatically detect the QR code.
+                </p>
+            </CardFooter>
+          </Card>
+        </div>
+      </>
+    );
+  }
+
+  // --- Logic for when token IS present ---
   const isLoading = lastAttendance === undefined || authLoading || tokenStatus === "verifying";
   const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
   const canClockSpam = secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS;
@@ -221,18 +297,6 @@ function ScanPageContent() {
              <p className="text-xl font-semibold mt-4">{safeFormat(recentClock.time, 'HH:mm:ss')}</p>
              <p className="text-muted-foreground">{profile?.displayName}</p>
              <Button onClick={() => setRecentClock(null)} className="mt-8">ลงเวลาอีกครั้ง</Button>
-         </div>
-      )
-  }
-  
-  if (tokenStatus === 'missing') {
-     return (
-         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-4">
-             <Link2Off className="h-16 w-16 text-destructive mb-4" />
-             <h1 className="text-3xl font-bold">ลิงก์ไม่ถูกต้อง</h1>
-             <p className="text-muted-foreground mt-2 max-w-md">
-                ต้องสแกน QR Code ที่หน้าจอ Kiosk เพื่อเข้าสู่หน้านี้
-             </p>
          </div>
       )
   }
