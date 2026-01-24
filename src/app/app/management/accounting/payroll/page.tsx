@@ -84,9 +84,9 @@ export default function ManagementAccountingPayrollPage() {
         
         const usersQuery = query(collection(db, 'users'), orderBy('displayName', 'asc'));
         const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
-        const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<', nextStr));
+        const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
         const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
-        const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr));
+        const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
 
 
         const [usersSnapshot, leavesSnapshot, holidaysSnapshot, attendanceSnapshot, adjustmentsSnapshot] = await Promise.all([
@@ -94,7 +94,7 @@ export default function ManagementAccountingPayrollPage() {
             getDocs(leavesQuery),
             getDocs(holidaysQuery),
             getDocs(attendanceQuery),
-            getDocs(adjustmentsQuery),
+            getDocs(adjustmentsSnapshot),
         ]);
 
         const usersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));

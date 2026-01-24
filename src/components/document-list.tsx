@@ -163,9 +163,11 @@ export function DocumentList({ docType }: DocumentListProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
-                    const editPath = docItem.docType === 'QUOTATION'
-                      ? `/app/office/documents/quotation/${docItem.id}`
-                      : `${docTypeToEditPath[docItem.docType as keyof typeof docTypeToEditPath]}?editDocId=${docItem.id}`;
+                    const isQuotation = docItem.docType === 'QUOTATION';
+                    const viewPath = isQuotation ? `/app/office/documents/quotation/${docItem.id}` : `/app/office/documents/${docItem.id}`;
+                    const editPath = isQuotation 
+                        ? `/app/office/documents/quotation/${docItem.id}` 
+                        : `${docTypeToEditPath[docItem.docType as keyof typeof docTypeToEditPath]}?editDocId=${docItem.id}`;
                     
                     return (
                     <TableRow key={docItem.id}>
@@ -182,7 +184,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${docItem.id}`)}>
+                            <DropdownMenuItem onSelect={() => router.push(viewPath)}>
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
