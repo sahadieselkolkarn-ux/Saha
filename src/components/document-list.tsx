@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2 } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { safeFormat } from '@/lib/date-utils';
@@ -185,8 +185,6 @@ export function DocumentList({ docType }: DocumentListProps) {
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => (
                     <TableRow
                       key={docItem.id}
-                      onClick={() => router.push(`/app/office/documents/${docItem.id}`)}
-                      className="cursor-pointer"
                     >
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>
                       <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
@@ -202,6 +200,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                              <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${docItem.id}`)}>
+                              <Edit className="mr-2 h-4 w-4"/>
                               แก้ไข
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED'}>
