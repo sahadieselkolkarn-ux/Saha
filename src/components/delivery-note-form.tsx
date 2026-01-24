@@ -24,7 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -47,7 +47,7 @@ const deliveryNoteFormSchema = z.object({
 
 type DeliveryNoteFormData = z.infer<typeof deliveryNoteFormSchema>;
 
-export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
+export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string | null, editDocId: string | null }) {
   const router = useRouter();
   const { db } = useFirebase();
   const { profile } = useAuth();
@@ -59,23 +59,21 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
+  const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob } = useDoc<Job>(jobDocRef);
+  const { data: docToEdit, isLoading: isLoadingDocToEdit } = useDoc<DocumentType>(docToEditRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
   const form = useForm<DeliveryNoteFormData>({
     resolver: zodResolver(deliveryNoteFormSchema),
     defaultValues: {
       jobId: jobId || undefined,
-      customerId: "",
       issueDate: new Date().toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       subtotal: 0,
       grandTotal: 0,
-      notes: "",
-      senderName: "",
-      receiverName: "",
     },
   });
 
@@ -88,9 +86,18 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
 
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
 
-
   useEffect(() => {
-    if (job) {
+    if (docToEdit) {
+      form.reset({
+        jobId: docToEdit.jobId || undefined,
+        customerId: docToEdit.customerSnapshot.id,
+        issueDate: new Date().toISOString().split("T")[0],
+        items: docToEdit.items.map(item => ({...item})),
+        notes: docToEdit.notes,
+        senderName: profile?.displayName || docToEdit.senderName,
+        receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
+      })
+    } else if (job) {
         form.setValue('customerId', job.customerId);
         form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
         form.setValue('receiverName', job.customerSnapshot.name);
@@ -98,7 +105,7 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
     if (profile) {
         form.setValue('senderName', profile.displayName);
     }
-  }, [job, profile, form]);
+  }, [job, docToEdit, profile, form]);
 
   useEffect(() => {
     if (!db) return;
@@ -145,7 +152,8 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
   }, [watchedItems, form]);
 
   const onSubmit = async (data: DeliveryNoteFormData) => {
-    if (!db || !customer || !storeSettings || !profile) {
+    const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
+    if (!db || !customerSnapshot || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing data for document creation." });
         return;
     }
@@ -154,8 +162,8 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
         const documentData = {
             docDate: data.issueDate,
             jobId: data.jobId,
-            customerSnapshot: { ...customer },
-            carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : {},
+            customerSnapshot: { ...customerSnapshot },
+            carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : (docToEdit?.carSnapshot || {}),
             storeSnapshot: { ...storeSettings },
             items: data.items,
             subtotal: data.subtotal,
@@ -185,11 +193,11 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
     }
   };
 
-  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer;
+  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer || isLoadingDocToEdit;
   const isFormLoading = form.formState.isSubmitting || isLoading;
-  const displayCustomer = customer || (job ? { id: job.customerId, ...job.customerSnapshot } : null);
+  const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
 
-  if (isLoading && !job) {
+  if (isLoading && !job && !docToEdit) {
     return <Skeleton className="h-96" />;
   }
 
@@ -228,7 +236,7 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
-                                <Button variant="outline" role="combobox" className={cn("w-full justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId}>
+                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId}>
                                 {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "Select a customer..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>

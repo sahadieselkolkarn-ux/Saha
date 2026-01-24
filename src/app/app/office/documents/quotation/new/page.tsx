@@ -10,11 +10,17 @@ import { Loader2 } from 'lucide-react';
 function NewQuotationPageContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
+  const editDocId = searchParams.get("editDocId");
+
+  const title = editDocId ? "แก้ไขและสร้างใบเสนอราคาใหม่" : "สร้างใบเสนอราคา";
+  const description = editDocId
+    ? "แก้ไขรายละเอียดด้านล่างแล้วบันทึกเพื่อสร้างเอกสารฉบับใหม่"
+    : "กรอกรายละเอียดเพื่อสร้างใบเสนอราคาใหม่สำหรับงาน";
 
   return (
     <>
-      <PageHeader title="สร้างใบเสนอราคา" description="กรอกรายละเอียดเพื่อสร้างใบเสนอราคาใหม่สำหรับงาน" />
-      <QuotationForm jobId={jobId} />
+      <PageHeader title={title} description={description} />
+      <QuotationForm jobId={jobId} editDocId={editDocId} />
     </>
   );
 }
@@ -26,5 +32,3 @@ export default function NewQuotationPage() {
     </Suspense>
   );
 }
-
-    

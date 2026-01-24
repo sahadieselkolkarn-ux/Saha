@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
-import type { Job, StoreSettings, Customer } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -53,21 +53,23 @@ const quotationFormSchema = z.object({
 
 type QuotationFormData = z.infer<typeof quotationFormSchema>;
 
-export function QuotationForm({ jobId }: { jobId: string | null }) {
+export function QuotationForm({ jobId, editDocId }: { jobId: string | null, editDocId: string | null }) {
   const router = useRouter();
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(!jobId);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
+  const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
+  const { data: docToEdit, isLoading: isLoadingDocToEdit } = useDoc<DocumentType>(docToEditRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
   const form = useForm<QuotationFormData>({
@@ -77,13 +79,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
       issueDate: new Date().toISOString().split("T")[0],
       expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
-      subtotal: 0,
-      discountAmount: 0,
-      net: 0,
       isVat: true,
-      vatAmount: 0,
-      grandTotal: 0,
-      notes: "",
     },
   });
 
@@ -93,23 +89,15 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     if (!db || !selectedCustomerId) return null;
     return doc(db, 'customers', selectedCustomerId);
   }, [db, selectedCustomerId]);
-  const { data: customer } = useDoc<Customer>(customerDocRef);
+  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
 
-  const jobCustomerDocRef = useMemo(() => {
-    if (!db || !job?.customerId) return null;
-    return doc(db, 'customers', job.customerId);
-  }, [db, job?.customerId]);
-  const { data: jobCustomer, isLoading: isLoadingJobCustomer } = useDoc<Customer>(jobCustomerDocRef);
-
+  // Fetch all customers if not coming from job/edit
   useEffect(() => {
-    if (!jobId || !db) {
+    if (jobId || editDocId || !db) {
       setIsLoadingCustomers(false);
       return;
     };
-    if (jobId) {
-      setIsLoadingCustomers(false);
-      return;
-    }
+    
     setIsLoadingCustomers(true);
     const q = query(collection(db, "customers"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -120,25 +108,29 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
       setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
-  }, [db, jobId, toast]);
+  }, [db, jobId, editDocId, toast]);
 
+  // Populate form from job or docToEdit
   useEffect(() => {
-    if (jobId && jobCustomer) {
-      setCustomers([jobCustomer]);
-    }
-  }, [jobId, jobCustomer]);
-
-  useEffect(() => {
-    if (job) {
+    if (docToEdit) {
+      form.reset({
+        jobId: docToEdit.jobId || undefined,
+        customerId: docToEdit.customerSnapshot.id,
+        issueDate: new Date().toISOString().split("T")[0],
+        expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
+        items: docToEdit.items.map(item => ({ ...item })),
+        notes: docToEdit.notes,
+        isVat: docToEdit.withTax,
+        discountAmount: docToEdit.discountAmount,
+      });
+    } else if (job) {
       form.setValue('customerId', job.customerId);
       form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
     }
-  }, [job, form]);
+  }, [job, docToEdit, form]);
 
   const filteredCustomers = useMemo(() => {
-    if (!customerSearch) {
-      return customers;
-    }
+    if (!customerSearch) return customers;
     const lowercasedFilter = customerSearch.toLowerCase();
     return customers.filter(
       (c) =>
@@ -178,7 +170,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: QuotationFormData) => {
-    const customerSnapshot = customer ?? jobCustomer ?? customers.find(c => c.id === selectedCustomerId) ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
+    const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
 
     if (!db || !customerSnapshot || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing critical data", description: "Cannot create quotation. Customer or store settings are missing." });
@@ -186,14 +178,21 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     }
 
     const carSnapshotData: { licensePlate?: string; details?: string; } = {};
-    if (job) {
-        if (job.carServiceDetails?.licensePlate) {
-            carSnapshotData.licensePlate = job.carServiceDetails.licensePlate;
+    const sourceJob = job || (docToEdit?.jobId ? {id: docToEdit.jobId, ...docToEdit.carSnapshot} : null);
+    if (sourceJob) {
+       if ('carServiceDetails' in sourceJob && sourceJob.carServiceDetails?.licensePlate) {
+          carSnapshotData.licensePlate = sourceJob.carServiceDetails.licensePlate;
+        } else if ('licensePlate' in sourceJob && sourceJob.licensePlate) {
+          carSnapshotData.licensePlate = sourceJob.licensePlate;
         }
-        if (job.description) {
-            carSnapshotData.details = job.description;
+
+        if ('description' in sourceJob && sourceJob.description) {
+            carSnapshotData.details = sourceJob.description;
+        } else if ('details' in sourceJob && sourceJob.details) {
+            carSnapshotData.details = sourceJob.details;
         }
     }
+
 
     try {
         const documentData = {
@@ -229,15 +228,15 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     }
   };
   
-  const isLoading = isLoadingStore || (jobId ? isLoadingJob : isLoadingCustomers);
+  const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
   const isFormLoading = form.formState.isSubmitting || isLoading;
-  const displayCustomer = customer ?? jobCustomer ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
+  const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
 
-  if (isLoading && (!jobId || isLoadingJob)) {
+  if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
   }
   
-  if (jobId && jobError) {
+  if (jobError) {
       return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>Error loading job: {jobError.message}</div>
   }
 
@@ -278,7 +277,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
-                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId}>
+                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId}>
                                 {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "Select a customer..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -307,11 +306,11 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
                         <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId || 'N/A'}</p>
                     </>
                  )}
-                 {job && (
+                 {(job || docToEdit?.jobId) && (
                     <>
                         <Separator className="my-4" />
-                        <p className="font-semibold">เรื่อง: {job.description}</p>
-                        {job.carServiceDetails?.licensePlate && <p className="text-sm text-muted-foreground">ทะเบียนรถ: {job.carServiceDetails.licensePlate}</p>}
+                        <p className="font-semibold">เรื่อง: {job?.description || docToEdit?.carSnapshot?.details}</p>
+                        {(job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate) && <p className="text-sm text-muted-foreground">ทะเบียนรถ: {job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate}</p>}
                     </>
                  )}
             </CardContent>

@@ -10,10 +10,17 @@ import { Loader2 } from 'lucide-react';
 function NewDeliveryNotePageContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
+  const editDocId = searchParams.get("editDocId");
+
+  const title = editDocId ? "แก้ไขและสร้างใบส่งของชั่วคราวใหม่" : "สร้างใบส่งของชั่วคราว";
+  const description = editDocId
+    ? "แก้ไขรายละเอียดด้านล่างแล้วบันทึกเพื่อสร้างเอกสารฉบับใหม่"
+    : "กรอกรายละเอียดเพื่อสร้างใบส่งของใหม่";
+
   return (
     <>
-      <PageHeader title="สร้างใบส่งของชั่วคราว" description="กรอกรายละเอียดเพื่อสร้างใบส่งของใหม่" />
-      <DeliveryNoteForm jobId={jobId} />
+      <PageHeader title={title} description={description} />
+      <DeliveryNoteForm jobId={jobId} editDocId={editDocId} />
     </>
   );
 }

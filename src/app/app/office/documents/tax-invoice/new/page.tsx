@@ -11,10 +11,17 @@ import { Loader2 } from 'lucide-react';
 function NewTaxInvoicePageContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
+  const editDocId = searchParams.get("editDocId");
+
+  const title = editDocId ? "แก้ไขและสร้างใบกำกับภาษีใหม่" : "สร้างใบกำกับภาษี";
+  const description = editDocId
+    ? "แก้ไขรายละเอียดด้านล่างแล้วบันทึกเพื่อสร้างเอกสารฉบับใหม่"
+    : "กรอกรายละเอียดเพื่อสร้างใบกำกับภาษีใหม่";
+
   return (
     <>
-      <PageHeader title="สร้างใบกำกับภาษี" description="กรอกรายละเอียดเพื่อสร้างใบกำกับภาษีใหม่" />
-      <TaxInvoiceForm jobId={jobId} />
+      <PageHeader title={title} description={description} />
+      <TaxInvoiceForm jobId={jobId} editDocId={editDocId} />
     </>
   );
 }

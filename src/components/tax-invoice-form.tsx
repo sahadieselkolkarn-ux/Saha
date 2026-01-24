@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc } from "firebase/firestore";
+import { doc, collection, onSnapshot, query } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -15,15 +15,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -34,6 +37,7 @@ const lineItemSchema = z.object({
 
 const taxInvoiceFormSchema = z.object({
   jobId: z.string().optional(),
+  customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1),
   dueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
@@ -50,18 +54,23 @@ const taxInvoiceFormSchema = z.object({
 
 type TaxInvoiceFormData = z.infer<typeof taxInvoiceFormSchema>;
 
-export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
+export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, editDocId: string | null }) {
   const router = useRouter();
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
+  
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
+  const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
   const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
-  const customerDocRef = useMemo(() => (db && job?.customerId ? doc(db, 'customers', job.customerId) : null), [db, job]);
-  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
+  const { data: docToEdit, isLoading: isLoadingDocToEdit } = useDoc<DocumentType>(docToEditRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
   const form = useForm<TaxInvoiceFormData>({
@@ -71,34 +80,73 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
       issueDate: new Date().toISOString().split("T")[0],
       dueDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
-      subtotal: 0,
-      discountAmount: 0,
-      net: 0,
       isVat: true,
-      vatAmount: 0,
-      grandTotal: 0,
-      notes: "",
-      senderName: "",
-      receiverName: "",
     },
   });
 
+  const selectedCustomerId = form.watch('customerId');
+  
+  const customerDocRef = useMemo(() => {
+    if (!db || !selectedCustomerId) return null;
+    return doc(db, 'customers', selectedCustomerId);
+  }, [db, selectedCustomerId]);
+  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
+
+  // Fetch all customers if not coming from job/edit
   useEffect(() => {
-    if (job) {
+    if (jobId || editDocId || !db) {
+      setIsLoadingCustomers(false);
+      return;
+    };
+    
+    setIsLoadingCustomers(true);
+    const q = query(collection(db, "customers"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+      setIsLoadingCustomers(false);
+    }, (error) => {
+      toast({ variant: "destructive", title: "Failed to load customers" });
+      setIsLoadingCustomers(false);
+    });
+    return () => unsubscribe();
+  }, [db, jobId, editDocId, toast]);
+
+  useEffect(() => {
+    if (docToEdit) {
+      form.reset({
+        jobId: docToEdit.jobId || undefined,
+        customerId: docToEdit.customerSnapshot.id,
+        issueDate: new Date().toISOString().split("T")[0],
+        dueDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
+        items: docToEdit.items.map(item => ({...item})),
+        notes: docToEdit.notes,
+        isVat: docToEdit.withTax,
+        discountAmount: docToEdit.discountAmount,
+        senderName: profile?.displayName || docToEdit.senderName,
+        receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
+      });
+    } else if (job) {
       const defaultItem = { description: job.description, quantity: 1, unitPrice: 0, total: 0 };
       if (job.technicalReport) {
         form.setValue('items', [{ ...defaultItem, description: job.technicalReport }]);
       } else {
         form.setValue('items', [defaultItem]);
       }
+      form.setValue('customerId', job.customerId);
+      form.setValue('receiverName', job.customerSnapshot.name);
     }
      if (profile) {
       form.setValue('senderName', profile.displayName);
     }
-    if (job?.customerSnapshot) {
-      form.setValue('receiverName', job.customerSnapshot.name);
-    }
-  }, [job, profile, form]);
+  }, [job, docToEdit, profile, form]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearch) return customers;
+    return customers.filter(c =>
+        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        c.phone.includes(customerSearch)
+    );
+  }, [customers, customerSearch]);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -131,7 +179,9 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: TaxInvoiceFormData) => {
-    if (!db || !jobId || !job || !customer || !storeSettings || !profile) {
+    const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
+    
+    if (!db || !customerSnapshot || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing data for invoice creation." });
         return;
     }
@@ -140,10 +190,10 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
         const documentData = {
             docDate: data.issueDate,
             jobId: data.jobId,
-            customerSnapshot: { ...customer },
+            customerSnapshot: { ...customerSnapshot },
             carSnapshot: {
-                licensePlate: job.carServiceDetails?.licensePlate,
-                details: job.description
+                licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate,
+                details: job?.description || docToEdit?.carSnapshot?.details
             },
             storeSnapshot: { ...storeSettings },
             items: data.items,
@@ -164,7 +214,7 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
             'TAX_INVOICE',
             documentData,
             profile,
-            'WAITING_CUSTOMER_PICKUP'
+            data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
         );
 
         toast({ title: "Tax Invoice Created", description: `Successfully created invoice ${docNo}` });
@@ -175,15 +225,12 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
     }
   };
 
-  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomer;
+  const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomer || isLoadingDocToEdit;
   const isFormLoading = form.formState.isSubmitting || isLoading;
+  const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
 
-  if (isLoading && !job) {
+  if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
-  }
-
-  if (!jobId) {
-      return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>No Job ID provided. Please create an invoice from a job.</div>
   }
   
   if (jobError) {
@@ -218,12 +265,51 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
         <Card>
             <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
             <CardContent>
-                <p className="font-semibold">{customer?.name}</p>
-                <p className="text-sm text-muted-foreground">{customer?.taxAddress || 'N/A'}</p>
-                <p className="text-sm text-muted-foreground">โทร: {customer?.phone}</p>
-                <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {customer?.taxId || 'N/A'}</p>
-                 <Separator className="my-4" />
-                <p className="font-semibold">เรื่อง: {job?.description}</p>
+                <FormField
+                    name="customerId"
+                    control={form.control}
+                    render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                        <FormLabel>Customer</FormLabel>
+                        <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                            <PopoverTrigger asChild>
+                            <FormControl>
+                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId}>
+                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "Select a customer..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <div className="p-2 border-b">
+                                    <Input autoFocus placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                </div>
+                                <ScrollArea className="h-fit max-h-60">
+                                    {filteredCustomers.map((c) => (
+                                    <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
+                                        <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
+                                    </Button>
+                                    ))}
+                                </ScrollArea>
+                            </PopoverContent>
+                        </Popover>
+                        </FormItem>
+                    )}
+                />
+                 {displayCustomer && (
+                    <>
+                        <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
+                        <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId || 'N/A'}</p>
+                    </>
+                 )}
+                 {(job || docToEdit?.jobId) && (
+                    <>
+                        <Separator className="my-4" />
+                        <p className="font-semibold">เรื่อง: {job?.description || docToEdit?.carSnapshot?.details}</p>
+                        {(job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate) && <p className="text-sm text-muted-foreground">ทะเบียนรถ: {job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate}</p>}
+                    </>
+                 )}
             </CardContent>
         </Card>
 

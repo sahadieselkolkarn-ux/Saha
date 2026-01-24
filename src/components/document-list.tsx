@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, FileEdit, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { safeFormat } from '@/lib/date-utils';
@@ -22,6 +22,12 @@ import type { Document, DocType } from "@/lib/types";
 interface DocumentListProps {
   docType: DocType;
 }
+
+const docTypeToEditPath: Record<string, string> = {
+    QUOTATION: '/app/office/documents/quotation/new',
+    DELIVERY_NOTE: '/app/office/documents/delivery-note/new',
+    TAX_INVOICE: '/app/office/documents/tax-invoice/new',
+};
 
 export function DocumentList({ docType }: DocumentListProps) {
   const { db } = useFirebase();
@@ -182,10 +188,10 @@ export function DocumentList({ docType }: DocumentListProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => (
-                    <TableRow
-                      key={docItem.id}
-                    >
+                  {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
+                    const editPath = docTypeToEditPath[docItem.docType];
+                    return (
+                    <TableRow key={docItem.id}>
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>
                       <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
                       <TableCell>{docItem.customerSnapshot.name}</TableCell>
@@ -194,15 +200,21 @@ export function DocumentList({ docType }: DocumentListProps) {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                             <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${docItem.id}`)}>
-                              <Edit className="mr-2 h-4 w-4"/>
-                              แก้ไข
+                            <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${docItem.id}`)}>
+                                <Eye className="mr-2 h-4 w-4"/>
+                                ดู
                             </DropdownMenuItem>
+                            {editPath && (
+                                <DropdownMenuItem onSelect={() => router.push(`${editPath}?editDocId=${docItem.id}`)}>
+                                    <FileEdit className="mr-2 h-4 w-4"/>
+                                    แก้ไข (สร้างใหม่)
+                                </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED'}>
                               <XCircle className="mr-2 h-4 w-4"/>
                               ยกเลิก
@@ -220,7 +232,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  )) : (
+                  )}) : (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center h-24">
                         {searchTerm ? "No documents match your search." : "No documents found."}
