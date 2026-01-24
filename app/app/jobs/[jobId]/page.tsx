@@ -358,7 +358,12 @@ export default function JobDetailsPage() {
   }
 
   const handleTransferJob = async () => {
+    if (!isUserAdmin) {
+        toast({ variant: "destructive", title: "ไม่มีสิทธิ์", description: "เฉพาะแอดมินเท่านั้นที่สามารถโอนย้ายแผนกได้" });
+        return;
+    }
     if (!transferDepartment || !job || !db || !profile) return;
+    
     setIsTransferring(true);
     try {
         const jobDocRef = doc(db, "jobs", job.id);
@@ -369,13 +374,16 @@ export default function JobDetailsPage() {
         // Update job doc
         batch.update(jobDocRef, {
             department: transferDepartment,
-            status: 'RECEIVED', // Reset status to RECEIVED for the new department
+            status: 'RECEIVED',
+            assigneeUid: null,
+            assigneeName: null,
             lastActivityAt: serverTimestamp(),
         });
 
         // Add activity to subcollection
+        const activityText = `แอดมินเปลี่ยนแผนกหลักของงานเป็น ${transferDepartment} และคืนงานเข้าคิวแผนก. หมายเหตุ: ${transferNote || 'ไม่มี'}`;
         batch.set(doc(activitiesColRef), {
-            text: `Transferred from ${job.department} to ${transferDepartment}. Note: ${transferNote || 'N/A'}`,
+            text: activityText,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
@@ -384,10 +392,10 @@ export default function JobDetailsPage() {
 
         await batch.commit();
 
-        toast({ title: 'Job Transferred', description: `Job moved to ${transferDepartment} department.`});
+        toast({ title: 'โอนย้ายแผนกสำเร็จ', description: `งานถูกย้ายไปยังแผนก ${transferDepartment}`});
         setIsTransferDialogOpen(false);
     } catch(error: any) {
-        toast({ variant: "destructive", title: "Transfer Failed", description: error.message });
+        toast({ variant: "destructive", title: "การโอนย้ายล้มเหลว", description: error.message });
     } finally {
         setIsTransferring(false);
     }
@@ -668,9 +676,11 @@ const handlePartsReady = async () => {
           <Card>
               <CardHeader><CardTitle className="text-base font-semibold">แจ้งความประสงค์</CardTitle></CardHeader>
               <CardContent className="space-y-2">
-                  <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline" disabled={isViewOnly}>
-                      <Send className="mr-2 h-4 w-4" /> ส่งต่อแผนกอื่น
-                  </Button>
+                  {isUserAdmin && (
+                    <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline" disabled={isViewOnly}>
+                        <Send className="mr-2 h-4 w-4" /> โอนย้ายแผนก
+                    </Button>
+                  )}
                   {job.status === 'IN_PROGRESS' && (
                      <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isSavingTechReport || isViewOnly} className="w-full" variant="outline">
                         {isRequestingQuotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4"/>}
@@ -717,17 +727,17 @@ const handlePartsReady = async () => {
               onEscapeKeyDown={(e) => {if (isTransferring) e.preventDefault()}}
           >
               <DialogHeader>
-                  <DialogTitle>Transfer Job</DialogTitle>
+                  <DialogTitle>โอนย้ายแผนก</DialogTitle>
                   <DialogDescription>
-                      Select a destination department and add an optional note. The job status will be reset to 'RECEIVED'.
+                      เลือกแผนกปลายทางและเพิ่มหมายเหตุ (ถ้ามี) สถานะของงานจะถูกเปลี่ยนเป็น 'งานใหม่รอรับ' และผู้รับงานจะถูกล้าง
                   </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
-                      <Label htmlFor="department">New Department</Label>
+                      <Label htmlFor="department">แผนกใหม่</Label>
                       <Select value={transferDepartment} onValueChange={(v) => setTransferDepartment(v as JobDepartment)}>
                           <SelectTrigger>
-                              <SelectValue placeholder="Select a department" />
+                              <SelectValue placeholder="เลือกแผนก" />
                           </SelectTrigger>
                           <SelectContent>
                               {JOB_DEPARTMENTS.filter(d => d !== job?.department).map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
@@ -735,15 +745,15 @@ const handlePartsReady = async () => {
                       </Select>
                   </div>
                   <div className="grid gap-2">
-                      <Label htmlFor="note">Note (Optional)</Label>
-                      <Textarea id="note" value={transferNote} onChange={(e) => setTransferNote(e.target.value)} placeholder="Add a transfer note..." />
+                      <Label htmlFor="note">หมายเหตุ (ถ้ามี)</Label>
+                      <Textarea id="note" value={transferNote} onChange={(e) => setTransferNote(e.target.value)} placeholder="เพิ่มหมายเหตุการโอนย้าย..." />
                   </div>
               </div>
               <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={isTransferring}>Cancel</Button>
+                  <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={isTransferring}>ยกเลิก</Button>
                   <Button onClick={handleTransferJob} disabled={isTransferring || !transferDepartment}>
                       {isTransferring && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Confirm Transfer
+                      ยืนยันการโอนย้าย
                   </Button>
               </DialogFooter>
           </DialogContent>

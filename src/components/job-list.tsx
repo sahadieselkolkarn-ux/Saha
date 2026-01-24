@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, getDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -188,38 +188,56 @@ export function JobList({
 
   const handleAcceptJob = async (jobId: string) => {
     if (!db || !profile) {
-      toast({ variant: "destructive", title: "Cannot accept job", description: "User not logged in." });
+      toast({ variant: "destructive", title: "ไม่สามารถรับงานได้", description: "ไม่พบข้อมูลผู้ใช้" });
       return;
     };
     
     setIsAccepting(jobId);
     try {
-      const batch = writeBatch(db);
+        const jobDocRef = doc(db, "jobs", jobId);
+        
+        await runTransaction(db, async (transaction) => {
+            const jobDoc = await transaction.get(jobDocRef);
+            if (!jobDoc.exists()) {
+                throw new Error("ไม่พบงานที่ต้องการรับ");
+            }
 
-      const jobDocRef = doc(db, "jobs", jobId);
-      batch.update(jobDocRef, {
-        status: "IN_PROGRESS",
-        assigneeUid: profile.uid,
-        assigneeName: profile.displayName,
-        lastActivityAt: serverTimestamp(),
-      });
+            const jobData = jobDoc.data() as Job;
 
-      const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
-      batch.set(activityDocRef, {
-          text: `รับงานเข้าดำเนินการ`,
-          userName: profile.displayName,
-          userId: profile.uid,
-          createdAt: serverTimestamp(),
-          photos: [],
-      });
+            if (jobData.status !== 'RECEIVED') {
+                throw new Error("ไม่สามารถรับงานได้ เพราะสถานะเปลี่ยนไปแล้ว");
+            }
 
-      await batch.commit();
+            if (jobData.assigneeUid) {
+                throw new Error("งานนี้ถูกผู้อื่นรับไปแล้ว");
+            }
+            
+            if (profile.department !== jobData.department) {
+                throw new Error("คุณไม่ได้อยู่ในแผนกที่รับผิดชอบงานนี้");
+            }
 
-      toast({ title: "Job Accepted", description: "The job is now assigned to you." });
+            transaction.update(jobDocRef, {
+                status: "IN_PROGRESS",
+                assigneeUid: profile.uid,
+                assigneeName: profile.displayName,
+                lastActivityAt: serverTimestamp(),
+            });
+
+            const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
+            transaction.set(activityDocRef, {
+                text: `รับงานเข้าดำเนินการ`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp(),
+                photos: [],
+            });
+        });
+
+        toast({ title: "รับงานสำเร็จ", description: "งานนี้ถูกมอบหมายให้คุณแล้ว" });
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Failed to accept job", description: error.message });
+        toast({ variant: "destructive", title: "การรับงานล้มเหลว", description: error.message });
     } finally {
-      setIsAccepting(null);
+        setIsAccepting(null);
     }
   };
 
@@ -251,32 +269,46 @@ export function JobList({
     
     const selectedWorker = workers.find(w => w.uid === selectedWorkerId);
     if (!selectedWorker) {
-        toast({ variant: "destructive", title: "Worker not found." });
+        toast({ variant: "destructive", title: "ไม่พบพนักงาน" });
         return;
     }
 
     setIsAccepting(assigningJob.id);
     try {
-        const batch = writeBatch(db);
         const jobDocRef = doc(db, "jobs", assigningJob.id);
 
-        batch.update(jobDocRef, {
-            status: "IN_PROGRESS",
-            assigneeUid: selectedWorker.uid,
-            assigneeName: selectedWorker.displayName,
-            lastActivityAt: serverTimestamp(),
-        });
+        await runTransaction(db, async (transaction) => {
+            const jobDoc = await transaction.get(jobDocRef);
+            if (!jobDoc.exists()) {
+                throw new Error("ไม่พบงานที่ต้องการมอบหมาย");
+            }
 
-        const activityDocRef = doc(collection(db, "jobs", assigningJob.id, "activities"));
-        batch.set(activityDocRef, {
-            text: `มอบหมายงานให้ ${selectedWorker.displayName}`,
-            userName: profile.displayName,
-            userId: profile.uid,
-            createdAt: serverTimestamp(),
-            photos: [],
-        });
+            const jobData = jobDoc.data() as Job;
 
-        await batch.commit();
+            if (jobData.status !== 'RECEIVED') {
+                throw new Error("ไม่สามารถมอบหมายงานได้ เพราะสถานะเปลี่ยนไปแล้ว");
+            }
+
+            if (jobData.assigneeUid) {
+                throw new Error("งานนี้ถูกผู้อื่นรับไปแล้ว");
+            }
+
+            transaction.update(jobDocRef, {
+                status: "IN_PROGRESS",
+                assigneeUid: selectedWorker.uid,
+                assigneeName: selectedWorker.displayName,
+                lastActivityAt: serverTimestamp(),
+            });
+
+            const activityDocRef = doc(collection(db, "jobs", assigningJob.id, "activities"));
+            transaction.set(activityDocRef, {
+                text: `มอบหมายงานให้ ${selectedWorker.displayName}`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp(),
+                photos: [],
+            });
+        });
 
         toast({ title: "มอบหมายงานสำเร็จ", description: `งานได้ถูกมอบหมายให้ ${selectedWorker.displayName}` });
         setAssigningJob(null);
@@ -515,5 +547,3 @@ export function JobList({
     </>
   );
 }
-
-    
