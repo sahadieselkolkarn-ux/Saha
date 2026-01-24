@@ -67,7 +67,7 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
   const form = useForm<DeliveryNoteFormData>({
     resolver: zodResolver(deliveryNoteFormSchema),
     defaultValues: {
-      jobId: jobId || "",
+      jobId: jobId || undefined,
       customerId: "",
       issueDate: new Date().toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
@@ -236,7 +236,7 @@ export default function DeliveryNoteForm({ jobId }: { jobId: string | null }) {
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                 <div className="p-2 border-b">
-                                    <Input autoFocus placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                    <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-60">
                                     {filteredCustomers.map(c => (

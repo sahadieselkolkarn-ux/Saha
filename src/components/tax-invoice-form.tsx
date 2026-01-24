@@ -67,7 +67,7 @@ export function TaxInvoiceForm({ jobId }: { jobId: string | null }) {
   const form = useForm<TaxInvoiceFormData>({
     resolver: zodResolver(taxInvoiceFormSchema),
     defaultValues: {
-      jobId: jobId || "",
+      jobId: jobId || undefined,
       issueDate: new Date().toISOString().split("T")[0],
       dueDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],

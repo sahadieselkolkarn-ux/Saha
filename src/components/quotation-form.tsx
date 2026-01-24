@@ -26,6 +26,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
+import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer } from "@/lib/types";
 
 const lineItemSchema = z.object({
@@ -72,7 +73,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   const form = useForm<QuotationFormData>({
     resolver: zodResolver(quotationFormSchema),
     defaultValues: {
-      jobId: jobId || "",
+      jobId: jobId || undefined,
       issueDate: new Date().toISOString().split("T")[0],
       expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
@@ -101,10 +102,14 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   const { data: jobCustomer, isLoading: isLoadingJobCustomer } = useDoc<Customer>(jobCustomerDocRef);
 
   useEffect(() => {
-    if (jobId || !db) {
+    if (!jobId || !db) {
       setIsLoadingCustomers(false);
       return;
     };
+    if (jobId) {
+      setIsLoadingCustomers(false);
+      return;
+    }
     setIsLoadingCustomers(true);
     const q = query(collection(db, "customers"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -173,20 +178,20 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: QuotationFormData) => {
-    const customerForDoc = customer ?? jobCustomer ?? customers.find(c => c.id === selectedCustomerId) ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
+    const customerSnapshot = customer ?? jobCustomer ?? customers.find(c => c.id === selectedCustomerId) ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
 
-    if (!db || !customerForDoc || !storeSettings || !profile) {
+    if (!db || !customerSnapshot || !storeSettings || !profile) {
         toast({ variant: "destructive", title: "Missing critical data", description: "Cannot create quotation. Customer or store settings are missing." });
         return;
     }
 
-    const carSnapshot: { licensePlate?: string; details?: string; } = {};
+    const carSnapshotData: { licensePlate?: string; details?: string; } = {};
     if (job) {
         if (job.carServiceDetails?.licensePlate) {
-            carSnapshot.licensePlate = job.carServiceDetails.licensePlate;
+            carSnapshotData.licensePlate = job.carServiceDetails.licensePlate;
         }
         if (job.description) {
-            carSnapshot.details = job.description;
+            carSnapshotData.details = job.description;
         }
     }
 
@@ -194,8 +199,8 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
         const documentData = {
             docDate: data.issueDate,
             jobId: data.jobId,
-            customerSnapshot: { ...customerForDoc },
-            carSnapshot: carSnapshot,
+            customerSnapshot: { ...customerSnapshot },
+            carSnapshot: carSnapshotData,
             storeSnapshot: { ...storeSettings },
             items: data.items,
             subtotal: data.subtotal,
@@ -211,7 +216,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
         const docNo = await createDocument(
             db,
             'QUOTATION',
-            documentData,
+            sanitizeForFirestore(documentData),
             profile,
             jobId ? 'WAITING_APPROVE' : undefined
         );
@@ -224,7 +229,7 @@ export function QuotationForm({ jobId }: { jobId: string | null }) {
     }
   };
   
-  const isLoading = isLoadingJob || isLoadingStore || (jobId ? false : isLoadingCustomers);
+  const isLoading = isLoadingStore || (jobId ? isLoadingJob : isLoadingCustomers);
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer ?? jobCustomer ?? (job ? { id: job.customerId, ...job.customerSnapshot } : null);
 
