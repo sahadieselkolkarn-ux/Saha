@@ -163,9 +163,8 @@ export function DocumentList({ docType }: DocumentListProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
-                    const isQuotation = docItem.docType === 'QUOTATION';
-                    const viewPath = isQuotation ? `/app/office/documents/quotation/${docItem.id}` : `/app/office/documents/${docItem.id}`;
-                    const editPath = isQuotation 
+                    const viewPath = `/app/office/documents/${docItem.id}`;
+                    const editPath = docItem.docType === 'QUOTATION'
                         ? `/app/office/documents/quotation/${docItem.id}` 
                         : `${docTypeToEditPath[docItem.docType as keyof typeof docTypeToEditPath]}?editDocId=${docItem.id}`;
                     
