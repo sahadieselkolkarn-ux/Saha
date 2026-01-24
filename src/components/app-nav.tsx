@@ -49,14 +49,36 @@ const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onC
     );
 };
 
-const AccountingDocumentsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
+const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
+    const pathname = usePathname();
+    const isOpen = pathname.startsWith('/app/management/accounting') && !pathname.startsWith('/app/management/accounting/documents');
+    return (
+        <Collapsible defaultOpen={isOpen}>
+            <CollapsibleTrigger asChild>
+                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
+                    บริหารบัญชี
+                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                <SubNavLink href="/app/management/accounting/revenue" label="รับ–จ่ายเงิน" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
+            </CollapsibleContent>
+        </Collapsible>
+    );
+};
+
+const ManagementAccountingDocumentsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
     const isOpen = pathname.startsWith('/app/management/accounting/documents');
     return (
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
                 <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
-                    เอกสาร
+                    เอกสารบัญชี
                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                 </Button>
             </CollapsibleTrigger>
@@ -65,30 +87,6 @@ const AccountingDocumentsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void 
                 <SubNavLink href="/app/management/accounting/documents/billing-note" label="ใบวางบิล" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/documents/credit-note" label="ใบลดหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/documents/withholding-tax" label="ใบหัก ณ ที่จ่าย" onClick={onLinkClick} />
-            </CollapsibleContent>
-        </Collapsible>
-    );
-};
-
-const AccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
-    const pathname = usePathname();
-    const isOpen = pathname.startsWith('/app/management/accounting');
-    return (
-        <Collapsible defaultOpen={isOpen}>
-            <CollapsibleTrigger asChild>
-                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
-                    บริหารงานบัญชี
-                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="py-1 pl-4 space-y-1">
-                <SubNavLink href="/app/management/accounting/revenue" label="รายรับ (เงินเข้า)" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/expenses" label="รายจ่าย (เงินออก)" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
-                <AccountingDocumentsSubMenu onLinkClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
@@ -233,7 +231,12 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/management/jobs" label="ภาพรวมงานซ่อม" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" onClick={onLinkClick} />
-                        <AccountingSubMenu onLinkClick={onLinkClick} />
+                        {(profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT') && (
+                            <>
+                                <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
+                                <ManagementAccountingDocumentsSubMenu onLinkClick={onLinkClick} />
+                            </>
+                        )}
                         <HRSubMenu onLinkClick={onLinkClick} />
                         <SettingsSubMenu onLinkClick={onLinkClick} />
                     </>
@@ -356,7 +359,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                 </CollapsibleTrigger>
                 <CollapsibleContent className="py-1 pl-6 space-y-1">
                     {profile?.role === 'OFFICER' && (
-                        <SubNavLink href="/app/kiosk" label="คอมกลาง (คีออส)" onClick={onLinkClick} />
+                        <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
                     )}
                     <SubNavLink href="/app/attendance/scan" label="สแกน (มือถือ)" onClick={onLinkClick} />
                     <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
@@ -369,5 +372,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         </nav>
     );
 }
+
+    
 
     
