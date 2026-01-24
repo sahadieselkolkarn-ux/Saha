@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -319,15 +320,6 @@ export function JobList({
     }
   };
 
-  const handleBillingClick = (job: Job) => {
-    if (job.customerSnapshot.useTax === true) {
-      setBillingJob(job);
-    } else {
-      router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`);
-    }
-  };
-
-
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
@@ -442,7 +434,7 @@ export function JobList({
           )}>
             <Button asChild variant="outline" className="w-full">
               <Link href={`/app/jobs/${job.id}`}>
-                View Details
+                ดูรายละเอียด
                 <ArrowRight />
               </Link>
             </Button>
@@ -461,7 +453,7 @@ export function JobList({
               <Button asChild variant="default" className="w-full">
                 <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
                   <Receipt />
-                  Quote Price
+                  ทำใบเสนอราคา
                 </Link>
               </Button>
             )}
@@ -469,10 +461,10 @@ export function JobList({
                <Button
                 variant="default"
                 className="w-full"
-                onClick={() => handleBillingClick(job)}
+                onClick={() => setBillingJob(job)}
               >
                 <Receipt />
-                Billing
+                ออกบิล
               </Button>
             )}
           </CardFooter>
@@ -521,19 +513,18 @@ export function JobList({
      <AlertDialog open={!!billingJob} onOpenChange={(isOpen) => !isOpen && setBillingJob(null)}>
         <AlertDialogContent>
             <AlertDialogHeader>
-                <AlertDialogTitle>ต้องการออกใบกำกับภาษีหรือไม่?</AlertDialogTitle>
+                <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
                 <AlertDialogDescription>
-                    ลูกค้า &quot;{billingJob?.customerSnapshot.name}&quot; เป็นลูกค้าที่ใช้ใบกำกับภาษี
-                    กรุณาเลือกประเภทเอกสารที่ต้องการออก
+                    กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานนี้
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-                <Button variant="outline" onClick={() => setBillingJob(null)}>Cancel</Button>
+                <Button variant="outline" onClick={() => setBillingJob(null)}>ยกเลิก</Button>
                 <Button variant="secondary" onClick={() => {
                     if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`);
                     setBillingJob(null);
                 }}>
-                    ใบส่งของ
+                    ใบส่งของชั่วคราว
                 </Button>
                 <Button onClick={() => {
                     if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`);

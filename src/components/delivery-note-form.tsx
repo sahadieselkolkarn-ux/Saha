@@ -6,21 +6,21 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, FileDown } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
@@ -28,18 +28,20 @@ import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
-  description: z.string().min(1, "Description is required."),
-  quantity: z.coerce.number().min(0.01, "Quantity must be > 0."),
-  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative."),
+  description: z.string().min(1, "ต้องกรอกรายละเอียด"),
+  quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
+  unitPrice: z.coerce.number().min(0, "ราคาต่อหน่วยห้ามติดลบ"),
   total: z.coerce.number(),
 });
 
 const deliveryNoteFormSchema = z.object({
   jobId: z.string().optional(),
-  customerId: z.string().min(1, "Customer is required"),
+  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   issueDate: z.string().min(1),
-  items: z.array(lineItemSchema).min(1, "At least one item is required."),
+  items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   subtotal: z.coerce.number(),
+  discountAmount: z.coerce.number().min(0).optional(),
+  net: z.coerce.number(),
   grandTotal: z.coerce.number(),
   notes: z.string().optional(),
   senderName: z.string().optional(),
@@ -47,6 +49,10 @@ const deliveryNoteFormSchema = z.object({
 });
 
 type DeliveryNoteFormData = z.infer<typeof deliveryNoteFormSchema>;
+
+const formatCurrency = (value: number | null | undefined) => {
+  return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string | null, editDocId: string | null }) {
   const router = useRouter();
@@ -57,6 +63,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [quotations, setQuotations] = useState<DocumentType[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
@@ -76,6 +83,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       issueDate: new Date().toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       subtotal: 0,
+      discountAmount: 0,
+      net: 0,
       grandTotal: 0,
     },
   });
@@ -99,6 +108,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         notes: docToEdit.notes,
         senderName: profile?.displayName || docToEdit.senderName,
         receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
+        discountAmount: docToEdit.discountAmount || 0,
       })
     } else if (job) {
         form.setValue('customerId', job.customerId);
@@ -117,11 +127,34 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "Failed to load customers" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
       setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
   }, [db, toast]);
+
+  useEffect(() => {
+    if (!db || !jobId) {
+      setQuotations([]);
+      return;
+    };
+    
+    const q = query(
+      collection(db, 'documents'),
+      where('jobId', '==', jobId),
+      where('docType', '==', 'QUOTATION'),
+      where('status', '!=', 'CANCELLED'),
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const fetchedQuotations = snapshot.docs.map(d => d.data() as DocumentType);
+        // Sort by date client-side to avoid composite index
+        fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
+        setQuotations(fetchedQuotations);
+    });
+    return () => unsubscribe();
+
+  }, [db, jobId]);
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers;
@@ -137,6 +170,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   });
   
   const watchedItems = form.watch("items");
+  const watchedDiscount = form.watch("discountAmount");
 
   useEffect(() => {
     let subtotal = 0;
@@ -148,16 +182,31 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       subtotal += total;
     });
 
-    const grandTotal = subtotal;
+    const discount = watchedDiscount || 0;
+    const net = subtotal - discount;
+    const grandTotal = net;
 
     form.setValue("subtotal", subtotal);
+    form.setValue("net", net);
     form.setValue("grandTotal", grandTotal);
-  }, [watchedItems, form]);
+  }, [watchedItems, watchedDiscount, form]);
+
+  const handleFetchFromQuotation = () => {
+    if (quotations.length > 0) {
+      // Use the most recent quotation
+      const latestQuotation = quotations[0];
+      form.setValue('items', latestQuotation.items);
+      form.setValue('discountAmount', latestQuotation.discountAmount);
+      toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${latestQuotation.docNo}`});
+    } else {
+      toast({ variant: 'destructive', title: "ไม่พบใบเสนอราคา", description: "ไม่พบใบเสนอราคาสำหรับงานนี้"});
+    }
+  };
 
   const onSubmit = async (data: DeliveryNoteFormData) => {
     const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
-        toast({ variant: "destructive", title: "Missing data for document creation." });
+        toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
         return;
     }
 
@@ -169,7 +218,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         storeSnapshot: { ...storeSettings },
         items: data.items,
         subtotal: data.subtotal,
-        discountAmount: 0,
+        discountAmount: data.discountAmount || 0,
         net: data.grandTotal,
         withTax: false,
         vatAmount: 0,
@@ -186,7 +235,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 ...documentData,
                 updatedAt: serverTimestamp(),
             }));
-            toast({ title: "Delivery Note Updated" });
+            toast({ title: "อัปเดตใบส่งของสำเร็จ" });
         } else {
             await createDocument(
                 db,
@@ -195,12 +244,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 profile,
                 data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
             );
-            toast({ title: "Delivery Note Created" });
+            toast({ title: "สร้างใบส่งของสำเร็จ" });
         }
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Failed to create document", description: error.message });
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
   };
 
@@ -208,7 +257,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
 
-  if (isLoading && !job && !docToEdit) {
+  if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
   }
 
@@ -234,19 +283,19 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                     control={form.control}
                     render={({ field }) => (
                         <FormItem className="flex flex-col">
-                        <FormLabel>Customer</FormLabel>
+                        <FormLabel>ลูกค้า</FormLabel>
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
                                 <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId}>
-                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "Select a customer..."}
+                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </FormControl>
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                 <div className="p-2 border-b">
-                                    <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                    <Input placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-60">
                                     {filteredCustomers.map(c => (
@@ -268,7 +317,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </Card>
 
         <Card>
-            <CardHeader><CardTitle>รายการ</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>รายการ</CardTitle>
+                {jobId && quotations.length > 0 && (
+                    <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation}><FileDown/> ดึงจากใบเสนอราคา</Button>
+                )}
+            </CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader><TableRow><TableHead>#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
@@ -276,16 +330,16 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                         {fields.map((field, index) => (
                             <TableRow key={field.id}>
                                 <TableCell>{index + 1}</TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="Product or service details" />)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" />)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
                                 <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} className="text-right"/>)}/></TableCell>
-                                <TableCell className="text-right font-medium">{form.watch(`items.${index}.total`).toLocaleString()}</TableCell>
-                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive"/></Button></TableCell>
+                                <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
+                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle/> Add Item</Button>
+                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
             </CardContent>
         </Card>
 
@@ -297,11 +351,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 </CardContent>
             </Card>
              <div className="space-y-4">
-                 <div className="space-y-2 p-4 border rounded-lg h-full flex items-end justify-end">
-                    <div className="flex justify-between items-center text-lg font-bold border-t border-b py-2 px-4 w-64">
-                        <span>รวมเงิน</span>
-                        <span>{form.watch('grandTotal').toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span>
-                    </div>
+                 <div className="space-y-2 p-4 border rounded-lg h-full flex flex-col justify-end">
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
+                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => (<Input type="number" {...field} className="w-32 text-right"/>)}/></div>
+                    <div className="flex justify-between items-center text-lg font-bold border-t border-b py-2"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                  </div>
             </div>
         </div>
@@ -314,7 +367,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>
             <Button type="submit" disabled={isFormLoading}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของชั่วคราว'}
+              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
             </Button>
         </div>
       </form>

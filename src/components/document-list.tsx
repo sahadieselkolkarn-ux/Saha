@@ -24,6 +24,7 @@ interface DocumentListProps {
 }
 
 const docTypeToEditPath: Record<string, string> = {
+    QUOTATION: '/app/office/documents/quotation',
     DELIVERY_NOTE: '/app/office/documents/delivery-note/new',
     TAX_INVOICE: '/app/office/documents/tax-invoice/new',
 };
@@ -164,9 +165,8 @@ export function DocumentList({ docType }: DocumentListProps) {
                 <TableBody>
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
-                    const editPath = docItem.docType === 'QUOTATION'
-                        ? `/app/office/documents/quotation/${docItem.id}` 
-                        : `${docTypeToEditPath[docItem.docType as keyof typeof docTypeToEditPath]}?editDocId=${docItem.id}`;
+                    const basePath = docTypeToEditPath[docItem.docType as keyof typeof docTypeToEditPath];
+                    const editPath = docItem.docType === 'QUOTATION' ? `${basePath}/${docItem.id}` : `${basePath}?editDocId=${docItem.id}`;
                     
                     return (
                     <TableRow key={docItem.id}>
