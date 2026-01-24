@@ -21,10 +21,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check } from "lucide-react";
 import type { Job, JobActivity, JobDepartment } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const getStatusVariant = (status: Job['status']) => {
   switch (status) {
@@ -70,6 +80,13 @@ export default function JobDetailsPage() {
   const [techReport, setTechReport] = useState("");
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
   const [isRequestingQuotation, setIsRequestingQuotation] = useState(false);
+
+  const [isApprovalActionLoading, setIsApprovalActionLoading] = useState(false);
+  const [isApproveConfirmOpen, setIsApproveConfirmOpen] = useState(false);
+  const [isPartsReadyConfirmOpen, setIsPartsReadyConfirmOpen] = useState(false);
+  const [isRejectChoiceOpen, setIsRejectChoiceOpen] = useState(false);
+  const [isRejectConfirmOpen, setIsRejectConfirmOpen] = useState(false);
+  const [rejectionChoice, setRejectionChoice] = useState<'with_cost' | 'no_cost' | null>(null);
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
@@ -83,6 +100,7 @@ export default function JobDetailsPage() {
   const isUserAdmin = profile?.role === 'ADMIN';
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   const isViewOnly = job?.status === 'CLOSED' && !allowEditing;
+  const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
 
   useEffect(() => {
     if (!jobId || !db) return;
@@ -375,6 +393,93 @@ export default function JobDetailsPage() {
     }
   };
 
+  const handleCustomerApproval = async () => {
+    if (!jobId || !db || !profile) return;
+    setIsApprovalActionLoading(true);
+    const activityText = `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "${JOB_STATUS_DISPLAY['PENDING_PARTS']}"`;
+    
+    try {
+        const batch = writeBatch(db);
+        batch.update(doc(db, "jobs", jobId as string), { status: 'PENDING_PARTS', lastActivityAt: serverTimestamp() });
+        batch.set(doc(collection(db, "jobs", jobId as string, "activities")), {
+            text: activityText,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+        });
+        await batch.commit();
+        toast({ title: "Job Approved", description: "Status changed to PENDING_PARTS." });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+        setIsApprovalActionLoading(false);
+        setIsApproveConfirmOpen(false);
+    }
+};
+
+const handleCustomerRejection = async () => {
+    if (!jobId || !db || !profile || !rejectionChoice || !job) return;
+    setIsApprovalActionLoading(true);
+
+    try {
+        const batch = writeBatch(db);
+        const jobDocRef = doc(db, "jobs", jobId as string);
+        const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+        
+        if (rejectionChoice === 'with_cost') {
+            batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
+            batch.set(activityDocRef, {
+                text: `ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล. แจ้งเตือนถึงแผนก ${job.department}: ลูกค้าไม่ประสงค์ที่จะซ่อม ให้เตรียมส่งสินค้าคืน`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp(),
+            });
+            await batch.commit();
+            toast({ title: "Job Rejected (with cost)", description: "Status changed to DONE." });
+        } else { // no_cost
+            batch.update(jobDocRef, { status: 'CLOSED', lastActivityAt: serverTimestamp() });
+            batch.set(activityDocRef, {
+                text: `ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน. แจ้งเตือนถึงแผนก ${job.department}: ลูกค้าไม่ประสงค์ที่จะซ่อม ให้เตรียมส่งสินค้าคืน`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp(),
+            });
+            await batch.commit();
+            toast({ title: "Job Rejected (no cost)", description: "Status changed to CLOSED." });
+        }
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+        setIsApprovalActionLoading(false);
+        setIsRejectConfirmOpen(false);
+        setRejectionChoice(null);
+    }
+};
+
+const handlePartsReady = async () => {
+    if (!jobId || !db || !profile || !job) return;
+    setIsApprovalActionLoading(true);
+    const activityText = `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "ดำเนินการซ่อม". แจ้งเตือนถึงแผนก ${job.department}: จัดเตรียมอะไหล่เรียบร้อยแล้ว ให้ดำเนินการเบิกอะไหล่ และจัดการซ่อมได้`;
+    
+    try {
+        const batch = writeBatch(db);
+        batch.update(doc(db, "jobs", jobId as string), { status: 'IN_REPAIR_PROCESS', lastActivityAt: serverTimestamp() });
+        batch.set(doc(collection(db, "jobs", jobId as string, "activities")), {
+            text: activityText,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+        });
+        await batch.commit();
+        toast({ title: "Parts Ready", description: "Status changed to IN_REPAIR_PROCESS." });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+        setIsApprovalActionLoading(false);
+        setIsPartsReadyConfirmOpen(false);
+    }
+};
+
   useEffect(() => {
     // Cleanup function to revoke object URLs
     return () => {
@@ -580,6 +685,30 @@ export default function JobDetailsPage() {
                   )}
               </CardContent>
           </Card>
+
+          {isOfficeOrAdmin && ['WAITING_APPROVE', 'PENDING_PARTS'].includes(job.status) && (
+            <Card>
+              <CardHeader><CardTitle className="text-base font-semibold">การอนุมัติของลูกค้า</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {job.status === 'WAITING_APPROVE' && (
+                  <>
+                    <Button onClick={() => setIsApproveConfirmOpen(true)} className="w-full" variant="outline" disabled={isViewOnly || isApprovalActionLoading}>
+                        <Check className="mr-2 h-4 w-4 text-green-600"/> ลูกค้าอนุมัติ
+                    </Button>
+                    <Button onClick={() => setIsRejectChoiceOpen(true)} className="w-full" variant="destructive" disabled={isViewOnly || isApprovalActionLoading}>
+                        <Ban className="mr-2 h-4 w-4"/> ลูกค้าไม่อนุมัติ
+                    </Button>
+                  </>
+                )}
+                {job.status === 'PENDING_PARTS' && (
+                  <Button onClick={() => setIsPartsReadyConfirmOpen(true)} className="w-full" variant="outline" disabled={isViewOnly || isApprovalActionLoading}>
+                    <PackageCheck className="mr-2 h-4 w-4"/> เตรียมอะไหล่เรียบร้อย
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
         </div>
       </div>
       <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
@@ -619,6 +748,82 @@ export default function JobDetailsPage() {
               </DialogFooter>
           </DialogContent>
       </Dialog>
+      {/* Customer Approval Dialogs */}
+      <AlertDialog open={isApproveConfirmOpen} onOpenChange={setIsApproveConfirmOpen}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการอนุมัติ</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      ลูกค้าอนุมัติซ่อม ยืนยันเพื่อเปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"?
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleCustomerApproval} disabled={isApprovalActionLoading}>
+                      {isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isRejectChoiceOpen} onOpenChange={setIsRejectChoiceOpen}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ลูกค้าไม่อนุมัติ</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      การปฏิเสธการซ่อมครั้งนี้ มีค่าใช้จ่ายในการตรวจเช็คหรือไม่?
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <Button variant="destructive" onClick={() => { setIsRejectChoiceOpen(false); setRejectionChoice('with_cost'); setIsRejectConfirmOpen(true); }}>
+                    มีค่าใช้จ่าย
+                  </Button>
+                  <Button variant="secondary" onClick={() => { setIsRejectChoiceOpen(false); setRejectionChoice('no_cost'); setIsRejectConfirmOpen(true); }}>
+                    ไม่มีค่าใช้จ่าย
+                  </Button>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isRejectConfirmOpen} onOpenChange={setIsRejectConfirmOpen}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการไม่อนุมัติ</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      {rejectionChoice === 'with_cost' 
+                        ? 'ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.'
+                        : 'ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.'
+                      }
+                      <br/>
+                      แจ้งเตือนถึงแผนก {job?.department}: ลูกค้าไม่ประสงค์ที่จะซ่อม ให้เตรียมส่งสินค้าคืน
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isApprovalActionLoading} onClick={() => setRejectionChoice(null)}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleCustomerRejection} disabled={isApprovalActionLoading}>
+                      {isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isPartsReadyConfirmOpen} onOpenChange={setIsPartsReadyConfirmOpen}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการเตรียมอะไหล่</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      จัดเตรียมอะไหล่เรียบร้อยแล้ว ให้ดำเนินการเบิกอะไหล่ และจัดการซ่อมได้
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handlePartsReady} disabled={isApprovalActionLoading}>
+                      {isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
