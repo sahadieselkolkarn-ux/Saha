@@ -2,11 +2,12 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import React, { useMemo } from "react"
+import React, { useMemo, useState, useEffect } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users,
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2,
 } from "lucide-react"
+import { collection, query, where, getDocs } from "firebase/firestore"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,9 @@ import {
 import { DEPARTMENTS } from "@/lib/constants"
 import type { Department } from "@/lib/constants"
 import { useAuth } from "@/context/auth-context"
+import { useFirebase } from "@/firebase"
+import type { UserProfile } from "@/lib/types"
+
 
 // Helper components for navigation
 const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onClick?: () => void }) => {
@@ -121,6 +125,69 @@ const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     );
 };
 
+const CarServiceByWorkerNav = ({ onLinkClick }: { onLinkClick?: () => void }) => {
+  const { db } = useFirebase();
+  const pathname = usePathname();
+  const [workers, setWorkers] = useState<UserProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db) return;
+
+    const fetchWorkers = async () => {
+      setIsLoading(true);
+      const workersQuery = query(
+        collection(db, "users"),
+        where("department", "==", "CAR_SERVICE"),
+        where("role", "==", "WORKER"),
+        where("status", "==", "ACTIVE")
+      );
+      try {
+        const querySnapshot = await getDocs(workersQuery);
+        const fetchedWorkers = querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+        setWorkers(fetchedWorkers);
+      } catch (error) {
+        console.error("Failed to fetch workers:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchWorkers();
+  }, [db]);
+
+  const isOpen = pathname.startsWith('/app/car-service/jobs/by-worker');
+
+  return (
+    <Collapsible defaultOpen={isOpen}>
+      <CollapsibleTrigger asChild>
+        <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
+          งานตามพนักงาน
+          <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="py-1 pl-4 space-y-1">
+        {isLoading ? (
+          <div className="flex items-center justify-center p-2">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        ) : workers.length > 0 ? (
+          workers.map(worker => (
+            <SubNavLink 
+              key={worker.uid}
+              href={`/app/car-service/jobs/by-worker/${worker.uid}`}
+              label={worker.displayName}
+              onClick={onLinkClick} 
+            />
+          ))
+        ) : (
+          <p className="p-2 text-xs text-muted-foreground">No workers found.</p>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+};
+
 
 const DepartmentMenu = ({ department, onLinkClick }: { department: Department, onLinkClick?: () => void }) => {
     const pathname = usePathname();
@@ -221,7 +288,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                     <>
                        <SubNavLink href="/app/car-service/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
                        {profile?.role === 'OFFICER' ? (
-                            <SubNavLink href="/app/car-service/jobs/by-worker" label="งานตามพนักงาน" onClick={onLinkClick} />
+                            <CarServiceByWorkerNav onLinkClick={onLinkClick} />
                        ) : (
                             <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                        )}
