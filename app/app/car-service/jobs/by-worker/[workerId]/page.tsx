@@ -34,7 +34,7 @@ export default function WorkerJobsPage() {
       <JobList 
         department="CAR_SERVICE" 
         status="IN_PROGRESS"
-        assigneeUid={worker.uid}
+        assigneeUid={worker.id}
         emptyTitle="ไม่มีงานที่กำลังทำ"
         emptyDescription={`${worker.displayName} ยังไม่มีงานที่รับผิดชอบในขณะนี้`}
       />
