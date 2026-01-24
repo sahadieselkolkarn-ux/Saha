@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where, type FirestoreError } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,7 @@ interface DocumentListProps {
 export function DocumentList({ docType }: DocumentListProps) {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const router = useRouter();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FirestoreError | null>(null);
@@ -101,15 +102,17 @@ export function DocumentList({ docType }: DocumentListProps) {
               </TableHeader>
               <TableBody>
                 {filteredDocuments.length > 0 ? filteredDocuments.map(doc => (
-                  <TableRow key={doc.id} asChild className="cursor-pointer">
-                    <Link href={`/app/office/documents/${doc.id}`}>
-                        <TableCell className="font-medium">{doc.docNo}</TableCell>
-                        <TableCell>{safeFormat(new Date(doc.docDate), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell>{doc.customerSnapshot.name}</TableCell>
-                        <TableCell>{doc.jobId ? doc.jobId.substring(0, 8) + '...' : 'N/A'}</TableCell>
-                        <TableCell className="text-right">{doc.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                        <TableCell><Badge>{doc.status}</Badge></TableCell>
-                    </Link>
+                  <TableRow
+                    key={doc.id}
+                    onClick={() => router.push(`/app/office/documents/${doc.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <TableCell className="font-medium">{doc.docNo}</TableCell>
+                    <TableCell>{safeFormat(new Date(doc.docDate), 'dd/MM/yyyy')}</TableCell>
+                    <TableCell>{doc.customerSnapshot.name}</TableCell>
+                    <TableCell>{doc.jobId ? doc.jobId.substring(0, 8) + '...' : 'N/A'}</TableCell>
+                    <TableCell className="text-right">{doc.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                    <TableCell><Badge>{doc.status}</Badge></TableCell>
                   </TableRow>
                 )) : (
                   <TableRow>
