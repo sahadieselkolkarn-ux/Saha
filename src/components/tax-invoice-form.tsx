@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, FileDown } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -74,6 +74,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [quotations, setQuotations] = useState<DocumentType[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
@@ -107,7 +108,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   }, [db, selectedCustomerId]);
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
 
-  // Fetch all customers if not coming from job/edit
   useEffect(() => {
     if (jobId || editDocId || !db) {
       setIsLoadingCustomers(false);
@@ -125,6 +125,29 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     });
     return () => unsubscribe();
   }, [db, jobId, editDocId, toast]);
+  
+  useEffect(() => {
+    if (!db || !jobId) {
+      setQuotations([]);
+      return;
+    };
+    
+    const q = query(
+      collection(db, 'documents'),
+      where('jobId', '==', jobId),
+      where('docType', '==', 'QUOTATION')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const fetchedQuotations = snapshot.docs
+          .map(d => d.data() as DocumentType)
+          .filter(d => d.status !== 'CANCELLED');
+        fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
+        setQuotations(fetchedQuotations);
+    });
+    return () => unsubscribe();
+
+  }, [db, jobId]);
 
   useEffect(() => {
     if (docToEdit) {
@@ -193,6 +216,17 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     form.setValue("vatAmount", vatAmount);
     form.setValue("grandTotal", grandTotal);
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
+
+  const handleFetchFromQuotation = () => {
+    if (quotations.length > 0) {
+      const latestQuotation = quotations[0];
+      form.setValue('items', latestQuotation.items);
+      form.setValue('discountAmount', latestQuotation.discountAmount);
+      toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${latestQuotation.docNo}`});
+    } else {
+      toast({ variant: 'destructive', title: "ไม่พบใบเสนอราคา", description: "ไม่พบใบเสนอราคาสำหรับงานนี้"});
+    }
+  };
 
   const onSubmit = async (data: TaxInvoiceFormData) => {
     const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
@@ -360,7 +394,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         </Card>
 
         <Card>
-            <CardHeader><CardTitle>รายการ</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>รายการ</CardTitle>
+                {jobId && quotations.length > 0 && (
+                    <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation}><FileDown/> ดึงจากใบเสนอราคา</Button>
+                )}
+            </CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>

@@ -40,6 +40,7 @@ const deliveryNoteFormSchema = z.object({
   jobId: z.string().optional(),
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   issueDate: z.string().min(1),
+  dueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   subtotal: z.coerce.number(),
   discountAmount: z.coerce.number().min(0).optional(),
@@ -93,6 +94,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     defaultValues: {
       jobId: jobId || undefined,
       issueDate: new Date().toISOString().split("T")[0],
+      dueDate: new Date(new Date().setDate(new Date().getDate() + 15)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       subtotal: 0,
       discountAmount: 0,
@@ -122,7 +124,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+      toast({ variant: "destructive", title: "Failed to load customers" });
       setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
@@ -137,19 +139,20 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     const q = query(
       collection(db, 'documents'),
       where('jobId', '==', jobId),
-      where('docType', '==', 'QUOTATION'),
-      where('status', '!=', 'CANCELLED'),
+      where('docType', '==', 'QUOTATION')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchedQuotations = snapshot.docs.map(d => d.data() as DocumentType);
+        const fetchedQuotations = snapshot.docs
+          .map(d => d.data() as DocumentType)
+          .filter(d => d.status !== 'CANCELLED');
         fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
         setQuotations(fetchedQuotations);
     });
     return () => unsubscribe();
 
   }, [db, jobId]);
-
+  
   useEffect(() => {
     if (docToEdit) {
       form.reset({
@@ -161,7 +164,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         senderName: (profile?.displayName || docToEdit.senderName) || '',
         receiverName: (docToEdit.customerSnapshot.name || docToEdit.receiverName) || '',
         discountAmount: docToEdit.discountAmount || 0,
-        isBackfill: false, // Editing doesn't support backfill mode changes
+        isBackfill: false,
       })
     } else if (job) {
         form.setValue('customerId', job.customerId);
@@ -283,16 +286,23 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <div className="flex justify-between items-center">
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
+            <Button type="submit" disabled={isFormLoading}>
+              {isFormLoading ? <Loader2 className="animate-spin" /> : <Save />}
+              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
+            </Button>
+        </div>
         
         <Card>
             <CardHeader><CardTitle className="text-base">ข้อมูลทั่วไป</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
                  {!isEditing && (
                     <FormField
                         control={form.control}
                         name="isBackfill"
                         render={({ field }) => (
-                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 mb-4">
                             <FormControl>
                                 <Checkbox
                                 checked={field.value}
@@ -325,7 +335,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </Card>
 
         <Card>
-            <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle></CardHeader>
             <CardContent>
                 <FormField
                     name="customerId"
