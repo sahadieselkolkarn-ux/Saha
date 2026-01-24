@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, Suspense, useEffect, useRef } from "react";
+import { useMemo, Suspense, useEffect } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
@@ -126,7 +126,6 @@ function DocumentPageContent() {
     const { db } = useFirebase();
 
     const isPrintMode = searchParams.get('print') === '1';
-    const printedRef = useRef(false);
 
     const docRef = useMemo(() => {
         if (!db || typeof docId !== 'string') return null;
@@ -134,46 +133,29 @@ function DocumentPageContent() {
     }, [db, docId]);
 
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
-
-    const handlePrint = () => {
-        if (isPrintMode) {
-          try {
-            window.print();
-          } catch (e) {
-            console.error("Failed to trigger print dialog:", e);
-          }
-        } else {
-          router.push(pathname + '?print=1&autoprint=1');
-        }
-    };
     
     useEffect(() => {
-        const autoprint = searchParams.get('autoprint') === '1';
-        
-        if (isPrintMode && autoprint && document && !isLoading && !printedRef.current) {
-            printedRef.current = true;
-            setTimeout(() => {
-                try {
-                    window.print();
-                } finally {
-                    const newSearchParams = new URLSearchParams(searchParams.toString());
-                    newSearchParams.delete('autoprint');
-                    router.replace(`${pathname}?${newSearchParams.toString()}`, { scroll: false });
-                }
-            }, 300);
-        }
-        
-        const handleAfterPrint = () => {
-            router.replace(pathname);
-        };
-        
-        if (isPrintMode) {
+        const shouldAutoprint = searchParams.get('autoprint') === '1';
+
+        if (isPrintMode && shouldAutoprint && document && !isLoading) {
+            const handleAfterPrint = () => {
+                // This might not work in all browsers due to security restrictions,
+                // but it's a good-faith effort to close the print tab.
+                window.close();
+            };
             window.addEventListener('afterprint', handleAfterPrint);
+
+            // Delay to allow content to render fully before printing
+            setTimeout(() => {
+                window.print();
+            }, 500);
+
             return () => {
                 window.removeEventListener('afterprint', handleAfterPrint);
             };
         }
-    }, [isPrintMode, searchParams, document, isLoading, router, pathname]);
+    }, [isPrintMode, searchParams, document, isLoading]);
+
 
     if (isLoading) {
         return <Skeleton className="h-screen w-full" />;
@@ -197,37 +179,28 @@ function DocumentPageContent() {
         );
     }
 
+    // In print mode, we only render the document itself. The layout is handled by app/app/layout.tsx
+    if (isPrintMode) {
+        return <DocumentView document={document} />;
+    }
+
+    // Main view for non-print mode, with controls.
     return (
         <div className="space-y-6">
-             {isPrintMode ? (
-                <div className="print-hidden sticky top-0 z-50 bg-background/80 backdrop-blur-sm p-4 border-b">
-                    <div className="flex justify-between items-center">
-                        <div className="text-sm">
-                            <p className="text-muted-foreground">โหมดพิมพ์: กด "พิมพ์" เพื่อเปิดหน้าต่างเลือกเครื่องพิมพ์</p>
-                            <p className="text-xs text-muted-foreground">ถ้าต้องการไม่ให้มี URL/วันที่บนหัว-ท้ายกระดาษ, ให้ปิด "Headers and footers" ในหน้าต่างพิมพ์ (More settings)</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button asChild variant="secondary">
-                                <a href={`${pathname}?${searchParams.toString()}`} target="_blank" rel="noopener noreferrer">
-                                    เปิดหน้าพิมพ์ในแท็บใหม่
-                                </a>
-                            </Button>
-                            <Button variant="outline" onClick={() => router.replace(pathname)}>กลับ</Button>
-                            <Button onClick={handlePrint}><Printer className="mr-2 h-4 w-4"/> พิมพ์</Button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="flex justify-between items-center print:hidden">
-                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
-                    <Button type="button" onClick={handlePrint}><Printer className="mr-2 h-4 w-4"/> พิมพ์</Button>
-                </div>
-            )}
+             <div className="flex justify-between items-center print:hidden">
+                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+                <Button asChild>
+                    <a href={`${pathname}?print=1&autoprint=1`} target="_blank" rel="noopener noreferrer">
+                        <Printer className="mr-2 h-4 w-4"/> พิมพ์
+                    </a>
+                </Button>
+            </div>
             
             <DocumentView document={document} />
         </div>
     );
 }
+
 
 export default function DocumentPageWrapper() {
   return (
