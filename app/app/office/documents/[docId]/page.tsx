@@ -55,7 +55,7 @@ function DocumentView({ document }: { document: Document }) {
                 </div>
             </div>
 
-            <Card className="mb-8">
+            <Card className="mb-8 print-customer">
                 <CardHeader>
                     <CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle>
                 </CardHeader>
@@ -156,7 +156,6 @@ function DocumentPageContent() {
                 try {
                     window.print();
                 } finally {
-                    // Remove autoprint param to prevent re-printing on refresh
                     const newSearchParams = new URLSearchParams(searchParams.toString());
                     newSearchParams.delete('autoprint');
                     router.replace(`${pathname}?${newSearchParams.toString()}`, { scroll: false });
