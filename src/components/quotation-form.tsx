@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -58,6 +58,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
+  
+  const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
@@ -116,8 +118,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       form.reset({
         jobId: docToEdit.jobId || undefined,
         customerId: docToEdit.customerSnapshot.id,
-        issueDate: new Date().toISOString().split("T")[0],
-        expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
+        issueDate: docToEdit.docDate,
+        expiryDate: docToEdit.expiryDate || new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
         items: docToEdit.items.map(item => ({ ...item })),
         notes: docToEdit.notes,
         isVat: docToEdit.withTax,
@@ -177,54 +179,45 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         return;
     }
 
-    const carSnapshotData: { licensePlate?: string; details?: string; } = {};
-    const sourceJob = job || (docToEdit?.jobId ? {id: docToEdit.jobId, ...docToEdit.carSnapshot} : null);
-    if (sourceJob) {
-       if ('carServiceDetails' in sourceJob && sourceJob.carServiceDetails?.licensePlate) {
-          carSnapshotData.licensePlate = sourceJob.carServiceDetails.licensePlate;
-        } else if ('licensePlate' in sourceJob && sourceJob.licensePlate) {
-          carSnapshotData.licensePlate = sourceJob.licensePlate;
-        }
-
-        if ('description' in sourceJob && sourceJob.description) {
-            carSnapshotData.details = sourceJob.description;
-        } else if ('details' in sourceJob && sourceJob.details) {
-            carSnapshotData.details = sourceJob.details;
-        }
-    }
-
+    const documentData = {
+        docDate: data.issueDate,
+        jobId: data.jobId,
+        customerSnapshot: { ...customerSnapshot },
+        carSnapshot: (job || docToEdit?.jobId) ? { licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, details: job?.description || docToEdit?.carSnapshot?.details } : {},
+        storeSnapshot: { ...storeSettings },
+        items: data.items,
+        subtotal: data.subtotal,
+        discountAmount: data.discountAmount || 0,
+        net: data.net,
+        withTax: data.isVat,
+        vatAmount: data.vatAmount,
+        grandTotal: data.grandTotal,
+        notes: data.notes,
+        expiryDate: data.expiryDate,
+    };
 
     try {
-        const documentData = {
-            docDate: data.issueDate,
-            jobId: data.jobId,
-            customerSnapshot: { ...customerSnapshot },
-            carSnapshot: carSnapshotData,
-            storeSnapshot: { ...storeSettings },
-            items: data.items,
-            subtotal: data.subtotal,
-            discountAmount: data.discountAmount || 0,
-            net: data.net,
-            withTax: data.isVat,
-            vatAmount: data.vatAmount,
-            grandTotal: data.grandTotal,
-            notes: data.notes,
-            expiryDate: data.expiryDate,
-        };
-
-        const docNo = await createDocument(
-            db,
-            'QUOTATION',
-            sanitizeForFirestore(documentData),
-            profile,
-            jobId ? 'WAITING_APPROVE' : undefined
-        );
-
-        toast({ title: "Quotation Created", description: `Successfully created quotation ${docNo}` });
+        if (isEditing) {
+            const docRef = doc(db, 'documents', editDocId);
+            await updateDoc(docRef, sanitizeForFirestore({
+                ...documentData,
+                updatedAt: serverTimestamp(),
+            }));
+            toast({ title: "Quotation Updated" });
+        } else {
+            await createDocument(
+                db,
+                'QUOTATION',
+                documentData,
+                profile,
+                jobId ? 'WAITING_APPROVE' : undefined
+            );
+            toast({ title: "Quotation Created" });
+        }
         router.push('/app/office/documents/quotation');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Failed to create quotation", description: error.message });
+        toast({ variant: "destructive", title: "Failed to save quotation", description: error.message });
     }
   };
   
@@ -247,7 +240,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
             <Button type="submit" disabled={isFormLoading}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              Save Quotation
+              {isEditing ? 'Save Changes' : 'Save Quotation'}
             </Button>
         </div>
         

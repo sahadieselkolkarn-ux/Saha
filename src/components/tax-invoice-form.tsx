@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -26,6 +26,7 @@ import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
+import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
@@ -60,6 +61,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const { profile } = useAuth();
   const { toast } = useToast();
   
+  const isEditing = !!editDocId;
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -116,8 +119,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       form.reset({
         jobId: docToEdit.jobId || undefined,
         customerId: docToEdit.customerSnapshot.id,
-        issueDate: new Date().toISOString().split("T")[0],
-        dueDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
+        issueDate: docToEdit.docDate,
+        dueDate: docToEdit.dueDate || new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
         items: docToEdit.items.map(item => ({...item})),
         notes: docToEdit.notes,
         isVat: docToEdit.withTax,
@@ -186,42 +189,49 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         return;
     }
 
+    const documentData = {
+        docDate: data.issueDate,
+        jobId: data.jobId,
+        customerSnapshot: { ...customerSnapshot },
+        carSnapshot: {
+            licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate,
+            details: job?.description || docToEdit?.carSnapshot?.details
+        },
+        storeSnapshot: { ...storeSettings },
+        items: data.items,
+        subtotal: data.subtotal,
+        discountAmount: data.discountAmount || 0,
+        net: data.net,
+        withTax: data.isVat,
+        vatAmount: data.vatAmount,
+        grandTotal: data.grandTotal,
+        notes: data.notes,
+        dueDate: data.dueDate,
+        senderName: data.senderName,
+        receiverName: data.receiverName,
+    };
+    
     try {
-        const documentData = {
-            docDate: data.issueDate,
-            jobId: data.jobId,
-            customerSnapshot: { ...customerSnapshot },
-            carSnapshot: {
-                licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate,
-                details: job?.description || docToEdit?.carSnapshot?.details
-            },
-            storeSnapshot: { ...storeSettings },
-            items: data.items,
-            subtotal: data.subtotal,
-            discountAmount: data.discountAmount || 0,
-            net: data.net,
-            withTax: data.isVat,
-            vatAmount: data.vatAmount,
-            grandTotal: data.grandTotal,
-            notes: data.notes,
-            dueDate: data.dueDate,
-            senderName: data.senderName,
-            receiverName: data.receiverName,
-        };
-
-        const docNo = await createDocument(
-            db,
-            'TAX_INVOICE',
-            documentData,
-            profile,
-            data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
-        );
-
-        toast({ title: "Tax Invoice Created", description: `Successfully created invoice ${docNo}` });
+        if (isEditing) {
+            const docRef = doc(db, 'documents', editDocId);
+            await updateDoc(docRef, sanitizeForFirestore({
+                ...documentData,
+                updatedAt: serverTimestamp(),
+            }));
+            toast({ title: "Tax Invoice Updated" });
+        } else {
+            await createDocument(
+                db,
+                'TAX_INVOICE',
+                documentData,
+                profile,
+                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
+            );
+            toast({ title: "Tax Invoice Created" });
+        }
         router.push('/app/office/documents/tax-invoice');
-
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Failed to create invoice", description: error.message });
+        toast({ variant: "destructive", title: "Failed to save invoice", description: error.message });
     }
   };
 
@@ -244,7 +254,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
             <Button type="submit" disabled={isFormLoading}>
               {isFormLoading ? <Loader2 className="animate-spin" /> : <Save />}
-              Save Invoice
+              {isEditing ? 'Save Changes' : 'Save Invoice'}
             </Button>
         </div>
         

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
 import { createDocument } from "@/firebase/documents";
+import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
@@ -52,6 +53,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
+  
+  const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
@@ -91,7 +94,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       form.reset({
         jobId: docToEdit.jobId || undefined,
         customerId: docToEdit.customerSnapshot.id,
-        issueDate: new Date().toISOString().split("T")[0],
+        issueDate: docToEdit.docDate,
         items: docToEdit.items.map(item => ({...item})),
         notes: docToEdit.notes,
         senderName: profile?.displayName || docToEdit.senderName,
@@ -158,34 +161,42 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         return;
     }
 
+    const documentData = {
+        docDate: data.issueDate,
+        jobId: data.jobId,
+        customerSnapshot: { ...customerSnapshot },
+        carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : (docToEdit?.carSnapshot || {}),
+        storeSnapshot: { ...storeSettings },
+        items: data.items,
+        subtotal: data.subtotal,
+        discountAmount: 0,
+        net: data.grandTotal,
+        withTax: false,
+        vatAmount: 0,
+        grandTotal: data.grandTotal,
+        notes: data.notes,
+        senderName: data.senderName,
+        receiverName: data.receiverName,
+    };
+
     try {
-        const documentData = {
-            docDate: data.issueDate,
-            jobId: data.jobId,
-            customerSnapshot: { ...customerSnapshot },
-            carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : (docToEdit?.carSnapshot || {}),
-            storeSnapshot: { ...storeSettings },
-            items: data.items,
-            subtotal: data.subtotal,
-            discountAmount: 0,
-            net: data.grandTotal,
-            withTax: false,
-            vatAmount: 0,
-            grandTotal: data.grandTotal,
-            notes: data.notes,
-            senderName: data.senderName,
-            receiverName: data.receiverName,
-        };
-
-        await createDocument(
-            db,
-            'DELIVERY_NOTE',
-            documentData,
-            profile,
-            data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
-        );
-
-        toast({ title: "Delivery Note Created" });
+        if (isEditing) {
+            const docRef = doc(db, 'documents', editDocId);
+            await updateDoc(docRef, sanitizeForFirestore({
+                ...documentData,
+                updatedAt: serverTimestamp(),
+            }));
+            toast({ title: "Delivery Note Updated" });
+        } else {
+            await createDocument(
+                db,
+                'DELIVERY_NOTE',
+                documentData,
+                profile,
+                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined
+            );
+            toast({ title: "Delivery Note Created" });
+        }
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
@@ -208,7 +219,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
             <Button type="submit" disabled={isFormLoading}>
               {isFormLoading ? <Loader2 className="animate-spin" /> : <Save />}
-              Save Delivery Note
+              {isEditing ? 'Save Changes' : 'Save Delivery Note'}
             </Button>
         </div>
         

@@ -12,9 +12,9 @@ function NewQuotationPageContent() {
   const jobId = searchParams.get("jobId");
   const editDocId = searchParams.get("editDocId");
 
-  const title = editDocId ? "แก้ไขและสร้างใบเสนอราคาใหม่" : "สร้างใบเสนอราคา";
+  const title = editDocId ? "แก้ไขใบเสนอราคา" : "สร้างใบเสนอราคา";
   const description = editDocId
-    ? "แก้ไขรายละเอียดด้านล่างแล้วบันทึกเพื่อสร้างเอกสารฉบับใหม่"
+    ? "แก้ไขรายละเอียดของเอกสารและบันทึก"
     : "กรอกรายละเอียดเพื่อสร้างใบเสนอราคาใหม่สำหรับงาน";
 
   return (

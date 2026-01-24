@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, FileEdit, Eye } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { safeFormat } from '@/lib/date-utils';
@@ -209,10 +209,10 @@ export function DocumentList({ docType }: DocumentListProps) {
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
-                            {editPath && (
+                            {editPath && docItem.status !== 'CANCELLED' && (
                                 <DropdownMenuItem onSelect={() => router.push(`${editPath}?editDocId=${docItem.id}`)}>
-                                    <FileEdit className="mr-2 h-4 w-4"/>
-                                    แก้ไข (สร้างใหม่)
+                                    <Edit className="mr-2 h-4 w-4"/>
+                                    แก้ไข
                                 </DropdownMenuItem>
                             )}
                             <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED'}>

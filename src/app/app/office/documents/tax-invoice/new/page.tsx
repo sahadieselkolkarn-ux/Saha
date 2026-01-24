@@ -13,9 +13,9 @@ function NewTaxInvoicePageContent() {
   const jobId = searchParams.get("jobId");
   const editDocId = searchParams.get("editDocId");
 
-  const title = editDocId ? "แก้ไขและสร้างใบกำกับภาษีใหม่" : "สร้างใบกำกับภาษี";
+  const title = editDocId ? "แก้ไขใบกำกับภาษี" : "สร้างใบกำกับภาษี";
   const description = editDocId
-    ? "แก้ไขรายละเอียดด้านล่างแล้วบันทึกเพื่อสร้างเอกสารฉบับใหม่"
+    ? "แก้ไขรายละเอียดของเอกสารและบันทึก"
     : "กรอกรายละเอียดเพื่อสร้างใบกำกับภาษีใหม่";
 
   return (

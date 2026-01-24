@@ -12,9 +12,9 @@ function NewDeliveryNotePageContent() {
   const jobId = searchParams.get("jobId");
   const editDocId = searchParams.get("editDocId");
 
-  const title = editDocId ? "แก้ไขและสร้างใบส่งของชั่วคราวใหม่" : "สร้างใบส่งของชั่วคราว";
+  const title = editDocId ? "แก้ไขใบส่งของชั่วคราว" : "สร้างใบส่งของชั่วคราว";
   const description = editDocId
-    ? "แก้ไขรายละเอียดด้านล่างแล้วบันทึกเพื่อสร้างเอกสารฉบับใหม่"
+    ? "แก้ไขรายละเอียดของเอกสารและบันทึก"
     : "กรอกรายละเอียดเพื่อสร้างใบส่งของใหม่";
 
   return (
