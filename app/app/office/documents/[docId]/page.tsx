@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, Suspense, useEffect } from "react";
+import { useMemo, Suspense, useEffect, useRef } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, ExternalLink } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
@@ -99,12 +99,12 @@ function DocumentView({ document }: { document: Document }) {
                     <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                     <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                     {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
-                    <Separator />
+                    <Separator className="separator" />
                     <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                 </div>
             </div>
             
-             <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">
+             <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm signature-area">
                 <div className="space-y-16">
                     <p>.................................................</p>
                     <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
@@ -125,37 +125,43 @@ function DocumentPageContent() {
     const searchParams = useSearchParams();
     const { db } = useFirebase();
 
-    const isPrintMode = searchParams.get('print') === '1';
-
     const docRef = useMemo(() => {
         if (!db || typeof docId !== 'string') return null;
         return doc(db, 'documents', docId);
     }, [db, docId]);
 
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
+    const printedRef = useRef(false);
+
+    const isPrintMode = searchParams.get('print') === '1';
+    const shouldAutoprint = searchParams.get('autoprint') === '1';
     
     useEffect(() => {
-        const shouldAutoprint = searchParams.get('autoprint') === '1';
+        if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
+            printedRef.current = true; // Prevent re-triggering
+            
+            // Remove autoprint from URL to avoid re-printing on refresh
+            const newUrl = `${pathname}?print=1`;
+            router.replace(newUrl, { scroll: false });
 
-        if (isPrintMode && shouldAutoprint && document && !isLoading) {
-            const handleAfterPrint = () => {
-                // This might not work in all browsers due to security restrictions,
-                // but it's a good-faith effort to close the print tab.
-                window.close();
-            };
-            window.addEventListener('afterprint', handleAfterPrint);
-
-            // Delay to allow content to render fully before printing
             setTimeout(() => {
                 window.print();
-            }, 500);
-
-            return () => {
-                window.removeEventListener('afterprint', handleAfterPrint);
-            };
+            }, 500); // Delay for rendering
         }
-    }, [isPrintMode, searchParams, document, isLoading]);
+    }, [isPrintMode, shouldAutoprint, document, isLoading, router, pathname]);
 
+
+    const handlePrint = () => {
+        if (!isPrintMode) {
+             router.push(`${pathname}?print=1&autoprint=1`);
+        } else {
+             try {
+                window.print();
+            } catch (e) {
+                console.error("Print failed:", e);
+            }
+        }
+    };
 
     if (isLoading) {
         return <Skeleton className="h-screen w-full" />;
@@ -181,19 +187,27 @@ function DocumentPageContent() {
 
     // In print mode, we only render the document itself. The layout is handled by app/app/layout.tsx
     if (isPrintMode) {
-        return <DocumentView document={document} />;
+        return (
+            <div>
+                 <div className="print-hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
+                    <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
+                    <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                    <Button asChild variant="outline">
+                        <a href={`${pathname}?print=1`} target="_blank" rel="noopener noreferrer"><ExternalLink/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => router.replace(pathname)}>กลับ</Button>
+                </div>
+                <DocumentView document={document} />
+            </div>
+        );
     }
 
     // Main view for non-print mode, with controls.
     return (
         <div className="space-y-6">
-             <div className="flex justify-between items-center print:hidden">
-                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
-                <Button asChild>
-                    <a href={`${pathname}?print=1&autoprint=1`} target="_blank" rel="noopener noreferrer">
-                        <Printer className="mr-2 h-4 w-4"/> พิมพ์
-                    </a>
-                </Button>
+             <div className="flex justify-between items-center">
+                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
+                 <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
             </div>
             
             <DocumentView document={document} />
