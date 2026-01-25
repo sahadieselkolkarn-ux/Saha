@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, MoreHorizontal, PlusCircle, Upload } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Upload, Search } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,7 +80,7 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
     </Card>
 );
 
-function AllCustomersTab() {
+function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -121,6 +121,17 @@ function AllCustomersTab() {
     });
     return () => unsubscribe();
   }, [db, toast]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return customers;
+    }
+    const lowercasedFilter = searchTerm.toLowerCase();
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(lowercasedFilter) ||
+      customer.phone.includes(searchTerm)
+    );
+  }, [customers, searchTerm]);
 
   useEffect(() => {
     if (!isDialogOpen) {
@@ -199,8 +210,8 @@ function AllCustomersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {customers.length > 0 ? (
-                customers.map(customer => (
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map(customer => (
                     <TableRow key={customer.id}>
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.phone}</TableCell>
@@ -219,7 +230,7 @@ function AllCustomersTab() {
               ) : (
                 <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        No customers found.
+                        {searchTerm ? "No customers match your search." : "No customers found."}
                     </TableCell>
                 </TableRow>
               )}
@@ -229,15 +240,15 @@ function AllCustomersTab() {
       </Card>
 
       <div className="grid gap-4 sm:hidden">
-        {customers.length > 0 ? (
-          customers.map(customer => (
+        {filteredCustomers.length > 0 ? (
+          filteredCustomers.map(customer => (
             <CustomerCard key={customer.id} customer={customer} onEdit={openEditDialog} onDelete={handleDeleteRequest} />
           ))
         ) : (
           <Card className="text-center py-12">
             <CardHeader>
-                <CardTitle>No Customers Found</CardTitle>
-                <CardDescription>Get started by adding a new customer.</CardDescription>
+                <CardTitle>{searchTerm ? "No Results" : "No Customers Found"}</CardTitle>
+                <CardDescription>{searchTerm ? "No customers match your search." : "Get started by adding a new customer."}</CardDescription>
             </CardHeader>
         </Card>
         )}
@@ -316,7 +327,7 @@ function AllCustomersTab() {
 }
 
 
-function TaxCustomersTab() {
+function TaxCustomersTab({ searchTerm }: { searchTerm: string }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -337,6 +348,18 @@ function TaxCustomersTab() {
     });
     return () => unsubscribe();
   }, [db, toast]);
+
+  const filteredCustomers = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return customers;
+    }
+    const lowercasedFilter = searchTerm.toLowerCase();
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(lowercasedFilter) ||
+      customer.phone.includes(searchTerm) ||
+      customer.taxId?.toLowerCase().includes(lowercasedFilter)
+    );
+  }, [customers, searchTerm]);
   
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -354,8 +377,8 @@ function TaxCustomersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {customers.length > 0 ? (
-                customers.map(customer => (
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map(customer => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell>{customer.phone}</TableCell>
@@ -365,7 +388,7 @@ function TaxCustomersTab() {
               ) : (
                 <TableRow>
                     <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
-                        ไม่พบข้อมูลลูกค้าที่ใช้ภาษี
+                        {searchTerm ? "No customers match your search." : "ไม่พบข้อมูลลูกค้าที่ใช้ภาษี"}
                     </TableCell>
                 </TableRow>
               )}
@@ -376,7 +399,7 @@ function TaxCustomersTab() {
   )
 }
 
-function GeneralCustomersTab() {
+function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -398,6 +421,17 @@ function GeneralCustomersTab() {
     return () => unsubscribe();
   }, [db, toast]);
   
+  const filteredCustomers = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return customers;
+    }
+    const lowercasedFilter = searchTerm.toLowerCase();
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(lowercasedFilter) ||
+      customer.phone.includes(searchTerm)
+    );
+  }, [customers, searchTerm]);
+
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
@@ -413,8 +447,8 @@ function GeneralCustomersTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {customers.length > 0 ? (
-                customers.map(customer => (
+              {filteredCustomers.length > 0 ? (
+                filteredCustomers.map(customer => (
                     <TableRow key={customer.id}>
                       <TableCell className="font-medium">{customer.name}</TableCell>
                       <TableCell>{customer.phone}</TableCell>
@@ -423,7 +457,7 @@ function GeneralCustomersTab() {
               ) : (
                 <TableRow>
                     <TableCell colSpan={2} className="h-24 text-center text-muted-foreground">
-                        ไม่พบข้อมูลลูกค้าทั่วไป
+                        {searchTerm ? "No customers match your search." : "ไม่พบข้อมูลลูกค้าทั่วไป"}
                     </TableCell>
                 </TableRow>
               )}
@@ -436,6 +470,14 @@ function GeneralCustomersTab() {
 
 
 export default function CustomersPage() {
+    const [searchTerm, setSearchTerm] = useState("");
+    const [activeTab, setActiveTab] = useState("all");
+
+    const placeholder = useMemo(() => {
+        if (activeTab === 'tax') return "Search name, phone, or Tax ID...";
+        return "Search by name or phone...";
+    }, [activeTab]);
+
     return (
         <>
             <PageHeader title="Customer Management" description="Add, edit, and manage your customers.">
@@ -453,20 +495,31 @@ export default function CustomersPage() {
                     </Button>
                 </div>
             </PageHeader>
-            <Tabs defaultValue="all" className="space-y-4">
-                <TabsList>
-                    <TabsTrigger value="all">ลูกค้าทั้งหมด</TabsTrigger>
-                    <TabsTrigger value="tax">ลูกค้าใช้ภาษี</TabsTrigger>
-                    <TabsTrigger value="general">ลูกค้าทั่วไป</TabsTrigger>
-                </TabsList>
+            <Tabs defaultValue="all" onValueChange={setActiveTab} className="space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <TabsList>
+                        <TabsTrigger value="all">ลูกค้าทั้งหมด</TabsTrigger>
+                        <TabsTrigger value="tax">ลูกค้าใช้ภาษี</TabsTrigger>
+                        <TabsTrigger value="general">ลูกค้าทั่วไป</TabsTrigger>
+                    </TabsList>
+                    <div className="relative w-full sm:w-auto sm:max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder={placeholder}
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10"
+                        />
+                    </div>
+                </div>
                 <TabsContent value="all">
-                    <AllCustomersTab />
+                    <AllCustomersTab searchTerm={searchTerm} />
                 </TabsContent>
                 <TabsContent value="tax">
-                    <TaxCustomersTab />
+                    <TaxCustomersTab searchTerm={searchTerm} />
                 </TabsContent>
                  <TabsContent value="general">
-                    <GeneralCustomersTab />
+                    <GeneralCustomersTab searchTerm={searchTerm}/>
                 </TabsContent>
             </Tabs>
         </>
