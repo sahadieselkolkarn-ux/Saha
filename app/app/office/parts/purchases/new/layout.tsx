@@ -1,3 +1,1 @@
-export default function NewPurchaseLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
+export { default } from "@/app/app/office/parts/purchases/new/layout";
