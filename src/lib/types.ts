@@ -451,3 +451,61 @@ export interface AccountingObligation {
   vendorNameSnapshot?: string;
   invoiceNo?: string; // Vendor's invoice number
 }
+
+export interface PurchaseDocItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface PurchaseDoc {
+  id: string;
+  docNo: string;
+  docDate: string; // YYYY-MM-DD
+  vendorId: string;
+  vendorSnapshot: {
+    shortName: string;
+    companyName: string;
+    taxId?: string;
+  };
+  invoiceNo: string;
+  items: PurchaseDocItem[];
+  subtotal: number;
+  discountAmount: number;
+  net: number;
+  withTax: boolean;
+  vatAmount: number;
+  grandTotal: number;
+  paymentMode: 'CASH' | 'CREDIT';
+  dueDate?: string | null;
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'UNPAID' | 'PAID' | 'CANCELLED';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  approvedAt?: Timestamp;
+  approvedByUid?: string;
+  approvedByName?: string;
+  accountingEntryId?: string;
+  apObligationId?: string;
+}
+
+export interface PurchaseClaim {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+  purchaseDocId: string;
+  purchaseDocNo: string;
+  vendorNameSnapshot: string;
+  invoiceNo: string;
+  paymentMode: 'CASH' | 'CREDIT';
+  amountTotal: number;
+  suggestedAccountId?: string;
+  suggestedPaymentMethod?: 'CASH' | 'TRANSFER';
+  note?: string;
+  approvedAt?: Timestamp;
+  approvedByUid?: string;
+  approvedByName?: string;
+  rejectReason?: string;
+}

@@ -1157,6 +1157,89 @@
         "createdAt", 
         "updatedAt"
       ]
+    },
+    "PurchaseDocItem": {
+      "title": "Purchase Document Line Item",
+      "description": "Represents a single line item in a purchase document.",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "total": { "type": "number" }
+      },
+      "required": ["description", "quantity", "unitPrice", "total"]
+    },
+    "PurchaseDoc": {
+      "title": "Purchase Document",
+      "description": "Represents a record of a purchase, like a bill from a vendor.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "docNo": { "type": "string" },
+        "docDate": { "type": "string", "format": "date" },
+        "vendorId": { "type": "string" },
+        "vendorSnapshot": {
+          "type": "object",
+          "properties": {
+            "shortName": { "type": "string" },
+            "companyName": { "type": "string" },
+            "taxId": { "type": "string" }
+          }
+        },
+        "invoiceNo": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/backend/entities/PurchaseDocItem" }
+        },
+        "subtotal": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "net": { "type": "number" },
+        "withTax": { "type": "boolean" },
+        "vatAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "paymentMode": { "type": "string", "enum": ["CASH", "CREDIT"] },
+        "dueDate": { "type": ["string", "null"], "format": "date" },
+        "status": { "type": "string", "enum": ["DRAFT", "SUBMITTED", "APPROVED", "UNPAID", "PAID", "CANCELLED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "approvedByUid": { "type": "string" },
+        "approvedByName": { "type": "string" },
+        "accountingEntryId": { "type": "string" },
+        "apObligationId": { "type": "string" }
+      },
+      "required": [
+        "id", "docNo", "docDate", "vendorId", "vendorSnapshot", "invoiceNo", "items", "subtotal", "discountAmount", "net", "withTax", "vatAmount", "grandTotal", "paymentMode", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "PurchaseClaim": {
+      "title": "Purchase Claim",
+      "description": "A request for approval for a purchase, especially for credit-based or large cash purchases.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "purchaseDocId": { "type": "string" },
+        "purchaseDocNo": { "type": "string" },
+        "vendorNameSnapshot": { "type": "string" },
+        "invoiceNo": { "type": "string" },
+        "paymentMode": { "type": "string", "enum": ["CASH", "CREDIT"] },
+        "amountTotal": { "type": "number" },
+        "suggestedAccountId": { "type": "string" },
+        "suggestedPaymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER"] },
+        "note": { "type": "string" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "approvedByUid": { "type": "string" },
+        "approvedByName": { "type": "string" },
+        "rejectReason": { "type": "string" }
+      },
+      "required": [
+        "id", "status", "createdAt", "createdByUid", "createdByName", "purchaseDocId", "purchaseDocNo", "vendorNameSnapshot", "invoiceNo", "paymentMode", "amountTotal"
+      ]
     }
   },
   "auth": {
@@ -1284,6 +1367,18 @@
         "$ref": "#/backend/entities/AccountingObligation"
       },
       "description": "Stores accounts receivable (AR) and accounts payable (AP) items."
+    },
+    "/purchaseDocs/{purchaseDocId}": {
+      "schema": {
+        "$ref": "#/backend/entities/PurchaseDoc"
+      },
+      "description": "Stores purchase documents, such as bills from vendors."
+    },
+    "/purchaseClaims/{purchaseClaimId}": {
+      "schema": {
+        "$ref": "#/backend/entities/PurchaseClaim"
+      },
+      "description": "Stores claims for purchase approvals."
     }
   }
 }
