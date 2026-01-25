@@ -29,6 +29,7 @@ import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "ต้องกรอกรายละเอียด"),
@@ -80,6 +81,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
+  const [selectedQuotationId, setSelectedQuotationId] = useState('');
   
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -133,8 +135,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   useEffect(() => {
     if (!db || !jobId) {
         setQuotations([]);
+        setSelectedQuotationId('');
         return;
-    };
+    }
     
     const q = query(
         collection(db, "documents"),
@@ -142,10 +145,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedQuotations = snapshot.docs
-          .map(d => d.data() as DocumentType)
+          .map(d => ({id: d.id, ...d.data()}) as DocumentType)
           .filter(d => d.docType === 'QUOTATION' && d.status !== 'CANCELLED');
+      
       fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
       setQuotations(fetchedQuotations);
+      if (fetchedQuotations.length > 0) {
+          setSelectedQuotationId(fetchedQuotations[0].id);
+      }
     });
     return () => unsubscribe();
   }, [db, jobId]);
@@ -201,14 +208,22 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   }, [watchedItems, watchedDiscount, form]);
 
   const handleFetchFromQuotation = () => {
-    if (quotations.length > 0) {
-      const latestQuotation = quotations[0];
-      form.setValue('items', latestQuotation.items);
-      form.setValue('discountAmount', latestQuotation.discountAmount);
-      toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${latestQuotation.docNo}`});
-    } else {
-      toast({ variant: 'destructive', title: "ไม่พบใบเสนอราคา", description: "ไม่พบใบเสนอราคาสำหรับงานนี้"});
+    const quotation = quotations.find(q => q.id === selectedQuotationId);
+    if (!quotation) {
+        toast({ variant: 'destructive', title: "กรุณาเลือกใบเสนอราคา" });
+        return;
     }
+
+    const currentItems = form.getValues('items');
+    if (currentItems.length > 1 || (currentItems.length === 1 && currentItems[0].description)) {
+        if (!confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?")) {
+            return;
+        }
+    }
+
+    form.setValue('items', quotation.items.map(item => ({...item})));
+    form.setValue('discountAmount', quotation.discountAmount || 0);
+    toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}` });
   };
 
   const onSubmit = async (data: DeliveryNoteFormData) => {
@@ -305,74 +320,99 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       )}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <Card>
-              <CardHeader><CardTitle className="text-base">1. เลือกลูกค้า</CardTitle></CardHeader>
-              <CardContent>
-                  <FormField
-                      name="customerId"
-                      control={form.control}
-                      render={({ field }) => (
-                          <FormItem>
-                          <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                              <PopoverTrigger asChild>
-                              <FormControl>
-                                  <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={!!jobId || !!editDocId || isLocked}>
-                                  {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                  </Button>
-                              </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                  <div className="p-2 border-b">
-                                      <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
-                                  </div>
-                                  <ScrollArea className="h-60">
-                                      {filteredCustomers.map(c => (
-                                          <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
-                                      ))}
-                                  </ScrollArea>
-                              </PopoverContent>
-                          </Popover>
-                          </FormItem>
-                      )}
-                  />
-                  {displayCustomer && (
-                      <>
-                          <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
-                          <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
-                      </>
-                  )}
-              </CardContent>
-          </Card>
+        <div className="flex justify-between items-center">
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
+            <Button type="submit" disabled={form.formState.isSubmitting || isLocked}>
+              {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
+              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
+            </Button>
+        </div>
+        
+        <Card>
+            <CardHeader><CardTitle className="text-base">1. เลือกลูกค้า</CardTitle></CardHeader>
+            <CardContent>
+                <FormField
+                    name="customerId"
+                    control={form.control}
+                    render={({ field }) => (
+                        <FormItem>
+                        <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                            <PopoverTrigger asChild>
+                            <FormControl>
+                                <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={!!jobId || !!editDocId || isLocked}>
+                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                            </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <div className="p-2 border-b">
+                                    <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                </div>
+                                <ScrollArea className="h-60">
+                                    {filteredCustomers.map(c => (
+                                        <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
+                                    ))}
+                                </ScrollArea>
+                            </PopoverContent>
+                        </Popover>
+                        </FormItem>
+                    )}
+                />
+                {displayCustomer && (
+                    <>
+                        <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
+                    </>
+                )}
+            </CardContent>
+        </Card>
 
-          <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle className="text-base">2. รายการสินค้า/บริการ</CardTitle>
-                  {jobId && quotations.length > 0 && (
-                      <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={isLocked}><FileDown/> ดึงจากใบเสนอราคา</Button>
-                  )}
-              </CardHeader>
-              <CardContent>
-                  <div className="border rounded-md">
-                      <Table>
-                          <TableHeader><TableRow><TableHead className="w-12">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
-                          <TableBody>
-                              {fields.map((field, index) => (
-                                  <TableRow key={field.id}>
-                                      <TableCell>{index + 1}</TableCell>
-                                      <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" disabled={isLocked} />)}/></TableCell>
-                                      <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
-                                      <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
-                                      <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
-                                      <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
-                                  </TableRow>
-                              ))}
-                          </TableBody>
-                      </Table>
+        <Card>
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <CardTitle className="text-base">2. รายการสินค้า/บริการ</CardTitle>
+                {jobId && quotations.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
+                      <SelectTrigger className="w-full sm:w-[280px]">
+                          <SelectValue placeholder="เลือกใบเสนอราคา..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                          {quotations.map(q => (
+                              <SelectItem key={q.id} value={q.id}>
+                                  {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
+                              </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
                   </div>
-                  <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
-              </CardContent>
-          </Card>
+                )}
+            </CardHeader>
+            <CardContent>
+                {jobId && quotations.length === 0 && !isLoading && (
+                    <p className="text-muted-foreground text-sm mb-4">ไม่พบใบเสนอราคาสำหรับงานนี้</p>
+                )}
+                <div className="border rounded-md">
+                    <Table>
+                        <TableHeader><TableRow><TableHead className="w-12">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
+                        <TableBody>
+                            {fields.map((field, index) => (
+                                <TableRow key={field.id}>
+                                    <TableCell>{index + 1}</TableCell>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" disabled={isLocked} />)}/></TableCell>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
+                                    <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
+                                    <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
+            </CardContent>
+        </Card>
 
           <Card>
               <CardHeader><CardTitle className="text-base">3. หมายเหตุ</CardTitle></CardHeader>
