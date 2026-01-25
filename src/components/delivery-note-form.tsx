@@ -16,13 +16,14 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } fr
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, FileDown } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { createDocument } from "@/firebase/documents";
@@ -452,6 +453,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                       <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked} /></FormControl></FormItem>)} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                       <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
@@ -460,8 +462,17 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               </CardContent>
               <CardFooter className="flex-col items-end gap-2">
                   <div className="flex justify-between w-full max-w-xs">
-                      <span className="text-muted-foreground">Total Amount:</span>
-                      <span className="font-bold text-lg">฿{formatCurrency(form.watch('grandTotal'))}</span>
+                      <span className="text-muted-foreground">ยอดรวม:</span>
+                      <span className="font-medium">{formatCurrency(form.watch('subtotal'))}</span>
+                  </div>
+                  <div className="flex justify-between w-full max-w-xs">
+                      <span className="text-muted-foreground text-destructive">ส่วนลด:</span>
+                      <span className="font-medium text-destructive">- {formatCurrency(form.watch('discountAmount'))}</span>
+                  </div>
+                  <Separator className="my-2 w-full max-w-xs" />
+                  <div className="flex justify-between w-full max-w-xs text-lg font-bold">
+                      <span>ยอดสุทธิ:</span>
+                      <span>{formatCurrency(form.watch('grandTotal'))}</span>
                   </div>
               </CardFooter>
           </Card>
