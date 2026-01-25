@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -57,7 +58,7 @@ interface JobListProps {
   emptyDescription?: string;
   children?: React.ReactNode;
   hideQuotationButton?: boolean;
-  actionPreset?: 'default' | 'waitingApprove';
+  actionPreset?: 'default' | 'waitingApprove' | 'pendingPartsReady';
 }
 
 const getStatusVariant = (status: Job['status']) => {
@@ -116,6 +117,9 @@ export function JobList({
   const [isFetchingWorkers, setIsFetchingWorkers] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
   
+  const [jobForPartsReady, setJobForPartsReady] = useState<Job | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+
   // State for the closing dialog
   const [closingJob, setClosingJob] = useState<Job | null>(null);
   const [isClosing, setIsClosing] = useState(false);
@@ -219,7 +223,7 @@ export function JobList({
     // Fetch related documents
     setIsLoadingDocs(true);
     try {
-        const docsQuery = query(collection(db, 'documents'), where('jobId', '==', job.id));
+        const docsQuery = query(collection(db, "documents"), where("jobId", "==", job.id));
         const docsSnapshot = await getDocs(docsQuery);
         const fetchedDocs = docsSnapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() } as DocumentType))
@@ -476,6 +480,36 @@ export function JobList({
         setIsAccepting(null);
     }
   };
+  
+  const handleConfirmPartsReady = async () => {
+    if (!db || !profile || !jobForPartsReady) return;
+    setIsActionLoading(true);
+    try {
+        const batch = writeBatch(db);
+        const jobRef = doc(db, 'jobs', jobForPartsReady.id);
+        const activityRef = doc(collection(db, 'jobs', jobForPartsReady.id, 'activities'));
+
+        batch.update(jobRef, {
+            status: 'IN_REPAIR_PROCESS',
+            lastActivityAt: serverTimestamp(),
+        });
+
+        batch.set(activityRef, {
+            text: `จัดอะไหล่เรียบร้อยแล้ว แจ้งแผนกต้นทางให้ดำเนินการเบิกอะไหล่และซ่อมได้`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+        });
+        
+        await batch.commit();
+        toast({ title: 'อัปเดตสถานะเรียบร้อย' });
+        setJobForPartsReady(null);
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'การอัปเดตล้มเหลว', description: error.message });
+    } finally {
+        setIsActionLoading(false);
+    }
+  };
 
   if (loading) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
@@ -587,11 +621,16 @@ export function JobList({
           </CardContent>
           <CardFooter className={cn(
             "mt-auto grid gap-2 p-4",
-            actionPreset === 'waitingApprove'
+            actionPreset === 'waitingApprove' || (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS')
               ? 'grid-cols-1'
               : (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
           )}>
-            {actionPreset === 'waitingApprove' ? (
+            {actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS' && isOfficeOrAdmin ? (
+                <Button variant="default" className="w-full" onClick={() => setJobForPartsReady(job)}>
+                    <PackageCheck className="mr-2 h-4 w-4" />
+                    จัดอะไหล่เรียบร้อย
+                </Button>
+            ) : actionPreset === 'waitingApprove' ? (
               <Button asChild variant="default" className="w-full">
                 <Link href={`/app/jobs/${job.id}`}>
                   <UserCheck />
@@ -797,6 +836,22 @@ export function JobList({
             </DialogFooter>
         </DialogContent>
     </Dialog>
+     <AlertDialog open={!!jobForPartsReady} onOpenChange={(isOpen) => !isOpen && setJobForPartsReady(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>ยืนยันการจัดอะไหล่</AlertDialogTitle>
+                <AlertDialogDescription>
+                    คุณต้องการยืนยันว่าจัดอะไหล่สำหรับงานของ "{jobForPartsReady?.customerSnapshot.name}" เรียบร้อยแล้วหรือไม่? สถานะจะเปลี่ยนเป็น "กำลังดำเนินการซ่อม"
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel disabled={isActionLoading}>ยกเลิก</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmPartsReady} disabled={isActionLoading}>
+                    {isActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'ยืนยัน'}
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
