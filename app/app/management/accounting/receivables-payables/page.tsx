@@ -673,7 +673,3 @@ export default function ReceivablesPayablesPage() {
         </>
     );
 }
-
-    
-
-    
