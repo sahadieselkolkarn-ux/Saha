@@ -1,4 +1,5 @@
 
+
 {
   "entities": {
     "UserProfile": {
@@ -1209,7 +1210,9 @@
         "approvedByUid": { "type": "string" },
         "approvedByName": { "type": "string" },
         "accountingEntryId": { "type": "string" },
-        "apObligationId": { "type": "string" }
+        "apObligationId": { "type": "string" },
+        "note": { "type": "string" },
+        "billPhotos": { "type": "array", "items": { "type": "string", "format": "uri" } }
       },
       "required": [
         "id", "docNo", "docDate", "vendorId", "vendorSnapshot", "invoiceNo", "items", "subtotal", "discountAmount", "net", "withTax", "vatAmount", "grandTotal", "paymentMode", "status", "createdAt", "updatedAt"
