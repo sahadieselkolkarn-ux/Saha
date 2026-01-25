@@ -5,7 +5,7 @@ import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -451,13 +451,12 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         const unsubscribe = onSnapshot(obligationsQuery, (snap) => {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingObligation>));
             
-            // Client-side filtering
+            // Client-side filtering and sorting
             let filtered = data.filter(ob => ob.status === 'UNPAID' || ob.status === 'PARTIAL');
 
-            // Client-side sorting
             filtered.sort((a, b) => {
-                const da = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
-                const db = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                const da = a.dueDate ? parseISO(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                const db = b.dueDate ? parseISO(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
                 return da - db;
             });
 
@@ -673,3 +672,5 @@ export default function ReceivablesPayablesPage() {
         </>
     );
 }
+
+    
