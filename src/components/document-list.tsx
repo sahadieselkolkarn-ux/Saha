@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
@@ -24,9 +24,10 @@ interface DocumentListProps {
 }
 
 const docTypeToEditPath: Record<string, string> = {
-    QUOTATION: '/app/office/documents/quotation',
+    QUOTATION: '/app/office/documents/quotation/new',
     DELIVERY_NOTE: '/app/office/documents/delivery-note/new',
     TAX_INVOICE: '/app/office/documents/tax-invoice/new',
+    // Add other doc types if they have dedicated edit pages
 };
 
 export function DocumentList({ docType }: DocumentListProps) {
@@ -53,12 +54,12 @@ export function DocumentList({ docType }: DocumentListProps) {
 
     const q = query(
       collection(db, "documents"),
-      where("docType", "==", docType)
+      where("docType", "==", docType),
+      orderBy("docDate", "desc")
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
-      docsData.sort((a, b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
       setDocuments(docsData);
       setLoading(false);
     }, (err) => {
@@ -166,7 +167,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
                     const basePath = docTypeToEditPath[docItem.docType as keyof typeof docTypeToEditPath];
-                    const editPath = docItem.docType === 'QUOTATION' ? `${basePath}/${docItem.id}` : `${basePath}?editDocId=${docItem.id}`;
+                    const editPath = basePath ? `${basePath}?editDocId=${docItem.id}` : '#';
                     
                     return (
                     <TableRow key={docItem.id}>
