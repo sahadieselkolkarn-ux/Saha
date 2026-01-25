@@ -208,7 +208,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     );
   }, [customers, customerSearch]);
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "items",
   });
@@ -252,7 +252,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         }
     }
   
-    form.setValue('items', quotation.items);
+    replace(quotation.items);
     form.setValue('discountAmount', quotation.discountAmount || 0);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}`});
   };

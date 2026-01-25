@@ -180,7 +180,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     }
   }, [job, docToEdit, profile, form]);
   
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "items",
   });
@@ -215,13 +215,13 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     }
 
     const currentItems = form.getValues('items');
-    if (currentItems.length > 1 || (currentItems.length === 1 && currentItems[0].description)) {
+    if (currentItems.length > 1 || (currentItems.length > 0 && currentItems[0].description)) {
         if (!confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?")) {
             return;
         }
     }
 
-    form.setValue('items', quotation.items.map(item => ({...item})));
+    replace(quotation.items.map(item => ({...item})));
     form.setValue('discountAmount', quotation.discountAmount || 0);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}` });
   };
