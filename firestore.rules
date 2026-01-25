@@ -2,168 +2,164 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() { return request.auth != null; }
+    // ===================================
+    // Helper Functions
+    // ===================================
+    function signedIn() {
+      return request.auth != null;
+    }
 
     // System admin fallback (กันล็อกตัวเอง)
     function isSystemAdmin() {
       return signedIn() && request.auth.token.email == "sahadieselkolkarn@gmail.com";
     }
 
-    // Try custom claims first; fallback to common profile collections.
-    function roleFromProfile() {
-      return
-        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role :
-        exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role :
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role :
-        null;
+    // Read profile data from the /users collection
+    function getProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function userExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function deptFromProfile() {
-      return
-        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.department :
-        exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.department :
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department :
-        null;
+    function role() {
+      return request.auth.token.role != null ? request.auth.token.role
+        : userExists() ? getProfile().role
+        : '';
+    }
+    function dept() {
+      return request.auth.token.department != null ? request.auth.token.department
+        : userExists() ? getProfile().department
+        : '';
     }
 
-    function role() { return request.auth.token.role != null ? request.auth.token.role : roleFromProfile(); }
-    function dept() { return request.auth.token.department != null ? request.auth.token.department : deptFromProfile(); }
-
-    function isAdmin() { return isSystemAdmin() || (signedIn() && role() == "ADMIN"); }
-    function isMgmt()  { return isAdmin() || (signedIn() && dept() == "MANAGEMENT"); }
-
-    // ปรับชื่อแผนกการเงินให้ตรง constants ของโปรเจค ถ้ายังไม่มี ให้ MANAGEMENT ทำหน้าที่แทนไปก่อน
-    function isFinance() {
-      return isAdmin() || isMgmt() || (signedIn() && (dept() == "FINANCE" || dept() == "ACCOUNTING"));
+    function isAdmin() {
+      return isSystemAdmin() || (signedIn() && role() == "ADMIN");
     }
 
-    // -------------------------
-    // Default: readable (signed-in), writable: deny
-    // -------------------------
+    function isMgmt() {
+      return isAdmin() || (signedIn() && dept() == "MANAGEMENT");
+    }
+
+    // Whitelist for accounting access. EDIT EMAILS HERE.
+    function isWhitelisted() {
+      return request.auth.token.email in [
+        'sahadiesel.joe@gmail.com', // พี่โจ้
+        'thinnakorn.saha@gmail.com' // พี่ถิน
+      ];
+    }
+    
+    function isAccountingAllowed() {
+      return isMgmt() || isWhitelisted();
+    }
+
+    // ===================================
+    // Default Security Rules
+    // ===================================
     match /{document=**} {
       allow read: if signedIn();
-      allow write: if false;
+      allow write: if false; // Deny by default
     }
 
-    // -------------------------
-    // Profiles (ถ้ามีใช้)
-    // -------------------------
-    match /userProfiles/{uid} {
-      allow read: if signedIn();
-      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow delete: if isAdmin();
-    }
-    match /profiles/{uid} {
-      allow read: if signedIn();
-      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow delete: if isAdmin();
-    }
+    // ===================================
+    // Collection-Specific Rules
+    // ===================================
+
+    // User Profiles
     match /users/{uid} {
       allow read: if signedIn();
       allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow delete: if isAdmin();
     }
 
-    // -------------------------
     // Settings
-    // -------------------------
     match /settings/{docId} {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
 
-    // -------------------------
-    // Customers / Vendors (ให้ระบบใช้งานทั่วไปไม่พัง)
-    // -------------------------
+    // Customers & Vendors (MVP)
     match /customers/{id} {
       allow read: if signedIn();
-      allow create, update: if isAdmin() || isMgmt() || (signedIn() && dept() == "OFFICE");
+      allow create, update: if signedIn();
       allow delete: if isAdmin();
     }
     match /vendors/{id} {
       allow read: if signedIn();
-      allow create, update: if isAdmin() || isMgmt() || (signedIn() && dept() == "OFFICE");
+      allow create, update: if signedIn();
       allow delete: if isAdmin();
     }
 
-    // -------------------------
-    // Jobs + subcollection activities
-    // (ยังเปิดให้ signed-in เขียนได้ เพื่อไม่ให้ flow งานซ่อมพังในระหว่างปรับบัญชี)
-    // -------------------------
+    // Jobs & Main Documents (MVP)
     match /jobs/{jobId} {
       allow read: if signedIn();
       allow create, update: if signedIn();
       allow delete: if isAdmin();
-
       match /activities/{activityId} {
         allow read: if signedIn();
         allow create: if signedIn();
         allow update, delete: if isAdmin();
       }
     }
-
-    // -------------------------
-    // Documents + Counters
-    // -------------------------
     match /documents/{docId} {
       allow read: if signedIn();
-
-      // สร้างเอกสารได้: ออฟฟิศ/บริหาร/แอดมิน (MVP)
-      allow create: if signedIn();
-
-      // แก้ไขเอกสาร:
-      // - ถ้าเป็น draft ใครสร้างก็แก้ได้ (MVP) แต่ "ห้ามแก้ docNo"
-      // - สถานะ PAID/ฟิลด์การเงิน: เฉพาะ finance
-      allow update: if (
-        (resource.data.status == "DRAFT" && request.resource.data.docNo == resource.data.docNo)
-        || isFinance()
-      );
-
+      allow create, update: if signedIn();
       allow delete: if isAdmin();
     }
-
     match /documentCounters/{yearId} {
       allow read: if signedIn();
-      // allow เฉพาะเพื่อออกเลขเอกสาร (ใช้ใน transaction createDocument)
       allow create, update: if signedIn();
       allow delete: if isAdmin();
     }
 
-    // -------------------------
-    // Payment Claims (รอตรวจสอบรายรับ)
-    // -------------------------
-    match /paymentClaims/{id} {
-      allow read: if isFinance();
-
-      // ผู้แจ้งรับเงิน (ออฟฟิศ) สร้างได้
+    // --- Purchase Workflow ---
+    match /purchaseDocs/{docId} {
+      allow read: if signedIn();
       allow create: if signedIn();
-
-      // อนุมัติ/ตีกลับ/แก้ข้อมูลรับเงิน: เฉพาะ finance
-      allow update: if isFinance();
-
+      allow update: if (signedIn() && !(resource.data.status in ['PAID', 'CANCELLED'])) || isMgmt();
       allow delete: if isAdmin();
     }
+    match /purchaseClaims/{claimId} {
+        allow create: if signedIn();
+        allow read, update: if isAccountingAllowed();
+        allow delete: if isAdmin();
+    }
 
-    // -------------------------
-    // Accounting (แกนบัญชี)
-    // -------------------------
+    // --- Accounting Collections ---
     match /accountingAccounts/{id} {
-      allow read: if isFinance();
-      allow create, update: if isFinance();
+      allow write: if isAccountingAllowed();
+      allow read: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
-
     match /accountingEntries/{id} {
-      allow read: if isFinance();
-      allow create: if isFinance();
-      // immutable สำหรับคนทั่วไป
+      allow read, create: if isAccountingAllowed();
       allow update, delete: if isAdmin();
     }
-
     match /accountingObligations/{id} {
-      allow read: if isFinance();
-      allow create, update: if isFinance();
+      allow write: if isAccountingAllowed();
+      allow read: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
+    match /paymentClaims/{id} {
+      allow create: if signedIn();
+      allow read, update: if isAccountingAllowed();
+      allow delete: if isAdmin();
+    }
+
+    // --- HR & Attendance (MVP) ---
+    match /attendance/{id} { allow read, write: if signedIn(); }
+    match /kioskTokens/{id} { allow read, write: if signedIn(); }
+    match /hrHolidays/{id} { allow read, write: if isMgmt(); }
+    match /hrLeaves/{id} {
+        allow read: if isMgmt() || request.auth.uid == resource.data.userId;
+        allow create: if signedIn();
+        allow update: if isMgmt() || (request.auth.uid == resource.data.userId && request.resource.data.status == 'CANCELLED');
+    }
+    match /hrAttendanceAdjustments/{id} { allow read, write: if isMgmt(); }
+    match /payrollRuns/{runId}/{document=**} { allow read, write: if isMgmt(); }
+
+    // Deprecated collections - lock them down
+    match /userProfiles/{uid} { allow read, write: if false; }
+    match /profiles/{uid} { allow read, write: if false; }
   }
 }
