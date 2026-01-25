@@ -432,20 +432,24 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
     const [payingAR, setPayingAR] = useState<WithId<AccountingObligation> | null>(null);
     const [payingAP, setPayingAP] = useState<WithId<AccountingObligation> | null>(null);
 
-    useEffect(() => {
-        if (!db) return;
-        setLoading(true);
-        setError(null);
-        setIndexCreationUrl(null);
-
-        const q = query(
+    const obligationsQuery = useMemo(() => {
+        if (!db) return null;
+        return query(
             collection(db, "accountingObligations"),
             where("type", "==", type),
             where("status", "in", ["UNPAID", "PARTIAL"]),
             orderBy("dueDate", "asc")
         );
+    }, [db, type]);
 
-        const unsubscribe = onSnapshot(q, (snap) => {
+    useEffect(() => {
+        if (!obligationsQuery) return;
+        
+        setLoading(true);
+        setError(null);
+        setIndexCreationUrl(null);
+
+        const unsubscribe = onSnapshot(obligationsQuery, (snap) => {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingObligation>));
             data.sort((a, b) => {
                 if (!a.dueDate && !b.dueDate) return 0;
@@ -456,19 +460,21 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
             setObligations(data);
             setLoading(false);
             setError(null);
+            setIndexCreationUrl(null);
         }, (err: FirestoreError) => {
             console.error(`Error loading ${type} obligations:`, err);
             setError(err);
+            setLoading(false);
             if (err.message?.includes('requires an index')) {
                 const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
                 if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+            } else {
+                toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: "ไม่มีสิทธิ์เข้าถึงข้อมูลลูกหนี้/เจ้าหนี้ หรือการดึงข้อมูลถูกปฏิเสธ" });
             }
-            setLoading(false);
-            toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: "ไม่มีสิทธิ์เข้าถึงข้อมูลลูกหนี้/เจ้าหนี้ หรือการดึงข้อมูลถูกปฏิเสธ" });
         });
 
         return () => unsubscribe();
-    }, [db, type, toast, retry]);
+    }, [obligationsQuery, toast, retry]);
 
     const filteredObligations = useMemo(() => {
         if (!searchTerm) return obligations;
@@ -574,12 +580,18 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
         const accountsQ = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
         const unsubAccounts = onSnapshot(accountsQ, (snap) => {
             setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
-        }, (err) => toast({ variant: 'destructive', title: "Could not load accounts", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" }));
+        }, (err) => {
+          console.error("Error loading accounts:", err);
+          toast({ variant: 'destructive', title: "Could not load accounts", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
+        });
         
         const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true), orderBy("shortName", "asc"));
         const unsubVendors = onSnapshot(vendorsQ, (snap) => {
             setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>)));
-        }, (err) => toast({ variant: 'destructive', title: "Could not load vendors", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า หรือการดึงข้อมูลถูกปฏิเสธ" }));
+        }, (err) => {
+          console.error("Error loading vendors:", err);
+          toast({ variant: 'destructive', title: "Could not load vendors", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า หรือการดึงข้อมูลถูกปฏิเสธ" });
+        });
 
         return () => { unsubAccounts(); unsubVendors(); };
     }, [db, toast]);

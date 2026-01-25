@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, orderBy, type FirestoreError } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, orderBy, type FirestoreError, addDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,10 +24,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Search, AlertCircle, HandCoins, ExternalLink } from 'lucide-react';
+import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown } from 'lucide-react';
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 
 import type { WithId } from '@/firebase/firestore/use-collection';
-import type { AccountingObligation, AccountingAccount, UserProfile } from '@/lib/types';
+import type { AccountingObligation, AccountingAccount, UserProfile, Vendor } from '@/lib/types';
 import { safeFormat } from '@/lib/date-utils';
 
 const formatCurrency = (value: number) => {
@@ -36,7 +39,7 @@ const formatCurrency = (value: number) => {
   });
 };
 
-const paymentSchema = z.object({
+const arPaymentSchema = z.object({
   paymentDate: z.string().min(1, "กรุณาเลือกวันที่"),
   amount: z.coerce.number().positive("จำนวนเงินต้องมากกว่า 0"),
   accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
@@ -51,20 +54,18 @@ function ReceivePaymentDialog({
   accounts,
   isOpen,
   onClose,
-  profile,
 }: {
   obligation: WithId<AccountingObligation>;
   accounts: WithId<AccountingAccount>[];
   isOpen: boolean;
   onClose: () => void;
-  profile: UserProfile;
 }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const form = useForm<z.infer<typeof paymentSchema>>({
-    resolver: zodResolver(paymentSchema),
+  const form = useForm<z.infer<typeof arPaymentSchema>>({
+    resolver: zodResolver(arPaymentSchema),
     defaultValues: {
       paymentDate: new Date().toISOString().split("T")[0],
       amount: obligation.balance,
@@ -93,14 +94,13 @@ function ReceivePaymentDialog({
   const watchedWhtAmount = form.watch('withholdingAmount') || 0;
   const cashReceived = watchedAmount - (watchedWhtEnabled ? watchedWhtAmount : 0);
 
-  const handleSavePayment = async (data: z.infer<typeof paymentSchema>) => {
+  const handleSavePayment = async (data: z.infer<typeof arPaymentSchema>) => {
     if (!db) return;
     setIsSubmitting(true);
 
     try {
       const batch = writeBatch(db);
 
-      // 1. Update Obligation
       const obligationRef = doc(db, 'accountingObligations', obligation.id);
       const newAmountPaid = obligation.amountPaid + data.amount;
       const newBalance = obligation.amountTotal - newAmountPaid;
@@ -115,7 +115,6 @@ function ReceivePaymentDialog({
         updatedAt: serverTimestamp(),
       });
       
-      // 2. Create Accounting Entry
       const entryRef = doc(collection(db, "accountingEntries"));
       batch.set(entryRef, {
           entryType: "CASH_IN",
@@ -132,7 +131,6 @@ function ReceivePaymentDialog({
           createdAt: serverTimestamp(),
       });
 
-      // 3. Update Source Document if fully paid
       if (newStatus === 'PAID' && obligation.sourceDocId) {
         const sourceDocRef = doc(db, 'documents', obligation.sourceDocId);
         batch.update(sourceDocRef, {
@@ -197,7 +195,231 @@ function ReceivePaymentDialog({
   )
 }
 
-function ObligationList({ type, searchTerm, profile }: { type: 'AR' | 'AP', searchTerm: string, profile: UserProfile }) {
+const apPaymentSchema = z.object({
+  paymentDate: z.string().min(1, "กรุณาเลือกวันที่"),
+  amount: z.coerce.number().positive("จำนวนเงินต้องมากกว่า 0"),
+  accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
+  paymentMethod: z.enum(["CASH", "TRANSFER"]),
+  notes: z.string().optional(),
+});
+
+function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligation: WithId<AccountingObligation>; accounts: WithId<AccountingAccount>[]; isOpen: boolean; onClose: () => void; }) {
+  const { db } = useFirebase();
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const form = useForm<z.infer<typeof apPaymentSchema>>({
+    resolver: zodResolver(apPaymentSchema),
+    defaultValues: {
+      paymentDate: new Date().toISOString().split("T")[0],
+      amount: obligation.balance,
+      paymentMethod: "TRANSFER",
+      notes: "",
+      accountId: accounts[0]?.id || "",
+    },
+  });
+  
+  useEffect(() => {
+    form.reset({
+      paymentDate: new Date().toISOString().split("T")[0],
+      amount: obligation.balance,
+      paymentMethod: "TRANSFER",
+      notes: "",
+      accountId: accounts[0]?.id || "",
+    });
+  }, [obligation, accounts, form]);
+
+  const handleSavePayment = async (data: z.infer<typeof apPaymentSchema>) => {
+    if (!db) return;
+    setIsSubmitting(true);
+    try {
+      const batch = writeBatch(db);
+
+      const obligationRef = doc(db, 'accountingObligations', obligation.id);
+      const newAmountPaid = obligation.amountPaid + data.amount;
+      const newBalance = obligation.amountTotal - newAmountPaid;
+      const newStatus = newBalance <= 0 ? 'PAID' : 'PARTIAL';
+
+      batch.update(obligationRef, {
+        amountPaid: newAmountPaid,
+        balance: newBalance,
+        status: newStatus,
+        lastPaymentDate: data.paymentDate,
+        paidOffDate: newStatus === 'PAID' ? data.paymentDate : null,
+        updatedAt: serverTimestamp(),
+      });
+
+      const entryRef = doc(collection(db, "accountingEntries"));
+      batch.set(entryRef, {
+        entryType: "CASH_OUT",
+        entryDate: data.paymentDate,
+        amount: data.amount,
+        accountId: data.accountId,
+        paymentMethod: data.paymentMethod,
+        description: `จ่ายเจ้าหนี้: ${obligation.vendorShortNameSnapshot} (บิล: ${obligation.invoiceNo})`,
+        notes: data.notes,
+        vendorId: obligation.vendorId,
+        vendorShortNameSnapshot: obligation.vendorShortNameSnapshot,
+        vendorNameSnapshot: obligation.vendorNameSnapshot,
+        sourceDocNo: obligation.invoiceNo,
+        createdAt: serverTimestamp(),
+      });
+
+      await batch.commit();
+      toast({ title: "บันทึกการจ่ายเจ้าหนี้สำเร็จ" });
+      onClose();
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>จ่ายเจ้าหนี้</DialogTitle>
+          <DialogDescription>สำหรับบิลเลขที่: {obligation.invoiceNo} ({obligation.vendorShortNameSnapshot})</DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form id="ap-payment-form" onSubmit={form.handleSubmit(handleSavePayment)} className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField name="paymentDate" control={form.control} render={({ field }) => (<FormItem><FormLabel>วันที่จ่ายเงิน</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage/></FormItem>)} />
+              <FormField name="amount" control={form.control} render={({ field }) => (<FormItem><FormLabel>จำนวนเงินที่จ่าย</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField name="paymentMethod" control={form.control} render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage/></FormItem>)} />
+              <FormField name="accountId" control={form.control} render={({ field }) => (<FormItem><FormLabel>บัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage/></FormItem>)} />
+            </div>
+            <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+          </form>
+        </Form>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
+          <Button type="submit" form="ap-payment-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin"/>}บันทึกการจ่าย</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const addCreditorSchema = z.object({
+  vendorId: z.string().min(1, "กรุณาเลือก Vendor"),
+  invoiceNo: z.string().min(1, "กรุณากรอกเลขที่บิล"),
+  docDate: z.string().min(1, "กรุณาเลือกวันที่เอกสาร"),
+  dueDate: z.string().optional(),
+  amountTotal: z.coerce.number().positive("ยอดเงินต้องมากกว่า 0"),
+  notes: z.string().optional(),
+});
+
+function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendor>[]; isOpen: boolean; onClose: () => void; }) {
+    const { db } = useFirebase();
+    const { toast } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [vendorSearch, setVendorSearch] = useState("");
+    const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+
+    const form = useForm<z.infer<typeof addCreditorSchema>>({
+        resolver: zodResolver(addCreditorSchema),
+        defaultValues: {
+            docDate: new Date().toISOString().split("T")[0],
+            amountTotal: 0,
+        },
+    });
+
+    const filteredVendors = useMemo(() => {
+        if (!vendorSearch) return vendors;
+        return vendors.filter(v => v.shortName.toLowerCase().includes(vendorSearch.toLowerCase()) || v.companyName.toLowerCase().includes(vendorSearch.toLowerCase()));
+    }, [vendors, vendorSearch]);
+
+    const handleSave = async (data: z.infer<typeof addCreditorSchema>) => {
+        if (!db) return;
+        setIsSubmitting(true);
+        const selectedVendor = vendors.find(v => v.id === data.vendorId);
+        if (!selectedVendor) {
+            toast({ variant: 'destructive', title: 'ไม่พบ Vendor' });
+            setIsSubmitting(false);
+            return;
+        }
+
+        try {
+            await addDoc(collection(db, 'accountingObligations'), {
+                type: 'AP',
+                status: 'UNPAID',
+                vendorId: selectedVendor.id,
+                vendorShortNameSnapshot: selectedVendor.shortName,
+                vendorNameSnapshot: selectedVendor.companyName,
+                invoiceNo: data.invoiceNo,
+                sourceDocNo: data.invoiceNo, // For consistency in search
+                docDate: data.docDate,
+                dueDate: data.dueDate || null,
+                amountTotal: data.amountTotal,
+                amountPaid: 0,
+                balance: data.amountTotal,
+                notes: data.notes || '',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+            toast({ title: 'บันทึกเจ้าหนี้สำเร็จ' });
+            onClose();
+            form.reset();
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>เพิ่มเจ้าหนี้ใหม่</DialogTitle>
+                    <DialogDescription>บันทึกบิลที่ได้รับจากร้านค้าภายนอก</DialogDescription>
+                </DialogHeader>
+                 <Form {...form}>
+                    <form id="add-creditor-form" onSubmit={form.handleSubmit(handleSave)} className="space-y-4 py-4">
+                        <FormField name="vendorId" control={form.control} render={({ field }) => (
+                            <FormItem className="flex flex-col">
+                                <FormLabel>Vendor</FormLabel>
+                                <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}><PopoverTrigger asChild>
+                                <FormControl><Button variant="outline" role="combobox" className="justify-between">
+                                    {field.value ? vendors.find(v => v.id === field.value)?.shortName : "เลือก Vendor..."}
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button></FormControl>
+                                </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
+                                <CommandInput placeholder="ค้นหา..." value={vendorSearch} onValueChange={setVendorSearch} />
+                                <CommandList><CommandEmpty>ไม่พบ Vendor</CommandEmpty><CommandGroup>
+                                    {filteredVendors.map((v) => (
+                                    <CommandItem value={v.shortName} key={v.id} onSelect={() => { field.onChange(v.id); setIsPopoverOpen(false); }}>
+                                        {v.shortName} - {v.companyName}
+                                    </CommandItem>
+                                    ))}
+                                </CommandGroup></CommandList>
+                                </Command></PopoverContent></Popover>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        <FormField name="invoiceNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขที่บิล (Invoice No.)</FormLabel><FormControl><Input {...field}/></FormControl><FormMessage/></FormItem>)} />
+                        <FormField name="amountTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดเงินรวม</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField name="docDate" control={form.control} render={({ field }) => (<FormItem><FormLabel>วันที่บนบิล</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage/></FormItem>)} />
+                            <FormField name="dueDate" control={form.control} render={({ field }) => (<FormItem><FormLabel>วันครบกำหนดจ่าย</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage/></FormItem>)} />
+                        </div>
+                        <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+                    </form>
+                 </Form>
+                 <DialogFooter>
+                    <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
+                    <Button type="submit" form="add-creditor-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin"/>}บันทึก</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 'AP', searchTerm: string, accounts: WithId<AccountingAccount>[], vendors: WithId<Vendor>[] }) {
     const { db } = useFirebase();
     const { toast } = useToast();
     
@@ -207,20 +429,8 @@ function ObligationList({ type, searchTerm, profile }: { type: 'AR' | 'AP', sear
     const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
     const [retry, setRetry] = useState(0);
 
-    const [payingObligation, setPayingObligation] = useState<WithId<AccountingObligation> | null>(null);
-    const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
-
-    useEffect(() => {
-        if (!db) return;
-        const accountsQ = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
-        const unsubAccounts = onSnapshot(accountsQ, (snap) => {
-            setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
-        }, (err) => {
-            console.error("Error loading accounts:", err);
-            toast({ variant: 'destructive', title: "Could not load accounts", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
-        });
-        return () => unsubAccounts();
-    }, [db, toast]);
+    const [payingAR, setPayingAR] = useState<WithId<AccountingObligation> | null>(null);
+    const [payingAP, setPayingAP] = useState<WithId<AccountingObligation> | null>(null);
 
     useEffect(() => {
         if (!db) return;
@@ -246,15 +456,17 @@ function ObligationList({ type, searchTerm, profile }: { type: 'AR' | 'AP', sear
             setObligations(data);
             setLoading(false);
             setError(null);
+            setIndexCreationUrl(null);
         }, (err: FirestoreError) => {
             console.error(`Error loading ${type} obligations:`, err);
             setError(err);
+            setLoading(false);
             if (err.message?.includes('requires an index')) {
                 const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
                 if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+            } else {
+                toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: "ไม่มีสิทธิ์เข้าถึงข้อมูลลูกหนี้/เจ้าหนี้ หรือการดึงข้อมูลถูกปฏิเสธ" });
             }
-            setLoading(false);
-            toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: "ไม่มีสิทธิ์เข้าถึงข้อมูลลูกหนี้/เจ้าหนี้ หรือการดึงข้อมูลถูกปฏิเสธ" });
         });
 
         return () => unsubscribe();
@@ -318,12 +530,12 @@ function ObligationList({ type, searchTerm, profile }: { type: 'AR' | 'AP', sear
                       <TableCell className="text-right font-bold">{formatCurrency(ob.balance)}</TableCell>
                       <TableCell className="text-right">
                           {type === 'AR' ? (
-                            <Button size="sm" variant="outline" onClick={() => setPayingObligation(ob)}>
+                            <Button size="sm" variant="outline" onClick={() => setPayingAR(ob)}>
                                 <HandCoins className="mr-2 h-4 w-4" /> รับชำระ
                             </Button>
                           ) : (
-                             <Button size="sm" variant="outline" disabled>
-                                Pay Bill
+                             <Button size="sm" variant="outline" onClick={() => setPayingAP(ob)}>
+                                <HandCoins className="mr-2 h-4 w-4" /> จ่ายบิล
                             </Button>
                           )}
                       </TableCell>
@@ -338,14 +550,11 @@ function ObligationList({ type, searchTerm, profile }: { type: 'AR' | 'AP', sear
     return (
         <>
             {renderTable()}
-            {payingObligation && type === 'AR' && (
-                <ReceivePaymentDialog
-                    isOpen={!!payingObligation}
-                    onClose={() => setPayingObligation(null)}
-                    obligation={payingObligation}
-                    accounts={accounts}
-                    profile={profile}
-                />
+            {payingAR && (
+                <ReceivePaymentDialog isOpen={!!payingAR} onClose={() => setPayingAR(null)} obligation={payingAR} accounts={accounts} />
+            )}
+            {payingAP && (
+                <PayCreditorDialog isOpen={!!payingAP} onClose={() => setPayingAP(null)} obligation={payingAP} accounts={accounts} />
             )}
         </>
     );
@@ -356,30 +565,65 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
     const defaultTab = searchParams.get('tab') === 'creditors' ? 'creditors' : 'debtors';
     const [activeTab, setActiveTab] = useState(defaultTab);
     const [searchTerm, setSearchTerm] = useState("");
+    const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
+    const [vendors, setVendors] = useState<WithId<Vendor>[]>([]);
+    const [isAddingCreditor, setIsAddingCreditor] = useState(false);
+    const { db } = useFirebase();
+    const { toast } = useToast();
+
+    useEffect(() => {
+        if (!db) return;
+        const accountsQ = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
+        const unsubAccounts = onSnapshot(accountsQ, (snap) => {
+            setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
+        }, (err) => {
+          console.error("Error loading accounts:", err);
+          toast({ variant: 'destructive', title: "Could not load accounts", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
+        });
+        
+        const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true), orderBy("shortName", "asc"));
+        const unsubVendors = onSnapshot(vendorsQ, (snap) => {
+            setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>)));
+        }, (err) => {
+          console.error("Error loading vendors:", err);
+          toast({ variant: 'destructive', title: "Could not load vendors", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า หรือการดึงข้อมูลถูกปฏิเสธ" });
+        });
+
+        return () => { unsubAccounts(); unsubVendors(); };
+    }, [db, toast]);
+
 
     return (
+        <>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <TabsList>
                     <TabsTrigger value="debtors">ลูกหนี้ (Debtors)</TabsTrigger>
                     <TabsTrigger value="creditors">เจ้าหนี้ (Creditors)</TabsTrigger>
                 </TabsList>
-                 <div className="w-full max-w-sm relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="ค้นหาจากชื่อ, เลขที่เอกสาร..." className="pl-10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                <div className="flex w-full md:w-auto items-center gap-2">
+                    {activeTab === 'creditors' && (
+                        <Button onClick={() => setIsAddingCreditor(true)}><PlusCircle/> เพิ่มเจ้าหนี้</Button>
+                    )}
+                    <div className="w-full max-w-sm relative flex-1">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input placeholder="ค้นหาจากชื่อ, เลขที่เอกสาร..." className="pl-10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    </div>
                 </div>
             </div>
             <Card>
               <CardContent className="pt-6">
                 <TabsContent value="debtors" className="mt-0">
-                    <ObligationList type="AR" searchTerm={searchTerm} profile={profile} />
+                    <ObligationList type="AR" searchTerm={searchTerm} accounts={accounts} vendors={vendors} />
                 </TabsContent>
                 <TabsContent value="creditors" className="mt-0">
-                    <ObligationList type="AP" searchTerm={searchTerm} profile={profile} />
+                    <ObligationList type="AP" searchTerm={searchTerm} accounts={accounts} vendors={vendors} />
                 </TabsContent>
               </CardContent>
             </Card>
         </Tabs>
+        <AddCreditorDialog vendors={vendors} isOpen={isAddingCreditor} onClose={() => setIsAddingCreditor(false)} />
+        </>
     );
 }
 
