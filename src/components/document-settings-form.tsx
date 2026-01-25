@@ -27,6 +27,7 @@ const documentSettingsSchema = z.object({
   taxInvoicePrefix: z.string().optional(),
   receiptPrefix: z.string().optional(),
   billingNotePrefix: z.string().optional(),
+  purchasePrefix: z.string().optional(),
 });
 
 const InfoRow = ({ label, value }: { label: string, value: React.ReactNode }) => (
@@ -105,6 +106,8 @@ export function DocumentSettingsForm() {
                 <InfoRow label="ใบเสร็จรับเงิน" value={settings?.receiptPrefix} />
                 <Separator />
                 <InfoRow label="ใบวางบิล" value={settings?.billingNotePrefix} />
+                <Separator />
+                <InfoRow label="เอกสารจัดซื้อ" value={settings?.purchasePrefix} />
             </CardContent>
         </Card>
     );
@@ -126,6 +129,7 @@ export function DocumentSettingsForm() {
             <FormField control={form.control} name="taxInvoicePrefix" render={({ field }) => (<FormItem><FormLabel>ใบกำกับภาษี</FormLabel><FormControl><Input placeholder="INV" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
             <FormField control={form.control} name="receiptPrefix" render={({ field }) => (<FormItem><FormLabel>ใบเสร็จรับเงิน</FormLabel><FormControl><Input placeholder="RE" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
             <FormField control={form.control} name="billingNotePrefix" render={({ field }) => (<FormItem><FormLabel>ใบวางบิล</FormLabel><FormControl><Input placeholder="BN" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="purchasePrefix" render={({ field }) => (<FormItem><FormLabel>เอกสารจัดซื้อ</FormLabel><FormControl><Input placeholder="PUR" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
           </CardContent>
         </Card>
         

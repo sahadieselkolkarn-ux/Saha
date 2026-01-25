@@ -510,7 +510,8 @@
         "receipt": { "type": "number" },
         "billingNote": { "type": "number" },
         "creditNote": { "type": "number" },
-        "withholdingTax": { "type": "number" }
+        "withholdingTax": { "type": "number" },
+        "purchase": { "type": "number" }
       }
     },
     "Attendance": {
@@ -1031,7 +1032,8 @@
         "receiptPrefix": { "type": "string" },
         "billingNotePrefix": { "type": "string" },
         "creditNotePrefix": { "type": "string" },
-        "withholdingTaxPrefix": { "type": "string" }
+        "withholdingTaxPrefix": { "type": "string" },
+        "purchasePrefix": { "type": "string" }
       }
     },
     "AccountingAccount": {

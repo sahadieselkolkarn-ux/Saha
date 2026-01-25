@@ -284,6 +284,7 @@ export interface DocumentSettings {
   billingNotePrefix?: string;
   creditNotePrefix?: string;
   withholdingTaxPrefix?: string;
+  purchasePrefix?: string;
 }
 
 export interface DocumentItem {
@@ -343,6 +344,7 @@ export interface DocumentCounters {
   billingNote?: number;
   creditNote?: number;
   withholdingTax?: number;
+  purchase?: number;
 }
 
 export interface AccountingAccount {
@@ -433,23 +435,17 @@ export interface AccountingObligation {
   balance: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  
-  // Common fields
   dueDate?: string; // YYYY-MM-DD
   lastPaymentDate?: string; // YYYY-MM-DD
   paidOffDate?: string; // YYYY-MM-DD
   note?: string;
-
-  // AR-specific fields
   jobId?: string;
   customerNameSnapshot?: string;
   customerPhoneSnapshot?: string;
-
-  // AP-specific fields
   vendorId?: string;
   vendorShortNameSnapshot?: string;
   vendorNameSnapshot?: string;
-  invoiceNo?: string; // Vendor's invoice number
+  invoiceNo?: string;
 }
 
 export interface PurchaseDocItem {
