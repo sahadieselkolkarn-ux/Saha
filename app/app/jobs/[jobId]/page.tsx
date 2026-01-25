@@ -5,7 +5,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch } from "firebase/firestore";
+import Link from 'next/link';
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -22,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY, type JobStatus } from "@/lib/constants";
 import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check } from "lucide-react";
-import type { Job, JobActivity, JobDepartment } from "@/lib/types";
+import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
@@ -88,6 +89,9 @@ export default function JobDetailsPage() {
   const [isRejectConfirmOpen, setIsRejectConfirmOpen] = useState(false);
   const [rejectionChoice, setRejectionChoice] = useState<'with_cost' | 'no_cost' | null>(null);
   
+  const [relatedDocuments, setRelatedDocuments] = useState<Partial<Record<DocType, DocumentType[]>>>({});
+  const [loadingDocs, setLoadingDocs] = useState(true);
+  
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
     return query(collection(db, "jobs", jobId as string, "activities"), orderBy("createdAt", "desc"));
@@ -101,6 +105,47 @@ export default function JobDetailsPage() {
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   const isViewOnly = job?.status === 'CLOSED' && !allowEditing;
   const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
+
+  useEffect(() => {
+    if (!db || !jobId) return;
+
+    setLoadingDocs(true);
+    const docsQuery = query(collection(db, "documents"), where("jobId", "==", jobId as string));
+
+    const unsubscribeDocs = onSnapshot(docsQuery, (snapshot) => {
+        const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType));
+        const grouped: Partial<Record<DocType, DocumentType[]>> = {};
+        const relevantDocTypes: DocType[] = ['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'];
+
+        for (const doc of allDocs) {
+            if (relevantDocTypes.includes(doc.docType)) {
+                if (!grouped[doc.docType]) {
+                    grouped[doc.docType] = [];
+                }
+                grouped[doc.docType]!.push(doc);
+            }
+        }
+
+        for (const docType in grouped) {
+            grouped[docType as DocType]!.sort((a, b) => {
+                const dateA = new Date(a.docDate).getTime();
+                const dateB = new Date(b.docDate).getTime();
+                if (dateB !== dateA) return dateB - dateA;
+                return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0);
+            });
+        }
+        
+        setRelatedDocuments(grouped);
+        setLoadingDocs(false);
+    }, (error) => {
+        console.error("Error fetching related documents:", error);
+        toast({ variant: "destructive", title: "Could not load related documents." });
+        setLoadingDocs(false);
+    });
+
+    return () => unsubscribeDocs();
+  }, [db, jobId, toast]);
+
 
   useEffect(() => {
     if (!jobId || !db) return;
@@ -503,6 +548,21 @@ const handlePartsReady = async () => {
       }
   }, [isTransferDialogOpen])
 
+  const DOC_STATUS_DISPLAY: Record<string, string> = {
+    DRAFT: 'ฉบับร่าง',
+    PAID: 'จ่ายแล้ว',
+    CANCELLED: 'ยกเลิก',
+    WAITING_CUSTOMER_PICKUP: 'รอลูกค้ารับ',
+  };
+
+  const DOC_STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    DRAFT: 'secondary',
+    PAID: 'default',
+    CANCELLED: 'destructive',
+    WAITING_CUSTOMER_PICKUP: 'outline',
+  };
+
+
   if (loading) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
@@ -528,6 +588,9 @@ const handlePartsReady = async () => {
               <div><h4 className="font-semibold text-base">Department</h4><p>{job.department}</p></div>
               {job.assigneeName && (
                   <div><h4 className="font-semibold text-base">Assigned To</h4><p>{job.assigneeName}</p></div>
+              )}
+               {job.status === 'CLOSED' && job.salesDocNo && (
+                <div><h4 className="font-semibold text-base">เอกสารขายที่ใช้ปิดงาน</h4><p>{job.salesDocType}: {job.salesDocNo}</p></div>
               )}
               <div><h4 className="font-semibold text-base">Description</h4><p className="whitespace-pre-wrap">{job.description}</p></div>
             </CardContent>
@@ -672,6 +735,44 @@ const handlePartsReady = async () => {
                   <p className="flex justify-between"><span>Created:</span> <span>{safeFormat(job.createdAt, 'PPp')}</span></p>
                   <p className="flex justify-between"><span>Last Activity:</span> <span>{safeFormat(job.lastActivityAt, 'PPp')}</span></p>
               </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><FileText /> เอกสารอ้างอิง</CardTitle></CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {loadingDocs ? <div className="flex justify-center"><Loader2 className="animate-spin"/></div> :
+                (<>
+                  {(['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'] as DocType[]).map(docTypeKey => {
+                    const docType = docTypeKey;
+                    const label = {
+                      QUOTATION: 'ใบเสนอราคา',
+                      DELIVERY_NOTE: 'ใบส่งของ',
+                      TAX_INVOICE: 'ใบกำกับภาษี',
+                      RECEIPT: 'ใบเสร็จ'
+                    }[docType];
+
+                    const latestDoc = relatedDocuments[docType]?.[0];
+                    
+                    return (
+                      <div key={docType} className="flex justify-between items-center">
+                        <span className="text-muted-foreground">{label}:</span>
+                        {latestDoc ? (
+                           <div className="flex items-center gap-2">
+                              <Button asChild variant="link" className="p-0 h-auto font-medium">
+                                <Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link>
+                              </Button>
+                              <Badge variant={DOC_STATUS_VARIANT[latestDoc.status] || 'secondary'} className="text-xs">
+                                {DOC_STATUS_DISPLAY[latestDoc.status] || latestDoc.status}
+                              </Badge>
+                           </div>
+                        ) : (
+                          <span>— ไม่มี —</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>)
+              }
+            </CardContent>
           </Card>
           <Card>
               <CardHeader><CardTitle className="text-base font-semibold">แจ้งความประสงค์</CardTitle></CardHeader>
