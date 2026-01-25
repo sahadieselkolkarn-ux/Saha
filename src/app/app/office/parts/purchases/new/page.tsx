@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState, Suspense } from "react";
@@ -5,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, writeBatch, where, orderBy } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, writeBatch, where, orderBy, getDocs } from "firebase/firestore";
 import Link from "next/link";
 
 import { useFirebase } from "@/firebase";
@@ -97,13 +98,58 @@ function NewPurchaseFormContent({ editDocId }: { editDocId: string | null }) {
 
   useEffect(() => {
     if (!db) return;
-    const unsubVendors = onSnapshot(query(collection(db, "vendors"), where("isActive", "==", true), orderBy("shortName", "asc")), (snapshot) => {
-      setVendors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor)));
-    }, (error) => toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลร้านค้าได้" }));
     
-    const unsubAccounts = onSnapshot(query(collection(db, "accountingAccounts"), where("isActive", "==", true)), (snapshot) => {
-      setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AccountingAccount)));
-    }, (error) => toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลบัญชีได้" }));
+    let vendorsLoaded = false;
+    let accountsLoaded = false;
+
+    const checkLoadingDone = () => {
+      if (vendorsLoaded && accountsLoaded) {
+        setIsLoading(false);
+      }
+    };
+
+    const qVendors = query(collection(db, "vendors"), where("isActive", "==", true));
+    const unsubVendors = onSnapshot(qVendors, 
+      (snapshot) => {
+        const vendorsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor));
+        vendorsData.sort((a, b) => (a.shortName || "").localeCompare(b.shortName || ""));
+        setVendors(vendorsData);
+        vendorsLoaded = true;
+        checkLoadingDone();
+      }, 
+      (error) => {
+        if (error.message.includes("requires an index")) {
+          toast({
+            title: "Index Information",
+            description: "Query นี้ต้องสร้าง index (สามารถเลือกสร้างได้ภายหลัง) แต่ตอนนี้เราแก้โดยตัด orderBy แล้ว",
+          });
+        } else if (error.message.includes("permission-denied")) {
+           toast({ variant: "destructive", title: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า", description: error.message });
+        } else {
+           toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลร้านค้าได้", description: error.message });
+        }
+        vendorsLoaded = true;
+        checkLoadingDone();
+      }
+    );
+    
+    const qAccounts = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
+    const unsubAccounts = onSnapshot(qAccounts, 
+      (snapshot) => {
+        setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AccountingAccount)));
+        accountsLoaded = true;
+        checkLoadingDone();
+      }, 
+      (error) => {
+        if (error.message.includes("permission-denied")) {
+          toast({ variant: "destructive", title: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี", description: error.message });
+        } else {
+          toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลบัญชีได้", description: error.message });
+        }
+        accountsLoaded = true;
+        checkLoadingDone();
+      }
+    );
 
     return () => { unsubVendors(); unsubAccounts(); };
   }, [db, toast]);
