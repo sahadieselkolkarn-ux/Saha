@@ -423,18 +423,31 @@ export interface PaymentClaim {
 
 export interface AccountingObligation {
   id: string;
-  type: 'AR'; // Accounts Receivable
+  type: 'AR' | 'AP';
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
-  jobId: string;
-  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE';
+  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'PURCHASE_ORDER' | 'BILL';
   sourceDocId: string;
   sourceDocNo: string;
   amountTotal: number;
   amountPaid: number;
   balance: number;
-  customerNameSnapshot: string;
-  customerPhoneSnapshot?: string;
-  dueDate?: string; // YYYY-MM-DD
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  
+  // Common fields
+  dueDate?: string; // YYYY-MM-DD
+  lastPaymentDate?: string; // YYYY-MM-DD
+  paidOffDate?: string; // YYYY-MM-DD
+  note?: string;
+
+  // AR-specific fields
+  jobId?: string;
+  customerNameSnapshot?: string;
+  customerPhoneSnapshot?: string;
+
+  // AP-specific fields
+  vendorId?: string;
+  vendorShortNameSnapshot?: string;
+  vendorNameSnapshot?: string;
+  invoiceNo?: string; // Vendor's invoice number
 }
