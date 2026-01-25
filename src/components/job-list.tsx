@@ -194,7 +194,7 @@ export function JobList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, status, excludeStatus]);
+  }, [jobsQuery, JSON.stringify(status), JSON.stringify(excludeStatus)]);
 
   useEffect(() => {
     if (error?.message?.includes('requires an index')) {
