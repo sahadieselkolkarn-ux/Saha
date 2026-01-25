@@ -1040,14 +1040,49 @@
         "jobId": { "type": "string" },
         "description": { "type": "string" },
         "category": { "type": "string" },
+        "categoryMain": { "type": "string" },
+        "categorySub": { "type": "string" },
         "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
         "vendorId": { "type": "string" },
         "vendorShortNameSnapshot": { "type": "string" },
         "vendorNameSnapshot": { "type": "string" },
-        "counterpartyNameSnapshot": { "type": "string" },
-        "counterpartyPhoneSnapshot": { "type": "string" }
+        "counterpartyNameSnapshot": { "type": "string" }
       },
       "required": ["entryType", "entryDate", "amount", "accountId", "createdAt"]
+    },
+    "PaymentClaim": {
+      "title": "Payment Claim",
+      "description": "An entry for an incoming payment that requires verification from the accounting department.",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "jobId": { "type": "string" },
+        "sourceDocType": { "type": "string", "enum": ["DELIVERY_NOTE", "TAX_INVOICE", "RECEIPT"] },
+        "sourceDocId": { "type": "string" },
+        "sourceDocNo": { "type": "string" },
+        "customerNameSnapshot": { "type": "string" },
+        "amountDue": { "type": "number" },
+        "suggestedAccountId": { "type": "string" },
+        "suggestedPaymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
+        "note": { "type": "string" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "approvedByUid": { "type": "string" },
+        "approvedByName": { "type": "string" },
+        "rejectedAt": { "type": "string", "format": "date-time" },
+        "rejectedByUid": { "type": "string" },
+        "rejectedByName": { "type": "string" },
+        "rejectReason": { "type": "string" },
+        "withholdingEnabled": { "type": "boolean" },
+        "withholdingAmount": { "type": "number" },
+        "cashReceived": { "type": "number" },
+        "receivedDate": { "type": "string", "format": "date" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER"] },
+        "accountId": { "type": "string" }
+      },
+      "required": ["status", "createdAt", "createdByUid", "createdByName", "sourceDocId", "sourceDocNo", "amountDue"]
     }
   },
   "auth": {
@@ -1163,6 +1198,12 @@
         "$ref": "#/backend/entities/AccountingEntry"
       },
       "description": "Stores immutable financial transaction entries."
+    },
+    "/paymentClaims/{claimId}": {
+      "schema": {
+        "$ref": "#/backend/entities/PaymentClaim"
+      },
+      "description": "Stores payment claims waiting for accounting approval."
     }
   }
 }

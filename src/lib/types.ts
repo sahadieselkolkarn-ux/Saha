@@ -375,3 +375,37 @@ export interface AccountingEntry {
   vendorNameSnapshot?: string;
   counterpartyNameSnapshot?: string; // For one-off individuals not in vendors
 }
+
+export interface PaymentClaim {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+  jobId?: string;
+  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'RECEIPT';
+  sourceDocId: string;
+  sourceDocNo: string;
+  customerNameSnapshot?: string;
+  amountDue: number;
+  suggestedAccountId?: string;
+  suggestedPaymentMethod?: 'CASH' | 'TRANSFER' | 'CREDIT';
+  note?: string;
+  
+  // Fields for approval
+  approvedAt?: Timestamp;
+  approvedByUid?: string;
+  approvedByName?: string;
+  receivedDate?: string; // YYYY-MM-DD
+  paymentMethod?: 'CASH' | 'TRANSFER';
+  accountId?: string;
+  withholdingEnabled?: boolean;
+  withholdingAmount?: number;
+  cashReceived?: number;
+
+  // Fields for rejection
+  rejectedAt?: Timestamp;
+  rejectedByUid?: string;
+  rejectedByName?: string;
+  rejectReason?: string;
+}
