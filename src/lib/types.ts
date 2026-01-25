@@ -322,6 +322,7 @@ export interface Document {
   dueDate?: string; // For TaxInvoice
   paymentMethod?: string; // For Receipt
   paymentDate?: string; // For Receipt
+  receivedAccountId?: string;
   referencesDocIds?: string[]; // For CreditNote and Receipt
   reason?: string; // For CreditNote
   invoiceIds?: string[]; // For BillingNote
@@ -406,6 +407,7 @@ export interface PaymentClaim {
   withholdingEnabled?: boolean;
   withholdingAmount?: number;
   cashReceived?: number;
+  docSyncedAt?: Timestamp;
 
   // Fields for rejection
   rejectedAt?: Timestamp;

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
 import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp, getDoc } from "firebase/firestore";
@@ -154,6 +154,7 @@ export default function AccountingInboxPage() {
 
   const [approvingClaim, setApprovingClaim] = useState<WithId<PaymentClaim> | null>(null);
   const [rejectingClaim, setRejectingClaim] = useState<WithId<PaymentClaim> | null>(null);
+  const syncAttempted = useRef(false);
 
   const hasPermission = useMemo(() => profile?.role === "ADMIN" || profile?.department === "MANAGEMENT", [profile]);
 
@@ -174,6 +175,68 @@ export default function AccountingInboxPage() {
     return () => { unsubClaims(); unsubAccounts(); };
   }, [db]);
 
+  useEffect(() => {
+    if (activeTab === 'APPROVED' && !syncAttempted.current && !loading && claims.length > 0) {
+      syncAttempted.current = true;
+
+      const syncOldClaims = async () => {
+        if (!db) return;
+        const claimsToSync = claims.filter(c => c.status === 'APPROVED' && !c.docSyncedAt);
+        if (claimsToSync.length === 0) return;
+
+        toast({ title: "กำลังซิงค์สถานะเอกสารย้อนหลัง...", description: `พบ ${claimsToSync.length} รายการ` });
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const claim of claimsToSync) {
+          try {
+            const docRef = doc(db, 'documents', claim.sourceDocId);
+            const docSnap = await getDoc(docRef);
+
+            const batch = writeBatch(db);
+            let needsCommit = false;
+
+            if (docSnap.exists()) {
+              const docData = docSnap.data();
+              if (docData.status !== 'PAID' && docData.status !== 'CANCELLED') {
+                batch.update(docRef, {
+                  status: 'PAID',
+                  paymentDate: claim.receivedDate || format(claim.approvedAt?.toDate() || new Date(), 'yyyy-MM-dd'),
+                  paymentMethod: claim.paymentMethod || claim.suggestedPaymentMethod || 'CASH',
+                  receivedAccountId: claim.accountId,
+                  updatedAt: serverTimestamp(),
+                });
+                needsCommit = true;
+              }
+            }
+            
+            const claimRef = doc(db, "paymentClaims", claim.id);
+            batch.update(claimRef, { docSyncedAt: serverTimestamp() });
+            needsCommit = true;
+
+            if (needsCommit) {
+                await batch.commit();
+            }
+            successCount++;
+          } catch (e) {
+            console.error(`Failed to sync claim ${claim.id}:`, e);
+            errorCount++;
+          }
+        }
+
+        if (successCount > 0 || errorCount > 0) {
+          toast({
+            title: "การซิงค์เสร็จสิ้น",
+            description: `อัปเดตสำเร็จ ${successCount} รายการ${errorCount > 0 ? `, ล้มเหลว ${errorCount} รายการ` : ''}`,
+          });
+        }
+      };
+
+      syncOldClaims();
+    }
+  }, [activeTab, claims, loading, db, toast]);
+
   const filteredClaims = useMemo(() => {
     let filtered = claims.filter(c => c.status === activeTab);
     if (searchTerm) {
@@ -191,9 +254,9 @@ export default function AccountingInboxPage() {
     if (!db || !profile || !approvingClaim) return;
 
     const { receivedDate, paymentMethod, accountId, withholdingEnabled, withholdingAmount, note, cashReceived } = data;
-    const sourceDocRef = doc(db, "documents", approvingClaim.sourceDocId);
 
     try {
+        const sourceDocRef = doc(db, "documents", approvingClaim.sourceDocId);
         const sourceDocSnap = await getDoc(sourceDocRef);
         if (!sourceDocSnap.exists()) {
             throw new Error("ไม่พบเอกสารอ้างอิง");
@@ -222,6 +285,7 @@ export default function AccountingInboxPage() {
             withholdingAmount,
             cashReceived,
             note,
+            docSyncedAt: serverTimestamp(),
         });
 
         const entryRef = doc(collection(db, "accountingEntries"));
@@ -244,6 +308,7 @@ export default function AccountingInboxPage() {
             status: 'PAID',
             paymentMethod: paymentMethod,
             paymentDate: receivedDate,
+            receivedAccountId: accountId,
             updatedAt: serverTimestamp(),
         });
 

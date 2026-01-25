@@ -478,6 +478,7 @@
         "receiverName": { "type": "string" },
         "paymentMethod": { "type": "string" },
         "paymentDate": { "type": "string", "format": "date" },
+        "receivedAccountId": { "type": "string" },
         "referencesDocIds": { "type": "array", "items": { "type": "string"} },
         "reason": { "type": "string" },
         "invoiceIds": { "type": "array", "items": { "type": "string"} },
@@ -1098,7 +1099,8 @@
         "cashReceived": { "type": "number" },
         "receivedDate": { "type": "string", "format": "date" },
         "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER"] },
-        "accountId": { "type": "string" }
+        "accountId": { "type": "string" },
+        "docSyncedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["status", "createdAt", "createdByUid", "createdByName", "sourceDocId", "sourceDocNo", "amountDue"]
     },
