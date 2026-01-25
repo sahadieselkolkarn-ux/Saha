@@ -221,7 +221,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         }
     }
 
-    replace(quotation.items.map(item => ({...item})));
+    remove();
+    append(quotation.items.map(item => ({...item})));
     form.setValue('discountAmount', quotation.discountAmount || 0);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}` });
   };

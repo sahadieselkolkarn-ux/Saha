@@ -252,7 +252,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         }
     }
   
-    replace(quotation.items);
+    remove();
+    append(quotation.items.map(item => ({...item})));
     form.setValue('discountAmount', quotation.discountAmount || 0);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}`});
   };
