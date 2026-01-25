@@ -431,21 +431,25 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
 
     const [payingAR, setPayingAR] = useState<WithId<AccountingObligation> | null>(null);
     const [payingAP, setPayingAP] = useState<WithId<AccountingObligation> | null>(null);
-
-    useEffect(() => {
-        if (!db) return;
-        setLoading(true);
-        setError(null);
-        setIndexCreationUrl(null);
-
-        const q = query(
+    
+    const obligationsQuery = useMemo(() => {
+        if (!db) return null;
+        return query(
             collection(db, "accountingObligations"),
             where("type", "==", type),
             where("status", "in", ["UNPAID", "PARTIAL"]),
             orderBy("dueDate", "asc")
         );
+    }, [db, type]);
 
-        const unsubscribe = onSnapshot(q, (snap) => {
+    useEffect(() => {
+        if (!obligationsQuery) return;
+        
+        setLoading(true);
+        setError(null);
+        setIndexCreationUrl(null);
+
+        const unsubscribe = onSnapshot(obligationsQuery, (snap) => {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingObligation>));
             data.sort((a, b) => {
                 if (!a.dueDate && !b.dueDate) return 0;
@@ -470,7 +474,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         });
 
         return () => unsubscribe();
-    }, [db, type, toast, retry]);
+    }, [obligationsQuery, toast, retry, type]);
 
     const filteredObligations = useMemo(() => {
         if (!searchTerm) return obligations;
@@ -578,7 +582,9 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
             setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
         }, (err) => {
           console.error("Error loading accounts:", err);
-          toast({ variant: 'destructive', title: "Could not load accounts", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
+          if (err.message.includes('permission-denied')) {
+            toast({ variant: 'destructive', title: "Could not load accounts", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
+          }
         });
         
         const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true), orderBy("shortName", "asc"));
@@ -586,7 +592,9 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
             setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>)));
         }, (err) => {
           console.error("Error loading vendors:", err);
-          toast({ variant: 'destructive', title: "Could not load vendors", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า หรือการดึงข้อมูลถูกปฏิเสธ" });
+          if (err.message.includes('permission-denied')) {
+            toast({ variant: 'destructive', title: "Could not load vendors", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า หรือการดึงข้อมูลถูกปฏิเสธ" });
+          }
         });
 
         return () => { unsubAccounts(); unsubVendors(); };
@@ -629,10 +637,7 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
 
 export default function ReceivablesPayablesPage() {
     const { profile } = useAuth();
-    const hasPermission = useMemo(() => {
-        if (!profile) return false;
-        return profile.role === 'ADMIN' || ['MANAGEMENT', 'FINANCE', 'ACCOUNTING'].includes(profile.department || '');
-    }, [profile]);
+    const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
     if (!profile) {
         return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
@@ -645,7 +650,7 @@ export default function ReceivablesPayablesPage() {
                 <Card className="text-center py-12">
                     <CardHeader>
                         <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
-                        <CardDescription>หน้านี้สงวนไว้สำหรับฝ่ายการเงิน/บริหาร/ผู้ดูแลเท่านั้น</CardDescription>
+                        <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
                     </CardHeader>
                 </Card>
             </div>

@@ -156,7 +156,7 @@ export default function AccountingInboxPage() {
   const [rejectingClaim, setRejectingClaim] = useState<WithId<PaymentClaim> | null>(null);
   const syncAttempted = useRef(false);
 
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT' || profile?.department === 'FINANCE' || profile?.department === 'ACCOUNTING', [profile]);
+  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
   useEffect(() => {
     if (!db) return;
@@ -362,7 +362,7 @@ export default function AccountingInboxPage() {
 
 
   if (!hasPermission) {
-    return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายการเงิน/บริหาร/ผู้ดูแลเท่านั้น</CardDescription></CardHeader></Card>;
+    return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายบริหาร/ผู้ดูแลเท่านั้น</CardDescription></CardHeader></Card>;
   }
 
   return (

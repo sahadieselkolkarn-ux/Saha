@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs, Timestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useFirebase } from "@/firebase";
@@ -64,6 +65,8 @@ export default function ManagementAccountingPayrollPage() {
   const [viewingPayslip, setViewingPayslip] = useState<any | null>(null);
   const [editingPayslipId, setEditingPayslipId] = useState<string | null>(null);
   const [currentHrNote, setCurrentHrNote] = useState("");
+
+  const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
 
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
@@ -363,6 +366,28 @@ export default function ManagementAccountingPayrollPage() {
         case 'FINAL': return <Badge variant="default">Final</Badge>;
         default: return <Badge variant="outline">{status}</Badge>;
     }
+  }
+
+  if (!adminProfile) {
+      return (
+        <div className="flex justify-center items-center h-64">
+            <Loader2 className="animate-spin h-8 w-8" />
+        </div>
+      )
+  }
+
+  if (!hasPermission) {
+    return (
+        <>
+            <PageHeader title="Payroll" description="Calculate and manage employee payroll runs." />
+            <Card className="text-center py-12">
+                <CardHeader>
+                    <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
+                    <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
+                </CardHeader>
+            </Card>
+        </>
+    );
   }
   
   const renderContent = () => {
