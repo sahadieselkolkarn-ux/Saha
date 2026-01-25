@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -91,7 +90,7 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
-                <SubNavLink href="/app/management/accounting/revenue" label="รับ–จ่ายเงิน" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/cashbook" label="รับ–จ่ายเงิน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/debtors" label="ลูกหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/creditors" label="เจ้าหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
@@ -242,6 +241,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
         OUTSOURCE: Package,
     };
     const Icon = icons[department];
+    const canSeeAccounting = profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT';
 
     return (
         <Collapsible defaultOpen={isOpen}>
@@ -261,7 +261,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/management/jobs" label="ภาพรวมงานซ่อม" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" onClick={onLinkClick} />
-                        {(profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT') && (
+                        {canSeeAccounting && (
                             <>
                                 <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
                                 <ManagementAccountingDocumentsSubMenu onLinkClick={onLinkClick} />

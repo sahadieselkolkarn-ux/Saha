@@ -1,7 +1,5 @@
-
-
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus, AccountingCategory } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -351,19 +349,32 @@ export interface AccountingAccount {
 
 export interface AccountingEntry {
   id: string;
-  entryType: 'RECEIPT';
-  sourceDocType: DocType;
-  sourceDocId: string;
-  sourceDocNo: string;
-  referenceInvoiceId?: string;
-  amount: number;
-  accountId?: string;
-  paymentMethod: 'CASH' | 'TRANSFER' | 'CREDIT';
+  entryType: 'RECEIPT' | 'CASH_IN' | 'CASH_OUT';
   entryDate: string; // YYYY-MM-DD
-  customerNameSnapshot: string;
-  jobId?: string;
+  amount: number;
+  accountId: string;
   createdAt: Timestamp;
+  // --- Fields for RECEIPT ---
+  sourceDocType?: DocType;
+  sourceDocId?: string;
+  sourceDocNo?: string;
+  referenceInvoiceId?: string;
+  customerNameSnapshot?: string;
+  jobId?: string;
+  // --- Fields for CASH_IN/CASH_OUT ---
+  description?: string;
+  category?: AccountingCategory;
+  paymentMethod?: 'CASH' | 'TRANSFER' | 'CREDIT';
+  counterpartyNameSnapshot?: string;
+  counterpartyPhoneSnapshot?: string;
 }
+    
+    
+    
+    
+    
+    
+
     
 
     

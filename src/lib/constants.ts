@@ -37,3 +37,10 @@ export type PayrollStatus = (typeof PAYROLL_STATUSES)[number];
 
 export const TOKEN_TTL_MS = 30000; // 30 seconds
 export const TOKEN_BUFFER_MS = 5000; // 5 seconds buffer
+
+export const ACCOUNTING_CATEGORIES = {
+    INCOME: ["รายได้ทั่วไป", "เก็บเงินลูกหนี้", "อื่นๆ"],
+    EXPENSE: ["ค่าใช้จ่ายทั่วไป", "จ่ายเจ้าหนี้", "อื่นๆ"]
+} as const;
+
+export type AccountingCategory = (typeof ACCOUNTING_CATEGORIES.INCOME)[number] | (typeof ACCOUNTING_CATEGORIES.EXPENSE)[number];

@@ -1,5 +1,3 @@
-
-
 {
   "entities": {
     "UserProfile": {
@@ -1015,23 +1013,27 @@
     },
     "AccountingEntry": {
       "title": "Accounting Entry",
-      "description": "An immutable record of a financial transaction, like a receipt.",
+      "description": "An immutable record of a financial transaction, like a receipt or cash payment.",
       "type": "object",
       "properties": {
-        "entryType": { "type": "string", "enum": ["RECEIPT"] },
+        "entryType": { "type": "string", "enum": ["RECEIPT", "CASH_IN", "CASH_OUT"] },
+        "entryDate": { "type": "string", "format": "date" },
+        "amount": { "type": "number" },
+        "accountId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
         "sourceDocType": { "type": "string" },
         "sourceDocId": { "type": "string" },
         "sourceDocNo": { "type": "string" },
         "referenceInvoiceId": { "type": "string" },
-        "amount": { "type": "number" },
-        "accountId": { "type": "string" },
-        "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
-        "entryDate": { "type": "string", "format": "date" },
         "customerNameSnapshot": { "type": "string" },
         "jobId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
+        "counterpartyNameSnapshot": { "type": "string" },
+        "counterpartyPhoneSnapshot": { "type": "string" }
       },
-      "required": ["entryType", "sourceDocId", "sourceDocNo", "amount", "entryDate", "customerNameSnapshot", "createdAt"]
+      "required": ["entryType", "entryDate", "amount", "accountId", "createdAt"]
     }
   },
   "auth": {
@@ -1150,4 +1152,3 @@
     }
   }
 }
-    
