@@ -20,6 +20,8 @@ import { JOB_STATUS_DISPLAY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
