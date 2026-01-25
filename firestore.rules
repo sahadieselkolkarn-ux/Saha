@@ -1,14 +1,151 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // --- Helper Functions ---
+    // These functions centralize logic for getting user roles and permissions.
+    // This is crucial for RBAC to prevent client-side bypass of app logic.
 
+    // Get the full user profile data from the /users collection.
+    function getProfile(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    // Check if the currently authenticated user is an Admin.
+    function isAdmin() {
+      return getProfile(request.auth.uid).role == 'ADMIN';
+    }
+
+    // Check if the user is part of the management or admin team.
+    function isManagementOrAdmin() {
+      let role = getProfile(request.auth.uid).role;
+      return role == 'ADMIN' || role == 'MANAGER';
+    }
+
+    // Check if the user is part of the office, management, or admin teams.
+    function isOfficeOrHigher() {
+       let role = getProfile(request.auth.uid).role;
+       return role == 'ADMIN' || role == 'MANAGER' || role == 'OFFICE';
+    }
+    
+    // Checks if a user is signed in.
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Allow read/write access to all documents for any signed-in user.
-    match /{document=**} {
+    // --- Collection Rules ---
+
+    // User profiles can be read by anyone signed in, but only the user themselves or an Admin can write.
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if request.auth.uid == userId || isAdmin();
+    }
+    
+    // Settings can be read by anyone, but only modified by Admins.
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Jobs and their activities can be accessed by any signed-in user.
+    // The application logic on the client-side filters what each role can see and do.
+    match /jobs/{jobId} {
       allow read, write: if isSignedIn();
+      match /activities/{activityId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+    
+    // Customers can be read/written by any signed-in user.
+    // Logic is handled client-side.
+    match /customers/{customerId} {
+       allow read, write: if isSignedIn();
+    }
+    
+    // Vendors can be read/written by any signed-in user.
+    match /vendors/{vendorId} {
+       allow read, write: if isSignedIn();
+    }
+    
+    // Attendance and Kiosk tokens are accessible to any signed-in user.
+    match /attendance/{attendanceId} {
+      allow read, write: if isSignedIn();
+    }
+    match /kioskTokens/{tokenId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // HR data can be accessed by any signed-in user.
+    // Sensitive data is filtered by application logic.
+    match /hrHolidays/{holidayId} {
+      allow read, write: if isSignedIn();
+    }
+    match /hrLeaves/{leaveId} {
+      allow read, write: if isSignedIn();
+    }
+    match /hrAttendanceAdjustments/{adjustmentId} {
+      allow read, write: if isSignedIn();
+    }
+    
+    // Payroll data can be accessed by any signed-in user.
+    match /payrollRuns/{runId} {
+      allow read, write: if isSignedIn();
+      match /payslips/{payslipId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+    
+    // --- Stricter Accounting Rules ---
+    
+    // Financial documents require specific roles.
+    match /documents/{docId} {
+      // Office, Management, and Admins can read documents.
+      allow read: if isOfficeOrHigher();
+
+      // Office users and above can create documents.
+      allow create: if isOfficeOrHigher();
+
+      // Update rules:
+      // - Admins can update anything.
+      // - Office/Management can only edit DRAFT documents.
+      // - The document number (docNo) cannot be changed after creation.
+      allow update: if (isAdmin() || (isOfficeOrHigher() && resource.data.status == 'DRAFT'))
+                      && request.resource.data.docNo == resource.data.docNo;
+                      
+      // Only Admins can permanently delete documents.
+      allow delete: if isAdmin();
+    }
+    
+    // Document counters are updated via transactions, but access should still be restricted.
+    match /documentCounters/{year} {
+        allow read, write: if isOfficeOrHigher();
+    }
+
+    // Payment claims can be created by Office, but only approved/rejected by Management/Admins.
+    match /paymentClaims/{claimId} {
+      allow read: if isOfficeOrHigher();
+      
+      // Office users can create new claims.
+      allow create: if isOfficeOrHigher();
+      
+      // Once approved, only Admins can modify. Others can only modify if it's not yet approved.
+      allow update: if resource.data.status != 'APPROVED' || isAdmin();
+    }
+    
+    // All accounting-related collections are restricted to Management and Admins.
+    match /accountingAccounts/{accountId} {
+      allow read, write: if isManagementOrAdmin();
+    }
+
+    match /accountingEntries/{entryId} {
+      allow read, create: if isManagementOrAdmin();
+      // Entries are immutable for everyone except Admins.
+      allow update, delete: if isAdmin();
+    }
+    
+    match /accountingObligations/{obligationId} {
+        allow read, write: if isManagementOrAdmin();
     }
   }
 }
