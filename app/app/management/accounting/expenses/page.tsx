@@ -1,7 +1,5 @@
-import { PageHeader } from "@/components/page-header";
+import { redirect } from 'next/navigation';
 
 export default function ManagementAccountingExpensesPage() {
-  return (
-    <PageHeader title="รายจ่าย (เงินออก)" description="จัดการและดูข้อมูลรายจ่ายทั้งหมด" />
-  );
+  redirect('/app/management/accounting/cashbook?tab=out');
 }
