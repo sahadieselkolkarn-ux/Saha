@@ -3,12 +3,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,22 +51,35 @@ export function DocumentList({ docType }: DocumentListProps) {
   useEffect(() => {
     if (!db) return;
     setLoading(true);
+    setError(null);
 
     const q = query(
       collection(db, "documents"),
-      where("docType", "==", docType),
-      orderBy("docDate", "desc")
+      where("docType", "==", docType)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
+      let docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
+      
+      // Client-side sorting to avoid composite indexes
+      docsData.sort((a, b) => {
+        const dateA = new Date(a.docDate).getTime();
+        const dateB = new Date(b.docDate).getTime();
+        if (dateB !== dateA) return dateB - dateA; // Sort by docDate descending
+        // Fallback to createdAt if docDate is the same
+        return (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0);
+      });
+      
       setDocuments(docsData);
       setLoading(false);
-    }, (err) => {
-      console.error(err);
+      setError(null);
+    }, (err: FirestoreError) => {
+      console.error("Error loading documents:", err);
       setError(err);
       setLoading(false);
-      toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร" });
+      if (!err.message.includes('requires an index')) {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร", description: err.code });
+      }
     });
 
     return () => unsubscribe();
@@ -149,6 +162,9 @@ export function DocumentList({ docType }: DocumentListProps) {
             <div className="text-center text-destructive flex flex-col items-center gap-2 h-48 justify-center">
               <AlertCircle />
               <p>เกิดข้อผิดพลาดในการโหลดเอกสาร</p>
+              {error.message.includes('requires an index') ? (
+                <p className="text-muted-foreground text-sm">การเรียงข้อมูลอาจไม่ถูกต้อง กรุณารีเฟรช</p>
+              ) : <p className="text-xs">{error.message}</p>}
             </div>
           ) : (
             <div className="border rounded-md">
@@ -166,8 +182,9 @@ export function DocumentList({ docType }: DocumentListProps) {
                 <TableBody>
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
-                    const basePath = docTypeToEditPath[docItem.docType as keyof typeof docTypeToEditPath];
-                    const editPath = basePath ? `${basePath}?editDocId=${docItem.id}` : '#';
+                    const editPath = docItem.docType === 'QUOTATION' 
+                        ? `/app/office/documents/quotation/${docItem.id}`
+                        : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
                     
                     return (
                     <TableRow key={docItem.id}>
