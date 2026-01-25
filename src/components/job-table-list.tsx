@@ -157,7 +157,7 @@ export function JobTableList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, excludeStatus]);
+  }, [jobsQuery, JSON.stringify(excludeStatus)]);
   
   const filteredJobs = useMemo(() => {
     if (!searchTerm.trim()) {
