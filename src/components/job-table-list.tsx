@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit, doc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit, doc, deleteDoc, writeBatch, deleteField, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2 } from "lucide-react";
+import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2, Undo2 } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
@@ -30,6 +30,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface JobTableListProps {
   department?: JobDepartment;
@@ -89,6 +99,10 @@ export function JobTableList({
 
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<string | null>(null);
+
+  const [jobToRevert, setJobToRevert] = useState<Job | null>(null);
+  const [revertReason, setRevertReason] = useState("");
+  const [isReverting, setIsReverting] = useState(false);
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
@@ -194,6 +208,56 @@ export function JobTableList({
     } finally {
       setIsDeleteAlertOpen(false);
       setJobToDelete(null);
+    }
+  };
+
+  const handleRevertRequest = (job: Job) => {
+    setJobToRevert(job);
+    setRevertReason("");
+  };
+
+  const confirmRevert = async () => {
+    if (!db || !profile || !jobToRevert || !revertReason) {
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณากรอกเหตุผล" });
+      return;
+    }
+    if (profile.role !== 'ADMIN') {
+        toast({ variant: "destructive", title: "ไม่มีสิทธิ์", description: "เฉพาะแอดมินเท่านั้น" });
+        return;
+    }
+    
+    setIsReverting(true);
+    try {
+      const batch = writeBatch(db);
+      const jobRef = doc(db, 'jobs', jobToRevert.id);
+      const activityRef = doc(collection(db, 'jobs', jobToRevert.id, 'activities'));
+      
+      const originalPickupDate = jobToRevert.pickupDate ? safeFormat(new Date(jobToRevert.pickupDate), 'dd/MM/yy') : '-';
+
+      // 1. Update job status and clear dates
+      batch.update(jobRef, {
+        status: 'WAITING_CUSTOMER_PICKUP',
+        pickupDate: deleteField(),
+        closedDate: deleteField(),
+        lastActivityAt: serverTimestamp(),
+      });
+
+      // 2. Add activity log
+      batch.set(activityRef, {
+        text: `แอดมินย้อนสถานะจาก "ปิดงาน" → "รอลูกค้ารับสินค้า" (ยกเลิกการปิดงานเดิมวันที่: ${originalPickupDate}) เหตุผล: ${revertReason}`,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp(),
+        photos: [],
+      });
+
+      await batch.commit();
+      toast({ title: 'ย้อนสถานะงานสำเร็จ' });
+      setJobToRevert(null);
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'การย้อนสถานะล้มเหลว', description: error.message });
+    } finally {
+      setIsReverting(false);
     }
   };
 
@@ -305,6 +369,12 @@ export function JobTableList({
                                                   <DropdownMenuItem asChild>
                                                       <Link href={`/app/jobs/${job.id}?edit=true`}><Edit className="mr-2 h-4 w-4" />Edit</Link>
                                                   </DropdownMenuItem>
+                                                  {job.status === 'CLOSED' && (
+                                                      <DropdownMenuItem onSelect={() => handleRevertRequest(job)}>
+                                                          <Undo2 className="mr-2 h-4 w-4" />
+                                                          ย้อนกลับไปรอลูกค้ารับ
+                                                      </DropdownMenuItem>
+                                                  )}
                                                   <DropdownMenuItem
                                                       className="text-destructive focus:text-destructive"
                                                       onSelect={() => handleDeleteRequest(job.id)}
@@ -322,7 +392,7 @@ export function JobTableList({
               </Table>
           </CardContent>
       </Card>
-       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>
             <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
@@ -336,6 +406,32 @@ export function JobTableList({
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog open={!!jobToRevert} onOpenChange={(isOpen) => !isOpen && setJobToRevert(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>ย้อนสถานะงาน</DialogTitle>
+                <DialogDescription>
+                    งานจะถูกย้อนกลับไปสถานะ "รอลูกค้ารับสินค้า" กรุณากรอกเหตุผล
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-2">
+                <Label htmlFor="revertReason">เหตุผล (จำเป็น)</Label>
+                <Textarea
+                    id="revertReason"
+                    value={revertReason}
+                    onChange={(e) => setRevertReason(e.target.value)}
+                    placeholder="เช่น ปิดงานผิด, ลูกค้ายังไม่ได้รับของ"
+                />
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setJobToRevert(null)} disabled={isReverting}>ยกเลิก</Button>
+                <Button onClick={confirmRevert} disabled={isReverting || !revertReason}>
+                    {isReverting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    ยืนยันย้อนสถานะ
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
