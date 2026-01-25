@@ -23,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
@@ -38,7 +39,7 @@ const lineItemSchema = z.object({
 
 const deliveryNoteFormSchema = z.object({
   jobId: z.string().optional(),
-  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
+  customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   subtotal: z.coerce.number(),
@@ -113,6 +114,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   }, [db, selectedCustomerId]);
 
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
+  
+  const isLocked = isEditing && docToEdit?.status === 'PAID';
 
   useEffect(() => {
     if (!db) return;
@@ -209,6 +212,11 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   };
 
   const onSubmit = async (data: DeliveryNoteFormData) => {
+    if (isEditing && docToEdit?.status === 'PAID') {
+        toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: "เอกสารนี้ถูกยืนยันรายรับแล้ว" });
+        return;
+    }
+
     const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
     if (!db || !storeSettings || !profile || !customerSnapshot) {
         toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
@@ -285,121 +293,132 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Card>
-            <CardHeader><CardTitle className="text-base">1. เลือกลูกค้า</CardTitle></CardHeader>
-            <CardContent>
+    <>
+      {isLocked && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>เอกสารถูกล็อก</AlertTitle>
+          <AlertDescription>
+            เอกสารนี้ถูกยืนยันรายรับแล้ว จึงไม่สามารถแก้ไขได้
+          </AlertDescription>
+        </Alert>
+      )}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <Card>
+              <CardHeader><CardTitle className="text-base">1. เลือกลูกค้า</CardTitle></CardHeader>
+              <CardContent>
+                  <FormField
+                      name="customerId"
+                      control={form.control}
+                      render={({ field }) => (
+                          <FormItem>
+                          <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                              <PopoverTrigger asChild>
+                              <FormControl>
+                                  <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={!!jobId || !!editDocId || isLocked}>
+                                  {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                              </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                  <div className="p-2 border-b">
+                                      <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                  </div>
+                                  <ScrollArea className="h-60">
+                                      {filteredCustomers.map(c => (
+                                          <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
+                                      ))}
+                                  </ScrollArea>
+                              </PopoverContent>
+                          </Popover>
+                          </FormItem>
+                      )}
+                  />
+                  {displayCustomer && (
+                      <>
+                          <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
+                          <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
+                      </>
+                  )}
+              </CardContent>
+          </Card>
+
+          <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-base">2. รายการสินค้า/บริการ</CardTitle>
+                  {jobId && quotations.length > 0 && (
+                      <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={isLocked}><FileDown/> ดึงจากใบเสนอราคา</Button>
+                  )}
+              </CardHeader>
+              <CardContent>
+                  <div className="border rounded-md">
+                      <Table>
+                          <TableHeader><TableRow><TableHead className="w-12">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
+                          <TableBody>
+                              {fields.map((field, index) => (
+                                  <TableRow key={field.id}>
+                                      <TableCell>{index + 1}</TableCell>
+                                      <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" disabled={isLocked} />)}/></TableCell>
+                                      <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
+                                      <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
+                                      <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
+                                      <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
+                                  </TableRow>
+                              ))}
+                          </TableBody>
+                      </Table>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
+              </CardContent>
+          </Card>
+
+          <Card>
+              <CardHeader><CardTitle className="text-base">3. หมายเหตุ</CardTitle></CardHeader>
+              <CardContent>
                 <FormField
-                    name="customerId"
-                    control={form.control}
-                    render={({ field }) => (
-                        <FormItem>
-                        <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                            <PopoverTrigger asChild>
-                            <FormControl>
-                                <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={!!jobId || !!editDocId}>
-                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                            </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                <div className="p-2 border-b">
-                                    <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
-                                </div>
-                                <ScrollArea className="h-60">
-                                    {filteredCustomers.map(c => (
-                                        <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
-                                    ))}
-                                </ScrollArea>
-                            </PopoverContent>
-                        </Popover>
-                        </FormItem>
-                    )}
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} />
+                      </FormControl>
+                    </FormItem>
+                  )}
                 />
-                 {displayCustomer && (
-                    <>
-                        <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
-                        <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
-                    </>
-                 )}
-            </CardContent>
-        </Card>
+              </CardContent>
+          </Card>
+          
+          <Card>
+              <CardHeader><CardTitle className="text-base">4. รายละเอียดเอกสาร</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                      <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                      <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                  </div>
+              </CardContent>
+              <CardFooter className="flex-col items-end gap-2">
+                  <div className="flex justify-between w-full max-w-xs">
+                      <span className="text-muted-foreground">Total Amount:</span>
+                      <span className="font-bold text-lg">฿{formatCurrency(form.watch('grandTotal'))}</span>
+                  </div>
+              </CardFooter>
+          </Card>
 
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-base">2. รายการสินค้า/บริการ</CardTitle>
-                {jobId && quotations.length > 0 && (
-                    <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation}><FileDown/> ดึงจากใบเสนอราคา</Button>
-                )}
-            </CardHeader>
-            <CardContent>
-                <div className="border rounded-md">
-                    <Table>
-                        <TableHeader><TableRow><TableHead className="w-12">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
-                        <TableBody>
-                            {fields.map((field, index) => (
-                                <TableRow key={field.id}>
-                                    <TableCell>{index + 1}</TableCell>
-                                    <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" />)}/></TableCell>
-                                    <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
-                                    <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right"/>)}/></TableCell>
-                                    <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
-                                    <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
-            </CardContent>
-        </Card>
-
-         <Card>
-            <CardHeader><CardTitle className="text-base">3. หมายเหตุ</CardTitle></CardHeader>
-            <CardContent>
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-        </Card>
-        
-        <Card>
-            <CardHeader><CardTitle className="text-base">4. รายละเอียดเอกสาร</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-                 <div className="grid grid-cols-2 gap-4">
-                    <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
-                </div>
-                 <div className="grid grid-cols-2 gap-4">
-                    <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
-                    <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
-                </div>
-            </CardContent>
-            <CardFooter className="flex-col items-end gap-2">
-                <div className="flex justify-between w-full max-w-xs">
-                    <span className="text-muted-foreground">Total Amount:</span>
-                    <span className="font-bold text-lg">฿{formatCurrency(form.watch('grandTotal'))}</span>
-                </div>
-            </CardFooter>
-        </Card>
-
-        <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => router.back()} disabled={isFormLoading}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
-            <Button type="submit" disabled={isFormLoading}>
-              {isFormLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
-            </Button>
-        </div>
-      </form>
-    </Form>
+          <div className="flex justify-end gap-4">
+              <Button type="button" variant="outline" onClick={() => router.back()} disabled={form.formState.isSubmitting}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+              <Button type="submit" disabled={isFormLoading || isLocked}>
+                {isFormLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
+              </Button>
+          </div>
+        </form>
+      </Form>
+    </>
   )
 }

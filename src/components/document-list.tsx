@@ -187,11 +187,18 @@ export function DocumentList({ docType }: DocumentListProps) {
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => router.push(editPath)}>
-                                <Edit className="mr-2 h-4 w-4"/>
-                                แก้ไข
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED'}>
+                            {docItem.status === 'PAID' ? (
+                                <DropdownMenuItem disabled>
+                                    <Edit className="mr-2 h-4 w-4"/>
+                                    แก้ไขไม่ได้ (บันทึกรายรับแล้ว)
+                                </DropdownMenuItem>
+                            ) : (
+                                <DropdownMenuItem onSelect={() => router.push(editPath)}>
+                                    <Edit className="mr-2 h-4 w-4"/>
+                                    แก้ไข
+                                </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || docItem.status === 'PAID'}>
                               <XCircle className="mr-2 h-4 w-4"/>
                               ยกเลิก
                             </DropdownMenuItem>
@@ -199,6 +206,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                               <DropdownMenuItem
                                 onSelect={(e) => { e.preventDefault(); handleDeleteRequest(docItem); }}
                                 className="text-destructive focus:text-destructive"
+                                disabled={docItem.status === 'PAID'}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 ลบ
