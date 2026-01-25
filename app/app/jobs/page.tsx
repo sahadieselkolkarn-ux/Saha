@@ -9,7 +9,7 @@ import { JobList } from "@/components/job-list";
 export default function JobsPage() {
   return (
     <>
-      <PageHeader title="Job List" description="View and manage all ongoing and past jobs.">
+      <PageHeader title="Job List" description="View and manage all ongoing jobs.">
         <Button asChild>
             <Link href="/app/office/intake">
                 <PlusCircle className="mr-2 h-4 w-4" />
@@ -19,8 +19,9 @@ export default function JobsPage() {
       </PageHeader>
       
       <JobList
-        emptyTitle="No Jobs Found"
-        emptyDescription="There are no jobs to display."
+        excludeStatus={['CLOSED']}
+        emptyTitle="No Ongoing Jobs Found"
+        emptyDescription="There are no active jobs to display."
       >
         <Button asChild>
             <Link href="/app/office/intake">Create the first job</Link>
