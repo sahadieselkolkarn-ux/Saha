@@ -199,6 +199,15 @@
           "type": "string",
           "description": "The customer's tax ID (if useTax is true)."
         },
+        "taxBranchType": {
+            "type": "string",
+            "description": "Branch type for tax purposes.",
+            "enum": ["HEAD_OFFICE", "BRANCH"]
+        },
+        "taxBranchNo": {
+            "type": "string",
+            "description": "5-digit branch number if type is 'BRANCH'."
+        },
         "createdAt": {
           "type": "string",
           "description": "Timestamp of when the customer was created.",
@@ -479,6 +488,9 @@
         "paymentMethod": { "type": "string" },
         "paymentDate": { "type": "string", "format": "date" },
         "receivedAccountId": { "type": "string" },
+        "cashReceived": { "type": "number" },
+        "withholdingEnabled": { "type": "boolean" },
+        "withholdingAmount": { "type": "number" },
         "referencesDocIds": { "type": "array", "items": { "type": "string"} },
         "reason": { "type": "string" },
         "invoiceIds": { "type": "array", "items": { "type": "string"} },
@@ -1090,17 +1102,17 @@
         "approvedAt": { "type": "string", "format": "date-time" },
         "approvedByUid": { "type": "string" },
         "approvedByName": { "type": "string" },
-        "rejectedAt": { "type": "string", "format": "date-time" },
-        "rejectedByUid": { "type": "string" },
-        "rejectedByName": { "type": "string" },
-        "rejectReason": { "type": "string" },
-        "withholdingEnabled": { "type": "boolean" },
-        "withholdingAmount": { "type": "number" },
-        "cashReceived": { "type": "number" },
         "receivedDate": { "type": "string", "format": "date" },
         "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER"] },
         "accountId": { "type": "string" },
-        "docSyncedAt": { "type": "string", "format": "date-time" }
+        "withholdingEnabled": { "type": "boolean" },
+        "withholdingAmount": { "type": "number" },
+        "cashReceived": { "type": "number" },
+        "docSyncedAt": { "type": "string", "format": "date-time" },
+        "rejectedAt": { "type": "string", "format": "date-time" },
+        "rejectedByUid": { "type": "string" },
+        "rejectedByName": { "type": "string" },
+        "rejectReason": { "type": "string" }
       },
       "required": ["status", "createdAt", "createdByUid", "createdByName", "sourceDocId", "sourceDocNo", "amountDue"]
     },

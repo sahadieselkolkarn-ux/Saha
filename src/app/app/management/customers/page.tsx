@@ -18,6 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Loader2, MoreHorizontal, PlusCircle, Upload, Search } from "lucide-react";
 import {
   AlertDialog,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { Customer } from "@/lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -40,9 +42,14 @@ const customerSchema = z.object({
   taxName: z.string().optional(),
   taxAddress: z.string().optional(),
   taxId: z.string().optional(),
+  taxBranchType: z.enum(['HEAD_OFFICE', 'BRANCH']).optional(),
+  taxBranchNo: z.string().optional(),
 }).refine(data => !data.useTax || (data.taxName && data.taxAddress && data.taxId), {
   message: "Tax information is required when 'Use Tax Invoice' is checked",
   path: ["taxName"], 
+}).refine(data => !(data.useTax && data.taxBranchType === 'BRANCH') || (data.taxBranchNo && data.taxBranchNo.length === 5), {
+    message: "กรุณากรอกเลขสาขา 5 หลัก",
+    path: ["taxBranchNo"],
 });
 
 const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEdit: (customer: Customer) => void, onDelete: (customerId: string) => void }) => (
@@ -102,10 +109,13 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
       taxName: "",
       taxAddress: "",
       taxId: "",
+      taxBranchType: "HEAD_OFFICE",
+      taxBranchNo: "",
     },
   });
   
   const useTax = form.watch("useTax");
+  const taxBranchType = form.watch("taxBranchType");
 
   useEffect(() => {
     if (!db) return;
@@ -136,7 +146,10 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
   useEffect(() => {
     if (isDialogOpen) {
       if (editingCustomer) {
-        form.reset(editingCustomer);
+        form.reset({
+            ...editingCustomer,
+            taxBranchType: editingCustomer.taxBranchType || 'HEAD_OFFICE',
+        });
       }
     } else {
       setEditingCustomer(null);
@@ -148,6 +161,8 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
         taxName: "",
         taxAddress: "",
         taxId: "",
+        taxBranchType: "HEAD_OFFICE",
+        taxBranchNo: "",
       });
     }
   }, [isDialogOpen, editingCustomer, form]);
@@ -163,7 +178,11 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
     
     try {
         const customerDoc = doc(db, "customers", editingCustomer.id);
-        const updateData = { ...values, updatedAt: serverTimestamp() };
+        const updateData = { 
+            ...values,
+            taxBranchNo: values.taxBranchType === 'HEAD_OFFICE' ? null : values.taxBranchNo,
+            updatedAt: serverTimestamp() 
+        };
         await updateDoc(customerDoc, updateData);
         toast({ title: "Customer updated successfully" });
         setIsDialogOpen(false);
@@ -258,55 +277,98 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
-            className="sm:max-w-[600px]"
+            className="sm:max-w-2xl flex flex-col max-h-[90vh]"
             onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
             onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
-          <DialogHeader>
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit Customer</DialogTitle>
             <DialogDescription>Update the details below.</DialogDescription>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-              <FormField name="name" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="phone" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="detail" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Details</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="useTax" control={form.control} render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Use Tax Invoice</FormLabel>
-                    <FormMessage />
+          <div className="flex-1 overflow-y-auto -mx-6 px-6 py-4">
+            <Form {...form}>
+              <form id="edit-customer-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField name="name" control={form.control} render={({ field }) => (
+                  <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField name="phone" control={form.control} render={({ field }) => (
+                  <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField name="detail" control={form.control} render={({ field }) => (
+                  <FormItem><FormLabel>Details</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField name="useTax" control={form.control} render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Use Tax Invoice</FormLabel>
+                      <FormMessage />
+                    </div>
+                  </FormItem>
+                )} />
+                {useTax && (
+                  <div className="space-y-4 p-4 border rounded-md bg-muted/50">
+                      <FormField name="taxName" control={form.control} render={({ field }) => (
+                          <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField name="taxAddress" control={form.control} render={({ field }) => (
+                          <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField name="taxId" control={form.control} render={({ field }) => (
+                          <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                      )} />
+                      <FormField
+                          control={form.control}
+                          name="taxBranchType"
+                          render={({ field }) => (
+                              <FormItem className="space-y-3">
+                              <FormLabel>ประเภทสาขา</FormLabel>
+                              <FormControl>
+                                  <RadioGroup
+                                  onValueChange={field.onChange}
+                                  value={field.value}
+                                  className="flex space-x-4 pt-2"
+                                  >
+                                  <FormItem className="flex items-center space-x-2">
+                                      <FormControl><RadioGroupItem value="HEAD_OFFICE" /></FormControl>
+                                      <FormLabel className="font-normal">สำนักงานใหญ่</FormLabel>
+                                  </FormItem>
+                                  <FormItem className="flex items-center space-x-2">
+                                      <FormControl><RadioGroupItem value="BRANCH" /></FormControl>
+                                      <FormLabel className="font-normal">สาขา</FormLabel>
+                                  </FormItem>
+                                  </RadioGroup>
+                              </FormControl>
+                              <FormMessage />
+                              </FormItem>
+                          )}
+                      />
+                      {taxBranchType === 'BRANCH' && (
+                          <FormField
+                              control={form.control}
+                              name="taxBranchNo"
+                              render={({ field }) => (
+                              <FormItem>
+                                  <FormLabel>เลขที่สาขา (5 หลัก)</FormLabel>
+                                  <FormControl>
+                                  <Input {...field} value={field.value ?? ''} maxLength={5} placeholder="00000" />
+                                  </FormControl>
+                                  <FormMessage />
+                              </FormItem>
+                              )}
+                          />
+                      )}
                   </div>
-                </FormItem>
-              )} />
-              {useTax && (
-                <div className="space-y-4 p-4 border rounded-md bg-muted/50">
-                    <FormField name="taxName" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField name="taxAddress" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField name="taxId" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                </div>
-              )}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+                )}
+              </form>
+            </Form>
+          </div>
+          <DialogFooter className="flex-shrink-0 border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" form="edit-customer-form" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

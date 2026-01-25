@@ -49,6 +49,8 @@ export interface Customer {
   taxName?: string;
   taxAddress?: string;
   taxId?: string;
+  taxBranchType?: 'HEAD_OFFICE' | 'BRANCH';
+  taxBranchNo?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -323,6 +325,9 @@ export interface Document {
   paymentMethod?: string; // For Receipt
   paymentDate?: string; // For Receipt
   receivedAccountId?: string;
+  cashReceived?: number;
+  withholdingEnabled?: boolean;
+  withholdingAmount?: number;
   referencesDocIds?: string[]; // For CreditNote and Receipt
   reason?: string; // For CreditNote
   invoiceIds?: string[]; // For BillingNote
