@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -480,7 +481,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         });
 
         return () => unsubscribe();
-    }, [obligationsQuery, toast, type, retry]);
+    }, [obligationsQuery, toast, type]);
 
     const filteredObligations = useMemo(() => {
         if (!searchTerm) return obligations;
@@ -593,11 +594,9 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
           }
         });
         
-        const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true));
+        const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true), orderBy("shortName", "asc"));
         const unsubVendors = onSnapshot(vendorsQ, (snap) => {
-            const vendorsData = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>));
-            vendorsData.sort((a,b) => (a.shortName).localeCompare(b.shortName));
-            setVendors(vendorsData);
+            setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>)));
         }, (err) => {
           console.error("Error loading vendors:", err);
           if (err.message.includes('permission-denied')) {
@@ -674,5 +673,7 @@ export default function ReceivablesPayablesPage() {
         </>
     );
 }
+
+    
 
     

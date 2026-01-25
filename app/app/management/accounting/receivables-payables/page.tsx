@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -438,7 +439,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
             where("type", "==", type),
             limit(500)
         );
-    }, [db, type]);
+    }, [db, type, retry]);
 
     useEffect(() => {
         if (!obligationsQuery) return;
@@ -480,7 +481,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         });
 
         return () => unsubscribe();
-    }, [obligationsQuery, toast, type, retry]);
+    }, [obligationsQuery, toast, type]);
 
     const filteredObligations = useMemo(() => {
         if (!searchTerm) return obligations;
@@ -672,5 +673,7 @@ export default function ReceivablesPayablesPage() {
         </>
     );
 }
+
+    
 
     
