@@ -14,7 +14,7 @@ import { format, parseISO } from 'date-fns';
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -91,7 +91,7 @@ function ReceivePaymentDialog({
   const watchedAmount = form.watch('amount');
   const watchedWhtEnabled = form.watch('withholdingEnabled');
   const watchedWhtAmount = form.watch('withholdingAmount') || 0;
-  const cashReceived = watchedAmount - watchedWhtAmount;
+  const cashReceived = watchedAmount - (watchedWhtEnabled ? watchedWhtAmount : 0);
 
   const handleSavePayment = async (data: z.infer<typeof paymentSchema>) => {
     if (!db) return;
@@ -152,6 +152,7 @@ function ReceivePaymentDialog({
       onClose();
 
     } catch (e: any) {
+      console.error(e);
       toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
     } finally {
       setIsSubmitting(false);
@@ -177,11 +178,11 @@ function ReceivePaymentDialog({
             </div>
             <div className="p-4 border rounded-md space-y-4">
               <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (<FormItem className="flex items-center gap-2 space-y-0"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">มีหัก ณ ที่จ่าย</FormLabel></FormItem>)} />
-              {watchedWhtEnabled && <FormField control={form.control} name="withholdingAmount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินที่ถูกหัก (WHT)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage/></FormItem>)} />}
+              {watchedWhtEnabled && <FormField control={form.control} name="withholdingAmount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินที่ถูกหัก (WHT)</FormLabel><FormControl><Input type="number" {...field} value={field.value || 0} /></FormControl><FormMessage/></FormItem>)} />}
             </div>
             <div className="text-right space-y-1">
                 <p>ยอดรับชำระ: {formatCurrency(watchedAmount)}</p>
-                {watchedWhtEnabled && <p className='text-destructive'>หัก ณ ที่จ่าย: -{formatCurrency(watchedWhtAmount)}</p>}
+                {watchedWhtEnabled && <p className='text-destructive'>หัก ณ ที่จ่าย: -{formatCurrency(watchedWhtAmount || 0)}</p>}
                 <p className="font-bold text-lg">ยอดเงินเข้าจริง: {formatCurrency(cashReceived)}</p>
             </div>
              <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
@@ -196,11 +197,10 @@ function ReceivePaymentDialog({
   )
 }
 
-function ObligationList({ type, searchTerm }: { type: 'AR' | 'AP', searchTerm: string }) {
+function ObligationList({ type, searchTerm, profile }: { type: 'AR' | 'AP', searchTerm: string, profile: UserProfile }) {
     const { db } = useFirebase();
     const { toast } = useToast();
-    const { profile } = useAuth() as { profile: UserProfile };
-
+    
     const [obligations, setObligations] = useState<WithId<AccountingObligation>[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<FirestoreError | null>(null);
@@ -351,7 +351,7 @@ function ObligationList({ type, searchTerm }: { type: 'AR' | 'AP', searchTerm: s
     );
 }
 
-function ReceivablesPayablesContent() {
+function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
     const searchParams = useSearchParams();
     const defaultTab = searchParams.get('tab') === 'creditors' ? 'creditors' : 'debtors';
     const [activeTab, setActiveTab] = useState(defaultTab);
@@ -372,10 +372,10 @@ function ReceivablesPayablesContent() {
             <Card>
               <CardContent className="pt-6">
                 <TabsContent value="debtors" className="mt-0">
-                    <ObligationList type="AR" searchTerm={searchTerm} />
+                    <ObligationList type="AR" searchTerm={searchTerm} profile={profile} />
                 </TabsContent>
                 <TabsContent value="creditors" className="mt-0">
-                    <ObligationList type="AP" searchTerm={searchTerm} />
+                    <ObligationList type="AP" searchTerm={searchTerm} profile={profile} />
                 </TabsContent>
               </CardContent>
             </Card>
@@ -412,7 +412,7 @@ export default function ReceivablesPayablesPage() {
         <>
             <PageHeader title="ลูกหนี้/เจ้าหนี้" description="จัดการและติดตามข้อมูลลูกหนี้และเจ้าหนี้" />
             <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}>
-                <ReceivablesPayablesContent />
+                <ReceivablesPayablesContent profile={profile} />
             </Suspense>
         </>
     );
