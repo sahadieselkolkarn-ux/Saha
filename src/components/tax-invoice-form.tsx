@@ -11,7 +11,7 @@ import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
+import { safeFormat } from "@/lib/date-utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -83,6 +85,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
+  const [selectedQuotationId, setSelectedQuotationId] = useState('');
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -151,10 +154,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const fetchedQuotations = snapshot.docs
-          .map(d => d.data() as DocumentType)
+          .map(d => ({id: d.id, ...d.data()}) as DocumentType)
           .filter(d => d.docType === 'QUOTATION' && d.status !== 'CANCELLED');
         fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
         setQuotations(fetchedQuotations);
+        if (fetchedQuotations.length > 0) {
+            setSelectedQuotationId(fetchedQuotations[0].id);
+        }
     });
     return () => unsubscribe();
 
@@ -233,14 +239,22 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const handleFetchFromQuotation = () => {
-    if (quotations.length > 0) {
-      const latestQuotation = quotations[0];
-      form.setValue('items', latestQuotation.items);
-      form.setValue('discountAmount', latestQuotation.discountAmount);
-      toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${latestQuotation.docNo}`});
-    } else {
-      toast({ variant: 'destructive', title: "ไม่พบใบเสนอราคา", description: "ไม่พบใบเสนอราคาสำหรับงานนี้"});
+    const quotation = quotations.find(q => q.id === selectedQuotationId);
+    if (!quotation) {
+      toast({ variant: 'destructive', title: "กรุณาเลือกใบเสนอราคา" });
+      return;
     }
+  
+    const currentItems = form.getValues('items');
+    if (currentItems.length > 1 || (currentItems.length > 0 && currentItems[0].description)) {
+        if (!confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?")) {
+            return;
+        }
+    }
+  
+    form.setValue('items', quotation.items);
+    form.setValue('discountAmount', quotation.discountAmount || 0);
+    toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}`});
   };
 
   const onSubmit = async (data: TaxInvoiceFormData) => {
@@ -425,10 +439,24 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         </Card>
 
         <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>รายการ</CardTitle>
+            <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <CardTitle className="text-base">รายการ</CardTitle>
                 {jobId && quotations.length > 0 && (
-                    <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={isLocked}><FileDown/> ดึงจากใบเสนอราคา</Button>
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
+                      <SelectTrigger className="w-full sm:w-[280px]">
+                          <SelectValue placeholder="เลือกใบเสนอราคา..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                          {quotations.map(q => (
+                              <SelectItem key={q.id} value={q.id}>
+                                  {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
+                              </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
+                  </div>
                 )}
             </CardHeader>
             <CardContent>
@@ -475,7 +503,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                     <div className="flex justify-between items-center">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
-                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked}/></FormControl>
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={true}/></FormControl>
                                 <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>
