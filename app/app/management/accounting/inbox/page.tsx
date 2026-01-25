@@ -258,6 +258,7 @@ export default function AccountingInboxPage() {
     try {
         const sourceDocRef = doc(db, "documents", approvingClaim.sourceDocId);
         const sourceDocSnap = await getDoc(sourceDocRef);
+
         if (!sourceDocSnap.exists()) {
             throw new Error("ไม่พบเอกสารอ้างอิง");
         }
@@ -273,6 +274,7 @@ export default function AccountingInboxPage() {
         const batch = writeBatch(db);
         const claimRef = doc(db, "paymentClaims", approvingClaim.id);
         
+        // 1. Update Payment Claim
         batch.update(claimRef, {
             status: "APPROVED",
             approvedAt: serverTimestamp(),
@@ -282,12 +284,13 @@ export default function AccountingInboxPage() {
             paymentMethod,
             accountId,
             withholdingEnabled,
-            withholdingAmount,
+            withholdingAmount: withholdingAmount ?? 0,
             cashReceived,
             note,
             docSyncedAt: serverTimestamp(),
         });
 
+        // 2. Create Accounting Entry
         const entryRef = doc(collection(db, "accountingEntries"));
         batch.set(entryRef, {
             entryType: "CASH_IN",
@@ -304,11 +307,15 @@ export default function AccountingInboxPage() {
             createdAt: serverTimestamp(),
         });
 
+        // 3. Update Source Document
         batch.update(sourceDocRef, {
             status: 'PAID',
             paymentMethod: paymentMethod,
             paymentDate: receivedDate,
             receivedAccountId: accountId,
+            cashReceived: cashReceived,
+            withholdingEnabled: withholdingEnabled,
+            withholdingAmount: withholdingAmount ?? 0,
             updatedAt: serverTimestamp(),
         });
 
