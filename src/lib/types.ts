@@ -365,6 +365,9 @@ export interface AccountingEntry {
   description?: string;
   category?: AccountingCategory;
   paymentMethod?: 'CASH' | 'TRANSFER' | 'CREDIT';
+  vendorId?: string;
+  vendorShortNameSnapshot?: string;
+  vendorNameSnapshot?: string;
   counterpartyNameSnapshot?: string;
   counterpartyPhoneSnapshot?: string;
 }
@@ -382,3 +385,4 @@ export interface AccountingEntry {
     
 
     
+

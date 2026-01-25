@@ -1030,6 +1030,9 @@
         "description": { "type": "string" },
         "category": { "type": "string" },
         "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
+        "vendorId": { "type": "string" },
+        "vendorShortNameSnapshot": { "type": "string" },
+        "vendorNameSnapshot": { "type": "string" },
         "counterpartyNameSnapshot": { "type": "string" },
         "counterpartyPhoneSnapshot": { "type": "string" }
       },
