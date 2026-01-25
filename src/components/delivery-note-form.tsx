@@ -210,20 +210,31 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const handleFetchFromQuotation = () => {
     const quotation = quotations.find(q => q.id === selectedQuotationId);
     if (!quotation) {
-        toast({ variant: 'destructive', title: "กรุณาเลือกใบเสนอราคา" });
-        return;
+      toast({ variant: 'destructive', title: "กรุณาเลือกใบเสนอราคา" });
+      return;
     }
-
+  
     const currentItems = form.getValues('items');
-    if (currentItems.length > 1 || (currentItems.length > 0 && currentItems[0].description)) {
-        if (!confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?")) {
-            return;
-        }
+    const hasExisting =
+      currentItems.length > 1 || (currentItems.length > 0 && !!currentItems[0].description);
+  
+    if (hasExisting) {
+      let ok = true;
+      try {
+        // Only cancel if confirm explicitly returns false
+        ok = window.confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?") !== false;
+      } catch {
+        ok = true;
+      }
+      if (!ok) return;
     }
-
-    remove();
-    append(quotation.items.map(item => ({...item})));
+  
+    // Use replace to swap the entire array
+    replace((quotation.items || []).map(item => ({ ...item })));
+  
     form.setValue('discountAmount', quotation.discountAmount || 0);
+    form.trigger('items');
+  
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}` });
   };
 

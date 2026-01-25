@@ -86,7 +86,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
-
+  
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
@@ -246,16 +246,27 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
   
     const currentItems = form.getValues('items');
-    if (currentItems.length > 1 || (currentItems.length > 0 && currentItems[0].description)) {
-        if (!confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?")) {
-            return;
-        }
+    const hasExisting =
+      currentItems.length > 1 || (currentItems.length > 0 && !!currentItems[0].description);
+  
+    if (hasExisting) {
+      let ok = true;
+      try {
+        // Only cancel if confirm explicitly returns false
+        ok = window.confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?") !== false;
+      } catch {
+        ok = true;
+      }
+      if (!ok) return;
     }
   
-    remove();
-    append(quotation.items.map(item => ({...item})));
+    // Use replace to swap the entire array
+    replace((quotation.items || []).map(item => ({ ...item })));
+  
     form.setValue('discountAmount', quotation.discountAmount || 0);
-    toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}`});
+    form.trigger('items');
+  
+    toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}` });
   };
 
   const onSubmit = async (data: TaxInvoiceFormData) => {
