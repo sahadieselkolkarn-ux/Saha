@@ -244,8 +244,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   };
 
   const onSubmit = async (data: TaxInvoiceFormData) => {
-    if (isEditing && docToEdit?.status === 'PAID') {
-        toast({ variant: 'destructive', title: "ไม่สามารถบันทึกได้", description: "เอกสารนี้ถูกยืนยันรายรับแล้ว" });
+    if (isLocked) {
+        toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: "เอกสารนี้ถูกยืนยันรายรับแล้ว" });
         return;
     }
 

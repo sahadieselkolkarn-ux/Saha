@@ -132,8 +132,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   
   useEffect(() => {
     if (!db || !jobId) {
-      setQuotations([]);
-      return;
+        setQuotations([]);
+        return;
     };
     
     const q = query(
@@ -212,7 +212,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   };
 
   const onSubmit = async (data: DeliveryNoteFormData) => {
-    if (isEditing && docToEdit?.status === 'PAID') {
+    if (isLocked) {
         toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: "เอกสารนี้ถูกยืนยันรายรับแล้ว" });
         return;
     }
