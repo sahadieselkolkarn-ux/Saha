@@ -1,11 +1,10 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, getDoc, deleteField } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, deleteField } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck } from "lucide-react";
-import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, DocType, AccountingAccount } from "@/lib/types";
+import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -58,6 +57,7 @@ interface JobListProps {
   emptyDescription?: string;
   children?: React.ReactNode;
   hideQuotationButton?: boolean;
+  actionPreset?: 'default' | 'waitingApprove';
 }
 
 const getStatusVariant = (status: Job['status']) => {
@@ -91,6 +91,7 @@ export function JobList({
   emptyDescription = "There are no jobs that match the current criteria.",
   children,
   hideQuotationButton = false,
+  actionPreset = 'default',
 }: JobListProps) {
   const { db } = useFirebase();
   const { profile } = useAuth();
@@ -585,53 +586,66 @@ export function JobList({
             <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
           </CardContent>
           <CardFooter className={cn(
-            "mt-auto grid gap-2 p-4", 
-            (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
+            "mt-auto grid gap-2 p-4",
+            actionPreset === 'waitingApprove'
+              ? 'grid-cols-1'
+              : (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
           )}>
-            <Button asChild variant="outline" className="w-full">
-              <Link href={`/app/jobs/${job.id}`}>
-                ดูรายละเอียด
-                <ArrowRight />
-              </Link>
-            </Button>
-            {job.status === 'RECEIVED' && profile?.department === job.department && (
-              <Button 
-                variant="default" 
-                className="w-full"
-                onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
-                disabled={isAccepting !== null}
-              >
-                {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
-                {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
-              </Button>
-            )}
-            {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
+            {actionPreset === 'waitingApprove' ? (
               <Button asChild variant="default" className="w-full">
-                <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                  <Receipt />
-                  ทำใบเสนอราคา
+                <Link href={`/app/jobs/${job.id}`}>
+                  <UserCheck />
+                  แจ้งผลอนุมัติ
                 </Link>
               </Button>
-            )}
-            {job.status === 'DONE' && (
-               <Button
-                variant="default"
-                className="w-full"
-                onClick={() => setBillingJob(job)}
-              >
-                <Receipt />
-                ออกบิล
-              </Button>
-            )}
-             {job.status === 'WAITING_CUSTOMER_PICKUP' && isOfficeOrAdmin && (
-              <Button
-                variant="default"
-                className="w-full"
-                onClick={() => handleOpenCloseDialog(job)}
-              >
-                <PackageCheck />
-                ส่งงาน
-              </Button>
+            ) : (
+              <>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={`/app/jobs/${job.id}`}>
+                    ดูรายละเอียด
+                    <ArrowRight />
+                  </Link>
+                </Button>
+                {job.status === 'RECEIVED' && profile?.department === job.department && (
+                  <Button 
+                    variant="default" 
+                    className="w-full"
+                    onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
+                    disabled={isAccepting !== null}
+                  >
+                    {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
+                    {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
+                  </Button>
+                )}
+                {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
+                  <Button asChild variant="default" className="w-full">
+                    <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
+                      <Receipt />
+                      ทำใบเสนอราคา
+                    </Link>
+                  </Button>
+                )}
+                {job.status === 'DONE' && (
+                   <Button
+                    variant="default"
+                    className="w-full"
+                    onClick={() => setBillingJob(job)}
+                  >
+                    <Receipt />
+                    ออกบิล
+                  </Button>
+                )}
+                 {job.status === 'WAITING_CUSTOMER_PICKUP' && isOfficeOrAdmin && (
+                  <Button
+                    variant="default"
+                    className="w-full"
+                    onClick={() => handleOpenCloseDialog(job)}
+                  >
+                    <PackageCheck />
+                    ส่งงาน
+                  </Button>
+                )}
+              </>
             )}
           </CardFooter>
         </Card>
