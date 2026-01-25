@@ -1,151 +1,169 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // --- Helper Functions ---
-    // These functions centralize logic for getting user roles and permissions.
-    // This is crucial for RBAC to prevent client-side bypass of app logic.
 
-    // Get the full user profile data from the /users collection.
-    function getProfile(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data;
+    function signedIn() { return request.auth != null; }
+
+    // System admin fallback (กันล็อกตัวเอง)
+    function isSystemAdmin() {
+      return signedIn() && request.auth.token.email == "sahadieselkolkarn@gmail.com";
     }
 
-    // Check if the currently authenticated user is an Admin.
-    function isAdmin() {
-      return getProfile(request.auth.uid).role == 'ADMIN';
+    // Try custom claims first; fallback to common profile collections.
+    function roleFromProfile() {
+      return
+        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role :
+        exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role :
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role :
+        null;
     }
 
-    // Check if the user is part of the management or admin team.
-    function isManagementOrAdmin() {
-      let role = getProfile(request.auth.uid).role;
-      return role == 'ADMIN' || role == 'MANAGER';
+    function deptFromProfile() {
+      return
+        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.department :
+        exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.department :
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department :
+        null;
     }
 
-    // Check if the user is part of the office, management, or admin teams.
-    function isOfficeOrHigher() {
-       let role = getProfile(request.auth.uid).role;
-       return role == 'ADMIN' || role == 'MANAGER' || role == 'OFFICE';
-    }
-    
-    // Checks if a user is signed in.
-    function isSignedIn() {
-      return request.auth != null;
+    function role() { return request.auth.token.role != null ? request.auth.token.role : roleFromProfile(); }
+    function dept() { return request.auth.token.department != null ? request.auth.token.department : deptFromProfile(); }
+
+    function isAdmin() { return isSystemAdmin() || (signedIn() && role() == "ADMIN"); }
+    function isMgmt()  { return isAdmin() || (signedIn() && dept() == "MANAGEMENT"); }
+
+    // ปรับชื่อแผนกการเงินให้ตรง constants ของโปรเจค ถ้ายังไม่มี ให้ MANAGEMENT ทำหน้าที่แทนไปก่อน
+    function isFinance() {
+      return isAdmin() || isMgmt() || (signedIn() && (dept() == "FINANCE" || dept() == "ACCOUNTING"));
     }
 
-    // --- Collection Rules ---
-
-    // User profiles can be read by anyone signed in, but only the user themselves or an Admin can write.
-    match /users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if request.auth.uid == userId || isAdmin();
+    // -------------------------
+    // Default: readable (signed-in), writable: deny
+    // -------------------------
+    match /{document=**} {
+      allow read: if signedIn();
+      allow write: if false;
     }
-    
-    // Settings can be read by anyone, but only modified by Admins.
-    match /settings/{settingId} {
-      allow read: if isSignedIn();
+
+    // -------------------------
+    // Profiles (ถ้ามีใช้)
+    // -------------------------
+    match /userProfiles/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow delete: if isAdmin();
+    }
+    match /profiles/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow delete: if isAdmin();
+    }
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------
+    // Settings
+    // -------------------------
+    match /settings/{docId} {
+      allow read: if signedIn();
       allow write: if isAdmin();
     }
 
-    // Jobs and their activities can be accessed by any signed-in user.
-    // The application logic on the client-side filters what each role can see and do.
-    match /jobs/{jobId} {
-      allow read, write: if isSignedIn();
-      match /activities/{activityId} {
-        allow read, write: if isSignedIn();
-      }
-    }
-    
-    // Customers can be read/written by any signed-in user.
-    // Logic is handled client-side.
-    match /customers/{customerId} {
-       allow read, write: if isSignedIn();
-    }
-    
-    // Vendors can be read/written by any signed-in user.
-    match /vendors/{vendorId} {
-       allow read, write: if isSignedIn();
-    }
-    
-    // Attendance and Kiosk tokens are accessible to any signed-in user.
-    match /attendance/{attendanceId} {
-      allow read, write: if isSignedIn();
-    }
-    match /kioskTokens/{tokenId} {
-      allow read, write: if isSignedIn();
-    }
-
-    // HR data can be accessed by any signed-in user.
-    // Sensitive data is filtered by application logic.
-    match /hrHolidays/{holidayId} {
-      allow read, write: if isSignedIn();
-    }
-    match /hrLeaves/{leaveId} {
-      allow read, write: if isSignedIn();
-    }
-    match /hrAttendanceAdjustments/{adjustmentId} {
-      allow read, write: if isSignedIn();
-    }
-    
-    // Payroll data can be accessed by any signed-in user.
-    match /payrollRuns/{runId} {
-      allow read, write: if isSignedIn();
-      match /payslips/{payslipId} {
-        allow read, write: if isSignedIn();
-      }
-    }
-    
-    // --- Stricter Accounting Rules ---
-    
-    // Financial documents require specific roles.
-    match /documents/{docId} {
-      // Office, Management, and Admins can read documents.
-      allow read: if isOfficeOrHigher();
-
-      // Office users and above can create documents.
-      allow create: if isOfficeOrHigher();
-
-      // Update rules:
-      // - Admins/Managers can update anything.
-      // - Office users can only edit DRAFT documents.
-      // - The document number (docNo) cannot be changed after creation.
-      allow update: if ((isManagementOrAdmin() || (isOfficeOrHigher() && resource.data.status == 'DRAFT')) 
-                      && request.resource.data.docNo == resource.data.docNo);
-                      
-      // Only Admins can permanently delete documents.
+    // -------------------------
+    // Customers / Vendors (ให้ระบบใช้งานทั่วไปไม่พัง)
+    // -------------------------
+    match /customers/{id} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || isMgmt();
       allow delete: if isAdmin();
     }
-    
-    // Document counters are updated via transactions, but access should still be restricted.
-    match /documentCounters/{year} {
-        allow read, write: if isOfficeOrHigher();
+    match /vendors/{id} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || isMgmt();
+      allow delete: if isAdmin();
     }
 
-    // Payment claims can be created by Office, but only approved/rejected by Management/Admins.
-    match /paymentClaims/{claimId} {
-      allow read: if isOfficeOrHigher();
-      
-      // Office users can create new claims.
-      allow create: if isOfficeOrHigher();
-      
-      // Once approved, only Admins can modify. Others can only modify if it's not yet approved.
-      allow update: if resource.data.status != 'APPROVED' || isAdmin();
-    }
-    
-    // All accounting-related collections are restricted to Management and Admins.
-    match /accountingAccounts/{accountId} {
-      allow read, write: if isManagementOrAdmin();
+    // -------------------------
+    // Jobs + subcollection activities
+    // (ยังเปิดให้ signed-in เขียนได้ เพื่อไม่ให้ flow งานซ่อมพังในระหว่างปรับบัญชี)
+    // -------------------------
+    match /jobs/{jobId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if isAdmin();
+
+      match /activities/{activityId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow update, delete: if isAdmin();
+      }
     }
 
-    match /accountingEntries/{entryId} {
-      allow read, create: if isManagementOrAdmin();
-      // Entries are immutable for everyone except Admins.
+    // -------------------------
+    // Documents + Counters
+    // -------------------------
+    match /documents/{docId} {
+      allow read: if signedIn();
+
+      // สร้างเอกสารได้: ออฟฟิศ/บริหาร/แอดมิน (MVP)
+      allow create: if signedIn();
+
+      // แก้ไขเอกสาร:
+      // - ถ้าเป็น draft ใครสร้างก็แก้ได้ (MVP) แต่ "ห้ามแก้ docNo"
+      // - สถานะ PAID/ฟิลด์การเงิน: เฉพาะ finance
+      allow update: if (
+        (resource.data.status == "DRAFT" && request.resource.data.docNo == resource.data.docNo)
+        || isFinance()
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /documentCounters/{yearId} {
+      allow read: if signedIn();
+      // allow เฉพาะเพื่อออกเลขเอกสาร (ใช้ใน transaction createDocument)
+      allow create, update: if signedIn();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------
+    // Payment Claims (รอตรวจสอบรายรับ)
+    // -------------------------
+    match /paymentClaims/{id} {
+      allow read: if isFinance();
+
+      // ผู้แจ้งรับเงิน (ออฟฟิศ) สร้างได้
+      allow create: if signedIn();
+
+      // อนุมัติ/ตีกลับ/แก้ข้อมูลรับเงิน: เฉพาะ finance
+      allow update: if isFinance();
+
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------
+    // Accounting (แกนบัญชี)
+    // -------------------------
+    match /accountingAccounts/{id} {
+      allow read: if isFinance();
+      allow create, update: if isFinance();
+      allow delete: if isAdmin();
+    }
+
+    match /accountingEntries/{id} {
+      allow read: if isFinance();
+      allow create: if isFinance();
+      // immutable สำหรับคนทั่วไป
       allow update, delete: if isAdmin();
     }
-    
-    match /accountingObligations/{obligationId} {
-        allow read, write: if isManagementOrAdmin();
+
+    match /accountingObligations/{id} {
+      allow read: if isFinance();
+      allow create, update: if isFinance();
+      allow delete: if isAdmin();
     }
   }
 }
