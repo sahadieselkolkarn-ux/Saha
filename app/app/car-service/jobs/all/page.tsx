@@ -9,7 +9,7 @@ export default function CarServiceAllJobsPage() {
       <PageHeader title="งานทั้งหมด" description="งานใหม่และงานที่กำลังทำทั้งหมดในแผนก Car Service" />
       <JobList 
         department="CAR_SERVICE" 
-        status={['RECEIVED', 'IN_PROGRESS']} 
+        status={['RECEIVED', 'IN_PROGRESS', 'IN_REPAIR_PROCESS']} 
       />
     </>
   );

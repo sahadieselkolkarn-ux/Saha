@@ -9,7 +9,7 @@ export default function MechanicAllJobsPage() {
       <PageHeader title="งานทั้งหมด" description="งานใหม่และงานที่กำลังทำทั้งหมดในแผนก Mechanic" />
       <JobList 
         department="MECHANIC" 
-        status={['RECEIVED', 'IN_PROGRESS']} 
+        status={['RECEIVED', 'IN_PROGRESS', 'IN_REPAIR_PROCESS']} 
       />
     </>
   );
