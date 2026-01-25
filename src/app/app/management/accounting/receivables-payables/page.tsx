@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
@@ -196,7 +197,8 @@ function ReceivePaymentDialog({
 
 function ReceivablesPayablesContent() {
   const { db } = useFirebase();
-  const { profile } = useAuth() as { profile: UserProfile }; // Assume profile is loaded
+  const { profile } = useAuth() as { profile: UserProfile };
+  const { toast } = useToast();
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get('tab') === 'creditors' ? 'creditors' : 'debtors';
   
@@ -228,10 +230,14 @@ function ReceivablesPayablesContent() {
     const accountsQ = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
     const unsubAccounts = onSnapshot(accountsQ, (snap) => {
         setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WithId<AccountingAccount>));
+    },
+    (error) => {
+      console.error("Error loading accounts for receivables/payables:", error);
+      toast({ variant: 'destructive', title: "Could not load accounts", description: error.message });
     });
 
     return () => { unsubObligations(); unsubAccounts(); };
-  }, [db]);
+  }, [db, toast]);
   
   const filteredObligations = useMemo(() => {
     if (!searchTerm) return obligations;
