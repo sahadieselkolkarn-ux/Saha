@@ -363,13 +363,14 @@ export interface AccountingEntry {
   jobId?: string;
   // --- Fields for CASH_IN/CASH_OUT ---
   description?: string;
-  category?: AccountingCategory;
+  category?: AccountingCategory; // Legacy field
+  categoryMain?: string; // New field
+  categorySub?: string; // New field
   paymentMethod?: 'CASH' | 'TRANSFER' | 'CREDIT';
   vendorId?: string;
   vendorShortNameSnapshot?: string;
   vendorNameSnapshot?: string;
-  counterpartyNameSnapshot?: string;
-  counterpartyPhoneSnapshot?: string;
+  counterpartyNameSnapshot?: string; // For one-off individuals not in vendors
 }
     
     
@@ -385,4 +386,3 @@ export interface AccountingEntry {
     
 
     
-

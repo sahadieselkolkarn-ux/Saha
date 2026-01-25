@@ -32,13 +32,15 @@ import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
+import { searchVendors } from "@/firebase/vendors";
 
 type EntryType = 'CASH_IN' | 'CASH_OUT';
 
 const entrySchema = z.object({
   entryDate: z.string().min(1, "กรุณาเลือกวันที่"),
   description: z.string().min(1, "กรุณากรอกรายการ"),
-  category: z.string().min(1, "กรุณาเลือกหมวดหมู่"),
+  categoryMain: z.string().min(1, "กรุณาเลือกหมวดหมู่หลัก"),
+  categorySub: z.string().optional(),
   amount: z.coerce.number().min(0.01, "จำนวนเงินต้องมากกว่า 0"),
   accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
   paymentMethod: z.enum(["CASH", "TRANSFER"]),
@@ -46,7 +48,6 @@ const entrySchema = z.object({
   vendorId: z.string().optional(),
   vendorShortNameSnapshot: z.string().optional(),
   vendorNameSnapshot: z.string().optional(),
-  counterpartyNameSnapshot: z.string().optional(),
 });
 
 type EntryFormData = z.infer<typeof entrySchema>;
@@ -93,7 +94,7 @@ function VendorCombobox({ allVendors, onSelect }: { allVendors: WithId<Vendor>[]
                   value={`${vendor.shortName} - ${vendor.companyName}`}
                   onSelect={() => {
                     onSelect(vendor);
-                    setSelectedValue(vendor.shortName);
+                    setSelectedValue(`${vendor.shortName} - ${vendor.companyName}`);
                     setOpen(false);
                   }}
                 >
@@ -113,21 +114,46 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
 
+  const categories = entryType === 'CASH_IN' ? ACCOUNTING_CATEGORIES.INCOME : ACCOUNTING_CATEGORIES.EXPENSE;
+  const mainCategories = Object.keys(categories);
+  
+  const defaultCategoryMain = entryType === 'CASH_OUT' ? 'ต้นทุนงาน' : 'งานซ่อม';
+
   const form = useForm<EntryFormData>({
     resolver: zodResolver(entrySchema),
     defaultValues: {
       entryDate: format(new Date(), 'yyyy-MM-dd'),
       description: "",
-      category: "อื่นๆ",
+      categoryMain: defaultCategoryMain,
+      categorySub: "",
       amount: 0,
       accountId: "",
       paymentMethod: "CASH",
       sourceDocNo: "",
     },
   });
+  
+  useEffect(() => {
+    if (isOpen) {
+        form.reset({
+            entryDate: format(new Date(), 'yyyy-MM-dd'),
+            description: "",
+            categoryMain: defaultCategoryMain,
+            categorySub: "",
+            amount: 0,
+            accountId: accounts[0]?.id || "",
+            paymentMethod: "CASH",
+            sourceDocNo: "",
+        });
+    }
+  }, [isOpen, form, defaultCategoryMain, accounts]);
 
-  const categories = entryType === 'CASH_IN' ? ACCOUNTING_CATEGORIES.INCOME : ACCOUNTING_CATEGORIES.EXPENSE;
-  const isDebtorCreditor = form.watch('category') === 'เก็บเงินลูกหนี้' || form.watch('category') === 'จ่ายเจ้าหนี้';
+
+  const selectedMainCategory = form.watch('categoryMain');
+  const subCategories = useMemo(() => {
+      if (!selectedMainCategory) return [];
+      return (categories as any)[selectedMainCategory] || [];
+  }, [selectedMainCategory, categories]);
 
   const onSubmit = async (values: EntryFormData) => {
     if (!db) return;
@@ -138,12 +164,6 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
         createdAt: serverTimestamp(),
       });
       toast({ title: "บันทึกรายการสำเร็จ" });
-      form.reset({
-        entryDate: format(new Date(), 'yyyy-MM-dd'),
-        description: "", category: "อื่นๆ", amount: 0, accountId: values.accountId, paymentMethod: "CASH",
-        sourceDocNo: "", vendorId: undefined, vendorShortNameSnapshot: undefined, vendorNameSnapshot: undefined,
-        counterpartyNameSnapshot: "",
-      });
       setIsOpen(false);
       onSaveSuccess();
     } catch (e: any) {
@@ -171,7 +191,12 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
               <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>จำนวนเงิน</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
             </div>
             <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>รายการ</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-            <FormField control={form.control} name="category" render={({ field }) => (<FormItem><FormLabel>หมวดหมู่</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดหมู่..." /></SelectTrigger></FormControl><SelectContent>{categories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+            <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="categoryMain" render={({ field }) => (<FormItem><FormLabel>หมวดหลัก</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดหมู่หลัก..." /></SelectTrigger></FormControl><SelectContent>{mainCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                {subCategories.length > 0 && (
+                     <FormField control={form.control} name="categorySub" render={({ field }) => (<FormItem><FormLabel>หมวดย่อย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดย่อย..." /></SelectTrigger></FormControl><SelectContent>{subCategories.map((cat: string) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกช่องทาง..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
               <FormField control={form.control} name="accountId" render={({ field }) => (<FormItem><FormLabel>บัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
@@ -186,18 +211,9 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                         form.setValue('vendorId', vendor?.id);
                         form.setValue('vendorShortNameSnapshot', vendor?.shortName);
                         form.setValue('vendorNameSnapshot', vendor?.companyName);
-                        if (vendor) {
-                            form.setValue('counterpartyNameSnapshot', '');
-                        }
                     }}
                 />
             </FormItem>
-            
-            {isDebtorCreditor && (
-                 <div className="pt-4 border-t">
-                    <FormField control={form.control} name="counterpartyNameSnapshot" render={({ field }) => (<FormItem><FormLabel>ชื่อลูกหนี้/เจ้าหนี้ (บุคคล)</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                </div>
-            )}
           </form>
         </Form>
         <DialogFooter>
@@ -231,10 +247,10 @@ function CashbookPageContent() {
 
   useEffect(() => {
     if (!db) return;
+    setIsLoadingVendors(true);
     const q = query(collection(db, "vendors"), orderBy("shortName", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
         const vendorsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<Vendor>));
-        // isActive !== false means true or undefined are considered active
         const activeVendors = vendorsData.filter(v => v.isActive !== false);
         setAllVendors(activeVendors);
         setIsLoadingVendors(false);
@@ -272,6 +288,7 @@ function CashbookPageContent() {
         entry.sourceDocNo?.toLowerCase().includes(lowerSearch) || 
         entry.customerNameSnapshot?.toLowerCase().includes(lowerSearch) ||
         entry.vendorNameSnapshot?.toLowerCase().includes(lowerSearch) ||
+        entry.vendorShortNameSnapshot?.toLowerCase().includes(lowerSearch) ||
         entry.counterpartyNameSnapshot?.toLowerCase().includes(lowerSearch)
       );
     }
@@ -280,6 +297,16 @@ function CashbookPageContent() {
   }, [entries, dateRange, searchTerm]);
 
   const formatCurrency = (value: number) => value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  
+  const renderCategory = (entry: WithId<AccountingEntry>) => {
+    if (entry.categoryMain) {
+        return entry.categorySub ? `${entry.categoryMain} > ${entry.categorySub}` : entry.categoryMain;
+    }
+    if (entry.category) {
+        return entry.category;
+    }
+    return '-';
+  };
 
   if (!profile) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
   if (!hasPermission) return <PageHeader title="ไม่มีสิทธิ์เข้าถึง" description="หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น" />;
@@ -329,6 +356,8 @@ function CashbookPageContent() {
                             <TableHead>วันที่</TableHead>
                             <TableHead>รายการ</TableHead>
                             <TableHead>คู่ค้า</TableHead>
+                            <TableHead>หมวดหมู่</TableHead>
+                            <TableHead>อ้างอิง</TableHead>
                             <TableHead>เงินเข้า</TableHead>
                             <TableHead>เงินออก</TableHead>
                             <TableHead>บัญชี</TableHead>
@@ -336,7 +365,7 @@ function CashbookPageContent() {
                     </TableHeader>
                     <TableBody>
                         {isLoading ? (
-                            <TableRow><TableCell colSpan={6} className="h-24 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
+                            <TableRow><TableCell colSpan={8} className="h-24 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
                         ) : filteredEntries.filter(e => activeTab === 'in' ? (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') : e.entryType === 'CASH_OUT').length > 0 ? (
                             filteredEntries.filter(e => activeTab === 'in' ? (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') : e.entryType === 'CASH_OUT').map(entry => {
                                 const accountName = accounts?.find(a => a.id === entry.accountId)?.name || entry.accountId;
@@ -346,6 +375,8 @@ function CashbookPageContent() {
                                         <TableCell>{safeFormat(parseISO(entry.entryDate), 'dd/MM/yy')}</TableCell>
                                         <TableCell>{entry.description || `รับเงินจาก ${entry.customerNameSnapshot}`}</TableCell>
                                         <TableCell>{counterparty}</TableCell>
+                                        <TableCell className="text-xs max-w-[150px] truncate">{renderCategory(entry)}</TableCell>
+                                        <TableCell>{entry.sourceDocNo || '-'}</TableCell>
                                         <TableCell className="text-right text-green-600">{activeTab === 'in' ? formatCurrency(entry.amount) : ''}</TableCell>
                                         <TableCell className="text-right text-destructive">{activeTab === 'out' ? formatCurrency(entry.amount) : ''}</TableCell>
                                         <TableCell>{accountName}</TableCell>
@@ -353,7 +384,7 @@ function CashbookPageContent() {
                                 )
                             })
                         ) : (
-                            <TableRow><TableCell colSpan={6} className="h-24 text-center">ไม่พบรายการ</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={8} className="h-24 text-center">ไม่พบรายการ</TableCell></TableRow>
                         )}
                     </TableBody>
                 </Table>
