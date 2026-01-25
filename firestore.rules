@@ -107,11 +107,11 @@ service cloud.firestore {
       allow create: if isOfficeOrHigher();
 
       // Update rules:
-      // - Admins can update anything.
-      // - Office/Management can only edit DRAFT documents.
+      // - Admins/Managers can update anything.
+      // - Office users can only edit DRAFT documents.
       // - The document number (docNo) cannot be changed after creation.
-      allow update: if (isAdmin() || (isOfficeOrHigher() && resource.data.status == 'DRAFT'))
-                      && request.resource.data.docNo == resource.data.docNo;
+      allow update: if ((isManagementOrAdmin() || (isOfficeOrHigher() && resource.data.status == 'DRAFT')) 
+                      && request.resource.data.docNo == resource.data.docNo);
                       
       // Only Admins can permanently delete documents.
       allow delete: if isAdmin();
