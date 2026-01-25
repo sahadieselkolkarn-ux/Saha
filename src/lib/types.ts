@@ -86,6 +86,10 @@ export interface Job {
   assigneeName?: string;
   pickupDate?: string; // YYYY-MM-DD
   closedDate?: string; // YYYY-MM-DD
+  salesDocType?: 'DELIVERY_NOTE' | 'TAX_INVOICE';
+  salesDocId?: string;
+  salesDocNo?: string;
+  paymentStatusAtClose?: 'PAID' | 'UNPAID';
   carServiceDetails?: {
     brand?: string;
     model?: string;
@@ -408,4 +412,22 @@ export interface PaymentClaim {
   rejectedByUid?: string;
   rejectedByName?: string;
   rejectReason?: string;
+}
+
+export interface AccountingObligation {
+  id: string;
+  type: 'AR'; // Accounts Receivable
+  status: 'UNPAID' | 'PARTIAL' | 'PAID';
+  jobId: string;
+  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE';
+  sourceDocId: string;
+  sourceDocNo: string;
+  amountTotal: number;
+  amountPaid: number;
+  balance: number;
+  customerNameSnapshot: string;
+  customerPhoneSnapshot?: string;
+  dueDate?: string; // YYYY-MM-DD
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

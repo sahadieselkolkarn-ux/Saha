@@ -360,6 +360,24 @@
           "type": "string",
           "format": "date",
           "description": "Date the job was closed."
+        },
+        "salesDocType": {
+          "type": "string",
+          "enum": ["DELIVERY_NOTE", "TAX_INVOICE"],
+          "description": "The type of sales document associated with the closed job."
+        },
+        "salesDocId": {
+          "type": "string",
+          "description": "The ID of the sales document associated with the closed job."
+        },
+        "salesDocNo": {
+          "type": "string",
+          "description": "The document number of the sales document for quick reference."
+        },
+        "paymentStatusAtClose": {
+          "type": "string",
+          "enum": ["PAID", "UNPAID"],
+          "description": "The payment status at the moment the job was closed."
         }
       },
       "required": [
@@ -1083,6 +1101,29 @@
         "accountId": { "type": "string" }
       },
       "required": ["status", "createdAt", "createdByUid", "createdByName", "sourceDocId", "sourceDocNo", "amountDue"]
+    },
+    "AccountingObligation": {
+      "title": "Accounting Obligation",
+      "description": "Represents an accounts receivable (AR) or payable (AP) item.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["AR"] },
+        "status": { "type": "string", "enum": ["UNPAID", "PARTIAL", "PAID"] },
+        "jobId": { "type": "string" },
+        "sourceDocType": { "type": "string", "enum": ["DELIVERY_NOTE", "TAX_INVOICE"] },
+        "sourceDocId": { "type": "string" },
+        "sourceDocNo": { "type": "string" },
+        "amountTotal": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "balance": { "type": "number" },
+        "customerNameSnapshot": { "type": "string" },
+        "customerPhoneSnapshot": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "status", "jobId", "sourceDocId", "sourceDocNo", "amountTotal", "amountPaid", "balance", "customerNameSnapshot", "createdAt", "updatedAt"]
     }
   },
   "auth": {
@@ -1127,6 +1168,10 @@
       },
       "description": "Stores all financial documents."
     },
+    "/documentCounters/{year}": {
+      "schema": { "$ref": "#/backend/entities/DocumentCounters"},
+      "description": "Stores the auto-incrementing counters for document numbers for each year."
+    },
     "/attendance/{attendanceId}": {
       "schema": {
         "$ref": "#/backend/entities/Attendance"
@@ -1152,10 +1197,6 @@
     "/settings/documents": {
       "schema": { "$ref": "#/backend/entities/DocumentSettings" },
       "description": "Stores document numbering settings."
-    },
-    "/documentCounters/{year}": {
-      "schema": { "$ref": "#/backend/entities/DocumentCounters"},
-      "description": "Stores the auto-incrementing counters for document numbers for each year."
     },
     "/hrHolidays/{holidayId}": {
       "schema": {
@@ -1204,6 +1245,12 @@
         "$ref": "#/backend/entities/PaymentClaim"
       },
       "description": "Stores payment claims waiting for accounting approval."
+    },
+    "/accountingObligations/{obligationId}": {
+      "schema": {
+        "$ref": "#/backend/entities/AccountingObligation"
+      },
+      "description": "Stores accounts receivable (AR) and accounts payable (AP) items."
     }
   }
 }
