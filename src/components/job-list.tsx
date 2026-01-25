@@ -9,10 +9,11 @@ import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryC
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck } from "lucide-react";
 import type { Job, JobStatus, JobDepartment, UserProfile } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { JOB_STATUS_DISPLAY } from "@/lib/constants";
@@ -33,6 +34,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -103,10 +106,15 @@ export function JobList({
   const [billingJob, setBillingJob] = useState<Job | null>(null);
   
   const isOfficer = profile?.role === 'OFFICER';
+  const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
   const [assigningJob, setAssigningJob] = useState<Job | null>(null);
   const [workers, setWorkers] = useState<UserProfile[]>([]);
   const [isFetchingWorkers, setIsFetchingWorkers] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
+  
+  const [closingJob, setClosingJob] = useState<Job | null>(null);
+  const [pickupDate, setPickupDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [isClosing, setIsClosing] = useState(false);
 
 
   const jobsQuery = useMemo(() => {
@@ -186,6 +194,41 @@ export function JobList({
       setIndexCreationUrl(null);
     }
   }, [error]);
+  
+  const handleCloseJob = async () => {
+    if (!db || !profile || !closingJob) return;
+
+    setIsClosing(true);
+    try {
+        const batch = writeBatch(db);
+        const jobRef = doc(db, 'jobs', closingJob.id);
+        const activityRef = doc(collection(db, 'jobs', closingJob.id, 'activities'));
+
+        batch.update(jobRef, {
+            status: 'CLOSED',
+            pickupDate: pickupDate,
+            closedDate: pickupDate,
+            lastActivityAt: serverTimestamp(),
+        });
+
+        batch.set(activityRef, {
+            text: `ส่งมอบงานและปิดงาน วันที่ ${pickupDate}`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
+        });
+
+        await batch.commit();
+        toast({ title: 'ปิดงานเรียบร้อย' });
+        setClosingJob(null);
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'ปิดงานไม่สำเร็จ', description: error.message });
+    } finally {
+        setIsClosing(false);
+    }
+  }
+
 
   const handleAcceptJob = async (jobId: string) => {
     if (!db || !profile) {
@@ -430,7 +473,7 @@ export function JobList({
           </CardContent>
           <CardFooter className={cn(
             "mt-auto grid gap-2 p-4", 
-            (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE') ? "grid-cols-2" : "grid-cols-1"
+            (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
           )}>
             <Button asChild variant="outline" className="w-full">
               <Link href={`/app/jobs/${job.id}`}>
@@ -465,6 +508,19 @@ export function JobList({
               >
                 <Receipt />
                 ออกบิล
+              </Button>
+            )}
+             {job.status === 'WAITING_CUSTOMER_PICKUP' && isOfficeOrAdmin && (
+              <Button
+                variant="default"
+                className="w-full"
+                onClick={() => {
+                    setClosingJob(job);
+                    setPickupDate(format(new Date(), 'yyyy-MM-dd'));
+                }}
+              >
+                <PackageCheck />
+                ส่งงาน
               </Button>
             )}
           </CardFooter>
@@ -535,6 +591,32 @@ export function JobList({
             </AlertDialogFooter>
         </AlertDialogContent>
     </AlertDialog>
+     <Dialog open={!!closingJob} onOpenChange={(isOpen) => !isOpen && setClosingJob(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>ส่งมอบงาน / ปิดงาน</DialogTitle>
+                <DialogDescription>
+                    ยืนยันการส่งมอบและปิดงานสำหรับ: {closingJob?.customerSnapshot.name}
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-2">
+                <Label htmlFor="pickupDate">วันที่ลูกค้ารับรถ/รับสินค้า</Label>
+                <Input
+                    id="pickupDate"
+                    type="date"
+                    value={pickupDate}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                />
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setClosingJob(null)} disabled={isClosing}>ยกเลิก</Button>
+                <Button onClick={handleCloseJob} disabled={isClosing}>
+                    {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    ยืนยันส่งงาน
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
     </>
   );
 }

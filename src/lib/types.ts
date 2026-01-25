@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus, AccountingCategory } from './constants';
 
@@ -83,6 +84,8 @@ export interface Job {
   technicalReport?: string;
   assigneeUid?: string;
   assigneeName?: string;
+  pickupDate?: string; // YYYY-MM-DD
+  closedDate?: string; // YYYY-MM-DD
   carServiceDetails?: {
     brand?: string;
     model?: string;
@@ -372,17 +375,3 @@ export interface AccountingEntry {
   vendorNameSnapshot?: string;
   counterpartyNameSnapshot?: string; // For one-off individuals not in vendors
 }
-    
-    
-    
-    
-    
-    
-
-    
-
-    
-
-    
-
-    

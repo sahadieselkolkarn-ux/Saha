@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "UserProfile": {
@@ -349,6 +350,16 @@
           "type": "string",
           "description": "Timestamp of the last activity related to the job.",
           "format": "date-time"
+        },
+        "pickupDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date the customer picked up the item."
+        },
+        "closedDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date the job was closed."
         }
       },
       "required": [
