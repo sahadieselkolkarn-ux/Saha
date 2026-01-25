@@ -245,28 +245,33 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       return;
     }
   
-    const currentItems = form.getValues('items');
-    const hasExisting =
-      currentItems.length > 1 || (currentItems.length > 0 && !!currentItems[0].description);
+    const itemsFromQuotation = (quotation.items || []).map((item: any) => {
+      const qty = Number(item.quantity ?? 1);
+      const price = Number(item.unitPrice ?? 0);
+      const total = Number(item.total ?? (qty * price));
+      return {
+        description: String(item.description ?? ''),
+        quantity: qty,
+        unitPrice: price,
+        total,
+      };
+    });
   
-    if (hasExisting) {
-      let ok = true;
-      try {
-        // Only cancel if confirm explicitly returns false
-        ok = window.confirm("การกระทำนี้จะแทนที่รายการปัจจุบันทั้งหมดด้วยรายการจากใบเสนอราคา ยืนยันหรือไม่?") !== false;
-      } catch {
-        ok = true;
-      }
-      if (!ok) return;
+    if (itemsFromQuotation.length === 0) {
+      toast({ variant: 'destructive', title: "ใบเสนอราคาไม่มีรายการ", description: `เลขที่ ${quotation.docNo}` });
+      return;
     }
   
-    // Use replace to swap the entire array
-    replace((quotation.items || []).map(item => ({ ...item })));
+    replace(itemsFromQuotation);
   
-    form.setValue('discountAmount', quotation.discountAmount || 0);
-    form.trigger('items');
+    form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
   
-    toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงรายการจากใบเสนอราคาเลขที่ ${quotation.docNo}` });
+    form.trigger(['items', 'discountAmount']);
+  
+    toast({
+      title: "ดึงข้อมูลสำเร็จ",
+      description: `ดึง ${itemsFromQuotation.length} รายการ จากใบเสนอราคาเลขที่ ${quotation.docNo}`,
+    });
   };
 
   const onSubmit = async (data: TaxInvoiceFormData) => {
