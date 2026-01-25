@@ -2,29 +2,27 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
-import { useToast } from '@/hooks/use-toast';
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth, endOfMonth, isBefore, parseISO, isAfter } from 'date-fns';
 
 import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Loader2, Search, ArrowLeft, CalendarIcon } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
 import { WithId } from '@/firebase/firestore/use-collection';
 import { AccountingAccount, AccountingEntry } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { safeFormat } from '@/lib/date-utils';
 
 const formatCurrency = (value: number) => {
-    return value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 export default function AccountLedgerPage() {
@@ -53,8 +51,7 @@ export default function AccountLedgerPage() {
             setLoading(true);
             setError(null);
             try {
-                const accountDocRef = doc(db, 'accountingAccounts', accountId);
-                const entriesQuery = query(collection(db, 'accountingEntries'), where('accountId', '==', accountId));
+                const entriesQuery = query(collection(db, 'accountingEntries'), where('accountId', '==', accountId), orderBy('entryDate', 'asc'));
 
                 const [accountSnap, entriesSnap] = await Promise.all([
                     getDocs(query(collection(db, 'accountingAccounts'), where('__name__', '==', accountId))),
@@ -86,7 +83,10 @@ export default function AccountLedgerPage() {
             const dateA = parseISO(a.entryDate).getTime();
             const dateB = parseISO(b.entryDate).getTime();
             if (dateA !== dateB) return dateA - dateB;
-            return a.createdAt.toMillis() - b.createdAt.toMillis();
+             if (a.createdAt && b.createdAt && a.createdAt.toMillis && b.createdAt.toMillis) {
+              return a.createdAt.toMillis() - b.createdAt.toMillis();
+            }
+            return 0;
         });
     
         const openingBalanceDate = account.openingBalanceDate ? parseISO(account.openingBalanceDate) : new Date(0);
@@ -97,7 +97,11 @@ export default function AccountLedgerPage() {
              sortedAllEntries.forEach(entry => {
                 const entryDate = parseISO(entry.entryDate);
                 if (isAfter(entryDate, openingBalanceDate) && isBefore(entryDate, dateRange.from!)) {
-                    periodStartingBalance += entry.amount;
+                    if (entry.entryType === 'RECEIPT' || entry.entryType === 'CASH_IN') {
+                        periodStartingBalance += entry.amount;
+                    } else if (entry.entryType === 'CASH_OUT') {
+                        periodStartingBalance -= entry.amount;
+                    }
                 }
             });
         }
@@ -109,8 +113,12 @@ export default function AccountLedgerPage() {
     
             if (searchTerm) {
                 const lowerSearch = searchTerm.toLowerCase();
-                const match = entry.sourceDocNo.toLowerCase().includes(lowerSearch) ||
-                              entry.customerNameSnapshot.toLowerCase().includes(lowerSearch);
+                const match = entry.sourceDocNo?.toLowerCase().includes(lowerSearch) ||
+                              entry.description?.toLowerCase().includes(lowerSearch) ||
+                              entry.customerNameSnapshot?.toLowerCase().includes(lowerSearch) ||
+                              entry.vendorNameSnapshot?.toLowerCase().includes(lowerSearch) ||
+                              entry.vendorShortNameSnapshot?.toLowerCase().includes(lowerSearch) ||
+                              entry.counterpartyNameSnapshot?.toLowerCase().includes(lowerSearch);
                 if (!match) return false;
             }
             return true;
@@ -121,8 +129,18 @@ export default function AccountLedgerPage() {
         let totalExpense = 0;
     
         const itemsWithBalance = visibleEntries.map(entry => {
-            const income = entry.entryType === 'RECEIPT' ? entry.amount : 0;
-            const expense = 0; // Placeholder for future expense types
+            let income = 0;
+            let expense = 0;
+            let description = entry.description || '';
+
+            if (entry.entryType === 'RECEIPT' || entry.entryType === 'CASH_IN') {
+                income = entry.amount;
+                if (entry.entryType === 'RECEIPT' && entry.customerNameSnapshot) {
+                    description = `รับเงินจาก ${entry.customerNameSnapshot}`;
+                }
+            } else if (entry.entryType === 'CASH_OUT') {
+                expense = entry.amount;
+            }
     
             runningBalance += income - expense;
             totalIncome += income;
@@ -133,6 +151,7 @@ export default function AccountLedgerPage() {
                 income,
                 expense,
                 balance: runningBalance,
+                displayDescription: description,
             };
         });
     
@@ -224,10 +243,10 @@ export default function AccountLedgerPage() {
                                 processedData.items.map(item => (
                                     <TableRow key={item.id}>
                                         <TableCell>{safeFormat(parseISO(item.entryDate), 'dd/MM/yy')}</TableCell>
-                                        <TableCell>รับเงินจาก {item.customerNameSnapshot}</TableCell>
+                                        <TableCell>{item.displayDescription}</TableCell>
                                         <TableCell>{item.sourceDocNo}</TableCell>
-                                        <TableCell className="text-right text-green-600">{formatCurrency(item.income)}</TableCell>
-                                        <TableCell className="text-right text-destructive">{formatCurrency(item.expense)}</TableCell>
+                                        <TableCell className="text-right text-green-600">{item.income > 0 ? formatCurrency(item.income) : ''}</TableCell>
+                                        <TableCell className="text-right text-destructive">{item.expense > 0 ? formatCurrency(item.expense) : ''}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(item.balance)}</TableCell>
                                     </TableRow>
                                 ))
@@ -237,14 +256,14 @@ export default function AccountLedgerPage() {
                                 </TableRow>
                             )}
                         </TableBody>
-                         <CardFooter className="p-0">
+                         <TableFooter>
                             <TableRow className="font-bold text-base bg-muted/50 hover:bg-muted/50">
                                 <TableCell colSpan={3}>รวม</TableCell>
                                 <TableCell className="text-right">{formatCurrency(processedData.totals.totalIncome)}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(processedData.totals.totalExpense)}</TableCell>
                                 <TableCell className="text-right">{formatCurrency(processedData.totals.periodEndBalance)}</TableCell>
                             </TableRow>
-                         </CardFooter>
+                         </TableFooter>
                     </Table>
                 </CardContent>
             </Card>
