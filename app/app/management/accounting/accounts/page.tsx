@@ -43,7 +43,8 @@ export default function ManagementAccountingAccountsPage() {
       setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>)));
       setLoading(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลบัญชีได้" });
+      console.error("Error loading accounting accounts: ", error);
+      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
       setLoading(false);
     });
     return () => unsubscribe();

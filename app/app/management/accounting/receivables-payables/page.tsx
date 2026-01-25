@@ -197,6 +197,7 @@ function ReceivePaymentDialog({
 function ReceivablesPayablesContent() {
   const { db } = useFirebase();
   const { profile } = useAuth() as { profile: UserProfile };
+  const { toast } = useToast();
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get('tab') === 'creditors' ? 'creditors' : 'debtors';
   
@@ -221,17 +222,23 @@ function ReceivablesPayablesContent() {
         setObligations(snap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<AccountingObligation>));
         setLoading(false);
     }, (err) => {
+        console.error("Error loading accounting obligations:", err);
         setError(err);
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลลูกหนี้ หรือการดึงข้อมูลถูกปฏิเสธ" });
         setLoading(false);
     });
 
     const accountsQ = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
     const unsubAccounts = onSnapshot(accountsQ, (snap) => {
         setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WithId<AccountingAccount>));
+    },
+    (error) => {
+      console.error("Error loading accounts for receivables/payables:", error);
+      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
     });
 
     return () => { unsubObligations(); unsubAccounts(); };
-  }, [db]);
+  }, [db, toast]);
   
   const filteredObligations = useMemo(() => {
     if (!searchTerm) return obligations;

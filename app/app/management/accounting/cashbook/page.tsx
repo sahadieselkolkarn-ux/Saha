@@ -231,6 +231,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
 function CashbookPageContent() {
   const { db } = useFirebase();
   const { profile } = useAuth();
+  const { toast } = useToast();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab') === 'out' ? 'out' : 'in';
 
@@ -249,14 +250,25 @@ function CashbookPageContent() {
     if (!db) return;
     setIsLoadingVendors(true);
     const q = query(collection(db, "vendors"), orderBy("shortName", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q,
+      (snapshot) => {
         const vendorsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<Vendor>));
         const activeVendors = vendorsData.filter(v => v.isActive !== false);
         setAllVendors(activeVendors);
         setIsLoadingVendors(false);
-    });
+      },
+      (error) => {
+        console.error("Failed to load vendors:", error);
+        toast({
+          variant: "destructive",
+          title: "เกิดข้อผิดพลาด",
+          description: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า หรือการดึงข้อมูลถูกปฏิเสธ",
+        });
+        setIsLoadingVendors(false);
+      }
+    );
     return () => unsubscribe();
-  }, [db]);
+  }, [db, toast]);
 
   const entriesQuery = useMemo(() => {
     if (!db) return null;

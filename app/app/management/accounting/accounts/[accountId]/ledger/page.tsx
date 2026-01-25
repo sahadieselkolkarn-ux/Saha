@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { doc, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
+import { useToast } from '@/hooks/use-toast';
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth, endOfMonth, isBefore, parseISO, isAfter } from 'date-fns';
 
@@ -28,6 +29,7 @@ const formatCurrency = (value: number) => {
 export default function AccountLedgerPage() {
     const { db } = useFirebase();
     const { profile } = useAuth();
+    const { toast } = useToast();
     const params = useParams();
     const router = useRouter();
     const accountId = params.accountId as string;
@@ -70,14 +72,15 @@ export default function AccountLedgerPage() {
 
             } catch (e: any) {
                 console.error("Failed to load ledger data:", e);
-                setError(e.message || "ไม่สามารถโหลดสมุดบัญชีได้");
+                setError("ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ");
+                toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: 'ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ' });
             } finally {
                 setLoading(false);
             }
         };
 
         fetchData();
-    }, [db, accountId]);
+    }, [db, accountId, toast]);
 
     const processedData = useMemo(() => {
         if (!account) return { items: [], totals: { totalIncome: 0, totalExpense: 0, periodEndBalance: 0 }, periodStartingBalance: 0 };

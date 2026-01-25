@@ -163,17 +163,30 @@ export default function AccountingInboxPage() {
     const claimsQuery = query(collection(db, "paymentClaims"), orderBy("createdAt", "desc"));
     const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
     
-    const unsubClaims = onSnapshot(claimsQuery, (snap) => {
+    const unsubClaims = onSnapshot(claimsQuery, 
+      (snap) => {
         setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<PaymentClaim>)));
         setLoading(false);
-    }, () => setLoading(false));
+      },
+      (error) => {
+        console.error("Error loading payment claims:", error);
+        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูล หรือการดึงข้อมูลถูกปฏิเสธ" });
+        setLoading(false);
+      }
+    );
 
-    const unsubAccounts = onSnapshot(accountsQuery, (snap) => {
+    const unsubAccounts = onSnapshot(accountsQuery, 
+      (snap) => {
         setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
-    });
+      },
+      (error) => {
+        console.error("Error loading accounts:", error);
+        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
+      }
+    );
 
     return () => { unsubClaims(); unsubAccounts(); };
-  }, [db]);
+  }, [db, toast]);
 
   useEffect(() => {
     if (activeTab === 'APPROVED' && !syncAttempted.current && !loading && claims.length > 0) {
@@ -349,7 +362,7 @@ export default function AccountingInboxPage() {
 
 
   if (!hasPermission) {
-    return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายการเงิน/ฝ่ายบริหาร/ผู้ดูแลเท่านั้น</CardDescription></CardHeader></Card>;
+    return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายการเงิน/บริหาร/ผู้ดูแลเท่านั้น</CardDescription></CardHeader></Card>;
   }
 
   return (
