@@ -1,11 +1,10 @@
-
 "use client";
 
 import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, orderBy, type FirestoreError, addDoc, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -439,7 +438,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
             where("type", "==", type),
             limit(500)
         );
-    }, [db, type, retry]);
+    }, [db, type]);
 
     useEffect(() => {
         if (!obligationsQuery) return;
@@ -452,14 +451,13 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingObligation>));
             
             // Client-side filtering
-            const filtered = data.filter(ob => ob.status === 'UNPAID' || ob.status === 'PARTIAL');
+            let filtered = data.filter(ob => ob.status === 'UNPAID' || ob.status === 'PARTIAL');
 
             // Client-side sorting
             filtered.sort((a, b) => {
-                if (!a.dueDate && !b.dueDate) return 0;
-                if (!a.dueDate) return 1;
-                if (!b.dueDate) return -1;
-                return parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime();
+                const da = a.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                const db = b.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                return da - db;
             });
 
             setObligations(filtered);
@@ -482,7 +480,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         });
 
         return () => unsubscribe();
-    }, [obligationsQuery, toast, type]);
+    }, [obligationsQuery, toast, type, retry]);
 
     const filteredObligations = useMemo(() => {
         if (!searchTerm) return obligations;
@@ -674,3 +672,5 @@ export default function ReceivablesPayablesPage() {
         </>
     );
 }
+
+    
