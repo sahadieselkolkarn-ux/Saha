@@ -20,7 +20,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Save, ArrowLeft } from "lucide-react";
+import { Loader2, Save, ArrowLeft, BookOpen } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AccountingAccount } from "@/lib/types";
 
@@ -95,8 +95,8 @@ export default function EditAccountPage() {
       const dataToUpdate: any = {
         name: values.name,
         type: values.type,
-        bankName: values.bankName,
-        accountNo: values.accountNo,
+        bankName: values.type === 'BANK' ? values.bankName : null,
+        accountNo: values.type === 'BANK' ? values.accountNo : null,
         isActive: values.isActive,
         updatedAt: serverTimestamp(),
       };
@@ -143,7 +143,13 @@ export default function EditAccountPage() {
 
   return (
     <>
-      <PageHeader title="แก้ไขบัญชี" description={`กำลังแก้ไขบัญชี: ${account.name}`} />
+      <PageHeader title="แก้ไขบัญชี" description={`กำลังแก้ไขบัญชี: ${account.name}`}>
+        <Button asChild variant="outline">
+          <Link href={`/app/management/accounting/accounts/${accountId}/ledger`}>
+            <BookOpen className="mr-2 h-4 w-4" /> ดูรายการเข้า-ออก
+          </Link>
+        </Button>
+      </PageHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
           <Card>

@@ -1,4 +1,5 @@
 
+
 {
   "entities": {
     "UserProfile": {
@@ -219,6 +220,28 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "Vendor": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Vendor",
+      "type": "object",
+      "description": "Represents a vendor or supplier.",
+      "properties": {
+        "id": { "type": "string" },
+        "shortName": { "type": "string", "description": "Unique, short identifier for the vendor (e.g., 'BBL', 'SDK')." },
+        "companyName": { "type": "string", "description": "Full legal name of the vendor company/store." },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "contactName": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "taxId": { "type": "string" },
+        "notes": { "type": "string" },
+        "isActive": { "type": "boolean", "default": true },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "shortName", "companyName", "isActive", "createdAt", "updatedAt"]
     },
     "Job": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1028,6 +1051,12 @@
         "$ref": "#/backend/entities/Customer"
       },
       "description": "Stores customer information."
+    },
+    "/vendors/{vendorId}": {
+      "schema": {
+        "$ref": "#/backend/entities/Vendor"
+      },
+      "description": "Stores vendor and supplier information."
     },
     "/jobs/{jobId}": {
       "schema": {

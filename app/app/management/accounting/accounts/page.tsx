@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight } from "lucide-react";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, BookOpen } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { AccountingAccount } from "@/lib/types";
@@ -157,6 +157,7 @@ export default function ManagementAccountingAccountsPage() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent>
+                            <DropdownMenuItem asChild><Link href={`/app/management/accounting/accounts/${account.id}/ledger`}><BookOpen className="mr-2"/> ดูรายการเข้า-ออก</Link></DropdownMenuItem>
                             <DropdownMenuItem asChild><Link href={`/app/management/accounting/accounts/${account.id}`}><Edit className="mr-2"/> แก้ไข</Link></DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleToggleActive(account)}>
                               {account.isActive ? <ToggleLeft className="mr-2"/> : <ToggleRight className="mr-2"/>}

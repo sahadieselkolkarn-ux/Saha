@@ -1,3 +1,3 @@
-export default function OfficePartsVendorsLayout({ children }: { children: React.ReactNode }) {
+export default function VendorsLayout({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }

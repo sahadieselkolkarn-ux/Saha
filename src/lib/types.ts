@@ -54,6 +54,22 @@ export interface Customer {
   updatedAt: Timestamp;
 }
 
+export interface Vendor {
+    id: string;
+    shortName: string;
+    companyName: string;
+    address?: string;
+    phone?: string;
+    contactName?: string;
+    contactPhone?: string;
+    email?: string;
+    taxId?: string;
+    notes?: string;
+    isActive: boolean;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
+
 export interface Job {
   id: string;
   customerId: string;
@@ -353,3 +369,6 @@ export interface AccountingEntry {
     
 
     
+
+    
+
