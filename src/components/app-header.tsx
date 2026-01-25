@@ -6,7 +6,7 @@ import { Menu, Settings, LogOut, FileText, Receipt } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet"
 import { Logo } from "@/components/logo"
 import { AppNav } from "@/components/app-nav"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -38,6 +38,10 @@ export function AppHeader() {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="flex flex-col p-0">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation Menu</SheetTitle>
+            <SheetDescription>A list of links to navigate the application.</SheetDescription>
+          </SheetHeader>
           <div className="flex h-14 items-center border-b px-4">
               <Logo />
           </div>
