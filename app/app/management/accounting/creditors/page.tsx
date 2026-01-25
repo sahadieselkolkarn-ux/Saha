@@ -1,7 +1,5 @@
-import { PageHeader } from "@/components/page-header";
+import { redirect } from 'next/navigation';
 
 export default function ManagementAccountingCreditorsPage() {
-  return (
-    <PageHeader title="เจ้าหนี้" description="จัดการและติดตามข้อมูลเจ้าหนี้" />
-  );
+  redirect('/app/management/accounting/receivables-payables?tab=creditors');
 }
