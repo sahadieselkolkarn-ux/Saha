@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp, getDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -189,50 +189,72 @@ export default function AccountingInboxPage() {
 
   const handleApproveConfirm = async (data: any) => {
     if (!db || !profile || !approvingClaim) return;
-    
+
     const { receivedDate, paymentMethod, accountId, withholdingEnabled, withholdingAmount, note, cashReceived } = data;
-    
-    const batch = writeBatch(db);
-
-    const claimRef = doc(db, "paymentClaims", approvingClaim.id);
-    batch.update(claimRef, {
-        status: "APPROVED",
-        approvedAt: serverTimestamp(),
-        approvedByUid: profile.uid,
-        approvedByName: profile.displayName,
-        receivedDate,
-        paymentMethod,
-        accountId,
-        withholdingEnabled,
-        withholdingAmount,
-        cashReceived,
-        note,
-    });
-
-    const entryRef = doc(collection(db, "accountingEntries"));
-    batch.set(entryRef, {
-        entryType: "CASH_IN",
-        entryDate: receivedDate,
-        amount: cashReceived,
-        accountId,
-        paymentMethod,
-        description: `รับเงินจาก ${approvingClaim.customerNameSnapshot || 'ไม่ระบุ'} (เอกสาร: ${approvingClaim.sourceDocNo})`,
-        sourceDocType: approvingClaim.sourceDocType,
-        sourceDocId: approvingClaim.sourceDocId,
-        sourceDocNo: approvingClaim.sourceDocNo,
-        customerNameSnapshot: approvingClaim.customerNameSnapshot,
-        jobId: approvingClaim.jobId,
-        createdAt: serverTimestamp(),
-    });
+    const sourceDocRef = doc(db, "documents", approvingClaim.sourceDocId);
 
     try {
-      await batch.commit();
-      toast({ title: "ยืนยันการรับเงินสำเร็จ" });
-      setApprovingClaim(null);
+        const sourceDocSnap = await getDoc(sourceDocRef);
+        if (!sourceDocSnap.exists()) {
+            throw new Error("ไม่พบเอกสารอ้างอิง");
+        }
+        if (sourceDocSnap.data().status === 'CANCELLED') {
+            toast({
+                variant: 'destructive',
+                title: 'ไม่สามารถยืนยันได้',
+                description: 'เอกสารถูกยกเลิกไปแล้ว ไม่สามารถยืนยันรับเงินได้',
+            });
+            return;
+        }
+
+        const batch = writeBatch(db);
+        const claimRef = doc(db, "paymentClaims", approvingClaim.id);
+        
+        batch.update(claimRef, {
+            status: "APPROVED",
+            approvedAt: serverTimestamp(),
+            approvedByUid: profile.uid,
+            approvedByName: profile.displayName,
+            receivedDate,
+            paymentMethod,
+            accountId,
+            withholdingEnabled,
+            withholdingAmount,
+            cashReceived,
+            note,
+        });
+
+        const entryRef = doc(collection(db, "accountingEntries"));
+        batch.set(entryRef, {
+            entryType: "CASH_IN",
+            entryDate: receivedDate,
+            amount: cashReceived,
+            accountId,
+            paymentMethod,
+            description: `รับเงินจาก ${approvingClaim.customerNameSnapshot || 'ไม่ระบุ'} (เอกสาร: ${approvingClaim.sourceDocNo})`,
+            sourceDocType: approvingClaim.sourceDocType,
+            sourceDocId: approvingClaim.sourceDocId,
+            sourceDocNo: approvingClaim.sourceDocNo,
+            customerNameSnapshot: approvingClaim.customerNameSnapshot,
+            jobId: approvingClaim.jobId,
+            createdAt: serverTimestamp(),
+        });
+
+        batch.update(sourceDocRef, {
+            status: 'PAID',
+            paymentMethod: paymentMethod,
+            paymentDate: receivedDate,
+            updatedAt: serverTimestamp(),
+        });
+
+        await batch.commit();
+        toast({ title: "ยืนยันการรับเงินสำเร็จ" });
+        setApprovingClaim(null);
+
     } catch (e: any) {
-      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
     }
-  };
+};
   
   const handleRejectConfirm = async (reason: string) => {
     if (!db || !profile || !rejectingClaim) return;
