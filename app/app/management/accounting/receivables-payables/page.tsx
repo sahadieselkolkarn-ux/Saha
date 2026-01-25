@@ -5,7 +5,7 @@ import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, orderBy, type FirestoreError, addDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, orderBy, type FirestoreError, addDoc, limit } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -437,10 +437,9 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         return query(
             collection(db, "accountingObligations"),
             where("type", "==", type),
-            where("status", "in", ["UNPAID", "PARTIAL"]),
-            orderBy("dueDate", "asc")
+            limit(500)
         );
-    }, [db, type]);
+    }, [db, type, retry]);
 
     useEffect(() => {
         if (!obligationsQuery) return;
@@ -451,13 +450,19 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
 
         const unsubscribe = onSnapshot(obligationsQuery, (snap) => {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingObligation>));
-            data.sort((a, b) => {
+            
+            // Client-side filtering
+            const filtered = data.filter(ob => ob.status === 'UNPAID' || ob.status === 'PARTIAL');
+
+            // Client-side sorting
+            filtered.sort((a, b) => {
                 if (!a.dueDate && !b.dueDate) return 0;
                 if (!a.dueDate) return 1;
                 if (!b.dueDate) return -1;
                 return parseISO(a.dueDate).getTime() - parseISO(b.dueDate).getTime();
             });
-            setObligations(data);
+
+            setObligations(filtered);
             setLoading(false);
             setError(null);
             setIndexCreationUrl(null);
@@ -468,13 +473,16 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
             if (err.message?.includes('requires an index')) {
                 const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
                 if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+                toast({ variant: 'default', title: 'Info', description: "ระบบถูกปรับให้ไม่ต้องสร้าง index แล้ว กรุณารีเฟรช" });
+            } else if (err.message?.includes('permission-denied')) {
+                toast({ variant: 'destructive', title: 'ไม่มีสิทธิ์เข้าถึง', description: `คุณไม่มีสิทธิ์เข้าถึงข้อมูล${type === 'AR' ? 'ลูกหนี้' : 'เจ้าหนี้'}` });
             } else {
-                toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: "ไม่มีสิทธิ์เข้าถึงข้อมูลลูกหนี้/เจ้าหนี้ หรือการดึงข้อมูลถูกปฏิเสธ" });
+                toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: err.message });
             }
         });
 
         return () => unsubscribe();
-    }, [obligationsQuery, toast, retry, type]);
+    }, [obligationsQuery, toast, type]);
 
     const filteredObligations = useMemo(() => {
         if (!searchTerm) return obligations;
