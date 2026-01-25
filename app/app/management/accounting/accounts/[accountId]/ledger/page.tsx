@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
 import { DateRange } from "react-day-picker";
@@ -51,23 +51,26 @@ export default function AccountLedgerPage() {
             setLoading(true);
             setError(null);
             try {
-                const entriesQuery = query(collection(db, 'accountingEntries'), where('accountId', '==', accountId), orderBy('entryDate', 'asc'));
+                // Query without ordering to avoid needing a composite index
+                const entriesQuery = query(collection(db, 'accountingEntries'), where('accountId', '==', accountId));
+                const accountDocRef = doc(db, 'accountingAccounts', accountId);
 
                 const [accountSnap, entriesSnap] = await Promise.all([
-                    getDocs(query(collection(db, 'accountingAccounts'), where('__name__', '==', accountId))),
+                    getDoc(accountDocRef),
                     getDocs(entriesQuery),
                 ]);
 
-                if (accountSnap.empty) {
+                if (!accountSnap.exists()) {
                     throw new Error("ไม่พบบัญชีที่ระบุ");
                 }
-                setAccount({ id: accountSnap.docs[0].id, ...accountSnap.docs[0].data() } as WithId<AccountingAccount>);
+                setAccount({ id: accountSnap.id, ...accountSnap.data() } as WithId<AccountingAccount>);
                 
                 const entriesData = entriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingEntry>));
                 setEntries(entriesData);
 
             } catch (e: any) {
-                setError(e.message);
+                console.error("Failed to load ledger data:", e);
+                setError(e.message || "ไม่สามารถโหลดสมุดบัญชีได้");
             } finally {
                 setLoading(false);
             }
@@ -79,11 +82,12 @@ export default function AccountLedgerPage() {
     const processedData = useMemo(() => {
         if (!account) return { items: [], totals: { totalIncome: 0, totalExpense: 0, periodEndBalance: 0 }, periodStartingBalance: 0 };
     
+        // Client-side sorting
         const sortedAllEntries = [...entries].sort((a, b) => {
             const dateA = parseISO(a.entryDate).getTime();
             const dateB = parseISO(b.entryDate).getTime();
             if (dateA !== dateB) return dateA - dateB;
-             if (a.createdAt && b.createdAt && a.createdAt.toMillis && b.createdAt.toMillis) {
+            if (a.createdAt && b.createdAt && a.createdAt.toMillis && b.createdAt.toMillis) {
               return a.createdAt.toMillis() - b.createdAt.toMillis();
             }
             return 0;
@@ -93,6 +97,7 @@ export default function AccountLedgerPage() {
     
         let periodStartingBalance = account.openingBalance ?? 0;
         
+        // Calculate starting balance based on entries before the selected date range
         if (dateRange?.from) {
              sortedAllEntries.forEach(entry => {
                 const entryDate = parseISO(entry.entryDate);
@@ -106,6 +111,7 @@ export default function AccountLedgerPage() {
             });
         }
     
+        // Client-side filtering
         const visibleEntries = sortedAllEntries.filter(entry => {
             const entryDate = parseISO(entry.entryDate);
             const isInRange = dateRange?.from && dateRange?.to ? (entryDate >= dateRange.from && entryDate <= dateRange.to) : true;
