@@ -57,6 +57,7 @@ interface JobListProps {
   emptyTitle?: string;
   emptyDescription?: string;
   children?: React.ReactNode;
+  hideQuotationButton?: boolean;
 }
 
 const getStatusVariant = (status: Job['status']) => {
@@ -88,7 +89,8 @@ export function JobList({
   limit: limitProp,
   emptyTitle = "No Jobs Found",
   emptyDescription = "There are no jobs that match the current criteria.",
-  children
+  children,
+  hideQuotationButton = false,
 }: JobListProps) {
   const { db } = useFirebase();
   const { profile } = useAuth();
@@ -603,7 +605,7 @@ export function JobList({
                 {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
               </Button>
             )}
-            {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && (
+            {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
               <Button asChild variant="default" className="w-full">
                 <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
                   <Receipt />
