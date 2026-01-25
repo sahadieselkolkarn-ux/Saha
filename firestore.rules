@@ -39,6 +39,7 @@ service cloud.firestore {
 
     // -------------------------
     // Default: readable (signed-in), writable: deny
+    // This rule secures the database by default. Specific write rules must be explicitly defined below.
     // -------------------------
     match /{document=**} {
       allow read: if signedIn();
@@ -46,9 +47,15 @@ service cloud.firestore {
     }
 
     // -------------------------
-    // Profiles (ถ้ามีใช้)
+    // Profiles (if used)
+    // Users can edit their own profiles. Admins can edit any.
     // -------------------------
-    match /userProfiles/{uid} {
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow delete: if isAdmin();
+    }
+     match /userProfiles/{uid} {
       allow read: if signedIn();
       allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow delete: if isAdmin();
@@ -58,14 +65,10 @@ service cloud.firestore {
       allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow delete: if isAdmin();
     }
-    match /users/{uid} {
-      allow read: if signedIn();
-      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow delete: if isAdmin();
-    }
 
     // -------------------------
     // Settings
+    // Only Admins can change application-wide settings.
     // -------------------------
     match /settings/{docId} {
       allow read: if signedIn();
@@ -73,22 +76,23 @@ service cloud.firestore {
     }
 
     // -------------------------
-    // Customers / Vendors (ให้ระบบใช้งานทั่วไปไม่พัง)
+    // Customers / Vendors
     // -------------------------
     match /customers/{id} {
       allow read: if signedIn();
-      allow create, update: if isAdmin() || isMgmt();
+      allow create, update: if isAdmin() || isMgmt() || (signedIn() && dept() == "OFFICE");
       allow delete: if isAdmin();
     }
     match /vendors/{id} {
       allow read: if signedIn();
-      allow create, update: if isAdmin() || isMgmt();
+      allow create, update: if isAdmin() || isMgmt() || (signedIn() && dept() == "OFFICE");
       allow delete: if isAdmin();
     }
 
     // -------------------------
     // Jobs + subcollection activities
-    // (ยังเปิดให้ signed-in เขียนได้ เพื่อไม่ให้ flow งานซ่อมพังในระหว่างปรับบัญชี)
+    // Any signed-in user can create/update jobs and activities to maintain workflow integrity.
+    // Deletion is restricted to Admins.
     // -------------------------
     match /jobs/{jobId} {
       allow read: if signedIn();
@@ -108,62 +112,99 @@ service cloud.firestore {
     match /documents/{docId} {
       allow read: if signedIn();
 
-      // สร้างเอกสารได้: ออฟฟิศ/บริหาร/แอดมิน (MVP)
-      allow create: if signedIn();
+      // Office, Management, and Admins can create documents.
+      allow create: if isAdmin() || isMgmt() || (signedIn() && dept() == "OFFICE");
 
-      // แก้ไขเอกสาร:
-      // - ถ้าเป็น draft ใครสร้างก็แก้ได้ (MVP) แต่ "ห้ามแก้ docNo"
-      // - สถานะ PAID/ฟิลด์การเงิน: เฉพาะ finance
+      // Update rules:
+      // - Drafts can be edited, but docNo is immutable after creation.
+      // - Only financial roles can update payment status or financial fields.
       allow update: if (
         (resource.data.status == "DRAFT" && request.resource.data.docNo == resource.data.docNo)
-        || isFinance()
+        || isFinance() || isAdmin()
       );
 
       allow delete: if isAdmin();
     }
 
     match /documentCounters/{yearId} {
-      allow read: if signedIn();
-      // allow เฉพาะเพื่อออกเลขเอกสาร (ใช้ใน transaction createDocument)
-      allow create, update: if signedIn();
+      // Allow writes for transactional document number generation.
+      allow read, create, update: if signedIn();
       allow delete: if isAdmin();
     }
 
     // -------------------------
-    // Payment Claims (รอตรวจสอบรายรับ)
+    // Payment Claims (Incoming Payment Verification)
     // -------------------------
-    match /paymentClaims/{id} {
-      allow read: if isFinance();
+    match /paymentClaims/{claimId} {
+      // Only financial roles can view claims.
+      allow read: if isFinance() || isAdmin();
 
-      // ผู้แจ้งรับเงิน (ออฟฟิศ) สร้างได้
-      allow create: if signedIn();
+      // Office can create claims when a customer pays.
+      allow create: if signedIn() && dept() == "OFFICE";
 
-      // อนุมัติ/ตีกลับ/แก้ข้อมูลรับเงิน: เฉพาะ finance
-      allow update: if isFinance();
+      // Only financial roles can approve, reject, or update claims.
+      allow update: if isFinance() || isAdmin();
 
       allow delete: if isAdmin();
     }
 
     // -------------------------
-    // Accounting (แกนบัญชี)
+    // Core Accounting Collections
+    // These collections are the source of truth for financials.
     // -------------------------
     match /accountingAccounts/{id} {
-      allow read: if isFinance();
-      allow create, update: if isFinance();
+      allow read, create, update: if isFinance() || isAdmin();
       allow delete: if isAdmin();
     }
 
     match /accountingEntries/{id} {
-      allow read: if isFinance();
-      allow create: if isFinance();
-      // immutable สำหรับคนทั่วไป
+      // Read access for financial roles.
+      allow read: if isFinance() || isAdmin();
+      // Creation is allowed for financial roles (e.g., manual cash-out).
+      allow create: if isFinance() || isAdmin();
+      // Entries are immutable for data integrity. Only Admins can override.
       allow update, delete: if isAdmin();
     }
 
     match /accountingObligations/{id} {
-      allow read: if isFinance();
-      allow create, update: if isFinance();
+      allow read, create, update: if isFinance() || isAdmin();
       allow delete: if isAdmin();
+    }
+    
+    // HR collections for leave and holidays.
+    match /hrHolidays/{holidayId} {
+      allow read: if signedIn();
+      allow write: if isMgmt();
+    }
+    
+    match /hrLeaves/{leaveId} {
+      allow read: if signedIn();
+      allow create: if request.auth.uid == request.resource.data.userId;
+      allow update: if isMgmt() || (request.auth.uid == resource.data.userId && request.resource.data.status == "CANCELLED");
+    }
+    
+    match /hrAttendanceAdjustments/{adjustmentId} {
+      allow read: if signedIn();
+      allow write: if isMgmt();
+    }
+    
+    match /payrollRuns/{runId} {
+      allow read, write: if isMgmt();
+      match /payslips/{payslipId} {
+        allow read: if isMgmt() || request.auth.uid == payslipId;
+        allow write: if isMgmt() || (request.auth.uid == payslipId && request.resource.data.employeeStatus != resource.data.employeeStatus);
+      }
+    }
+    
+    // Attendance and Kiosk tokens
+    match /attendance/{attendanceId} {
+        allow read: if signedIn();
+        allow create: if signedIn();
+        allow write: if isMgmt();
+    }
+    
+    match /kioskTokens/{tokenId} {
+        allow read, write: if signedIn();
     }
   }
 }
