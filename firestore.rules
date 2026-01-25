@@ -9,21 +9,12 @@ service cloud.firestore {
       return signedIn() && request.auth.token.email == "sahadieselkolkarn@gmail.com";
     }
 
-    // Try custom claims first; fallback to common profile collections.
+    // Get user role and department from the /users collection
     function roleFromProfile() {
-      return
-        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role :
-        exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role :
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role :
-        null;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
-
     function deptFromProfile() {
-      return
-        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.department :
-        exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.department :
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department :
-        null;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.department;
     }
 
     function role() { return request.auth.token.role != null ? request.auth.token.role : roleFromProfile(); }
@@ -31,10 +22,10 @@ service cloud.firestore {
 
     function isAdmin() { return isSystemAdmin() || (signedIn() && role() == "ADMIN"); }
     function isMgmt()  { return isAdmin() || (signedIn() && dept() == "MANAGEMENT"); }
-
-    // ปรับชื่อแผนกการเงินให้ตรง constants ของโปรเจค ถ้ายังไม่มี ให้ MANAGEMENT ทำหน้าที่แทนไปก่อน
-    function isFinance() {
-      return isAdmin() || isMgmt() || (signedIn() && (dept() == "FINANCE" || dept() == "ACCOUNTING"));
+    
+    // Helper function for accounting permissions
+    function isAccountingAllowed() {
+      return isAdmin() || isMgmt();
     }
 
     // -------------------------
@@ -47,8 +38,7 @@ service cloud.firestore {
     }
 
     // -------------------------
-    // Profiles (if used)
-    // Users can edit their own profiles. Admins can edit any.
+    // Profiles - Users can edit their own profiles. Admins can edit any.
     // -------------------------
     match /users/{uid} {
       allow read: if signedIn();
@@ -67,8 +57,7 @@ service cloud.firestore {
     }
 
     // -------------------------
-    // Settings
-    // Only Admins can change application-wide settings.
+    // Settings - Only Admins can change application-wide settings.
     // -------------------------
     match /settings/{docId} {
       allow read: if signedIn();
@@ -92,7 +81,6 @@ service cloud.firestore {
     // -------------------------
     // Jobs + subcollection activities
     // Any signed-in user can create/update jobs and activities to maintain workflow integrity.
-    // Deletion is restricted to Admins.
     // -------------------------
     match /jobs/{jobId} {
       allow read: if signedIn();
@@ -111,67 +99,50 @@ service cloud.firestore {
     // -------------------------
     match /documents/{docId} {
       allow read: if signedIn();
-
-      // Office, Management, and Admins can create documents.
-      allow create: if isAdmin() || isMgmt() || (signedIn() && dept() == "OFFICE");
-
-      // Update rules:
-      // - Drafts can be edited, but docNo is immutable after creation.
-      // - Only financial roles can update payment status or financial fields.
+      allow create: if signedIn();
       allow update: if (
         (resource.data.status == "DRAFT" && request.resource.data.docNo == resource.data.docNo)
-        || isFinance() || isAdmin()
+        || isAccountingAllowed()
       );
-
       allow delete: if isAdmin();
     }
 
     match /documentCounters/{yearId} {
-      // Allow writes for transactional document number generation.
       allow read, create, update: if signedIn();
       allow delete: if isAdmin();
     }
-
+    
     // -------------------------
-    // Payment Claims (Incoming Payment Verification)
+    // Payment Claims (รอตรวจสอบรายรับ)
     // -------------------------
-    match /paymentClaims/{claimId} {
-      // Only financial roles can view claims.
-      allow read: if isFinance() || isAdmin();
-
-      // Office can create claims when a customer pays.
-      allow create: if signedIn() && dept() == "OFFICE";
-
-      // Only financial roles can approve, reject, or update claims.
-      allow update: if isFinance() || isAdmin();
-
+    match /paymentClaims/{id} {
+      allow read: if isAccountingAllowed();
+      allow create: if signedIn();
+      allow update: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
 
     // -------------------------
-    // Core Accounting Collections
-    // These collections are the source of truth for financials.
+    // Accounting (แกนบัญชี)
     // -------------------------
     match /accountingAccounts/{id} {
-      allow read, create, update: if isFinance() || isAdmin();
+      allow read, write: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
 
     match /accountingEntries/{id} {
-      // Read access for financial roles.
-      allow read: if isFinance() || isAdmin();
-      // Creation is allowed for financial roles (e.g., manual cash-out).
-      allow create: if isFinance() || isAdmin();
-      // Entries are immutable for data integrity. Only Admins can override.
-      allow update, delete: if isAdmin();
+      allow read, create: if isAccountingAllowed();
+      allow update, delete: if isAdmin(); // immutable for data integrity. Only Admins can override.
     }
 
     match /accountingObligations/{id} {
-      allow read, create, update: if isFinance() || isAdmin();
+      allow read, write: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
     
-    // HR collections for leave and holidays.
+    // -------------------------
+    // HR collections
+    // -------------------------
     match /hrHolidays/{holidayId} {
       allow read: if signedIn();
       allow write: if isMgmt();
@@ -196,7 +167,9 @@ service cloud.firestore {
       }
     }
     
+    // -------------------------
     // Attendance and Kiosk tokens
+    // -------------------------
     match /attendance/{attendanceId} {
         allow read: if signedIn();
         allow create: if signedIn();
