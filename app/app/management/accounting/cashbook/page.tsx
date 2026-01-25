@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DateRange } from "react-day-picker";
-import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
-import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs } from "firebase/firestore";
+import { format, startOfMonth, endOfMonth, parseISO, isBefore, isAfter } from "date-fns";
+import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -15,7 +16,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useCollection, WithId } from "@/firebase/firestore/use-collection";
 import { cn } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
-import { searchVendors } from "@/firebase/vendors";
 import type { AccountingAccount, AccountingEntry, Vendor } from "@/lib/types";
 
 import { PageHeader } from "@/components/page-header";
@@ -51,27 +51,24 @@ const entrySchema = z.object({
 
 type EntryFormData = z.infer<typeof entrySchema>;
 
-function VendorCombobox({ onSelect }: { onSelect: (vendor: WithId<Vendor> | null) => void }) {
-  const { db } = useFirebase();
+function VendorCombobox({ allVendors, onSelect }: { allVendors: WithId<Vendor>[], onSelect: (vendor: WithId<Vendor> | null) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [vendors, setVendors] = useState<WithId<Vendor>[]>([]);
   const [selectedValue, setSelectedValue] = useState("");
 
-  const handleSearch = useCallback(async (searchText: string) => {
-    if (!db) return;
-    if (searchText.length < 2) {
-      setVendors([]);
-      return;
+  const filteredVendors = useMemo(() => {
+    if (!search) {
+      return allVendors;
     }
-    const results = await searchVendors(db, searchText);
-    setVendors(results);
-  }, [db]);
+    const lowerSearch = search.toLowerCase();
+    return allVendors.filter(vendor => 
+        vendor.shortName.toLowerCase().includes(lowerSearch) ||
+        vendor.companyName.toLowerCase().includes(lowerSearch) ||
+        vendor.phone?.includes(lowerSearch) ||
+        vendor.contactName?.toLowerCase().includes(lowerSearch)
+    );
+  }, [allVendors, search]);
 
-  useEffect(() => {
-    const handler = setTimeout(() => handleSearch(search), 300);
-    return () => clearTimeout(handler);
-  }, [search, handleSearch]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -90,10 +87,10 @@ function VendorCombobox({ onSelect }: { onSelect: (vendor: WithId<Vendor> | null
               <CommandItem onSelect={() => { onSelect(null); setSelectedValue(""); setOpen(false); }}>
                 -- ไม่มี --
               </CommandItem>
-              {vendors.map((vendor) => (
+              {filteredVendors.map((vendor) => (
                 <CommandItem
                   key={vendor.id}
-                  value={vendor.shortName}
+                  value={`${vendor.shortName} - ${vendor.companyName}`}
                   onSelect={() => {
                     onSelect(vendor);
                     setSelectedValue(vendor.shortName);
@@ -111,7 +108,7 @@ function VendorCombobox({ onSelect }: { onSelect: (vendor: WithId<Vendor> | null
   );
 }
 
-function AddEntryDialog({ entryType, accounts, onSaveSuccess }: { entryType: EntryType, accounts: WithId<AccountingAccount>[], onSaveSuccess: () => void }) {
+function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { entryType: EntryType, accounts: WithId<AccountingAccount>[], allVendors: WithId<Vendor>[], onSaveSuccess: () => void }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
@@ -183,14 +180,17 @@ function AddEntryDialog({ entryType, accounts, onSaveSuccess }: { entryType: Ent
             
             <FormItem>
               <FormLabel>คู่ค้า (ถ้ามี)</FormLabel>
-              <VendorCombobox onSelect={(vendor) => {
-                form.setValue('vendorId', vendor?.id);
-                form.setValue('vendorShortNameSnapshot', vendor?.shortName);
-                form.setValue('vendorNameSnapshot', vendor?.companyName);
-                if (vendor) {
-                    form.setValue('counterpartyNameSnapshot', '');
-                }
-              }}/>
+                <VendorCombobox
+                    allVendors={allVendors}
+                    onSelect={(vendor) => {
+                        form.setValue('vendorId', vendor?.id);
+                        form.setValue('vendorShortNameSnapshot', vendor?.shortName);
+                        form.setValue('vendorNameSnapshot', vendor?.companyName);
+                        if (vendor) {
+                            form.setValue('counterpartyNameSnapshot', '');
+                        }
+                    }}
+                />
             </FormItem>
             
             {isDebtorCreditor && (
@@ -226,6 +226,22 @@ function CashbookPageContent() {
   const accountsQuery = useMemo(() => db ? query(collection(db, "accountingAccounts"), where("isActive", "==", true)) : null, [db]);
   const { data: accounts, isLoading: isLoadingAccounts } = useCollection<WithId<AccountingAccount>>(accountsQuery);
   
+  const [allVendors, setAllVendors] = useState<WithId<Vendor>[]>([]);
+  const [isLoadingVendors, setIsLoadingVendors] = useState(true);
+
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "vendors"), orderBy("shortName", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const vendorsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<Vendor>));
+        // isActive !== false means true or undefined are considered active
+        const activeVendors = vendorsData.filter(v => v.isActive !== false);
+        setAllVendors(activeVendors);
+        setIsLoadingVendors(false);
+    });
+    return () => unsubscribe();
+  }, [db]);
+
   const entriesQuery = useMemo(() => {
     if (!db) return null;
     if (selectedAccountId === 'ALL') {
@@ -268,7 +284,7 @@ function CashbookPageContent() {
   if (!profile) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
   if (!hasPermission) return <PageHeader title="ไม่มีสิทธิ์เข้าถึง" description="หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น" />;
   
-  const isLoading = isLoadingAccounts || isLoadingEntries;
+  const isLoading = isLoadingAccounts || isLoadingEntries || isLoadingVendors;
 
   return (
     <>
@@ -303,7 +319,7 @@ function CashbookPageContent() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input placeholder="ค้นหาจากรายการ, เลขอ้างอิง, ชื่อคู่ค้า..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
                     </div>
-                    {accounts && <AddEntryDialog entryType={activeTab === 'in' ? 'CASH_IN' : 'CASH_OUT'} accounts={accounts} onSaveSuccess={() => {}} />}
+                    {accounts && <AddEntryDialog entryType={activeTab === 'in' ? 'CASH_IN' : 'CASH_OUT'} accounts={accounts} allVendors={allVendors} onSaveSuccess={() => {}} />}
                 </div>
             </CardHeader>
             <CardContent>
@@ -324,7 +340,7 @@ function CashbookPageContent() {
                         ) : filteredEntries.filter(e => activeTab === 'in' ? (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') : e.entryType === 'CASH_OUT').length > 0 ? (
                             filteredEntries.filter(e => activeTab === 'in' ? (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') : e.entryType === 'CASH_OUT').map(entry => {
                                 const accountName = accounts?.find(a => a.id === entry.accountId)?.name || entry.accountId;
-                                const counterparty = entry.vendorNameSnapshot || entry.customerNameSnapshot || entry.counterpartyNameSnapshot || '-';
+                                const counterparty = entry.vendorShortNameSnapshot || entry.customerNameSnapshot || entry.counterpartyNameSnapshot || '-';
                                 return (
                                     <TableRow key={entry.id}>
                                         <TableCell>{safeFormat(parseISO(entry.entryDate), 'dd/MM/yy')}</TableCell>
