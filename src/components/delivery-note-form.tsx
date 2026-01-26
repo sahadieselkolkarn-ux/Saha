@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy } from "firebase/firestore";
@@ -185,26 +185,18 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     name: "items",
   });
   
-  const watchedItems = form.watch("items");
-  const watchedDiscount = form.watch("discountAmount");
+  const watchedItems = useWatch({ control: form.control, name: "items" });
+  const watchedDiscount = useWatch({ control: form.control, name: "discountAmount" });
 
   useEffect(() => {
-    let subtotal = 0;
-    watchedItems.forEach((item, index) => {
-      const quantity = item.quantity || 0;
-      const unitPrice = item.unitPrice || 0;
-      const total = quantity * unitPrice;
-      form.setValue(`items.${index}.total`, total);
-      subtotal += total;
-    });
-
+    const subtotal = watchedItems.reduce((sum, item) => sum + (item.total || 0), 0);
     const discount = watchedDiscount || 0;
     const net = subtotal - discount;
     const grandTotal = net;
 
-    form.setValue("subtotal", subtotal);
-    form.setValue("net", net);
-    form.setValue("grandTotal", grandTotal);
+    form.setValue("subtotal", subtotal, { shouldValidate: true });
+    form.setValue("net", net, { shouldValidate: true });
+    form.setValue("grandTotal", grandTotal, { shouldValidate: true });
   }, [watchedItems, watchedDiscount, form]);
 
   const handleFetchFromQuotation = () => {
@@ -418,8 +410,52 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                 <TableRow key={field.id}>
                                     <TableCell>{index + 1}</TableCell>
                                     <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" disabled={isLocked} />)}/></TableCell>
-                                    <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
-                                    <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked}/>)}/></TableCell>
+                                    <TableCell>
+                                        <FormField
+                                            control={form.control}
+                                            name={`items.${index}.quantity`}
+                                            render={({ field }) => (
+                                            <Input
+                                                type="number"
+                                                inputMode="decimal"
+                                                placeholder="0"
+                                                className="text-right"
+                                                value={(field.value ?? 0) === 0 ? "" : field.value}
+                                                onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                                onChange={(e) => {
+                                                    const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
+                                                    field.onChange(newQuantity);
+                                                    const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
+                                                    form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
+                                                }}
+                                                disabled={isLocked}
+                                            />
+                                            )}
+                                        />
+                                    </TableCell>
+                                    <TableCell>
+                                        <FormField
+                                            control={form.control}
+                                            name={`items.${index}.unitPrice`}
+                                            render={({ field }) => (
+                                            <Input
+                                                type="number"
+                                                inputMode="decimal"
+                                                placeholder="0.00"
+                                                className="text-right"
+                                                value={(field.value ?? 0) === 0 ? "" : field.value}
+                                                onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                                onChange={(e) => {
+                                                    const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
+                                                    field.onChange(newPrice);
+                                                    const quantity = form.getValues(`items.${index}.quantity`) || 0;
+                                                    form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
+                                                }}
+                                                disabled={isLocked}
+                                            />
+                                            )}
+                                        />
+                                    </TableCell>
                                     <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
                                     <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                                 </TableRow>
@@ -432,28 +468,23 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </Card>
 
           <Card>
-              <CardHeader><CardTitle className="text-base">3. หมายเหตุ</CardTitle></CardHeader>
-              <CardContent>
-                <FormField
-                  control={form.control}
-                  name="notes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-          </Card>
-          
-          <Card>
-              <CardHeader><CardTitle className="text-base">4. รายละเอียดเอกสาร</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">3. หมายเหตุ และรายละเอียด</CardTitle></CardHeader>
               <CardContent className="space-y-4">
+                  <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                   <div className="grid grid-cols-2 gap-4">
                       <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
-                      <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} className="text-right" disabled={isLocked} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด</FormLabel><FormControl>
+                          <Input
+                                type="number"
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                className="text-right"
+                                value={(field.value ?? 0) === 0 ? "" : field.value}
+                                onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                                disabled={isLocked}
+                            />
+                      </FormControl></FormItem>)} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                       <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
