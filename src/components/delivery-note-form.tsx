@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -27,11 +26,13 @@ import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
+import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType, DocumentCounters, DocumentSettings, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { DeliveryAndPaymentDialog, type DeliveryAndPaymentData } from "./delivery-and-payment-dialog";
+import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "ต้องกรอกรายละเอียด"),
@@ -207,6 +208,18 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         form.setValue('senderName', profile.displayName || '');
     }
   }, [job, docToEdit, profile, form]);
+
+  const filteredCustomers = useMemo(() => {
+    const list = Array.isArray(customers) ? customers : [];
+    const q = (customerSearch ?? "").trim().toLowerCase();
+    if (!q) return list;
+  
+    return list.filter((c: any) => {
+      const name = String(c.name ?? "").toLowerCase();
+      const phone = String(c.phone ?? "").toLowerCase();
+      return name.includes(q) || phone.includes(q);
+    });
+  }, [customers, customerSearch]);
   
   const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
@@ -301,94 +314,42 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     };
     
     try {
+        let docIdToClaim: string;
         if (isEditing && editDocId) {
-            const batch = writeBatch(db);
             const docRef = doc(db, 'documents', editDocId);
-
-            batch.update(docRef, sanitizeForFirestore({ ...documentDataPayload, status: 'PENDING_REVIEW', updatedAt: serverTimestamp() }));
-
-            // Handling payment claims will be done via a separate mechanism or requires docNo which we have here
-            // For now, let's assume we create a new set of claims, previous ones should be CANCELLED or handled by accounting.
-            // Simplified: we create claims on each save.
-            paymentDialogData.paymentLines.forEach(line => {
-                const claimRef = doc(collection(db, "paymentClaims"));
-                const { withholdingEnabled, withholdingAmount, amountReceived, ...restOfLine } = line;
-                batch.set(claimRef, sanitizeForFirestore({
-                  ...restOfLine,
-                  withholdingEnabled: withholdingEnabled || false,
-                  withholdingAmount: withholdingAmount || 0,
-                  amountReceived,
-                  cashReceived: amountReceived - (withholdingAmount || 0),
-                  status: 'PENDING',
-                  createdAt: serverTimestamp(),
-                  createdByUid: profile.uid,
-                  createdByName: profile.displayName,
-                  sourceDocId: editDocId,
-                  sourceDocNo: docToEdit.docNo,
-                  jobId: validatedData.jobId,
-                  customerNameSnapshot: customer.name,
-                  amountDue: validatedData.grandTotal,
-                }));
-            });
-            
-            await batch.commit();
-            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
-            router.push('/app/office/documents/delivery-note');
+            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, status:'PENDING_REVIEW', updatedAt: serverTimestamp() }));
+            docIdToClaim = editDocId;
         } else {
-            // New Document Creation
-            const year = new Date(validatedData.issueDate).getFullYear();
-            const counterRef = doc(db, 'documentCounters', String(year));
-            const docSettingsRef = doc(db, 'settings', 'documents');
-            const newDocRef = doc(collection(db, "documents"));
-            const docId = newDocRef.id;
-
-            await runTransaction(db, async (transaction) => {
-                const counterDoc = await transaction.get(counterRef);
-                const docSettingsDoc = await transaction.get(docSettingsRef);
-                if (!docSettingsDoc.exists()) throw new Error("Document settings not found.");
-                
-                const settingsData = docSettingsDoc.data() as DocumentSettings;
-                const prefix = settingsData.deliveryNotePrefix || 'DN';
-                
-                let currentCounters: Partial<DocumentCounters> = counterDoc.exists() ? counterDoc.data() : { year };
-                const newCount = (currentCounters.deliveryNote || 0) + 1;
-                
-                const generatedDocNo = validatedData.isBackfill && validatedData.manualDocNo
-                  ? validatedData.manualDocNo
-                  : `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
-                  
-                const newDocumentData = {
-                  ...documentDataPayload,
-                  id: docId,
-                  docNo: generatedDocNo,
-                  docType: 'DELIVERY_NOTE' as DocType,
-                  status: 'PENDING_REVIEW',
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
-                };
-                transaction.set(newDocRef, sanitizeForFirestore(newDocumentData));
-
-                if (!validatedData.isBackfill) {
-                  transaction.set(counterRef, { ...currentCounters, deliveryNote: newCount }, { merge: true });
-                }
-
-                paymentDialogData.paymentLines.forEach(line => {
-                  const claimRef = doc(collection(db, "paymentClaims"));
-                  // ... create claim data ...
-                  const { withholdingEnabled, withholdingAmount, amountReceived, ...restOfLine } = line;
-                  transaction.set(claimRef, sanitizeForFirestore({ /* claim data */}));
-                });
-                
-                // createAR logic if needed
-
-                if (validatedData.jobId) {
-                  const jobRef = doc(db, 'jobs', validatedData.jobId);
-                  transaction.update(jobRef, { status: 'WAITING_CUSTOMER_PICKUP', lastActivityAt: serverTimestamp() });
-                }
-            });
-            toast({ title: "สร้างใบส่งของแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
-            router.push('/app/office/documents/delivery-note');
+            const options = {
+                ...(validatedData.isBackfill && { manualDocNo: validatedData.manualDocNo }),
+                initialStatus: 'PENDING_REVIEW',
+            };
+            const { docId } = await createDocument(
+                db,
+                'DELIVERY_NOTE',
+                documentDataPayload,
+                profile,
+                validatedData.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
+                options
+            );
+            docIdToClaim = docId;
         }
+
+        try {
+            await ensurePaymentClaimForDocument(db, docIdToClaim, profile);
+        } catch (claimError: any) {
+            console.error("Failed to ensure payment claim, but document was saved:", claimError);
+            toast({
+                variant: 'default',
+                title: "บันทึกเอกสารสำเร็จ (แต่ส่งตรวจอาจไม่สำเร็จ)",
+                description: "กรุณาตรวจสอบหน้า Inbox หรือกด 'ส่งเข้ารอตรวจสอบ' ที่หน้าเอกสารอีกครั้ง",
+                duration: 10000,
+            });
+        }
+        
+        toast({ title: isEditing ? "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" : "สร้างใบส่งของแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+        router.push('/app/office/documents/delivery-note');
+
     } catch(e: any) {
         toast({ variant: 'destructive', title: 'Error saving document', description: e.message });
     } finally {
@@ -452,9 +413,13 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                     <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-60">
-                                    {filteredCustomers.map(c => (
-                                        <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
-                                    ))}
+                                    {filteredCustomers.length > 0 ? (
+                                        filteredCustomers.map(c => (
+                                            <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
+                                        ))
+                                    ) : (
+                                        <p className="text-center text-sm text-muted-foreground p-4">No customers found.</p>
+                                    )}
                                 </ScrollArea>
                             </PopoverContent>
                         </Popover>
