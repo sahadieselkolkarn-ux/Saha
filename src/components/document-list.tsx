@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { safeFormat } from '@/lib/date-utils';
 import type { Document, DocType } from "@/lib/types";
+import { docStatusLabel } from "@/lib/ui-labels";
 
 interface DocumentListProps {
   docType: DocType;
@@ -141,6 +142,15 @@ export function DocumentList({ docType }: DocumentListProps) {
     }
   };
 
+  const getStatusVariant = (status?: string) => {
+    switch(status) {
+        case 'PAID': return 'default';
+        case 'CANCELLED': return 'destructive';
+        case 'DRAFT':
+        default: return 'secondary';
+    }
+  }
+
 
   return (
     <>
@@ -191,7 +201,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>
                       <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
                       <TableCell>{docItem.customerSnapshot.name}</TableCell>
-                      <TableCell><Badge variant={docItem.status === 'CANCELLED' ? 'outline' : docItem.status === 'PAID' ? 'default' : 'secondary'}>{docItem.status}</Badge></TableCell>
+                      <TableCell><Badge variant={getStatusVariant(docItem.status)}>{docStatusLabel(docItem.status)}</Badge></TableCell>
                       <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>

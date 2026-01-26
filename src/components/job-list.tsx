@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck } from "lucide-react";
 import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
-import { JOB_STATUS_DISPLAY } from "@/lib/constants";
+import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -609,10 +609,10 @@ export function JobList({
           <CardHeader>
             <div className="flex justify-between items-start">
               <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-              <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{JOB_STATUS_DISPLAY[job.status]}</Badge>
+              <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{jobStatusLabel(job.status)}</Badge>
             </div>
             <CardDescription>
-              Dept: {job.department}
+              {deptLabel(job.department)}
               {job.assigneeName && <span className="font-medium"> • {job.assigneeName}</span>}
               <br />
               Last update: {safeFormat(job.lastActivityAt, 'PP')}

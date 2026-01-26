@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -13,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2, Undo2 } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
-import { JOB_STATUS_DISPLAY } from "@/lib/constants";
+import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -346,10 +347,10 @@ export function JobTableList({
                       {filteredJobs.map(job => (
                           <TableRow key={job.id}>
                               <TableCell className="font-medium">{job.customerSnapshot.name}</TableCell>
-                              <TableCell>{job.department}</TableCell>
+                              <TableCell>{deptLabel(job.department)}</TableCell>
                               <TableCell className="max-w-xs truncate">{job.description}</TableCell>
                               <TableCell>
-                                  <Badge variant={getStatusVariant(job.status)}>{JOB_STATUS_DISPLAY[job.status]}</Badge>
+                                  <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
                               </TableCell>
                               <TableCell>{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
                               <TableCell className="text-right">
