@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -29,12 +30,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 
 export async function generateKioskToken(db: Firestore, previousTokenId?: string | null) {
   const batch = writeBatch(db);
-  
-  // Deactivate the previous token if it exists
-  if (previousTokenId) {
-    const oldTokenRef = doc(db, "kioskTokens", previousTokenId);
-    batch.set(oldTokenRef, { isActive: false }, { merge: true });
-  }
 
   // Create a new token
   const newTokenId = generateToken();
