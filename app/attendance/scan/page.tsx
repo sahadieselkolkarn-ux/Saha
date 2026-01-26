@@ -1,7 +1,6 @@
-
 "use client";
 
-import { Suspense, useRef, useCallback, useState, useEffect } from 'react';
+import { Suspense, useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
 import { BrowserMultiFormatReader, IScannerControls, NotFoundException } from '@zxing/browser';
@@ -63,9 +62,12 @@ function ScanPageContent() {
 
   const resetScanner = useCallback(() => {
     try {
-      if (controls) controls.stop();
+      if (controls) {
+        controls.stop();
+        setControls(null);
+      }
     } catch (e) {
-      // It might throw if the stream is already stopped, ignore.
+      console.warn("Error stopping scanner controls:", e);
     }
     
     try {
@@ -73,7 +75,7 @@ function ScanPageContent() {
         readerRef.current.reset();
       }
     } catch (e) {
-      // Ignore reset errors.
+      console.warn("Error resetting scanner reader:", e);
     }
   }, [controls]);
 
@@ -93,6 +95,7 @@ function ScanPageContent() {
 
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
+                await videoRef.current.play(); // Ensure video starts playing
             }
 
             setHasPermission(true);
@@ -114,7 +117,10 @@ function ScanPageContent() {
                 setScannerError("Camera access was denied. Please enable it in your browser settings.");
             } else if (err.name === 'NotFoundError') {
                 setScannerError("No camera found. Please ensure a camera is connected.");
-            } else {
+            } else if (err.name === 'NotReadableError') {
+                setScannerError("Camera is already in use by another application.");
+            }
+            else {
                 setScannerError(`An unexpected error occurred: ${err.name}`);
             }
             console.error("Camera access error:", err);
@@ -131,8 +137,7 @@ function ScanPageContent() {
             stream.getTracks().forEach(track => track.stop());
         }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kioskToken]);
+  }, [kioskToken, resetScanner]);
 
   useEffect(() => {
     if (!selectedDeviceId || !videoRef.current || kioskToken) return;
@@ -144,9 +149,9 @@ function ScanPageContent() {
     let isCancelled = false;
 
     const startDecoding = async () => {
+        setIsScanning(true);
         try {
-            const newControls = await reader.decodeFromVideoDevice(
-                selectedDeviceId,
+            const newControls = await reader.decodeFromVideoElement(
                 videoRef.current,
                 (result, error, innerControls) => {
                     if (isCancelled || !result) return;
@@ -174,15 +179,26 @@ function ScanPageContent() {
             // Check for torch support
             const stream = newControls.stream;
             const track = stream.getVideoTracks()[0];
-            const capabilities = track.getCapabilities();
-            setTorchSupported(!!capabilities.torch);
-            if (!capabilities.torch) {
-                setTorchOn(false);
+            if (track && 'getCapabilities' in track) {
+                const capabilities = track.getCapabilities();
+                setTorchSupported(!!capabilities.torch);
+                if (!capabilities.torch) {
+                    setTorchOn(false);
+                }
+            } else {
+                setTorchSupported(false);
             }
-
         } catch(err) {
-            console.error("ZXing decode start error:", err);
-            setScannerError("Failed to start scanner with the selected camera.");
+            if (err instanceof NotFoundException) {
+                console.warn("No QR code found in frame, continuing scan.");
+            } else {
+                console.error("ZXing decode start error:", err);
+                setScannerError("Failed to start scanner with the selected camera.");
+            }
+        } finally {
+            if(!isCancelled) {
+              setIsScanning(false);
+            }
         }
     };
     
@@ -192,8 +208,7 @@ function ScanPageContent() {
       isCancelled = true;
       resetScanner();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDeviceId, router, toast, kioskToken]);
+  }, [selectedDeviceId, router, toast, kioskToken, resetScanner]);
 
 
   const toggleTorch = useCallback(() => {
@@ -365,8 +380,8 @@ function ScanPageContent() {
         <div className="flex flex-col items-center gap-4">
           <Card className="w-full max-w-md">
             <CardContent className="p-2">
-                <div className="aspect-square w-full bg-muted rounded-md overflow-hidden flex items-center justify-center relative">
-                    <video ref={videoRef} className="w-full h-full object-cover bg-black" autoPlay muted playsInline />
+                <div className="aspect-square w-full bg-muted rounded-xl overflow-hidden flex items-center justify-center relative">
+                    <video ref={videoRef} className="w-full h-full object-cover bg-black rounded-xl" autoPlay playsInline muted />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="w-64 h-64 border-4 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
                     </div>
