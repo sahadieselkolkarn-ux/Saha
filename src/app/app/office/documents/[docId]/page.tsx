@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, ArrowLeft, Printer, ExternalLink, Send, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
@@ -35,6 +36,21 @@ function DocumentView({ document }: { document: Document }) {
 
     return (
         <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
+            {document.status === 'PENDING_REVIEW' && document.reviewRejectReason && (
+                <Alert variant="destructive" className="mb-6 print-hidden">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>
+                    รายการถูกตีกลับโดยฝ่ายบัญชี
+                    {document.reviewRejectedByName && ` (โดย ${document.reviewRejectedByName})`}
+                    {document.reviewRejectedAt && ` - ${safeFormat(document.reviewRejectedAt, 'dd MMM yy HH:mm')}`}
+                    </AlertTitle>
+                    <AlertDescription>
+                    <strong>เหตุผล:</strong> {document.reviewRejectReason}
+                    <br />
+                    กรุณาแก้ไขเอกสารแล้วกด "บันทึกและส่งตรวจ" อีกครั้ง
+                    </AlertDescription>
+                </Alert>
+            )}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <div className="lg:col-span-2 space-y-2">
                     {isDeliveryNote ? (

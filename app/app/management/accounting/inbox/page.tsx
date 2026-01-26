@@ -111,10 +111,11 @@ function ApproveClaimDialog({ claim, accounts, onClose, onConfirm }: { claim: Wi
 function RejectClaimDialog({ claim, onClose, onConfirm }: { claim: WithId<PaymentClaim>, onClose: () => void, onConfirm: (reason: string) => Promise<void> }) {
   const [reason, setReason] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
   
   const handleSubmit = async () => {
     if (!reason) {
-      alert("กรุณากรอกเหตุผล");
+      toast({ variant: 'destructive', title: "กรุณากรอกเหตุผล" });
       return;
     }
     setIsLoading(true);
@@ -344,15 +345,30 @@ export default function AccountingInboxPage() {
   const handleRejectConfirm = async (reason: string) => {
     if (!db || !profile || !rejectingClaim) return;
     
-    const claimRef = doc(db, "paymentClaims", rejectingClaim.id);
     try {
-      await writeBatch(db).update(claimRef, {
-          status: "REJECTED",
-          rejectedAt: serverTimestamp(),
-          rejectedByUid: profile.uid,
-          rejectedByName: profile.displayName,
-          rejectReason: reason,
-      }).commit();
+      const batch = writeBatch(db);
+      const claimRef = doc(db, "paymentClaims", rejectingClaim.id);
+      const sourceDocRef = doc(db, "documents", rejectingClaim.sourceDocId);
+
+      // 1. Update Payment Claim
+      batch.update(claimRef, {
+        status: "REJECTED",
+        rejectedAt: serverTimestamp(),
+        rejectedByUid: profile.uid,
+        rejectedByName: profile.displayName,
+        rejectReason: reason,
+      });
+
+      // 2. Update Source Document
+      batch.update(sourceDocRef, {
+        status: 'PENDING_REVIEW',
+        reviewRejectReason: reason,
+        reviewRejectedAt: serverTimestamp(),
+        reviewRejectedByName: profile.displayName,
+        updatedAt: serverTimestamp()
+      });
+
+      await batch.commit();
       toast({ title: "ตีกลับรายการสำเร็จ" });
       setRejectingClaim(null);
     } catch(e: any) {

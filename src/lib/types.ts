@@ -322,6 +322,11 @@ export interface Document {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   
+  // Rejection fields
+  reviewRejectReason?: string;
+  reviewRejectedAt?: Timestamp;
+  reviewRejectedByName?: string;
+  
   // Doc-specific fields
   expiryDate?: string; // For Quotation
   dueDate?: string; // For TaxInvoice

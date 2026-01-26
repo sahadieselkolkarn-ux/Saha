@@ -203,7 +203,14 @@ export function DocumentList({ docType }: DocumentListProps) {
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>
                       <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
                       <TableCell>{docItem.customerSnapshot.name}</TableCell>
-                      <TableCell><Badge variant={getStatusVariant(docItem.status)}>{docStatusLabel(docItem.status)}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                            <Badge variant={getStatusVariant(docItem.status)}>{docStatusLabel(docItem.status)}</Badge>
+                            {docItem.status === 'PENDING_REVIEW' && docItem.reviewRejectReason && (
+                                <Badge variant="destructive">{docStatusLabel('REJECTED')}</Badge>
+                            )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
