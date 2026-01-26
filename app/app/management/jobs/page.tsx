@@ -1,7 +1,9 @@
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
@@ -9,15 +11,19 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, PlusCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ArrowRight, Loader2, PlusCircle, Search, FileImage } from "lucide-react";
 import type { Job, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { JOB_DEPARTMENTS } from "@/lib/constants";
+import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY } from "@/lib/constants";
 import { JobList } from "@/components/job-list";
 
-function AllJobsTab() {
+const isClosedStatus = (status?: Job['status']) => 
+    ["CLOSED", "DONE", "COMPLETED"].includes(String(status || "").toUpperCase());
+
+function AllJobsTab({ searchTerm }: { searchTerm: string }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -44,6 +50,19 @@ function AllJobsTab() {
     return () => unsubscribe();
   }, [db, toast]);
   
+  const visibleJobs = useMemo(() => {
+    let filtered = jobs.filter(j => !isClosedStatus(j.status));
+
+    const q = searchTerm.trim().toLowerCase();
+    if (q) {
+        filtered = filtered.filter(j =>
+            (j.customerSnapshot?.name || "").toLowerCase().includes(q) ||
+            (j.customerSnapshot?.phone || "").includes(q)
+        );
+    }
+    return filtered;
+  }, [jobs, searchTerm]);
+  
   const getStatusVariant = (status: Job['status']) => {
     switch (status) {
       case 'RECEIVED': return 'secondary';
@@ -58,11 +77,11 @@ function AllJobsTab() {
     <>
       {loading ? (
         <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
-      ) : jobs.length === 0 ? (
+      ) : visibleJobs.length === 0 ? (
         <Card className="text-center py-12">
             <CardHeader>
-                <CardTitle>No Jobs Found</CardTitle>
-                <CardDescription>There are no jobs to display.</CardDescription>
+                <CardTitle>{searchTerm ? "ไม่พบงานตามเงื่อนไขที่ค้นหา" : "No Ongoing Jobs Found"}</CardTitle>
+                <CardDescription>{searchTerm ? "ลองเปลี่ยนคำค้นหาของคุณ" : "There are currently no active jobs."}</CardDescription>
             </CardHeader>
             <CardContent>
                 <Button asChild>
@@ -72,12 +91,26 @@ function AllJobsTab() {
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {jobs.map(job => (
+          {visibleJobs.map(job => (
             <Card key={job.id} className="flex flex-col">
+              <div className="relative aspect-video w-full bg-muted">
+                {job.photos && job.photos.length > 0 ? (
+                    <Image
+                        src={job.photos[0]}
+                        alt={job.description || "Job image"}
+                        fill
+                        className="object-cover"
+                    />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                        <FileImage className="h-10 w-10 text-muted-foreground/50" />
+                    </div>
+                )}
+              </div>
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-                  <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{job.status}</Badge>
+                  <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{JOB_STATUS_DISPLAY[job.status]}</Badge>
                 </div>
                 <CardDescription>
                   {job.department} &bull; Last update: {safeFormat(job.lastActivityAt, 'PP')}
@@ -126,6 +159,7 @@ function JobsByDepartmentTab() {
       
       <JobList 
         department={selectedDepartment === 'ALL' ? undefined : selectedDepartment} 
+        excludeStatus={["CLOSED", "DONE", "COMPLETED"]}
         emptyTitle={selectedDepartment === 'ALL' ? 'ไม่มีงานในระบบ' : `ไม่พบงานในแผนก ${selectedDepartment}`}
         emptyDescription="ลองเลือกแผนกอื่น หรือสร้างงานใหม่"
       />
@@ -135,34 +169,44 @@ function JobsByDepartmentTab() {
 
 
 export default function ManagementJobsPage() {
+    const [searchTerm, setSearchTerm] = useState("");
+
     return (
         <>
             <PageHeader title="ภาพรวมงานซ่อม" description="จัดการงานทั้งหมดในที่เดียว">
-                 <Button asChild>
-                    <Link href="/app/office/intake">
-                        <PlusCircle className="mr-2 h-4 w-4" />
-                        New Job
-                    </Link>
-                </Button>
+                 <div className="flex items-center gap-2">
+                    <div className="relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            type="search"
+                            placeholder="ค้นหาชื่อ/เบอร์โทร..."
+                            className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[300px]"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <Button asChild>
+                        <Link href="/app/office/intake">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            New Job
+                        </Link>
+                    </Button>
+                </div>
             </PageHeader>
             <Tabs defaultValue="all" className="space-y-4">
-                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
+                <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="all">งานทั้งหมด</TabsTrigger>
                     <TabsTrigger value="by-department">แยกตามแผนก</TabsTrigger>
                     <TabsTrigger value="by-status">งานตามสถานะ</TabsTrigger>
-                    <TabsTrigger value="summary">สรุปวันนี้/สัปดาห์</TabsTrigger>
                 </TabsList>
                 <TabsContent value="all">
-                    <AllJobsTab />
+                    <AllJobsTab searchTerm={searchTerm}/>
                 </TabsContent>
                 <TabsContent value="by-department">
                     <JobsByDepartmentTab />
                 </TabsContent>
                 <TabsContent value="by-status">
                     <Card><CardHeader><CardTitle>งานตามสถานะ</CardTitle><CardDescription>ดูและจัดการงานทั้งหมดโดยแยกตามสถานะ</CardDescription></CardHeader><CardContent><p>Coming soon.</p></CardContent></Card>
-                </TabsContent>
-                <TabsContent value="summary">
-                    <Card><CardHeader><CardTitle>สรุปวันนี้/สัปดาห์</CardTitle><CardDescription>สรุปภาพรวมการดำเนินงานรายวันและรายสัปดาห์</CardDescription></CardHeader><CardContent><p>Coming soon.</p></CardContent></Card>
                 </TabsContent>
             </Tabs>
         </>
