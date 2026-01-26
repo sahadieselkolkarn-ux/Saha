@@ -13,7 +13,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, FileDown } from "lucide-react";
@@ -45,7 +45,6 @@ const taxInvoiceFormSchema = z.object({
   jobId: z.string().optional(),
   customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1),
-  dueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "At least one item is required."),
   subtotal: z.coerce.number(),
   discountAmount: z.coerce.number().min(0).optional(),
@@ -102,7 +101,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     defaultValues: {
       jobId: jobId || undefined,
       issueDate: new Date().toISOString().split("T")[0],
-      dueDate: new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       isVat: true,
       isBackfill: false,
@@ -185,7 +183,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         jobId: docToEdit.jobId || undefined,
         customerId: docToEdit.customerId || docToEdit.customerSnapshot?.id || "",
         issueDate: docToEdit.docDate,
-        dueDate: docToEdit.dueDate || new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
         items: docToEdit.items.map(item => ({...item})),
         notes: docToEdit.notes ?? '',
         isVat: docToEdit.withTax,
@@ -310,7 +307,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         vatAmount: data.vatAmount,
         grandTotal: data.grandTotal,
         notes: data.notes,
-        dueDate: data.dueDate,
         senderName: data.senderName,
         receiverName: data.receiverName,
     };
@@ -419,7 +415,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 ) : (
                     <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="dueDate" render={({ field }) => (<FormItem><FormLabel>ครบกำหนดชำระ</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                     </div>
                 )}
             </CardContent>

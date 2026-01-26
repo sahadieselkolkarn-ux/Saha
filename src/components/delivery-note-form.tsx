@@ -45,7 +45,6 @@ const deliveryNoteFormSchema = z.object({
   jobId: z.string().optional(),
   customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1),
-  dueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   subtotal: z.coerce.number(),
   discountAmount: z.coerce.number().min(0).optional(),
@@ -100,7 +99,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     defaultValues: {
       jobId: jobId || undefined,
       issueDate: new Date().toISOString().split("T")[0],
-      dueDate: new Date(new Date().setDate(new Date().getDate() + 15)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       subtotal: 0,
       discountAmount: 0,
@@ -273,7 +271,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         const documentData = {
             customerId: data.customerId,
             docDate: data.issueDate,
+            jobId: data.jobId,
             customerSnapshot: { ...customerSnapshot },
+            carSnapshot: (job || docToEdit?.jobId) ? { licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, details: job?.description || docToEdit?.carSnapshot?.details } : {},
             storeSnapshot: { ...storeSettings },
             items: itemsForDoc,
             subtotal: data.subtotal, 
@@ -283,10 +283,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             vatAmount: 0,
             grandTotal: data.grandTotal,
             notes: data.notes,
-            dueDate: data.dueDate,
             senderName: data.senderName,
             receiverName: data.receiverName,
-            jobId: data.jobId,
         };
 
         let savedDocId: string;
