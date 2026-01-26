@@ -1,7 +1,7 @@
 
 "use client";
 
-import { Suspense, useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import { Suspense, useRef, useCallback, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
 import { BrowserMultiFormatReader, IScannerControls, NotFoundException } from '@zxing/browser';
@@ -42,6 +42,7 @@ function ScanPageContent() {
 
   // States for camera scanning
   const videoRef = useRef<HTMLVideoElement>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
@@ -60,17 +61,21 @@ function ScanPageContent() {
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
-  const codeReader = useMemo(() => new BrowserMultiFormatReader(), []);
-
   const resetScanner = useCallback(() => {
-    codeReader.reset();
-    if(controls) {
-      controls.stop();
+    try {
+      if (controls) controls.stop();
+    } catch (e) {
+      // It might throw if the stream is already stopped, ignore.
     }
-    setControls(null);
-    setScannerError(null);
-    setIsScanning(false);
-  }, [codeReader, controls]);
+    
+    try {
+      if (readerRef.current && typeof readerRef.current.reset === 'function') {
+        readerRef.current.reset();
+      }
+    } catch (e) {
+      // Ignore reset errors.
+    }
+  }, [controls]);
 
   // Effect for camera scanning when no token is present
   useEffect(() => {
@@ -80,19 +85,27 @@ function ScanPageContent() {
         setIsScanning(true);
         setScannerError(null);
         try {
+            // Get permissions and stream to show the user a preview
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: { ideal: "environment" } },
                 audio: false,
             });
 
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream;
+            }
+
             setHasPermission(true);
 
-            const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
+            // Now list devices
+            if (!readerRef.current) {
+                readerRef.current = new BrowserMultiFormatReader();
+            }
+            const videoInputDevices = await readerRef.current.listVideoInputDevices();
             setDevices(videoInputDevices);
 
-            const firstDevice = videoInputDevices[0];
-            if (firstDevice) {
-                setSelectedDeviceId(firstDevice.deviceId);
+            if (videoInputDevices.length > 0) {
+                setSelectedDeviceId(videoInputDevices[0].deviceId);
             }
 
         } catch (err: any) {
@@ -112,53 +125,58 @@ function ScanPageContent() {
 
     return () => {
         resetScanner();
+        // Also stop the preview stream tracks
+        if (videoRef.current?.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream;
+            stream.getTracks().forEach(track => track.stop());
+        }
     };
-  }, [kioskToken, resetScanner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kioskToken]);
 
   useEffect(() => {
     if (!selectedDeviceId || !videoRef.current || kioskToken) return;
     
+    if (!readerRef.current) {
+        readerRef.current = new BrowserMultiFormatReader();
+    }
+    const reader = readerRef.current;
     let isCancelled = false;
 
     const startDecoding = async () => {
-        resetScanner();
         try {
-            const newControls = await codeReader.decodeFromVideoDevice(
+            const newControls = await reader.decodeFromVideoDevice(
                 selectedDeviceId,
                 videoRef.current,
-                (result, error, controls) => {
-                    if (isCancelled) return;
-                    if (result) {
-                        isCancelled = true;
-                        controls.stop();
-                        setControls(null);
-                        setIsScanning(false);
-                        const url = result.getText();
-                        if (url.includes('/app/attendance/scan')) {
-                             router.push(url);
-                        } else {
-                            toast({variant: 'destructive', title: 'Invalid QR Code', description: 'This QR code is not for attendance.'});
-                             setTimeout(() => {
-                                isCancelled = false;
-                                startDecoding();
-                            }, 2000);
-                        }
-                    }
-                    if (error && !(error instanceof NotFoundException)) {
-                        console.error('ZXing scan error:', error);
+                (result, error, innerControls) => {
+                    if (isCancelled || !result) return;
+                    
+                    isCancelled = true;
+                    innerControls.stop();
+                    setControls(null);
+                    setIsScanning(false);
+                    const url = result.getText();
+                    if (url.includes('/app/attendance/scan')) {
+                         router.push(url);
+                    } else {
+                        toast({variant: 'destructive', title: 'Invalid QR Code', description: 'This QR code is not for attendance.'});
+                         setTimeout(() => {
+                            if (document.hidden) return; // Don't restart if tab is not visible
+                            isCancelled = false;
+                            startDecoding();
+                        }, 2000);
                     }
                 }
             );
 
             setControls(newControls);
 
+            // Check for torch support
             const stream = newControls.stream;
             const track = stream.getVideoTracks()[0];
             const capabilities = track.getCapabilities();
-            if (capabilities.torch) {
-                setTorchSupported(true);
-            } else {
-                setTorchSupported(false);
+            setTorchSupported(!!capabilities.torch);
+            if (!capabilities.torch) {
                 setTorchOn(false);
             }
 
@@ -174,8 +192,8 @@ function ScanPageContent() {
       isCancelled = true;
       resetScanner();
     }
-
-  }, [selectedDeviceId, codeReader, router, toast, kioskToken, resetScanner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDeviceId, router, toast, kioskToken]);
 
 
   const toggleTorch = useCallback(() => {
@@ -348,7 +366,7 @@ function ScanPageContent() {
           <Card className="w-full max-w-md">
             <CardContent className="p-2">
                 <div className="aspect-square w-full bg-muted rounded-md overflow-hidden flex items-center justify-center relative">
-                    <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                    <video ref={videoRef} className="w-full h-full object-cover bg-black" autoPlay muted playsInline />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="w-64 h-64 border-4 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
                     </div>
@@ -374,7 +392,7 @@ function ScanPageContent() {
                 <AlertTitle>Camera Error</AlertTitle>
                 <AlertDescription>
                   {scannerError}
-                  <Button variant="link" onClick={() => {setScannerError(null); setHasPermission(null); router.refresh();}} className="p-0 h-auto ml-2">Retry</Button>
+                  <Button variant="link" onClick={() => window.location.reload()} className="p-0 h-auto ml-2">Retry</Button>
                 </AlertDescription>
               </Alert>
             )}
