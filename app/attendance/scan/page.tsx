@@ -17,9 +17,9 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, CameraOff, RefreshCw } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, CameraOff, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type { KioskToken } from '@/lib/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const SPAM_DELAY_SECONDS = 60;
 
@@ -29,6 +29,7 @@ interface LastAttendanceInfo {
 }
 
 type TokenStatus = "verifying" | "valid" | "invalid" | "missing";
+
 
 async function waitForVideoReady(video: HTMLVideoElement) {
   for (let i = 0; i < 60; i++) { // Approx 6 seconds timeout
@@ -52,12 +53,16 @@ function ScanPageContent() {
   // States for camera scanning
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const startingRef = useRef(false);
+  const startSeqRef = useRef(0);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   
   // States for token-based clock-in
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
@@ -70,7 +75,7 @@ function ScanPageContent() {
 
   const handleScannedText = useCallback((text: string) => {
     if (controlsRef.current) {
-      try { controlsRef.current.stop(); } catch(e) {}
+      controlsRef.current.stop();
       controlsRef.current = null;
     }
     if (streamRef.current) {
@@ -92,15 +97,23 @@ function ScanPageContent() {
   }, [router, toast]);
   
   const startScan = useCallback(async () => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    const seq = ++startSeqRef.current;
+    
+    // Cleanup previous instances
     if (controlsRef.current) {
-        try { controlsRef.current.stop(); } catch(e) {}
+        controlsRef.current.stop();
         controlsRef.current = null;
     }
     if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
     }
-
+    if(videoRef.current) {
+        videoRef.current.srcObject = null;
+    }
+    
     setIsScanning(true);
     setScannerError(null);
     setHasPermission(null);
@@ -110,6 +123,12 @@ function ScanPageContent() {
             video: { facingMode: { ideal: "environment" } },
             audio: false
         });
+
+        if (seq !== startSeqRef.current) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+        }
+
         streamRef.current = stream;
         setHasPermission(true);
 
@@ -117,18 +136,30 @@ function ScanPageContent() {
         if (!videoElement) throw new Error("Video element is not available.");
         
         videoElement.srcObject = stream;
-        videoElement.setAttribute("playsinline", "true");
-        videoElement.muted = true;
-        await videoElement.play();
+        
+        await Promise.resolve(); // Allow a microtask tick for srcObject to be processed
+        
+        try {
+            await videoElement.play();
+        } catch (e:any) {
+            const msg = String(e?.message ?? "");
+            if (msg.includes("interrupted") || e?.name === "AbortError") {
+                console.warn("video.play() was interrupted. This is expected if a new scan started.");
+                return;
+            } else {
+                throw e;
+            }
+        }
+        
         await waitForVideoReady(videoElement);
-
+        
+        if (seq !== startSeqRef.current) {
+            return;
+        }
+        
         const reader = readerRef.current ?? (readerRef.current = new BrowserMultiFormatReader());
         
         const newControls = await reader.decodeFromVideoElement(videoElement, (result, error) => {
-            if (result) {
-                handleScannedText(result.getText());
-            }
-
             const isNotFound =
               !!error &&
               (
@@ -136,39 +167,47 @@ function ScanPageContent() {
                 (typeof error === "object" && typeof (error as any).message === "string" && (error as any).message.toLowerCase().includes("notfound"))
               );
 
-            if (error && !isNotFound) {
+            if (result) {
+                handleScannedText(result.getText());
+            } else if (error && !isNotFound) {
                 console.error("QR decode error:", error);
             }
         });
-        controlsRef.current = newControls;
+        
+        if (seq === startSeqRef.current) {
+            controlsRef.current = newControls;
+        } else {
+            newControls.stop();
+        }
 
     } catch (err: any) {
         console.error("Failed to start scanner:", err);
         setScannerError(err.message || "An unexpected error occurred during camera setup.");
-        if (err.name === 'NotAllowedError') {
+        if (err.name === 'NotAllowedError' || err.name === 'NotFoundError') {
           setHasPermission(false);
-          setScannerError("Camera access was denied. Please enable it in your browser settings.");
+          setScannerError("Camera access was denied or no camera found. Please enable it in your browser settings.");
         }
-        setIsScanning(false);
+    } finally {
+        if (seq === startSeqRef.current) {
+            startingRef.current = false;
+        }
     }
   }, [handleScannedText]);
 
   useEffect(() => {
-    if (kioskToken) {
-        try { controlsRef.current?.stop(); } catch {}
-        try { if(readerRef.current) readerRef.current.reset(); } catch {}
-        try { streamRef.current?.getTracks?.().forEach(t => t.stop()); } catch {}
-        return;
-    }
+    if (kioskToken) return;
+
     startScan();
 
     return () => {
-      try { controlsRef.current?.stop(); } catch {}
-      try { if(readerRef.current) readerRef.current.reset(); } catch {}
+      try { controlsRef.current?.stop?.(); } catch {}
+      try { readerRef.current?.reset?.(); } catch {}
       try { streamRef.current?.getTracks?.().forEach(t => t.stop()); } catch {}
     };
-  }, [kioskToken, startScan]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kioskToken]);
   
+  // Effect for token verification if token exists
   useEffect(() => {
     if (!kioskToken) {
         setTokenStatus("missing");
@@ -177,42 +216,52 @@ function ScanPageContent() {
 
     async function verifyToken() {
       if (!db) return;
+
       setTokenStatus("verifying");
       setTokenError(null);
+      setTokenExpiresIn(null);
       
       const tokenRef = doc(db, "kioskTokens", kioskToken!);
       try {
             const tokenSnap = await getDoc(tokenRef);
-            if (!tokenSnap.exists()) {
-                setTokenStatus("invalid");
-                setTokenError("ไม่พบโค้ด (token ไม่เจอในระบบ)");
-                return;
+            if (tokenSnap.exists()) {
+                const tokenData = tokenSnap.data() as KioskToken;
+                if (!tokenData.isActive) {
+                    setTokenStatus("invalid");
+                    setTokenError("ไม่พบโค้ด (โค้ดอาจถูกใช้ไปแล้ว)");
+                    return;
+                }
+                if (Date.now() > tokenData.expiresAtMs + TOKEN_BUFFER_MS) {
+                    setTokenStatus("invalid");
+                    setTokenError("โค้ดหมดอายุ");
+                    setTokenExpiresIn(0);
+                    return;
+                }
+                setTokenStatus("valid");
+                setTokenExpiresIn(Math.round((tokenData.expiresAtMs - Date.now())/1000));
+                setTokenError(null);
+                return; 
+            } else {
+                 setTokenStatus("invalid");
+                 setTokenError("ไม่พบโค้ด (token ไม่เจอในระบบ)");
             }
-            const tokenData = tokenSnap.data() as KioskToken;
-            if (!tokenData.isActive) {
-                setTokenStatus("invalid");
-                setTokenError("โค้ดนี้ถูกใช้ไปแล้ว");
-                return;
-            }
-            if (Date.now() > tokenData.expiresAtMs + TOKEN_BUFFER_MS) {
-                setTokenStatus("invalid");
-                setTokenError("โค้ดหมดอายุ");
-                setTokenExpiresIn(0);
-                return;
-            }
-            setTokenStatus("valid");
-            setTokenExpiresIn(Math.round((tokenData.expiresAtMs - Date.now())/1000));
         } catch (error: any) {
+            console.error("Kiosk token verification failed:", error?.code, error?.message, error);
             setTokenStatus("invalid");
             setTokenError("เกิดข้อผิดพลาดในการตรวจสอบโค้ด");
         }
     }
+
     verifyToken();
   }, [kioskToken, db]);
   
   useEffect(() => {
     if (tokenStatus !== 'valid' || tokenExpiresIn === null || tokenExpiresIn <= 0) return;
-    const timer = setInterval(() => setTokenExpiresIn(prev => Math.max(0, (prev || 0) - 1)), 1000);
+
+    const timer = setInterval(() => {
+      setTokenExpiresIn(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
     return () => clearInterval(timer);
   }, [tokenStatus, tokenExpiresIn]);
   
@@ -221,11 +270,15 @@ function ScanPageContent() {
       setLastAttendance(undefined);
       return;
     }
+    
     if (profile?.lastAttendance) {
       const lastAtt = profile.lastAttendance as LastAttendanceInfo;
       setLastAttendance(lastAtt);
-      if (lastAtt.timestamp?.toDate) {
-        setSecondsSinceLast(differenceInSeconds(new Date(), lastAtt.timestamp.toDate()));
+      
+      const lastTimestamp = lastAtt.timestamp?.toDate();
+      if (lastTimestamp) {
+        const diff = differenceInSeconds(new Date(), lastTimestamp);
+        setSecondsSinceLast(diff);
       }
     } else {
       setLastAttendance(null);
@@ -235,13 +288,25 @@ function ScanPageContent() {
   
   useEffect(() => {
     if (secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS) return;
-    const timer = setInterval(() => setSecondsSinceLast(prev => (prev !== null ? prev + 1 : null)), 1000);
+    
+    const timer = setInterval(() => {
+        setSecondsSinceLast(prev => (prev !== null ? prev + 1 : null));
+    }, 1000);
+    
     return () => clearInterval(timer);
   }, [secondsSinceLast]);
 
   const handleClockAction = async () => {
-    if (!db || !profile || lastAttendance === undefined || tokenStatus !== 'valid') return;
-    
+    if (!db || !profile || lastAttendance === undefined) return;
+    if (profile.status !== 'ACTIVE') {
+        toast({ variant: 'destructive', title: 'Action Denied', description: 'Your account is not active.'});
+        return;
+    }
+    if (tokenStatus !== 'valid') {
+        toast({ variant: 'destructive', title: 'Action Denied', description: 'Invalid or expired QR code.'});
+        return;
+    }
+
     if (secondsSinceLast !== null && secondsSinceLast <= SPAM_DELAY_SECONDS) {
         toast({ variant: 'destructive', title: 'Action Denied', description: `เพิ่งลงเวลาไปแล้ว กรุณารออีก ${SPAM_DELAY_SECONDS - secondsSinceLast} วินาที` });
         return;
@@ -249,25 +314,45 @@ function ScanPageContent() {
 
     setIsSubmitting(true);
     const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
+    const clientTime = new Date();
+    const serverTime = serverTimestamp();
 
     try {
       const batch = writeBatch(db);
+
       const newAttendanceRef = doc(collection(db, 'attendance'));
-      batch.set(newAttendanceRef, { userId: profile.uid, userName: profile.displayName, type: nextAction, timestamp: serverTimestamp(), id: newAttendanceRef.id });
+      batch.set(newAttendanceRef, {
+        userId: profile.uid,
+        userName: profile.displayName,
+        type: nextAction,
+        timestamp: serverTime,
+        id: newAttendanceRef.id
+      });
       
       const userDocRef = doc(db, 'users', profile.uid);
-      batch.update(userDocRef, { lastAttendance: { type: nextAction, timestamp: serverTimestamp() } });
+      batch.update(userDocRef, {
+        lastAttendance: { type: nextAction, timestamp: serverTime }
+      });
 
-      const tokenId = kioskToken;
-      if (tokenId) {
-        const tokenRef = doc(db, "kioskTokens", tokenId);
+      if (kioskToken) {
+        const tokenRef = doc(db, "kioskTokens", kioskToken);
         batch.update(tokenRef, { isActive: false });
       }
       
       await batch.commit();
-      setRecentClock({ type: nextAction, time: new Date() });
+
+      toast({
+        title: `Successfully Clocked ${nextAction}`,
+        description: `Your time has been recorded at ${safeFormat(clientTime, 'PPpp')}`,
+      });
+      setRecentClock({ type: nextAction, time: clientTime });
+
     } catch (error: any) {
-      toast({ variant: 'destructive', title: `Failed to Clock ${nextAction}`, description: error.message });
+      toast({
+        variant: 'destructive',
+        title: `Failed to Clock ${nextAction}`,
+        description: error.message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -275,6 +360,7 @@ function ScanPageContent() {
 
   // --- RENDER LOGIC ---
 
+  // If no token, show scanner UI
   if (!kioskToken) {
     return (
       <>
@@ -283,14 +369,20 @@ function ScanPageContent() {
           <Card className="w-full max-w-md">
             <CardContent className="p-2">
                 <div className="aspect-square w-full bg-muted rounded-xl overflow-hidden flex items-center justify-center relative">
-                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover bg-black rounded-xl" />
+                    <video ref={videoRef} className="w-full h-full object-cover bg-black rounded-xl" autoPlay playsInline muted />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="w-64 h-64 border-4 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
                     </div>
                     {isScanning && !scannerError && (
                       <div className="absolute inset-x-0 top-1/2 h-1 w-full overflow-hidden pointer-events-none">
-                          <div className="h-full w-full bg-red-500/70 shadow-[0_0_10px_red] animate-[scan_2s_ease-in-out_infinite]" style={{ animationName: 'scan' }}/>
-                          <style jsx>{`@keyframes scan { 0%, 100% { transform: translateY(-128px); } 50% { transform: translateY(128px); }}`}</style>
+                          <div className="h-full w-full bg-red-500/70 shadow-[0_0_10px_red] animate-[scan_2s_ease-in-out_infinite]"
+                           style={{ animationName: 'scan' }}/>
+                          <style jsx>{`
+                              @keyframes scan {
+                                  0%, 100% { transform: translateY(-128px); }
+                                  50% { transform: translateY(128px); }
+                              }
+                          `}</style>
                       </div>
                     )}
                 </div>
@@ -312,7 +404,12 @@ function ScanPageContent() {
     );
   }
 
-  // --- RENDER LOGIC for token-based clock-in ---
+  // --- Logic for when token IS present ---
+  const isLoading = lastAttendance === undefined || authLoading || tokenStatus === "verifying";
+  const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
+  const canClockSpam = secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS;
+  const canClock = tokenStatus === 'valid' && canClockSpam;
+
   if (recentClock) {
       return (
          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
@@ -323,7 +420,7 @@ function ScanPageContent() {
              </p>
              <p className="text-xl font-semibold mt-4">{safeFormat(recentClock.time, 'HH:mm:ss')}</p>
              <p className="text-muted-foreground">{profile?.displayName}</p>
-             <Button onClick={() => router.replace('/app/attendance/scan')} className="mt-8">สแกนอีกครั้ง</Button>
+             <Button onClick={() => setRecentClock(null)} className="mt-8">ลงเวลาอีกครั้ง</Button>
          </div>
       )
   }
@@ -333,19 +430,25 @@ function ScanPageContent() {
          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-4">
              <ShieldX className="h-16 w-16 text-destructive mb-4" />
              <h1 className="text-3xl font-bold">QR Code ใช้งานไม่ได้</h1>
-             <p className="font-semibold text-destructive mt-2 text-base">{tokenError || 'QR Code ไม่ถูกต้อง'}</p>
-             <p className="text-muted-foreground mt-1 text-sm max-w-md">กรุณาลองสแกน QR Code ใหม่จากหน้าจอ Kiosk</p>
+             <p className="font-semibold text-destructive mt-2 text-base">
+                {tokenError || 'QR Code ไม่ถูกต้อง'}
+             </p>
+             <p className="text-muted-foreground mt-1 text-sm max-w-md">
+                กรุณาลองสแกน QR Code ใหม่จากหน้าจอ Kiosk
+             </p>
              <Button onClick={() => router.push('/app/attendance/scan')} variant="outline" className="mt-6">
-                <RefreshCw className="mr-2 h-4 w-4"/> ลองสแกนใหม่
+                <RefreshCw className="mr-2 h-4 w-4"/>
+                ลองสแกนใหม่
              </Button>
+             {kioskToken && (
+                <p className="text-xs text-muted-foreground mt-4 font-mono bg-muted px-2 py-1 rounded">
+                    TOKEN: ...{kioskToken.slice(-6)}
+                </p>
+             )}
          </div>
       )
   }
 
-  const isLoading = lastAttendance === undefined || authLoading || tokenStatus === "verifying";
-  const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
-  const canClockSpam = secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS;
-  const canClock = tokenStatus === 'valid' && canClockSpam;
 
   return (
     <>
@@ -364,11 +467,32 @@ function ScanPageContent() {
             )}
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
-            <Button size="lg" className="w-full h-20 text-2xl" onClick={handleClockAction} disabled={isSubmitting || isLoading || !canClock}>
-                {isSubmitting || isLoading ? (<Loader2 className="h-8 w-8 animate-spin" />) : (<>{nextAction === 'IN' ? <LogIn className="mr-4 h-8 w-8" /> : <LogOut className="mr-4 h-8 w-8" />} ลงเวลา{nextAction === 'IN' ? 'เข้า' : 'ออก'}</>)}
+            <Button 
+                size="lg" 
+                className="w-full h-20 text-2xl" 
+                onClick={handleClockAction} 
+                disabled={isSubmitting || isLoading || !canClock}
+            >
+                {isSubmitting || isLoading ? (
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                ) : (
+                    <>
+                        {nextAction === 'IN' ? <LogIn className="mr-4 h-8 w-8" /> : <LogOut className="mr-4 h-8 w-8" />}
+                        ลงเวลา{nextAction === 'IN' ? 'เข้า' : 'ออก'}
+                    </>
+                )}
             </Button>
-            {tokenStatus === 'valid' && tokenExpiresIn !== null && (<div className="text-xs text-muted-foreground">(Code expires in {tokenExpiresIn}s)</div>)}
-            {!isLoading && !canClockSpam && (<div className="flex items-center text-sm text-destructive p-2 rounded-md bg-destructive/10"><AlertCircle className="mr-2 h-4 w-4" /> เพิ่งลงเวลาไปแล้ว. กรุณารออีก {SPAM_DELAY_SECONDS - (secondsSinceLast ?? 0)} วินาที</div>)}
+            {tokenStatus === 'valid' && tokenExpiresIn !== null && (
+                <div className="text-xs text-muted-foreground">
+                    (Code expires in {tokenExpiresIn}s)
+                </div>
+            )}
+            {!isLoading && !canClockSpam && (
+                <div className="flex items-center text-sm text-destructive p-2 rounded-md bg-destructive/10">
+                    <AlertCircle className="mr-2 h-4 w-4" />
+                    เพิ่งลงเวลาไปแล้ว. กรุณารออีก {SPAM_DELAY_SECONDS - (secondsSinceLast ?? 0)} วินาที
+                </div>
+            )}
           </CardContent>
         </Card>
       </div>
