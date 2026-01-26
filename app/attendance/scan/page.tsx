@@ -1,11 +1,10 @@
+
 "use client";
 
-import { Suspense, useMemo, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { Suspense, useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
-import jsQR from "jsqr";
+import { BrowserMultiFormatReader, IScannerControls, NotFoundException } from '@zxing/browser';
 
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
@@ -15,15 +14,15 @@ import { safeFormat } from '@/lib/date-utils';
 import { TOKEN_BUFFER_MS } from '@/lib/constants';
 
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, ScanLine } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, ScanLine, CameraOff, RefreshCw, Zap, ZapOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { KioskToken } from '@/lib/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-
-const SPAM_DELAY_SECONDS = 60; // 1 minute
+const SPAM_DELAY_SECONDS = 60;
 
 interface LastAttendanceInfo {
   type: 'IN' | 'OUT';
@@ -31,7 +30,6 @@ interface LastAttendanceInfo {
 }
 
 type TokenStatus = "verifying" | "valid" | "invalid" | "missing";
-
 
 function ScanPageContent() {
   const { db } = useFirebase();
@@ -44,9 +42,14 @@ function ScanPageContent() {
 
   // States for camera scanning
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [scannerError, setScannerError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [controls, setControls] = useState<IScannerControls | null>(null);
 
   // States for token-based clock-in
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
@@ -57,102 +60,137 @@ function ScanPageContent() {
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
-  // Effect for camera permission and QR scanning when no token is present
+  const codeReader = useMemo(() => new BrowserMultiFormatReader(), []);
+
+  const resetScanner = useCallback(() => {
+    codeReader.reset();
+    if(controls) {
+      controls.stop();
+    }
+    setControls(null);
+    setScannerError(null);
+    setIsScanning(false);
+  }, [codeReader, controls]);
+
+  // Effect for camera scanning when no token is present
   useEffect(() => {
-    if (kioskToken || hasCameraPermission !== null) {
-      // If we have a token or have already attempted to get camera permission, don't run.
-      return;
-    }
+    if (kioskToken) return;
 
-    let stream: MediaStream | null = null;
-    let animationFrameId: number;
-
-    const tick = () => {
-      if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA && canvasRef.current) {
+    const startScan = async () => {
         setIsScanning(true);
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d");
-        
-        if (ctx) {
-          canvas.height = video.videoHeight;
-          canvas.width = video.videoWidth;
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const code = jsQR(imageData.data, imageData.width, imageData.height, {
-            inversionAttempts: "dontInvert",
-          });
+        setScannerError(null);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: "environment" } },
+                audio: false,
+            });
 
-          if (code && code.data) {
-            console.log("Found QR code", code.data);
-            if (stream) {
-              stream.getTracks().forEach(track => track.stop());
+            setHasPermission(true);
+
+            const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
+            setDevices(videoInputDevices);
+
+            const firstDevice = videoInputDevices[0];
+            if (firstDevice) {
+                setSelectedDeviceId(firstDevice.deviceId);
             }
-            router.push(code.data);
-            return; // Stop the loop
-          }
-        }
-      }
-      animationFrameId = requestAnimationFrame(tick);
-    };
 
-    const getCameraAndScan = async () => {
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-           throw new Error("Camera not supported on this browser.");
-        }
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setHasCameraPermission(true);
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          try {
-            await videoRef.current.play();
-            animationFrameId = requestAnimationFrame(tick);
-          } catch (error: any) {
-            if (error.name !== 'AbortError') {
-              // Re-throw other errors that are not the expected AbortError
-              throw error;
+        } catch (err: any) {
+            setHasPermission(false);
+            if (err.name === 'NotAllowedError') {
+                setScannerError("Camera access was denied. Please enable it in your browser settings.");
+            } else if (err.name === 'NotFoundError') {
+                setScannerError("No camera found. Please ensure a camera is connected.");
+            } else {
+                setScannerError(`An unexpected error occurred: ${err.name}`);
             }
-            // Ignore AbortError, as it's expected when navigating away
-          }
+            console.error("Camera access error:", err);
         }
-      } catch (error: any) {
-        console.error('Error accessing camera:', error);
-        setHasCameraPermission(false);
-        toast({
-          variant: 'destructive',
-          title: 'Camera Access Denied',
-          description: error.message || 'Please enable camera permissions in your browser settings.',
-        });
-      }
     };
+    
+    startScan();
 
-    getCameraAndScan();
-
-    // Cleanup function
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    }
-  }, [kioskToken, hasCameraPermission, router, toast]);
+        resetScanner();
+    };
+  }, [kioskToken, resetScanner]);
 
+  useEffect(() => {
+    if (!selectedDeviceId || !videoRef.current || kioskToken) return;
+    
+    let isCancelled = false;
+
+    const startDecoding = async () => {
+        resetScanner();
+        try {
+            const newControls = await codeReader.decodeFromVideoDevice(
+                selectedDeviceId,
+                videoRef.current,
+                (result, error, controls) => {
+                    if (isCancelled) return;
+                    if (result) {
+                        isCancelled = true;
+                        controls.stop();
+                        setControls(null);
+                        setIsScanning(false);
+                        const url = result.getText();
+                        if (url.includes('/app/attendance/scan')) {
+                             router.push(url);
+                        } else {
+                            toast({variant: 'destructive', title: 'Invalid QR Code', description: 'This QR code is not for attendance.'});
+                             setTimeout(() => {
+                                isCancelled = false;
+                                startDecoding();
+                            }, 2000);
+                        }
+                    }
+                    if (error && !(error instanceof NotFoundException)) {
+                        console.error('ZXing scan error:', error);
+                    }
+                }
+            );
+
+            setControls(newControls);
+
+            const stream = newControls.stream;
+            const track = stream.getVideoTracks()[0];
+            const capabilities = track.getCapabilities();
+            if (capabilities.torch) {
+                setTorchSupported(true);
+            } else {
+                setTorchSupported(false);
+                setTorchOn(false);
+            }
+
+        } catch(err) {
+            console.error("ZXing decode start error:", err);
+            setScannerError("Failed to start scanner with the selected camera.");
+        }
+    };
+    
+    startDecoding();
+
+    return () => {
+      isCancelled = true;
+      resetScanner();
+    }
+
+  }, [selectedDeviceId, codeReader, router, toast, kioskToken, resetScanner]);
+
+
+  const toggleTorch = useCallback(() => {
+      if (controls && torchSupported) {
+          const newTorchState = !torchOn;
+          controls.switchTorch(newTorchState);
+          setTorchOn(newTorchState);
+      }
+  }, [controls, torchOn, torchSupported]);
   
   // Effect for token verification if token exists
   useEffect(() => {
     if (!kioskToken) {
         setTokenStatus("missing");
         return;
-    }
-
-    const RETRY_LIMIT = 5;
-    const RETRY_DELAY_MS = 250;
-
-    async function sleep(ms: number) {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     async function verifyToken() {
@@ -163,9 +201,7 @@ function ScanPageContent() {
       setTokenExpiresIn(null);
       
       const tokenRef = doc(db, "kioskTokens", kioskToken!);
-
-      for (let i = 0; i < RETRY_LIMIT; i++) {
-        try {
+      try {
             const tokenSnap = await getDoc(tokenRef);
             if (tokenSnap.exists()) {
                 const tokenData = tokenSnap.data() as KioskToken;
@@ -184,17 +220,15 @@ function ScanPageContent() {
                 setTokenExpiresIn(Math.round((tokenData.expiresAtMs - Date.now())/1000));
                 setTokenError(null);
                 return; 
+            } else {
+                 setTokenStatus("invalid");
+                 setTokenError("ไม่พบโค้ด (token ไม่เจอในระบบ)");
             }
-        } catch (error) {
-            console.error(`Token verification attempt ${i + 1} failed`, error);
+        } catch (error: any) {
+            console.error("Kiosk token verification failed:", error?.code, error?.message, error);
+            setTokenStatus("invalid");
+            setTokenError("เกิดข้อผิดพลาดในการตรวจสอบโค้ด");
         }
-        if (i < RETRY_LIMIT - 1) {
-            await sleep(RETRY_DELAY_MS);
-        }
-      }
-      
-      setTokenStatus("invalid");
-      setTokenError("ไม่พบโค้ด (token ไม่เจอในระบบ)");
     }
 
     verifyToken();
@@ -310,42 +344,63 @@ function ScanPageContent() {
     return (
       <>
         <PageHeader title="Scan QR Code" description="Point your camera at the QR code on the Kiosk screen." />
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center gap-4">
           <Card className="w-full max-w-md">
-            <CardContent className="p-4">
-              <div className="aspect-video w-full bg-muted rounded-md overflow-hidden flex items-center justify-center relative">
-                <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
-                {hasCameraPermission && <div className="absolute w-64 h-64 border-4 border-white/50 rounded-lg" />}
-                {isScanning && (
-                  <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-                    <div className="w-full h-1 bg-red-500/70 animate-pulse shadow-[0_0_10px_red]"></div>
-                  </div>
-                )}
-              </div>
-              {hasCameraPermission === false && (
-                <Alert variant="destructive" className="mt-4">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Camera Access Required</AlertTitle>
-                  <AlertDescription>
-                    Please allow camera access in your browser settings to use this feature.
-                  </AlertDescription>
-                </Alert>
-              )}
-              {hasCameraPermission === null && (
-                <div className="flex items-center justify-center p-4 text-muted-foreground">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  <span>Requesting camera access...</span>
+            <CardContent className="p-2">
+                <div className="aspect-square w-full bg-muted rounded-md overflow-hidden flex items-center justify-center relative">
+                    <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-64 h-64 border-4 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
+                    </div>
+                    {isScanning && !scannerError && (
+                      <div className="absolute inset-x-0 top-1/2 h-1 w-full overflow-hidden pointer-events-none">
+                          <div className="h-full w-full bg-red-500/70 shadow-[0_0_10px_red] animate-[scan_2s_ease-in-out_infinite]"
+                           style={{ animationName: 'scan' }}/>
+                          <style jsx>{`
+                              @keyframes scan {
+                                  0%, 100% { transform: translateY(-128px); }
+                                  50% { transform: translateY(128px); }
+                              }
+                          `}</style>
+                      </div>
+                    )}
                 </div>
-              )}
             </CardContent>
-            <CardFooter>
-                <p className="text-xs text-muted-foreground text-center w-full flex items-center justify-center">
-                    <ScanLine className="h-4 w-4 mr-2" />
-                    {isScanning ? 'Scanning for QR code...' : 'Waiting for camera...'}
-                </p>
-            </CardFooter>
           </Card>
+          
+           {scannerError && (
+              <Alert variant="destructive" className="max-w-md">
+                <CameraOff className="h-4 w-4" />
+                <AlertTitle>Camera Error</AlertTitle>
+                <AlertDescription>
+                  {scannerError}
+                  <Button variant="link" onClick={() => {setScannerError(null); setHasPermission(null); router.refresh();}} className="p-0 h-auto ml-2">Retry</Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
+          {hasPermission && devices.length > 1 && (
+            <div className="flex gap-2 items-center max-w-md w-full">
+              <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Select Camera" />
+                </SelectTrigger>
+                <SelectContent>
+                  {devices.map((device) => (
+                    <SelectItem key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${devices.indexOf(device) + 1}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+               {torchSupported && (
+                 <Button variant="outline" size="icon" onClick={toggleTorch}>
+                    {torchOn ? <ZapOff/> : <Zap/>}
+                 </Button>
+               )}
+            </div>
+          )}
+
         </div>
       </>
     );
@@ -383,6 +438,10 @@ function ScanPageContent() {
              <p className="text-muted-foreground mt-1 text-sm max-w-md">
                 กรุณาลองสแกน QR Code ใหม่จากหน้าจอ Kiosk
              </p>
+             <Button onClick={() => router.push('/app/attendance/scan')} variant="outline" className="mt-6">
+                <RefreshCw className="mr-2 h-4 w-4"/>
+                ลองสแกนใหม่
+             </Button>
              {kioskToken && (
                 <p className="text-xs text-muted-foreground mt-4 font-mono bg-muted px-2 py-1 rounded">
                     TOKEN: ...{kioskToken.slice(-6)}
@@ -405,7 +464,7 @@ function ScanPageContent() {
             ) : (
                 <CardDescription>
                     สถานะล่าสุด: <Badge variant={lastAttendance?.type === 'IN' ? 'default' : 'secondary'}>{lastAttendance?.type || 'ยังไม่มีข้อมูล'}</Badge> 
-                    {lastAttendance ? ` lúc ${safeFormat(lastAttendance.timestamp, 'HH:mm')}`: ''}
+                    {lastAttendance ? ` at ${safeFormat(lastAttendance.timestamp, 'HH:mm')}`: ''}
                 </CardDescription>
             )}
           </CardHeader>
