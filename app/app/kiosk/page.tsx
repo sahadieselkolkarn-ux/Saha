@@ -23,7 +23,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 export default function KioskPage() {
-  const { db } = useFirebase();
+  const { db, auth } = useFirebase();
   const { toast } = useToast();
   const { profile, loading: authLoading } = useAuth();
 
@@ -34,7 +34,7 @@ export default function KioskPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const generateNewToken = useCallback(async (isManual: boolean = false) => {
-    if (!db) return;
+    if (!db || !auth) return;
     if (authLoading || !profile) {
       if (isManual) {
         toast({
@@ -49,9 +49,14 @@ export default function KioskPage() {
 
     setIsLoading(true);
     try {
+      if (!auth.currentUser) {
+          throw new Error("Not authenticated");
+      }
+      await auth.currentUser.getIdToken(true);
+
       // Test read to confirm connection
       await getDoc(doc(db, 'users', profile.uid));
-      
+
       // Pass the current token to be deactivated
       const { newTokenId, expiresAtMs: newExpiresAtMs } = await withTimeout(
         generateKioskToken(db, currentToken),
@@ -66,21 +71,26 @@ export default function KioskPage() {
       setQrData(fullUrl);
       
     } catch (error: any) {
-      console.error("Kiosk token generation failed", { error, uid: profile?.uid, email: profile?.email, currentToken });
+      console.error("Kiosk token generation failed:", error?.code, error?.message, error);
       if (error?.code === "permission-denied") {
-        setTimeout(() => generateNewToken(true), 500);
+        toast({
+          variant: "destructive",
+          title: "สิทธิ์ไม่พอในการสร้าง QR",
+          description: "กรุณาออกจากระบบ/เข้าใหม่ที่เครื่อง Kiosk แล้วกด Refresh Code อีกครั้ง",
+        });
+        setQrData(null);
         return;
       }
       toast({
         variant: "destructive",
         title: "Could not generate QR Code",
-        description: error?.message || String(error),
+        description: `${error?.code ?? ""} ${error?.message ?? String(error)}`.trim(),
       });
       setQrData(null);
     } finally {
       setIsLoading(false);
     }
-  }, [db, toast, currentToken, isLoading, authLoading, profile]);
+  }, [db, auth, toast, currentToken, isLoading, authLoading, profile]);
 
   // Initial token generation
   useEffect(() => {
