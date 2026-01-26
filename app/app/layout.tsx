@@ -47,9 +47,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       <FixStuckUI />
       <div className="flex min-h-screen w-full">
         <AppSidebar />
-        <div className="flex flex-1 flex-col sm:pl-64">
+        <div className="flex flex-1 flex-col sm:pl-64 overflow-hidden">
           <AppHeader />
-          <main className="flex-1 p-4 md:p-8 lg:p-10">
+          <main className="flex-1 p-4 md:p-8 lg:p-10 overflow-y-auto">
             {children}
           </main>
         </div>
