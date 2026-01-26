@@ -146,6 +146,7 @@ export function DocumentList({ docType }: DocumentListProps) {
     switch(status) {
         case 'PAID': return 'default';
         case 'CANCELLED': return 'destructive';
+        case 'PENDING_REVIEW': return 'secondary';
         case 'DRAFT':
         default: return 'secondary';
     }

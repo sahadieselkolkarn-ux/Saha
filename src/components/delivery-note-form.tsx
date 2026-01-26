@@ -277,15 +277,17 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         };
 
         const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
+        const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
 
         if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
                 ...documentData,
+                status: 'PENDING_REVIEW',
                 updatedAt: serverTimestamp(),
             }));
             await ensurePaymentClaimForDocument(db, editDocId, profile);
-            toast({ title: "อัปเดตใบส่งของสำเร็จ" });
+            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
         } else {
             const { docId } = await createDocument(
                 db,
@@ -293,10 +295,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 documentData,
                 profile,
                 data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
-                backfillOptions
+                options
             );
             await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "สร้างใบส่งของสำเร็จ และส่งเข้ารอตรวจสอบรายรับแล้ว" });
+            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
         }
         router.push('/app/office/documents/delivery-note');
 
@@ -338,7 +340,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
             <Button type="submit" disabled={form.formState.isSubmitting || isLocked}>
               {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
+              บันทึกและส่งตรวจ
             </Button>
         </div>
         
@@ -517,7 +519,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               <Button type="button" variant="outline" onClick={() => router.back()} disabled={form.formState.isSubmitting}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
               <Button type="submit" disabled={isFormLoading || isLocked}>
                 {isFormLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
+                บันทึกและส่งตรวจ
               </Button>
           </div>
         </form>

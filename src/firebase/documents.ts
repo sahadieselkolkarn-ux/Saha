@@ -39,6 +39,7 @@ const docTypeToPrefixKey: Record<DocType, keyof DocumentSettings> = {
 
 interface CreateDocumentOptions {
   manualDocNo?: string;
+  initialStatus?: string; // default 'DRAFT'
 }
 
 /**
@@ -80,7 +81,7 @@ export async function createDocument(
         id: docId,
         docNo: manualDocNo,
         docType,
-        status: 'DRAFT',
+        status: options?.initialStatus ?? 'DRAFT',
         createdAt: serverTimestamp() as Timestamp,
         updatedAt: serverTimestamp() as Timestamp,
     };
@@ -139,7 +140,7 @@ export async function createDocument(
             id: docId,
             docNo: generatedDocNo,
             docType,
-            status: 'DRAFT',
+            status: options?.initialStatus ?? 'DRAFT',
             createdAt: serverTimestamp() as Timestamp,
             updatedAt: serverTimestamp() as Timestamp,
         };

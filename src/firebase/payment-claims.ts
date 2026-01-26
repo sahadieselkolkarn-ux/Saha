@@ -50,13 +50,14 @@ export async function ensurePaymentClaimForDocument(
   const claimsQuery = query(
     collection(db, 'paymentClaims'),
     where('sourceDocId', '==', documentId),
-    where('status', '==', 'PENDING'),
-    limit(1)
+    limit(10) // Fetch a few potential claims
   );
 
   const existingClaimsSnap = await getDocs(claimsQuery);
+  const hasPendingClaim = existingClaimsSnap.docs.some(d => d.data()?.status === 'PENDING');
 
-  if (!existingClaimsSnap.empty) {
+
+  if (hasPendingClaim) {
     // A pending claim already exists, do nothing.
     console.log(`Pending payment claim for doc ${documentId} already exists.`);
     return { created: false };

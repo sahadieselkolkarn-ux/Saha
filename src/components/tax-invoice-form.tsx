@@ -303,16 +303,18 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     };
 
     const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
+    const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
     
     try {
         if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
                 ...documentData,
+                status: 'PENDING_REVIEW',
                 updatedAt: serverTimestamp(),
             }));
             await ensurePaymentClaimForDocument(db, editDocId, profile);
-            toast({ title: "อัปเดตใบกำกับภาษีสำเร็จ" });
+            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
         } else {
             const { docId } = await createDocument(
                 db,
@@ -320,10 +322,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 documentData,
                 profile,
                 data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
-                backfillOptions
+                options
             );
             await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "สร้างใบกำกับภาษีสำเร็จ และส่งเข้ารอตรวจสอบรายรับแล้ว" });
+            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
         }
         router.push('/app/office/documents/tax-invoice');
     } catch (error: any) {
@@ -552,7 +554,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 </CardContent>
             </Card>
             <div className="space-y-4">
-                <div className="space-y-2 p-4 border rounded-lg">
+                 <div className="space-y-2 p-4 border rounded-lg">
                     <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
                     <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span>
                         <FormField
@@ -595,7 +597,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             <Button type="button" variant="outline" onClick={() => router.back()} disabled={form.formState.isSubmitting}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>
             <Button type="submit" disabled={isFormLoading || isLocked}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบกำกับภาษี'}
+              บันทึกและส่งตรวจ
             </Button>
         </div>
       </form>

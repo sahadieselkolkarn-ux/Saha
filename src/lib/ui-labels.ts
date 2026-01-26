@@ -38,6 +38,8 @@ const DOC_STATUS_LABELS: Record<string, string> = {
     SUBMITTED: 'ส่งแล้ว',
     APPROVED: 'อนุมัติแล้ว',
     UNPAID: 'ยังไม่จ่าย',
+    PENDING_REVIEW: "รอตรวจสอบรายรับ",
+    REJECTED: "ตีกลับ",
 };
 
 export function deptLabel(dept: string | undefined): string {
