@@ -302,6 +302,7 @@ export interface Document {
   docType: DocType;
   docNo: string;
   docDate: string; // YYYY-MM-DD
+  customerId?: string;
   jobId?: string;
   customerSnapshot: Partial<Customer>;
   carSnapshot?: {

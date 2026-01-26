@@ -114,6 +114,17 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     },
   });
 
+  const onInvalid = (errors: any) => {
+    const fieldErrors = Object.keys(errors);
+    toast({
+      variant: "destructive",
+      title: "ข้อมูลไม่ครบถ้วน",
+      description: fieldErrors.length
+        ? `กรุณาตรวจสอบช่อง: ${fieldErrors.join(", ")}`
+        : "กรุณาตรวจสอบข้อมูลในฟอร์ม",
+    });
+  };
+
   const selectedCustomerId = form.watch('customerId');
   const isBackfill = form.watch('isBackfill');
   
@@ -172,7 +183,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     if (docToEdit) {
       form.reset({
         jobId: docToEdit.jobId || undefined,
-        customerId: docToEdit.customerSnapshot.id,
+        customerId: docToEdit.customerId || docToEdit.customerSnapshot?.id || "",
         issueDate: docToEdit.docDate,
         dueDate: docToEdit.dueDate || new Date(new Date().setDate(new Date().getDate() + 7)).toISOString().split("T")[0],
         items: docToEdit.items.map(item => ({...item})),
@@ -282,6 +293,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
 
     const documentData = {
+        customerId: data.customerId,
         docDate: data.issueDate,
         jobId: data.jobId,
         customerSnapshot: { ...customerSnapshot },
@@ -304,6 +316,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     };
     
     try {
+        let savedDocId: string;
         if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
@@ -311,8 +324,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 status: 'PENDING_REVIEW',
                 updatedAt: serverTimestamp(),
             }));
-            await ensurePaymentClaimForDocument(db, editDocId, profile);
-            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+            savedDocId = editDocId;
         } else {
             const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
             const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
@@ -324,10 +336,22 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
                 options
             );
-            await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "สร้างใบกำกับภาษีแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+            savedDocId = docId;
+        }
+
+        try {
+            await ensurePaymentClaimForDocument(db, savedDocId, profile);
+            toast({ title: isEditing ? "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" : "สร้างใบกำกับภาษีแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+        } catch (claimError: any) {
+            console.error("Failed to create payment claim:", claimError);
+            toast({
+                variant: "destructive",
+                title: "บันทึกเอกสารสำเร็จแล้ว แต่...",
+                description: `ไม่สามารถส่งเอกสารเข้าระบบตรวจสอบรายรับได้: ${claimError.message}`,
+            });
         }
         router.push('/app/office/documents/tax-invoice');
+
     } catch (error: any) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
@@ -357,7 +381,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </Alert>
       )}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-6">
 
         <Card>
             <CardHeader><CardTitle className="text-base">ข้อมูลทั่วไป</CardTitle></CardHeader>
@@ -413,7 +437,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
-                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId || isLocked}>
+                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={isLocked || !!jobId || (isEditing && !!docToEdit?.customerId)}>
                                 {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -578,7 +602,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                     <div className="flex justify-between items-center">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
-                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={true}/></FormControl>
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked}/></FormControl>
                                 <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>

@@ -13,7 +13,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, FileDown } from "lucide-react";
@@ -112,6 +112,17 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       isBackfill: false,
     },
   });
+  
+  const onInvalid = (errors: any) => {
+    const fieldErrors = Object.keys(errors);
+    toast({
+      variant: "destructive",
+      title: "ข้อมูลไม่ครบถ้วน",
+      description: fieldErrors.length
+        ? `กรุณาตรวจสอบช่อง: ${fieldErrors.join(", ")}`
+        : "กรุณาตรวจสอบข้อมูลในฟอร์ม",
+    });
+  };
 
   const selectedCustomerId = form.watch('customerId');
   
@@ -165,7 +176,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     if (docToEdit) {
       form.reset({
         jobId: docToEdit.jobId || undefined,
-        customerId: docToEdit.customerSnapshot.id,
+        customerId: docToEdit.customerId || docToEdit.customerSnapshot?.id || "",
         issueDate: docToEdit.docDate,
         items: docToEdit.items.map(item => ({...item})),
         notes: docToEdit.notes || '',
@@ -260,6 +271,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
     try {
         const documentData = {
+            customerId: data.customerId,
             docDate: data.issueDate,
             customerSnapshot: { ...customerSnapshot },
             storeSnapshot: { ...storeSettings },
@@ -277,6 +289,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             jobId: data.jobId,
         };
 
+        let savedDocId: string;
         if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
@@ -284,8 +297,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 status: 'PENDING_REVIEW',
                 updatedAt: serverTimestamp(),
             }));
-            await ensurePaymentClaimForDocument(db, editDocId, profile);
-            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+            savedDocId = editDocId;
         } else {
             const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
             const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
@@ -297,8 +309,19 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
                 options
             );
-            await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "สร้างใบส่งของแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+            savedDocId = docId;
+        }
+
+        try {
+            await ensurePaymentClaimForDocument(db, savedDocId, profile);
+            toast({ title: isEditing ? "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" : "สร้างใบส่งของแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+        } catch (claimError: any) {
+            console.error("Failed to create payment claim:", claimError);
+            toast({
+                variant: "destructive",
+                title: "บันทึกเอกสารสำเร็จแล้ว แต่...",
+                description: `ไม่สามารถส่งเอกสารเข้าระบบตรวจสอบรายรับได้: ${claimError.message}`,
+            });
         }
         router.push('/app/office/documents/delivery-note');
 
@@ -335,7 +358,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </Alert>
       )}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-6">
         <div className="flex justify-between items-center">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
             <Button type="submit" disabled={form.formState.isSubmitting || isLocked}>
@@ -345,7 +368,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </div>
         
         <Card>
-            <CardHeader><CardTitle className="text-base">1. เลือกลูกค้า</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">1. Select Customer</CardTitle></CardHeader>
             <CardContent>
                 <FormField
                     name="customerId"
@@ -355,7 +378,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
-                                <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={!!jobId || !!editDocId || isLocked}>
+                                <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={isLocked || !!jobId || (isEditing && !!docToEdit?.customerId)}>
                                 {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
