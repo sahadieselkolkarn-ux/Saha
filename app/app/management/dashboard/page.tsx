@@ -32,6 +32,7 @@ const formatBucket = (value: number) => {
     if (value < 200000) return "50k - 200k";
     return "200k+";
 };
+const RISK_DAYS = 7;
 
 // Main Component
 export default function ManagementDashboardPage() {
@@ -73,33 +74,50 @@ export default function ManagementDashboardPage() {
         const qObligations = query(collection(db, "accountingObligations"), where("type", "==", "AR"));
 
         const unsubs = [
-            onSnapshot(qJobs, snap => { setJobs(snap.docs.map(d => d.data() as Job)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
-            onSnapshot(qDocs, snap => { setDocuments(snap.docs.map(d => d.data() as DocumentType)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
-            onSnapshot(qEntries, snap => { setEntries(snap.docs.map(d => d.data() as AccountingEntry)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
-            onSnapshot(qObligations, snap => { setObligations(snap.docs.map(d => d.data() as AccountingObligation)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); })
+            onSnapshot(qJobs, snap => { setJobs(snap.docs.map(d => ({id: d.id, ...d.data() } as Job))); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
+            onSnapshot(qDocs, snap => { setDocuments(snap.docs.map(d => ({id: d.id, ...d.data() } as DocumentType))); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
+            onSnapshot(qEntries, snap => { setEntries(snap.docs.map(d => ({id: d.id, ...d.data() } as AccountingEntry))); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
+            onSnapshot(qObligations, snap => { setObligations(snap.docs.map(d => ({id: d.id, ...d.data() } as AccountingObligation))); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); })
         ];
         
         return () => unsubs.forEach(unsub => unsub());
     }, [db]);
     
-    // --- Memoized Data Processing ---
-    const filteredData = useMemo(() => {
-        if (!dateRange?.from) return { jobs: [], documents: [], entries: [], obligations: [] };
-        
+    // --- Date Helpers ---
+    const toDateSafe = (v: any): Date | null => {
+        try {
+            if (!v) return null;
+            if (v instanceof Date && !isNaN(v.getTime())) return v;
+            if (typeof v === 'string') {
+                const d = parseISO(v);
+                if (!isNaN(d.getTime())) return d;
+            }
+            if (typeof v.toDate === 'function') {
+                const d = v.toDate();
+                if (d instanceof Date && !isNaN(d.getTime())) return d;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    };
+
+    const inDateRange = (v: any): boolean => {
+        if (!dateRange?.from) return false;
         const from = dateRange.from;
         const to = dateRange.to || from;
-
-        const dateFilter = (date: Timestamp | string | null | undefined) => {
-            if (!date) return false;
-            const d = typeof date === 'string' ? parseISO(date) : date.toDate();
-            return d >= from && d <= to;
-        };
-
+        const d = toDateSafe(v);
+        if (!d) return false;
+        return d >= from && d <= to;
+    };
+    
+    // --- Memoized Data Processing ---
+    const filteredData = useMemo(() => {
         const filteredJobs = jobs.filter(j => 
             (department === 'ALL' || j.department === department)
         );
-        const filteredDocuments = documents.filter(d => dateFilter(d.docDate));
-        const filteredEntries = entries.filter(e => dateFilter(e.entryDate));
+        const filteredDocuments = documents.filter(d => inDateRange(d.docDate));
+        const filteredEntries = entries.filter(e => inDateRange(e.entryDate));
 
         return { jobs: filteredJobs, documents: filteredDocuments, entries: filteredEntries, obligations };
     }, [jobs, documents, entries, obligations, dateRange, department]);
@@ -108,35 +126,47 @@ export default function ManagementDashboardPage() {
     // --- Executive Cards Data ---
     const cardData = useMemo(() => {
         const today = new Date();
-        const { jobs: currentJobs, documents, entries, obligations } = filteredData;
+        const { jobs: allJobs, documents: docsInDateRange, entries: entriesInDateRange, obligations: allObligations } = filteredData;
+        
+        const isClosed = (status?: JobStatus) => ["CLOSED", "DONE", "COMPLETED"].includes(String(status ?? "").toUpperCase());
         
         // 1. Open Jobs
-        const openJobs = jobs.filter(j => j.status !== 'CLOSED' && j.status !== 'DONE');
+        const openJobs = allJobs.filter(j => !isClosed(j.status));
         
         // 2. Completed Jobs (in range)
-        const completedJobsInRange = jobs.filter(j => j.status === 'CLOSED' && dateFilter(j.closedDate));
+        const completedJobsInRange = allJobs.filter(j => isClosed(j.status) && inDateRange(j.closedDate ?? j.updatedAt));
 
         // 3. At-risk Jobs
-        const atRiskJobs = openJobs.filter(j => j.createdAt && differenceInDays(today, j.createdAt.toDate()) > 7);
+        const atRiskJobs = openJobs.filter(j => {
+            const created = toDateSafe(j.createdAt);
+            if (!created) return false;
+            return differenceInDays(today, created) > RISK_DAYS;
+        });
 
         // 4. On-time %
-        const onTimeJobs = completedJobsInRange.filter(j => j.createdAt && j.closedDate && differenceInDays(parseISO(j.closedDate), j.createdAt.toDate()) <= 7);
+        const onTimeJobs = completedJobsInRange.filter(j => {
+            const created = toDateSafe(j.createdAt);
+            const closed = toDateSafe(j.closedDate ?? j.updatedAt);
+            if (!created || !closed) return false;
+            return differenceInDays(closed, created) <= RISK_DAYS;
+        });
         const onTimePercentage = completedJobsInRange.length > 0 ? (onTimeJobs.length / completedJobsInRange.length) * 100 : 0;
         
         // 5. Revenue
-        const revenueDocs = documents.filter(d => d.status === 'PAID' && ['TAX_INVOICE', 'RECEIPT'].includes(d.docType));
+        const revenueDocs = docsInDateRange.filter(d => d.status === 'PAID' && ['TAX_INVOICE', 'RECEIPT', 'DELIVERY_NOTE'].includes(d.docType));
         const totalRevenue = revenueDocs.reduce((sum, doc) => sum + doc.grandTotal, 0);
         
         // 6. Cash In
-        const cashIn = entries.filter(e => e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT').reduce((sum, e) => sum + e.amount, 0);
+        const cashIn = entriesInDateRange.filter(e => e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT').reduce((sum, e) => sum + e.amount, 0);
 
         // 7. Cash Out
-        const cashOut = entries.filter(e => e.entryType === 'CASH_OUT').reduce((sum, e) => sum + e.amount, 0);
+        const cashOut = entriesInDateRange.filter(e => e.entryType === 'CASH_OUT').reduce((sum, e) => sum + e.amount, 0);
 
         // 8. AR Aging
         const arAging = { '0-7': 0, '8-30': 0, '31-60': 0, '60+': 0 };
-        obligations.filter(o => o.status !== 'PAID').forEach(o => {
-            const dueDate = o.dueDate ? parseISO(o.dueDate) : o.createdAt.toDate();
+        allObligations.filter(o => o.status !== 'PAID').forEach(o => {
+            const dueDate = o.dueDate ? toDateSafe(o.dueDate) : toDateSafe(o.createdAt);
+            if (!dueDate) return;
             const daysOverdue = differenceInDays(today, dueDate);
             if (daysOverdue <= 7) arAging['0-7'] += o.balance;
             else if (daysOverdue <= 30) arAging['8-30'] += o.balance;
@@ -146,7 +176,7 @@ export default function ManagementDashboardPage() {
         
         return { openJobs, completedJobs: completedJobsInRange, atRiskJobs, onTimePercentage, totalRevenue, cashIn, cashOut, arAging };
 
-    }, [filteredData, jobs, dateRange]);
+    }, [filteredData]);
 
 
     // --- Chart Data ---
@@ -156,16 +186,23 @@ export default function ManagementDashboardPage() {
         // Jobs In vs Closed
         const jobsMonthly = months.map(monthStart => {
             const monthEnd = endOfMonth(monthStart);
-            const jobsIn = jobs.filter(j => j.createdAt && j.createdAt.toDate() >= monthStart && j.createdAt.toDate() <= monthEnd).length;
-            const jobsClosed = jobs.filter(j => j.closedDate && parseISO(j.closedDate) >= monthStart && parseISO(j.closedDate) <= monthEnd).length;
+            const jobsIn = jobs.filter(j => {
+                const d = toDateSafe(j.createdAt);
+                return d && d >= monthStart && d <= monthEnd;
+            }).length;
+            const jobsClosed = jobs.filter(j => {
+                const d = toDateSafe(j.closedDate ?? j.updatedAt);
+                return d && d >= monthStart && d <= monthEnd && ["CLOSED","DONE"].includes(j.status);
+            }).length;
             return { name: format(monthStart, 'MMM'), jobsIn, jobsClosed };
         });
         
         // Backlog by Status
-        const backlogByStatus = jobs.filter(j => j.status !== 'CLOSED').reduce((acc, job) => {
-            acc[job.status] = (acc[job.status] || 0) + 1;
+        const backlogByStatus = jobs.filter(j => !["CLOSED", "DONE"].includes(j.status)).reduce((acc, job) => {
+            const statusKey = job.status || 'UNKNOWN';
+            acc[statusKey] = (acc[statusKey] || 0) + 1;
             return acc;
-        }, {} as Record<JobStatus, number>);
+        }, {} as Record<string, number>);
         const backlogData = Object.entries(backlogByStatus).map(([name, value]) => ({ name, value }));
 
         // Jobs by Department (in selected range)
@@ -178,18 +215,24 @@ export default function ManagementDashboardPage() {
         // Revenue Trend
         const revenueMonthly = months.map(monthStart => {
             const monthEnd = endOfMonth(monthStart);
-            const total = documents.filter(d => d.docDate && d.status === 'PAID' && ['TAX_INVOICE', 'RECEIPT'].includes(d.docType) && parseISO(d.docDate) >= monthStart && parseISO(d.docDate) <= monthEnd)
-                .reduce((sum, doc) => sum + doc.grandTotal, 0);
+            const total = documents.filter(d => {
+                const d_date = toDateSafe(d.docDate);
+                return d_date && d.status === 'PAID' && ['TAX_INVOICE', 'RECEIPT'].includes(d.docType) && d_date >= monthStart && d_date <= monthEnd
+            }).reduce((sum, doc) => sum + doc.grandTotal, 0);
             return { name: format(monthStart, 'MMM'), revenue: total };
         });
 
         // Cash Flow Trend
         const cashFlowMonthly = months.map(monthStart => {
             const monthEnd = endOfMonth(monthStart);
-            const cashIn = entries.filter(e => (e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT') && e.entryDate && parseISO(e.entryDate) >= monthStart && parseISO(e.entryDate) <= monthEnd)
-                .reduce((sum, e) => sum + e.amount, 0);
-            const cashOut = entries.filter(e => e.entryType === 'CASH_OUT' && e.entryDate && parseISO(e.entryDate) >= monthStart && parseISO(e.entryDate) <= monthEnd)
-                .reduce((sum, e) => sum + e.amount, 0);
+            const cashIn = entries.filter(e => {
+                const d = toDateSafe(e.entryDate);
+                return d && (e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT') && d >= monthStart && d <= monthEnd;
+            }).reduce((sum, e) => sum + e.amount, 0);
+            const cashOut = entries.filter(e => {
+                const d = toDateSafe(e.entryDate);
+                return d && e.entryType === 'CASH_OUT' && d >= monthStart && d <= monthEnd;
+            }).reduce((sum, e) => sum + e.amount, 0);
             return { name: format(monthStart, 'MMM'), cashIn, cashOut };
         });
         
@@ -285,8 +328,8 @@ export default function ManagementDashboardPage() {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
                     <Card><CardHeader><CardTitle>Open Jobs</CardTitle></CardHeader><CardContent><p className="text-3xl font-bold">{cardData.openJobs.length}</p></CardContent></Card>
                     <Card><CardHeader><CardTitle>Completed Jobs</CardTitle><CardDescription>in period</CardDescription></CardHeader><CardContent><p className="text-3xl font-bold">{cardData.completedJobs.length}</p></CardContent></Card>
-                    <Card><CardHeader><CardTitle>At-risk / Overdue</CardTitle><CardDescription>{">"} 7 days</CardDescription></CardHeader><CardContent><p className="text-3xl font-bold">{cardData.atRiskJobs.length}</p></CardContent></Card>
-                    <Card><CardHeader><CardTitle>On-time Completion</CardTitle><CardDescription>{"<= 7 days"}</CardDescription></CardHeader><CardContent><p className="text-3xl font-bold">{cardData.onTimePercentage.toFixed(0)}%</p></CardContent></Card>
+                    <Card><CardHeader><CardTitle>At-risk / Overdue</CardTitle><CardDescription>{">"} {RISK_DAYS} days</CardDescription></CardHeader><CardContent><p className="text-3xl font-bold">{cardData.atRiskJobs.length}</p></CardContent></Card>
+                    <Card><CardHeader><CardTitle>On-time Completion</CardTitle><CardDescription>{"<= "}{RISK_DAYS}{" days"}</CardDescription></CardHeader><CardContent><p className="text-3xl font-bold">{cardData.onTimePercentage.toFixed(0)}%</p></CardContent></Card>
                     <Card><CardHeader><CardTitle>Revenue (Paid)</CardTitle><TrendingUp className="text-green-500"/></CardHeader><CardContent><p className="text-3xl font-bold">{renderFinancial(cardData.totalRevenue)}</p></CardContent></Card>
                     <Card><CardHeader><CardTitle>Cash In</CardTitle><TrendingUp className="text-green-500"/></CardHeader><CardContent><p className="text-3xl font-bold">{renderFinancial(cardData.cashIn)}</p></CardContent></Card>
                     <Card><CardHeader><CardTitle>Cash Out</CardTitle><TrendingDown className="text-red-500"/></CardHeader><CardContent><p className="text-3xl font-bold">{renderFinancial(cardData.cashOut)}</p></CardContent></Card>
@@ -326,4 +369,3 @@ export default function ManagementDashboardPage() {
         </>
     );
 }
-
