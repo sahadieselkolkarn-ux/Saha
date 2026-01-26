@@ -1,4 +1,5 @@
 
+
 const DEPARTMENT_LABELS: Record<string, string> = {
     MANAGEMENT: "ผู้บริหาร",
     OFFICE: "ออฟฟิศ",

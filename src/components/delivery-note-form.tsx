@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -287,7 +288,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 updatedAt: serverTimestamp(),
             }));
             await ensurePaymentClaimForDocument(db, editDocId, profile);
-            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
+            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         } else {
             const { docId } = await createDocument(
                 db,
@@ -298,7 +299,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 options
             );
             await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
+            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         }
         router.push('/app/office/documents/delivery-note');
 

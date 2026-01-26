@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -314,7 +315,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 updatedAt: serverTimestamp(),
             }));
             await ensurePaymentClaimForDocument(db, editDocId, profile);
-            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
+            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         } else {
             const { docId } = await createDocument(
                 db,
@@ -325,7 +326,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 options
             );
             await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "บันทึกเอกสารแล้ว (รอตรวจสอบรายรับ)" });
+            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         }
         router.push('/app/office/documents/tax-invoice');
     } catch (error: any) {

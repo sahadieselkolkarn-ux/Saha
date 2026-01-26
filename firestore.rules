@@ -104,7 +104,12 @@ service cloud.firestore {
     match /documents/{docId} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update: if (resource.data.status == 'DRAFT' && request.resource.data.docNo == resource.data.docNo) || isAccountingAllowed();
+      allow update: if 
+         (signedIn()
+          && (resource.data.status in ['DRAFT', 'PENDING_REVIEW'])
+          && request.resource.data.docNo == resource.data.docNo
+         )
+         || isAccountingAllowed();
       allow delete: if isAdmin();
     }
     match /documentCounters/{yearId} {
