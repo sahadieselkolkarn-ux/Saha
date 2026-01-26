@@ -340,6 +340,18 @@ export interface Document {
   reason?: string; // For CreditNote
   invoiceIds?: string[]; // For BillingNote
   totalAmount?: number; // For BillingNote
+
+  delivery?: {
+    deliveredDate?: string; // YYYY-MM-DD
+    deliveredByName?: string;
+    receivedByName?: string;
+    note?: string;
+  };
+  paymentSummary?: {
+    paidTotal: number;
+    balance: number;
+    paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
+  };
 }
 
 export interface DocumentCounters {
@@ -407,14 +419,15 @@ export interface PaymentClaim {
   sourceDocNo: string;
   customerNameSnapshot?: string;
   amountDue: number;
-  suggestedAccountId?: string;
   suggestedPaymentMethod?: 'CASH' | 'TRANSFER' | 'CREDIT';
+  suggestedAccountId?: string;
   note?: string;
   
   // Fields for approval
   approvedAt?: Timestamp;
   approvedByUid?: string;
   approvedByName?: string;
+  amountReceived?: number;
   receivedDate?: string; // YYYY-MM-DD
   paymentMethod?: 'CASH' | 'TRANSFER';
   accountId?: string;
