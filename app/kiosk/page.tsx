@@ -59,7 +59,7 @@ export default function KioskPage() {
 
       // Pass the current token to be deactivated
       const { newTokenId, expiresAtMs: newExpiresAtMs } = await withTimeout(
-        generateKioskToken(db, currentToken),
+        generateKioskToken(db),
         8000,
         "generateKioskToken"
       );
@@ -72,15 +72,6 @@ export default function KioskPage() {
       
     } catch (error: any) {
       console.error("Kiosk token generation failed:", error?.code, error?.message, error);
-      if (error?.code === "permission-denied") {
-        toast({
-          variant: "destructive",
-          title: "สิทธิ์ไม่พอในการสร้าง QR",
-          description: "กรุณาออกจากระบบ/เข้าใหม่ที่เครื่อง Kiosk แล้วกด Refresh Code อีกครั้ง",
-        });
-        setQrData(null);
-        return;
-      }
       toast({
         variant: "destructive",
         title: "Could not generate QR Code",
@@ -90,7 +81,7 @@ export default function KioskPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [db, auth, toast, currentToken, isLoading, authLoading, profile]);
+  }, [db, auth, toast, isLoading, authLoading, profile]);
 
   // Initial token generation
   useEffect(() => {
