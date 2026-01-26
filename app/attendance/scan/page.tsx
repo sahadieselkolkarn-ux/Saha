@@ -4,7 +4,7 @@
 import { Suspense, useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
-import { BrowserMultiFormatReader, IScannerControls, NotFoundException } from '@zxing/browser';
+import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
@@ -72,8 +72,9 @@ function ScanPageContent() {
     }
     
     try {
-      if (readerRef.current && typeof readerRef.current.reset === "function") {
-        readerRef.current.reset();
+      const r: any = readerRef.current;
+      if (r && typeof r.reset === "function") {
+        r.reset();
       }
     } catch (e) {
       console.warn("Error resetting scanner reader:", e);
@@ -92,13 +93,14 @@ function ScanPageContent() {
 
         let videoInputDevices: MediaDeviceInfo[] = [];
         try {
-          videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
-        } catch (e) {
-          console.warn("ZXing listVideoInputDevices failed, falling back to navigator.", e);
-          if (navigator.mediaDevices?.enumerateDevices) {
+          if (typeof BrowserMultiFormatReader.listVideoInputDevices === 'function') {
+            videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
+          } else if (navigator.mediaDevices?.enumerateDevices) {
             const allDevices = await navigator.mediaDevices.enumerateDevices();
             videoInputDevices = allDevices.filter(d => d.kind === 'videoinput');
           }
+        } catch (e) {
+          console.warn("Could not list video devices", e);
         }
         
         setDevices(videoInputDevices);
@@ -135,14 +137,21 @@ function ScanPageContent() {
     setScannerError(null);
     
     reader.decodeFromVideoDevice(selectedDeviceId, videoRef.current, (result, error, innerControls) => {
-        if (error && !(error instanceof NotFoundException)) {
-            console.error("QR Decoding Error:", error);
-            // We don't set a hard error here as it could be a transient decoding failure.
-            return;
+        const errName = (error as any)?.name;
+        const errMsg = String((error as any)?.message ?? "").toLowerCase();
+        const isNotFound =
+          errName === "NotFoundException" ||
+          errMsg.includes("notfound") ||
+          errMsg.includes("not found");
+
+        if (error && !isNotFound) {
+          console.error("QR Decoding Error:", error);
         }
+        
         if (result) {
             innerControls.stop();
             setIsScanning(false);
+            setControls(null);
             const url = result.getText();
             if (url.includes('/app/attendance/scan')) {
                  router.push(url);
@@ -157,19 +166,20 @@ function ScanPageContent() {
     }).then(ctrls => {
         setControls(ctrls);
         const stream = ctrls.stream;
+        if (!stream) return;
         const track = stream.getVideoTracks()[0];
         if (track && 'getCapabilities' in track) {
             const capabilities = track.getCapabilities();
-            setTorchSupported(!!capabilities.torch);
-            if (!capabilities.torch) setTorchOn(false);
+            if (capabilities) {
+              setTorchSupported(!!capabilities.torch);
+              if (!capabilities.torch) setTorchOn(false);
+            }
         } else {
             setTorchSupported(false);
         }
     }).catch(err => {
         console.error("ZXing decodeFromVideoDevice error:", err);
         setScannerError(`Failed to start scanner: ${err.message}`);
-    }).finally(() => {
-        setIsScanning(false);
     });
 
     return () => {
