@@ -17,10 +17,9 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, ScanLine, CameraOff, RefreshCw, Zap, ZapOff } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, CameraOff, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { KioskToken } from '@/lib/types';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const SPAM_DELAY_SECONDS = 60;
 
@@ -31,8 +30,18 @@ interface LastAttendanceInfo {
 
 type TokenStatus = "verifying" | "valid" | "invalid" | "missing";
 
+async function waitForVideoReady(video: HTMLVideoElement) {
+  for (let i = 0; i < 60; i++) { // Approx 6 seconds timeout
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      return;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+  throw new Error("Camera ready timeout");
+}
+
 function ScanPageContent() {
-  const { db } = useFirebase();
+  const { db, auth } = useFirebase();
   const { profile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
@@ -41,17 +50,15 @@ function ScanPageContent() {
   const kioskToken = useMemo(() => searchParams.get('k') || searchParams.get('token'), [searchParams]);
 
   // States for camera scanning
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
+  const controlsRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scannerError, setScannerError] = useState<string | null>(null);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-
+  
   // States for token-based clock-in
   const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
   const [tokenError, setTokenError] = useState<string | null>(null);
@@ -61,21 +68,15 @@ function ScanPageContent() {
   const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
 
-  // Helper to wait for video metadata to be ready
-  async function waitForVideoReady(video: HTMLVideoElement) {
-    for (let i = 0; i < 60; i++) { // Approx 6 seconds timeout
-      if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-        return;
-      }
-      await new Promise(r => setTimeout(r, 100));
-    }
-    throw new Error("Camera ready timeout");
-  }
-
-  // Handler for when a QR is successfully scanned
   const handleScannedText = useCallback((text: string) => {
-    controlsRef.current?.stop();
-    streamRef.current?.getTracks().forEach(track => track.stop());
+    if (controlsRef.current) {
+      try { controlsRef.current.stop(); } catch(e) {}
+      controlsRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
     setIsScanning(false);
     
     if (text.includes('/app/attendance/scan')) {
@@ -90,71 +91,50 @@ function ScanPageContent() {
     }
   }, [router, toast]);
   
-  // Core scanning function
   const startScan = useCallback(async () => {
-    // 1. Cleanup previous scan session
     if (controlsRef.current) {
-        try { controlsRef.current.stop(); } catch(e) { console.warn("Failed to stop previous controls", e); }
+        try { controlsRef.current.stop(); } catch(e) {}
+        controlsRef.current = null;
     }
     if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
     }
 
     setIsScanning(true);
     setScannerError(null);
+    setHasPermission(null);
 
     try {
-        // List devices if not already done
-        if (devices.length === 0) {
-            let videoInputDevices: MediaDeviceInfo[] = [];
-            try {
-                if (typeof BrowserMultiFormatReader.listVideoInputDevices === 'function') {
-                    videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
-                } else if (navigator.mediaDevices?.enumerateDevices) {
-                    const allDevices = await navigator.mediaDevices.enumerateDevices();
-                    videoInputDevices = allDevices.filter(d => d.kind === 'videoinput');
-                }
-            } catch (e) {
-                console.warn("Could not list video devices", e);
-            }
-            setDevices(videoInputDevices);
-            if (videoInputDevices.length > 0 && !selectedDeviceId) {
-                const backCamera = videoInputDevices.find(d => d.label.toLowerCase().includes('back'));
-                setSelectedDeviceId(backCamera?.deviceId || videoInputDevices[0].deviceId);
-            }
-        }
-        
-        const deviceId = selectedDeviceId || (devices.length > 0 ? devices[0].deviceId : undefined);
-
-        // 2. Open camera stream
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: "environment" } },
+            video: { facingMode: { ideal: "environment" } },
             audio: false
         });
         streamRef.current = stream;
         setHasPermission(true);
 
-        // 3. Attach to video element and play
         const videoElement = videoRef.current;
         if (!videoElement) throw new Error("Video element is not available.");
         
         videoElement.srcObject = stream;
+        videoElement.setAttribute("playsinline", "true");
+        videoElement.muted = true;
         await videoElement.play();
         await waitForVideoReady(videoElement);
 
-        // 4. Start ZXing decoding
-        if (!readerRef.current) {
-            readerRef.current = new BrowserMultiFormatReader();
-        }
-        const reader = readerRef.current;
+        const reader = readerRef.current ?? (readerRef.current = new BrowserMultiFormatReader());
         
         const newControls = await reader.decodeFromVideoElement(videoElement, (result, error) => {
             if (result) {
                 handleScannedText(result.getText());
             }
-            const errName = (error as any)?.name;
-            const errMsg = String((error as any)?.message ?? "").toLowerCase();
-            const isNotFound = errName === "NotFoundException" || errMsg.includes("notfound") || errMsg.includes("not found");
+
+            const isNotFound =
+              !!error &&
+              (
+                (typeof error === "object" && (error as any).name === "NotFoundException") ||
+                (typeof error === "object" && typeof (error as any).message === "string" && (error as any).message.toLowerCase().includes("notfound"))
+              );
 
             if (error && !isNotFound) {
                 console.error("QR decode error:", error);
@@ -171,26 +151,24 @@ function ScanPageContent() {
         }
         setIsScanning(false);
     }
-  }, [selectedDeviceId, handleScannedText, devices]);
+  }, [handleScannedText]);
 
-  // Main effect to manage the scanner lifecycle
   useEffect(() => {
     if (kioskToken) {
-      if (controlsRef.current) controlsRef.current.stop();
-      if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
-      return;
+        try { controlsRef.current?.stop(); } catch {}
+        try { if(readerRef.current) readerRef.current.reset(); } catch {}
+        try { streamRef.current?.getTracks?.().forEach(t => t.stop()); } catch {}
+        return;
     }
-    
     startScan();
 
     return () => {
-      if (controlsRef.current) try { controlsRef.current.stop(); } catch(e) {}
-      if (readerRef.current) try { readerRef.current.reset(); } catch(e) {}
-      if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
+      try { controlsRef.current?.stop(); } catch {}
+      try { if(readerRef.current) readerRef.current.reset(); } catch {}
+      try { streamRef.current?.getTracks?.().forEach(t => t.stop()); } catch {}
     };
   }, [kioskToken, startScan]);
   
-  // --- Token and Clock-in Logic (remains mostly the same) ---
   useEffect(() => {
     if (!kioskToken) {
         setTokenStatus("missing");
@@ -280,8 +258,9 @@ function ScanPageContent() {
       const userDocRef = doc(db, 'users', profile.uid);
       batch.update(userDocRef, { lastAttendance: { type: nextAction, timestamp: serverTimestamp() } });
 
-      if (kioskToken) {
-        const tokenRef = doc(db, "kioskTokens", kioskToken);
+      const tokenId = kioskToken;
+      if (tokenId) {
+        const tokenRef = doc(db, "kioskTokens", tokenId);
         batch.update(tokenRef, { isActive: false });
       }
       
@@ -304,7 +283,7 @@ function ScanPageContent() {
           <Card className="w-full max-w-md">
             <CardContent className="p-2">
                 <div className="aspect-square w-full bg-muted rounded-xl overflow-hidden flex items-center justify-center relative">
-                    <video ref={videoRef} className="w-full h-full object-cover bg-black rounded-xl" autoPlay playsInline muted />
+                    <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover bg-black rounded-xl" />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="w-64 h-64 border-4 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
                     </div>
@@ -324,25 +303,10 @@ function ScanPageContent() {
                 <AlertTitle>Camera Error</AlertTitle>
                 <AlertDescription>
                   {scannerError}
-                  <Button variant="link" onClick={() => startScan()} className="p-0 h-auto ml-2">Retry</Button>
+                  <Button variant="link" onClick={startScan} className="p-0 h-auto ml-2">Retry</Button>
                 </AlertDescription>
               </Alert>
             )}
-
-          {hasPermission && devices.length > 1 && (
-            <div className="flex gap-2 items-center max-w-md w-full">
-              <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-                <SelectTrigger className="flex-1"><SelectValue placeholder="Select Camera" /></SelectTrigger>
-                <SelectContent>
-                  {devices.map((device) => (
-                    <SelectItem key={device.deviceId} value={device.deviceId}>
-                      {device.label || `Camera ${devices.indexOf(device) + 1}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </div>
       </>
     );
