@@ -6,7 +6,7 @@ import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
 import { collection, query, where, onSnapshot, orderBy, Timestamp } from "firebase/firestore";
 import { DateRange } from "react-day-picker";
-import { subDays, startOfMonth, endOfMonth, startOfToday, subMonths, format, differenceInDays } from "date-fns";
+import { subDays, startOfMonth, endOfMonth, startOfToday, subMonths, format, differenceInDays, parseISO } from "date-fns";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Cell } from "recharts";
 
 // UI Components
@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, TrendingDown, TrendingUp, AlertCircle, EyeOff, Eye } from "lucide-react";
+import { CalendarIcon, TrendingDown, TrendingUp, AlertCircle, EyeOff, Eye, Loader2 } from "lucide-react";
 
 // Types
 import type { Job, Document as DocumentType, AccountingEntry, AccountingObligation, JobStatus, JobDepartment } from "@/lib/types";
@@ -56,18 +56,30 @@ export default function ManagementDashboardPage() {
     useEffect(() => {
         if (!db) return;
         setLoading(true);
-        const queries = [
-            onSnapshot(query(collection(db, "jobs")), snap => setJobs(snap.docs.map(d => d.data() as Job))),
-            onSnapshot(query(collection(db, "documents"), where("status", "==", "PAID")), snap => setDocuments(snap.docs.map(d => d.data() as DocumentType))),
-            onSnapshot(query(collection(db, "accountingEntries")), snap => setEntries(snap.docs.map(d => d.data() as AccountingEntry))),
-            onSnapshot(query(collection(db, "accountingObligations"), where("type", "==", "AR")), snap => setObligations(snap.docs.map(d => d.data() as AccountingObligation))),
+        setError(null);
+        let initialLoadCount = 0;
+        const totalCollections = 4;
+
+        const handleInitialLoad = () => {
+          initialLoadCount++;
+          if (initialLoadCount >= totalCollections) {
+            setLoading(false);
+          }
+        };
+
+        const qJobs = query(collection(db, "jobs"));
+        const qDocs = query(collection(db, "documents"));
+        const qEntries = query(collection(db, "accountingEntries"));
+        const qObligations = query(collection(db, "accountingObligations"), where("type", "==", "AR"));
+
+        const unsubs = [
+            onSnapshot(qJobs, snap => { setJobs(snap.docs.map(d => d.data() as Job)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
+            onSnapshot(qDocs, snap => { setDocuments(snap.docs.map(d => d.data() as DocumentType)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
+            onSnapshot(qEntries, snap => { setEntries(snap.docs.map(d => d.data() as AccountingEntry)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); }),
+            onSnapshot(qObligations, snap => { setObligations(snap.docs.map(d => d.data() as AccountingObligation)); handleInitialLoad(); }, err => { setError(err.message); handleInitialLoad(); })
         ];
         
-        Promise.all(queries.map(q => new Promise(q as any)))
-            .catch(err => setError(err.message))
-            .finally(() => setLoading(false));
-
-        // Unsubscribe not handled for simplicity in this case, but would be in a production app
+        return () => unsubs.forEach(unsub => unsub());
     }, [db]);
     
     // --- Memoized Data Processing ---
@@ -77,9 +89,9 @@ export default function ManagementDashboardPage() {
         const from = dateRange.from;
         const to = dateRange.to || from;
 
-        const dateFilter = (date: Timestamp | string) => {
+        const dateFilter = (date: Timestamp | string | null | undefined) => {
             if (!date) return false;
-            const d = typeof date === 'string' ? new Date(date) : date.toDate();
+            const d = typeof date === 'string' ? parseISO(date) : date.toDate();
             return d >= from && d <= to;
         };
 
@@ -97,22 +109,22 @@ export default function ManagementDashboardPage() {
     const cardData = useMemo(() => {
         const today = new Date();
         const { jobs: currentJobs, documents, entries, obligations } = filteredData;
-
+        
         // 1. Open Jobs
-        const openJobs = currentJobs.filter(j => j.status !== 'CLOSED' && j.status !== 'DONE');
+        const openJobs = jobs.filter(j => j.status !== 'CLOSED' && j.status !== 'DONE');
         
         // 2. Completed Jobs (in range)
-        const completedJobs = currentJobs.filter(j => j.status === 'CLOSED' && j.closedDate && dateRange?.from && new Date(j.closedDate) >= dateRange.from && new Date(j.closedDate) <= (dateRange.to || today));
+        const completedJobsInRange = jobs.filter(j => j.status === 'CLOSED' && dateFilter(j.closedDate));
 
         // 3. At-risk Jobs
-        const atRiskJobs = openJobs.filter(j => differenceInDays(today, j.createdAt.toDate()) > 7);
+        const atRiskJobs = openJobs.filter(j => j.createdAt && differenceInDays(today, j.createdAt.toDate()) > 7);
 
         // 4. On-time %
-        const onTimeJobs = completedJobs.filter(j => j.createdAt && j.closedDate && differenceInDays(new Date(j.closedDate), j.createdAt.toDate()) <= 7);
-        const onTimePercentage = completedJobs.length > 0 ? (onTimeJobs.length / completedJobs.length) * 100 : 0;
+        const onTimeJobs = completedJobsInRange.filter(j => j.createdAt && j.closedDate && differenceInDays(parseISO(j.closedDate), j.createdAt.toDate()) <= 7);
+        const onTimePercentage = completedJobsInRange.length > 0 ? (onTimeJobs.length / completedJobsInRange.length) * 100 : 0;
         
         // 5. Revenue
-        const revenueDocs = documents.filter(d => ['TAX_INVOICE', 'RECEIPT'].includes(d.docType));
+        const revenueDocs = documents.filter(d => d.status === 'PAID' && ['TAX_INVOICE', 'RECEIPT'].includes(d.docType));
         const totalRevenue = revenueDocs.reduce((sum, doc) => sum + doc.grandTotal, 0);
         
         // 6. Cash In
@@ -124,7 +136,7 @@ export default function ManagementDashboardPage() {
         // 8. AR Aging
         const arAging = { '0-7': 0, '8-30': 0, '31-60': 0, '60+': 0 };
         obligations.filter(o => o.status !== 'PAID').forEach(o => {
-            const dueDate = o.dueDate ? new Date(o.dueDate) : o.createdAt.toDate();
+            const dueDate = o.dueDate ? parseISO(o.dueDate) : o.createdAt.toDate();
             const daysOverdue = differenceInDays(today, dueDate);
             if (daysOverdue <= 7) arAging['0-7'] += o.balance;
             else if (daysOverdue <= 30) arAging['8-30'] += o.balance;
@@ -132,22 +144,20 @@ export default function ManagementDashboardPage() {
             else arAging['60+'] += o.balance;
         });
         
-        return { openJobs, completedJobs, atRiskJobs, onTimePercentage, totalRevenue, cashIn, cashOut, arAging };
+        return { openJobs, completedJobs: completedJobsInRange, atRiskJobs, onTimePercentage, totalRevenue, cashIn, cashOut, arAging };
 
-    }, [filteredData, dateRange]);
+    }, [filteredData, jobs, dateRange]);
 
 
     // --- Chart Data ---
     const chartData = useMemo(() => {
-        // Data for charts would be calculated here based on all raw data (not just filtered)
-        const sixMonthsAgo = subMonths(startOfToday(), 5);
         const months = Array.from({length: 6}).map((_, i) => startOfMonth(subMonths(startOfToday(), 5 - i)));
 
         // Jobs In vs Closed
         const jobsMonthly = months.map(monthStart => {
             const monthEnd = endOfMonth(monthStart);
-            const jobsIn = jobs.filter(j => j.createdAt.toDate() >= monthStart && j.createdAt.toDate() <= monthEnd).length;
-            const jobsClosed = jobs.filter(j => j.closedDate && new Date(j.closedDate) >= monthStart && new Date(j.closedDate) <= monthEnd).length;
+            const jobsIn = jobs.filter(j => j.createdAt && j.createdAt.toDate() >= monthStart && j.createdAt.toDate() <= monthEnd).length;
+            const jobsClosed = jobs.filter(j => j.closedDate && parseISO(j.closedDate) >= monthStart && parseISO(j.closedDate) <= monthEnd).length;
             return { name: format(monthStart, 'MMM'), jobsIn, jobsClosed };
         });
         
@@ -168,7 +178,7 @@ export default function ManagementDashboardPage() {
         // Revenue Trend
         const revenueMonthly = months.map(monthStart => {
             const monthEnd = endOfMonth(monthStart);
-            const total = documents.filter(d => d.docDate && ['TAX_INVOICE', 'RECEIPT'].includes(d.docType) && new Date(d.docDate) >= monthStart && new Date(d.docDate) <= monthEnd)
+            const total = documents.filter(d => d.docDate && d.status === 'PAID' && ['TAX_INVOICE', 'RECEIPT'].includes(d.docType) && parseISO(d.docDate) >= monthStart && parseISO(d.docDate) <= monthEnd)
                 .reduce((sum, doc) => sum + doc.grandTotal, 0);
             return { name: format(monthStart, 'MMM'), revenue: total };
         });
@@ -176,9 +186,9 @@ export default function ManagementDashboardPage() {
         // Cash Flow Trend
         const cashFlowMonthly = months.map(monthStart => {
             const monthEnd = endOfMonth(monthStart);
-            const cashIn = entries.filter(e => (e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT') && e.entryDate && new Date(e.entryDate) >= monthStart && new Date(e.entryDate) <= monthEnd)
+            const cashIn = entries.filter(e => (e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT') && e.entryDate && parseISO(e.entryDate) >= monthStart && parseISO(e.entryDate) <= monthEnd)
                 .reduce((sum, e) => sum + e.amount, 0);
-            const cashOut = entries.filter(e => e.entryType === 'CASH_OUT' && e.entryDate && new Date(e.entryDate) >= monthStart && new Date(e.entryDate) <= monthEnd)
+            const cashOut = entries.filter(e => e.entryType === 'CASH_OUT' && e.entryDate && parseISO(e.entryDate) >= monthStart && parseISO(e.entryDate) <= monthEnd)
                 .reduce((sum, e) => sum + e.amount, 0);
             return { name: format(monthStart, 'MMM'), cashIn, cashOut };
         });
@@ -264,7 +274,12 @@ export default function ManagementDashboardPage() {
                 </CardContent>
             </Card>
 
-            {loading ? <Skeleton className="h-96" /> : error ? <div className="text-destructive"><AlertCircle/> {error}</div> :
+            {loading ? (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"><Skeleton className="h-28"/><Skeleton className="h-28"/><Skeleton className="h-28"/><Skeleton className="h-28"/></div>
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"><Skeleton className="h-80 lg:col-span-2"/><Skeleton className="h-80"/></div>
+              </div>
+            ) : error ? <div className="text-destructive"><AlertCircle/> {error}</div> :
             <>
                 {/* Executive Cards */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
@@ -312,4 +327,3 @@ export default function ManagementDashboardPage() {
     );
 }
 
-    
