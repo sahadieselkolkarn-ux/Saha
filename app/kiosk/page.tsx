@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { generateKioskToken } from '@/firebase/kiosk';
+import { useAuth } from '@/context/auth-context';
 
 import { PageHeader } from "@/components/page-header";
 import { QrDisplay } from "@/components/qr-display";
@@ -14,6 +15,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 export default function KioskPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile, loading: authLoading } = useAuth();
 
   const [currentToken, setCurrentToken] = useState<string | null>(null);
   const [expiresAtMs, setExpiresAtMs] = useState<number | null>(null);
@@ -23,6 +25,16 @@ export default function KioskPage() {
 
   const generateNewToken = useCallback(async (isManual: boolean = false) => {
     if (!db) return;
+    if (authLoading || !profile) {
+      if (isManual) {
+        toast({
+          variant: "destructive",
+          title: "ยังไม่พร้อม",
+          description: "กำลังตรวจสอบการเข้าสู่ระบบ..."
+        });
+      }
+      return;
+    }
     if (isLoading && !isManual) return;
 
     setIsLoading(true);
@@ -46,13 +58,14 @@ export default function KioskPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [db, toast, currentToken, isLoading]);
+  }, [db, toast, currentToken, isLoading, authLoading, profile]);
 
   // Initial token generation
   useEffect(() => {
+    if (!db || authLoading || !profile) return;
     generateNewToken();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db]); // Depend on db to ensure it's available.
+  }, [db, authLoading, profile]); // Depend on auth state before first run.
 
   // Countdown and auto-refresh timer
   useEffect(() => {
