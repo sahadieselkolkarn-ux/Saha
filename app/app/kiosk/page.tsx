@@ -49,6 +49,10 @@ export default function KioskPage() {
       setQrData(fullUrl);
       
     } catch (error: any) {
+      if (error?.code === "permission-denied") {
+        setTimeout(() => generateNewToken(true), 500);
+        return;
+      }
       toast({
         variant: "destructive",
         title: "Could not generate QR Code",
