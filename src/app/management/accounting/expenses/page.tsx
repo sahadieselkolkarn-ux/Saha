@@ -1,5 +1,1 @@
-import { redirect } from 'next/navigation';
-
-export default function ManagementAccountingExpensesPage() {
-  redirect('/app/management/accounting/cashbook?tab=out');
-}
+// This file has been moved to /app/app/management/accounting/expenses/page.tsx

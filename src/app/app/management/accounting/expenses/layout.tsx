@@ -1,3 +1,1 @@
-export default function ManagementAccountingExpensesLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
+// This file has been moved to /app/app/management/accounting/expenses/layout.tsx

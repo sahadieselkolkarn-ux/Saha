@@ -1,5 +1,1 @@
-import { redirect } from 'next/navigation';
-
-export default function ManagementAccountingRevenuePage() {
-  redirect('/app/management/accounting/cashbook?tab=in');
-}
+// This file has been moved to /app/app/management/accounting/revenue/page.tsx

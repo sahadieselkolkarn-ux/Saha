@@ -1,3 +1,1 @@
-export default function OfficePartsPurchasesLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
+// This file has been moved to /app/app/office/parts/purchases/layout.tsx

@@ -1,3 +1,1 @@
-export default function NewAccountingAccountLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
-}
+// This file has been moved to /app/app/management/accounting/accounts/new/layout.tsx

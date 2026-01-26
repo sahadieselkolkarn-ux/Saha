@@ -1,4 +1,1 @@
-// This page has been moved to /app/attendance/scan
-// This file is kept to avoid breaking builds but can be removed in the future.
-import AttendanceScanPage from "../attendance/scan/page";
-export default AttendanceScanPage;
+// This route has been consolidated into /app/app/attendance/scan/page.tsx
