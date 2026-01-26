@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -263,7 +262,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/jobs" label="ภาพรวมงานซ่อม" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/jobs/history" label="ประวัติงาน/ค้นหา" onClick={onLinkClick} />
                         {canSeeAccounting && (
                             <>
                                 <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
@@ -405,5 +403,3 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         </nav>
     );
 }
-
-    
