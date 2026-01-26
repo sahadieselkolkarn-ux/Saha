@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -395,7 +394,6 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                     {profile?.role === 'OFFICER' && (
                         <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
                     )}
-                    <SubNavLink href="/app/attendance/scan" label="สแกน (มือถือ)" onClick={onLinkClick} />
                     <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
                 </CollapsibleContent>
             </Collapsible>
