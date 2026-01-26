@@ -1,10 +1,9 @@
 
 "use client";
 
-import { Suspense, useRef, useCallback, useState, useEffect, useMemo } from 'react';
+import { Suspense, useCallback, useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
-import { BrowserMultiFormatReader, IScannerControls } from '@zxing/browser';
 
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
@@ -12,14 +11,14 @@ import { useToast } from '@/hooks/use-toast';
 import { differenceInSeconds } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { TOKEN_BUFFER_MS } from '@/lib/constants';
+import type { KioskToken } from '@/lib/types';
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX, CameraOff, RefreshCw, Zap, ZapOff } from 'lucide-react';
+import { Loader2, LogIn, LogOut, CheckCircle, AlertCircle, ShieldX } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const SPAM_DELAY_SECONDS = 60;
 
@@ -30,19 +29,8 @@ interface LastAttendanceInfo {
 
 type TokenStatus = "verifying" | "valid" | "invalid" | "missing";
 
-
-async function waitForVideoReady(video: HTMLVideoElement) {
-  for (let i = 0; i < 60; i++) { // Approx 6 seconds timeout
-    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-      return;
-    }
-    await new Promise(r => setTimeout(r, 100));
-  }
-  throw new Error("Camera ready timeout");
-}
-
 function ScanPageContent() {
-  const { db, auth } = useFirebase();
+  const { db } = useFirebase();
   const { profile, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
@@ -50,162 +38,13 @@ function ScanPageContent() {
   const searchParams = useSearchParams();
   const kioskToken = useMemo(() => searchParams.get('k') || searchParams.get('token'), [searchParams]);
 
-  // States for camera scanning
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const startingRef = useRef(false);
-  const startSeqRef = useRef(0);
-
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scannerError, setScannerError] = useState<string | null>(null);
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-  
   // States for token-based clock-in
-  const [tokenStatus, setTokenStatus] = useState<TokenStatus>("verifying");
+  const [tokenStatus, setTokenStatus] = useState<TokenStatus>(kioskToken ? "verifying" : "missing");
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastAttendance, setLastAttendance] = useState<LastAttendanceInfo | null | undefined>(undefined);
-  const [recentClock, setRecentClock] = useState<{type: 'IN' | 'OUT', time: Date} | null>(null);
   const [secondsSinceLast, setSecondsSinceLast] = useState<number | null>(null);
-
-  const handleScannedText = useCallback((text: string) => {
-    if (controlsRef.current) {
-      controlsRef.current.stop();
-      controlsRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    setIsScanning(false);
-    
-    if (text.includes('/app/attendance/scan')) {
-      router.push(text);
-    } else {
-      toast({ variant: 'destructive', title: 'Invalid QR Code', description: 'This QR code is not for attendance.' });
-      setTimeout(() => {
-        if (!document.hidden) {
-          router.replace('/app/attendance/scan');
-        }
-      }, 2000);
-    }
-  }, [router, toast]);
-  
-  const startScan = useCallback(async () => {
-    if (startingRef.current) return;
-    startingRef.current = true;
-    const seq = ++startSeqRef.current;
-    
-    // Cleanup previous instances
-    if (controlsRef.current) {
-        controlsRef.current.stop();
-        controlsRef.current = null;
-    }
-    if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-    }
-    if(videoRef.current) {
-        videoRef.current.srcObject = null;
-    }
-    
-    setIsScanning(true);
-    setScannerError(null);
-    setHasPermission(null);
-
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "environment" } },
-            audio: false
-        });
-
-        if (seq !== startSeqRef.current) {
-            stream.getTracks().forEach(track => track.stop());
-            return;
-        }
-
-        streamRef.current = stream;
-        setHasPermission(true);
-
-        const videoElement = videoRef.current;
-        if (!videoElement) throw new Error("Video element is not available.");
-        
-        videoElement.srcObject = stream;
-        
-        await Promise.resolve(); // Allow a microtask tick for srcObject to be processed
-        
-        try {
-            await videoElement.play();
-        } catch (e:any) {
-            const msg = String(e?.message ?? "");
-            if (msg.includes("interrupted") || e?.name === "AbortError") {
-                console.warn("video.play() was interrupted. This is expected if a new scan started.");
-                return;
-            } else {
-                throw e;
-            }
-        }
-        
-        await waitForVideoReady(videoElement);
-        
-        if (seq !== startSeqRef.current) {
-            return;
-        }
-        
-        const reader = readerRef.current ?? (readerRef.current = new BrowserMultiFormatReader());
-        
-        const newControls = await reader.decodeFromVideoElement(videoElement, (result, error) => {
-            const isNotFound =
-              !!error &&
-              (
-                (typeof error === "object" && (error as any).name === "NotFoundException") ||
-                (typeof error === "object" && typeof (error as any).message === "string" && (error as any).message.toLowerCase().includes("notfound"))
-              );
-
-            if (result) {
-                handleScannedText(result.getText());
-            } else if (error && !isNotFound) {
-                console.error("QR decode error:", error);
-            }
-        });
-        
-        if (seq === startSeqRef.current) {
-            controlsRef.current = newControls;
-        } else {
-            newControls.stop();
-        }
-
-    } catch (err: any) {
-        console.error("Failed to start scanner:", err);
-        setScannerError(err.message || "An unexpected error occurred during camera setup.");
-        if (err.name === 'NotAllowedError' || err.name === 'NotFoundError') {
-          setHasPermission(false);
-          setScannerError("Camera access was denied or no camera found. Please enable it in your browser settings.");
-        }
-    } finally {
-        if (seq === startSeqRef.current) {
-            startingRef.current = false;
-        }
-    }
-  }, [handleScannedText]);
-
-  useEffect(() => {
-    if (kioskToken) return;
-
-    startScan();
-
-    return () => {
-      try { controlsRef.current?.stop?.(); } catch {}
-      try { readerRef.current?.reset?.(); } catch {}
-      try { streamRef.current?.getTracks?.().forEach(t => t.stop()); } catch {}
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kioskToken]);
   
   // Effect for token verification if token exists
   useEffect(() => {
@@ -345,7 +184,14 @@ function ScanPageContent() {
         title: `Successfully Clocked ${nextAction}`,
         description: `Your time has been recorded at ${safeFormat(clientTime, 'PPpp')}`,
       });
-      setRecentClock({ type: nextAction, time: clientTime });
+      
+      let redirectPath = "/app/jobs";
+      if (profile.role === "ADMIN" || profile.department === "MANAGEMENT") {
+        redirectPath = "/app/management/jobs";
+      } else if (profile.department === "OFFICE") {
+        redirectPath = "/app/office/jobs/management";
+      }
+      router.replace(redirectPath);
 
     } catch (error: any) {
       toast({
@@ -360,48 +206,19 @@ function ScanPageContent() {
 
   // --- RENDER LOGIC ---
 
-  // If no token, show scanner UI
-  if (!kioskToken) {
-    return (
-      <>
-        <PageHeader title="Scan QR Code" description="Point your camera at the QR code on the Kiosk screen." />
-        <div className="flex flex-col items-center gap-4">
-          <Card className="w-full max-w-md">
-            <CardContent className="p-2">
-                <div className="aspect-square w-full bg-muted rounded-xl overflow-hidden flex items-center justify-center relative">
-                    <video ref={videoRef} className="w-full h-full object-cover bg-black rounded-xl" autoPlay playsInline muted />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-64 h-64 border-4 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
-                    </div>
-                    {isScanning && !scannerError && (
-                      <div className="absolute inset-x-0 top-1/2 h-1 w-full overflow-hidden pointer-events-none">
-                          <div className="h-full w-full bg-red-500/70 shadow-[0_0_10px_red] animate-[scan_2s_ease-in-out_infinite]"
-                           style={{ animationName: 'scan' }}/>
-                          <style jsx>{`
-                              @keyframes scan {
-                                  0%, 100% { transform: translateY(-128px); }
-                                  50% { transform: translateY(128px); }
-                              }
-                          `}</style>
-                      </div>
-                    )}
-                </div>
-            </CardContent>
-          </Card>
-          
-           {scannerError && (
-              <Alert variant="destructive" className="max-w-md">
-                <CameraOff className="h-4 w-4" />
-                <AlertTitle>Camera Error</AlertTitle>
+  if (tokenStatus === "missing") {
+      return (
+          <>
+            <PageHeader title="Scan QR Code" description="This page is intended to be opened from a QR code." />
+             <Alert variant="destructive" className="max-w-md mx-auto">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>No QR Code Token</AlertTitle>
                 <AlertDescription>
-                  {scannerError}
-                  <Button variant="link" onClick={startScan} className="p-0 h-auto ml-2">Retry</Button>
+                  Please scan a valid QR code from the Kiosk screen to clock in or out.
                 </AlertDescription>
               </Alert>
-            )}
-        </div>
-      </>
-    );
+          </>
+      )
   }
 
   // --- Logic for when token IS present ---
@@ -409,21 +226,6 @@ function ScanPageContent() {
   const nextAction: 'IN' | 'OUT' = !lastAttendance || lastAttendance.type === 'OUT' ? 'IN' : 'OUT';
   const canClockSpam = secondsSinceLast === null || secondsSinceLast > SPAM_DELAY_SECONDS;
   const canClock = tokenStatus === 'valid' && canClockSpam;
-
-  if (recentClock) {
-      return (
-         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
-             <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-             <h1 className="text-3xl font-bold">ลงเวลาสำเร็จ!</h1>
-             <p className="text-muted-foreground mt-2 text-lg">
-                 คุณได้ลงเวลา <Badge variant={recentClock.type === 'IN' ? 'default' : 'secondary'}>{recentClock.type}</Badge> เรียบร้อยแล้ว
-             </p>
-             <p className="text-xl font-semibold mt-4">{safeFormat(recentClock.time, 'HH:mm:ss')}</p>
-             <p className="text-muted-foreground">{profile?.displayName}</p>
-             <Button onClick={() => setRecentClock(null)} className="mt-8">ลงเวลาอีกครั้ง</Button>
-         </div>
-      )
-  }
   
   if (tokenStatus === 'invalid') {
        return (
@@ -436,10 +238,6 @@ function ScanPageContent() {
              <p className="text-muted-foreground mt-1 text-sm max-w-md">
                 กรุณาลองสแกน QR Code ใหม่จากหน้าจอ Kiosk
              </p>
-             <Button onClick={() => router.push('/app/attendance/scan')} variant="outline" className="mt-6">
-                <RefreshCw className="mr-2 h-4 w-4"/>
-                ลองสแกนใหม่
-             </Button>
              {kioskToken && (
                 <p className="text-xs text-muted-foreground mt-4 font-mono bg-muted px-2 py-1 rounded">
                     TOKEN: ...{kioskToken.slice(-6)}
@@ -452,7 +250,7 @@ function ScanPageContent() {
 
   return (
     <>
-      <PageHeader title="Scan" description="บันทึกเวลาเข้า-ออกงานของคุณ" />
+      <PageHeader title="ลงเวลา" description="บันทึกเวลาเข้า-ออกงานของคุณ" />
       <div className="flex justify-center">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
@@ -500,6 +298,7 @@ function ScanPageContent() {
   );
 }
 
+// Main export
 export default function AttendanceScanPage() {
     return (
         <Suspense fallback={
