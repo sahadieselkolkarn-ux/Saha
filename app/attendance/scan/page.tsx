@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Suspense, useMemo, useRef, useCallback } from 'react';
@@ -279,6 +278,11 @@ function ScanPageContent() {
       batch.update(userDocRef, {
         lastAttendance: { type: nextAction, timestamp: serverTime }
       });
+
+      if (kioskToken) {
+        const tokenRef = doc(db, "kioskTokens", kioskToken);
+        batch.update(tokenRef, { isActive: false });
+      }
       
       await batch.commit();
 
