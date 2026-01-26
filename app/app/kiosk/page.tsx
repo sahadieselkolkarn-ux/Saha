@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { generateKioskToken } from '@/firebase/kiosk';
@@ -11,6 +12,15 @@ import { QrDisplay } from "@/components/qr-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, RefreshCw } from "lucide-react";
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
+    ),
+  ]);
+}
 
 export default function KioskPage() {
   const { db } = useFirebase();
@@ -39,8 +49,15 @@ export default function KioskPage() {
 
     setIsLoading(true);
     try {
+      // Test read to confirm connection
+      await getDoc(doc(db, 'users', profile.uid));
+      
       // Pass the current token to be deactivated
-      const { newTokenId, expiresAtMs: newExpiresAtMs } = await generateKioskToken(db, currentToken);
+      const { newTokenId, expiresAtMs: newExpiresAtMs } = await withTimeout(
+        generateKioskToken(db, currentToken),
+        8000,
+        "generateKioskToken"
+      );
       
       setCurrentToken(newTokenId);
       setExpiresAtMs(newExpiresAtMs);
@@ -49,6 +66,7 @@ export default function KioskPage() {
       setQrData(fullUrl);
       
     } catch (error: any) {
+      console.error("Kiosk token generation failed", { error, uid: profile?.uid, email: profile?.email, currentToken });
       if (error?.code === "permission-denied") {
         setTimeout(() => generateNewToken(true), 500);
         return;
@@ -56,7 +74,7 @@ export default function KioskPage() {
       toast({
         variant: "destructive",
         title: "Could not generate QR Code",
-        description: error.message,
+        description: error?.message || String(error),
       });
       setQrData(null);
     } finally {

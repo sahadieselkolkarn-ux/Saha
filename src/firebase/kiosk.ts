@@ -18,6 +18,15 @@ function generateToken(length: number = 20): string {
   return result;
 }
 
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
+    ),
+  ]);
+}
+
 export async function generateKioskToken(db: Firestore, previousTokenId?: string | null) {
   const batch = writeBatch(db);
   
@@ -41,6 +50,6 @@ export async function generateKioskToken(db: Firestore, previousTokenId?: string
     isActive: true,
   });
 
-  await batch.commit();
+  await withTimeout(batch.commit(), 8000, "kioskTokens batch.commit");
   return { newTokenId, expiresAtMs };
 }
