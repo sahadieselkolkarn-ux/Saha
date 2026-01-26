@@ -32,9 +32,9 @@ export async function ensurePaymentClaimForDocument(
   documentId: string,
   userProfile?: UserProfile | null
 ): Promise<{ created: boolean }> {
-  const docRef = doc(db, 'documents', documentId);
   
   try {
+    const docRef = doc(db, 'documents', documentId);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {

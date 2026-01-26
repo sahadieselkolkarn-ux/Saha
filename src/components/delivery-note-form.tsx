@@ -277,9 +277,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             jobId: data.jobId,
         };
 
-        const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
-        const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
-
         if (isEditing && editDocId) {
             const docRef = doc(db, 'documents', editDocId);
             await updateDoc(docRef, sanitizeForFirestore({
@@ -290,6 +287,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             await ensurePaymentClaimForDocument(db, editDocId, profile);
             toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         } else {
+            const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
+            const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
             const { docId } = await createDocument(
                 db,
                 'DELIVERY_NOTE',
@@ -299,7 +298,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 options
             );
             await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+            toast({ title: "สร้างใบส่งของแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         }
         router.push('/app/office/documents/delivery-note');
 

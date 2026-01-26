@@ -302,9 +302,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         senderName: data.senderName,
         receiverName: data.receiverName,
     };
-
-    const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
-    const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
     
     try {
         if (isEditing && editDocId) {
@@ -317,6 +314,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             await ensurePaymentClaimForDocument(db, editDocId, profile);
             toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         } else {
+            const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
+            const options = { ...backfillOptions, initialStatus: 'PENDING_REVIEW' };
             const { docId } = await createDocument(
                 db,
                 'TAX_INVOICE',
@@ -326,7 +325,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 options
             );
             await ensurePaymentClaimForDocument(db, docId, profile);
-            toast({ title: "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+            toast({ title: "สร้างใบกำกับภาษีแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
         }
         router.push('/app/office/documents/tax-invoice');
     } catch (error: any) {
@@ -595,7 +594,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
         </div>
         <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => router.back()} disabled={form.formState.isSubmitting}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()} disabled={form.formState.isSubmitting}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
             <Button type="submit" disabled={isFormLoading || isLocked}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
               บันทึกและส่งตรวจ
