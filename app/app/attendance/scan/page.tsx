@@ -187,13 +187,7 @@ function ScanPageContent() {
         description: `Your time has been recorded at ${safeFormat(clientTime, 'PPpp')}`,
       });
       
-      let redirectPath = "/app/jobs";
-        if (profile.role === "ADMIN" || profile.department === "MANAGEMENT") {
-            redirectPath = "/app/management/jobs";
-        } else if (profile.department === "OFFICE") {
-            redirectPath = "/app/office/jobs/management";
-        }
-      router.replace(redirectPath);
+      setRecentClock({ type: nextAction, time: clientTime });
 
     } catch (error: any) {
       toast({
@@ -207,6 +201,59 @@ function ScanPageContent() {
   };
 
   // --- RENDER LOGIC ---
+
+  if (recentClock) {
+    useEffect(() => {
+      const timer = setTimeout(() => {
+          if (!profile) {
+              router.replace('/login');
+              return;
+          }
+
+          const { role, department } = profile;
+
+          if (role === 'ADMIN') {
+              router.replace('/app/jobs');
+          } else if (role === 'OFFICER') {
+              if (department === 'CAR_SERVICE') {
+                  router.replace('/app/car-service/jobs/all');
+              } else {
+                  router.replace('/app/kiosk');
+              }
+          } else if (role === 'MANAGER' || role === 'WORKER') {
+              switch (department) {
+                  case 'MANAGEMENT': router.replace('/app/management/overview'); break;
+                  case 'OFFICE': router.replace('/app/office/intake'); break;
+                  case 'CAR_SERVICE': router.replace('/app/car-service/jobs/all'); break;
+                  case 'COMMONRAIL': router.replace('/app/commonrail/jobs/all'); break;
+                  case 'MECHANIC': router.replace('/app/mechanic/jobs/all'); break;
+                  case 'OUTSOURCE': router.replace('/app/outsource/export/new'); break;
+                  default: router.replace('/app/jobs'); break;
+              }
+          } else {
+              router.replace('/app/jobs');
+          }
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }, [router, profile]);
+
+    return (
+       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-4">
+           <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
+           <h1 className="text-3xl font-bold">ลงเวลาสำเร็จ!</h1>
+           <p className="text-muted-foreground mt-2 text-lg">
+               คุณได้ลงเวลา <Badge variant={recentClock.type === 'IN' ? 'default' : 'secondary'}>{recentClock.type}</Badge> เรียบร้อยแล้ว
+           </p>
+           <p className="text-xl font-semibold mt-4">{safeFormat(recentClock.time, 'HH:mm:ss')}</p>
+           <p className="text-muted-foreground">{profile?.displayName}</p>
+           <div className="mt-8 flex items-center text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              กำลังกลับไปหน้าหลัก...
+           </div>
+       </div>
+    );
+  }
 
   if (tokenStatus === "missing") {
       return (
@@ -312,4 +359,3 @@ export default function AttendanceScanPage() {
         </Suspense>
     )
 }
-
