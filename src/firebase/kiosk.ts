@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -24,7 +25,7 @@ export async function generateKioskToken(db: Firestore, previousTokenId?: string
   // Deactivate the previous token if it exists
   if (previousTokenId) {
     const oldTokenRef = doc(db, "kioskTokens", previousTokenId);
-    batch.update(oldTokenRef, { isActive: false });
+    batch.set(oldTokenRef, { isActive: false }, { merge: true });
   }
 
   // Create a new token
