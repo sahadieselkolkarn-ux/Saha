@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -52,7 +53,15 @@ export default function KioskPage() {
       if (!auth.currentUser) {
           throw new Error("Not authenticated");
       }
-      await auth.currentUser.getIdToken(true);
+      try {
+        await auth.currentUser.getIdToken(true);
+      } catch (e: any) {
+        if (e?.code === 'auth/network-request-failed') {
+          console.warn("Auth network failed, continue without token refresh");
+        } else {
+          throw e;
+        }
+      }
 
       // Test read to confirm connection
       await getDoc(doc(db, 'users', profile.uid));
