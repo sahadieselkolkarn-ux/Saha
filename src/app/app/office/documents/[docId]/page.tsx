@@ -1,1 +1,271 @@
-// This file has been moved to /app/app/office/documents/[docId]/page.tsx
+
+"use client";
+
+import { useMemo, Suspense, useEffect, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
+import Image from "next/image";
+import { doc } from "firebase/firestore";
+import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
+import { useDoc } from "@/firebase/firestore/use-doc";
+import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircle, ArrowLeft, Printer, ExternalLink, Send, Loader2 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { safeFormat } from "@/lib/date-utils";
+import type { Document } from "@/lib/types";
+import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
+
+function DocumentView({ document }: { document: Document }) {
+    const docTypeDisplay: Record<Document['docType'], string> = {
+        QUOTATION: "ใบเสนอราคา / Quotation",
+        DELIVERY_NOTE: "ใบส่งของชั่วคราว",
+        TAX_INVOICE: "ใบกำกับภาษี / Tax Invoice",
+        RECEIPT: "ใบเสร็จรับเงิน / Receipt",
+        BILLING_NOTE: "ใบวางบิล / Billing Note",
+        CREDIT_NOTE: "ใบลดหนี้ / Credit Note",
+        WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
+    };
+    
+    const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
+
+    return (
+        <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <div className="lg:col-span-2 space-y-2">
+                    {isDeliveryNote ? (
+                         <>
+                            <h2 className="text-xl font-bold">{document.storeSnapshot.informalName || document.storeSnapshot.taxName}</h2>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                            <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                        </>
+                    ) : (
+                         <>
+                            <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
+                            <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
+                            <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
+                        </>
+                    )}
+                </div>
+                <div className="space-y-2">
+                    <h1 className="text-2xl font-bold text-right">{docTypeDisplay[document.docType]}</h1>
+                    <div className="flex justify-between text-sm"><span className="font-medium">เลขที่:</span><span>{document.docNo}</span></div>
+                    <div className="flex justify-between text-sm"><span className="font-medium">วันที่:</span><span>{safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</span></div>
+                </div>
+            </div>
+
+            <Card className="mb-8 print-customer">
+                <CardHeader>
+                    <CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm space-y-1">
+                    <p className="font-semibold">{document.customerSnapshot.name}</p>
+                    <p className="text-muted-foreground whitespace-pre-wrap">{document.customerSnapshot.taxAddress || 'N/A'}</p>
+                    <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
+                    {!isDeliveryNote && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
+                </CardContent>
+            </Card>
+
+            <Table className="mb-8">
+                <TableHeader>
+                    <TableRow>
+                        <TableHead className="w-12">#</TableHead>
+                        <TableHead>รายการ</TableHead>
+                        <TableHead className="text-right">จำนวน</TableHead>
+                        <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                        <TableHead className="text-right">จำนวนเงิน</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {document.items.map((item, index) => (
+                        <TableRow key={index}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>{item.description}</TableCell>
+                            <TableCell className="text-right">{item.quantity}</TableCell>
+                            <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                    {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
+                </div>
+                <div className="space-y-2">
+                    <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                    <Separator className="separator" />
+                    <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                </div>
+            </div>
+            
+             <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm signature-area">
+                <div className="space-y-16">
+                    <p>.................................................</p>
+                    <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
+                </div>
+                 <div className="space-y-16">
+                    <p>.................................................</p>
+                    <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function DocumentPageContent() {
+    const { docId } = useParams();
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const { db } = useFirebase();
+    const { profile } = useAuth();
+    const { toast } = useToast();
+    const [isClaiming, setIsClaiming] = useState(false);
+
+    const docRef = useMemo(() => {
+        if (!db || typeof docId !== 'string') return null;
+        return doc(db, 'documents', docId);
+    }, [db, docId]);
+
+    const { data: document, isLoading, error } = useDoc<Document>(docRef);
+    const printedRef = useRef(false);
+
+    const isPrintMode = searchParams.get('print') === '1';
+    const shouldAutoprint = searchParams.get('autoprint') === '1';
+    
+    useEffect(() => {
+        if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
+            printedRef.current = true; // Prevent re-triggering
+            
+            // Remove autoprint from URL to avoid re-printing on refresh
+            const newUrl = `${pathname}?print=1`;
+            router.replace(newUrl, { scroll: false });
+
+            setTimeout(() => {
+                window.print();
+            }, 500); // Delay for rendering
+        }
+    }, [isPrintMode, shouldAutoprint, document, isLoading, router, pathname]);
+
+
+    const handlePrint = () => {
+        if (!isPrintMode) {
+             router.push(`${pathname}?print=1&autoprint=1`);
+        } else {
+             try {
+                window.print();
+            } catch (e) {
+                console.error("Print failed:", e);
+            }
+        }
+    };
+    
+    const handleClaimPayment = async () => {
+        if (!db || !document || !profile) return;
+        
+        if (document.status === 'PAID' || document.status === 'CANCELLED') {
+            toast({
+                variant: 'destructive',
+                title: 'ไม่สามารถดำเนินการได้',
+                description: `เอกสารนี้อยู่ในสถานะ "${document.status}" แล้ว`,
+            });
+            return;
+        }
+
+        setIsClaiming(true);
+        try {
+            const { created } = await ensurePaymentClaimForDocument(db, document.id, profile);
+            if (created) {
+                toast({ title: "ส่งเข้ารอตรวจสอบรายรับแล้ว" });
+            } else {
+                toast({
+                    title: "มีรายการรอตรวจสอบอยู่แล้ว",
+                    description: "เอกสารนี้ได้ถูกส่งไปแล้วก่อนหน้านี้",
+                    variant: 'default' 
+                });
+            }
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+        } finally {
+            setIsClaiming(false);
+        }
+    };
+
+    if (isLoading) {
+        return <Skeleton className="h-screen w-full" />;
+    }
+
+    if (error) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-destructive">
+                <AlertCircle className="w-16 h-16" />
+                <PageHeader title="Error Loading Document" description={error.message} />
+            </div>
+        );
+    }
+    
+    if (!document) {
+         return (
+            <div className="flex flex-col items-center justify-center h-full gap-4">
+                <AlertCircle className="w-16 h-16 text-muted-foreground" />
+                <PageHeader title="Document Not Found" description="The requested document does not exist." />
+            </div>
+        );
+    }
+
+    // In print mode, we only render the document itself. The layout is handled by app/app/layout.tsx
+    if (isPrintMode) {
+        return (
+            <div>
+                 <div className="print-hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
+                    <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
+                    <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                    <Button asChild variant="outline">
+                        <a href={`${pathname}?print=1`} target="_blank" rel="noopener noreferrer"><ExternalLink/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => router.replace(pathname)}>กลับ</Button>
+                </div>
+                <DocumentView document={document} />
+            </div>
+        );
+    }
+
+    // Main view for non-print mode, with controls.
+    return (
+        <div className="space-y-6">
+             <div className="flex justify-between items-center">
+                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
+                 <div className="flex items-center gap-2">
+                    {(document.docType === 'DELIVERY_NOTE' || document.docType === 'TAX_INVOICE') && document.status !== 'PAID' && document.status !== 'CANCELLED' && (
+                        <Button onClick={handleClaimPayment} disabled={isClaiming}>
+                            {isClaiming ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
+                            ส่งเข้ารอตรวจสอบ
+                        </Button>
+                    )}
+                    <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                 </div>
+            </div>
+            
+            <DocumentView document={document} />
+        </div>
+    );
+}
+
+
+export default function DocumentPageWrapper() {
+  return (
+    <Suspense fallback={<Skeleton className="h-screen w-full" />}>
+      <DocumentPageContent />
+    </Suspense>
+  )
+}

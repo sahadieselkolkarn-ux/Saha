@@ -24,25 +24,26 @@ import { sanitizeForFirestore } from '@/lib/utils';
  * @param db The Firestore instance.
  * @param documentId The ID of the source document (e.g., DELIVERY_NOTE, TAX_INVOICE).
  * @param userProfile The profile of the user who initiated the action.
+ * @returns A promise that resolves to an object with a `created` boolean.
  */
 export async function ensurePaymentClaimForDocument(
   db: Firestore,
   documentId: string,
   userProfile?: UserProfile | null
-) {
+): Promise<{ created: boolean }> {
   const docRef = doc(db, 'documents', documentId);
   const docSnap = await getDoc(docRef);
 
   if (!docSnap.exists()) {
     console.error(`ensurePaymentClaimForDocument: Document with ID ${documentId} not found.`);
-    return;
+    return { created: false };
   }
 
   const document = docSnap.data() as Document;
 
   // Only create claims for specific document types that aren't cancelled.
   if (!['DELIVERY_NOTE', 'TAX_INVOICE'].includes(document.docType) || document.status === 'CANCELLED') {
-    return;
+    return { created: false };
   }
 
   // Check if a pending claim already exists for this document to prevent duplicates.
@@ -58,7 +59,7 @@ export async function ensurePaymentClaimForDocument(
   if (!existingClaimsSnap.empty) {
     // A pending claim already exists, do nothing.
     console.log(`Pending payment claim for doc ${documentId} already exists.`);
-    return;
+    return { created: false };
   }
 
   // No pending claim found, so create one.
@@ -74,11 +75,13 @@ export async function ensurePaymentClaimForDocument(
     amountDue: document.grandTotal,
     suggestedPaymentMethod: document.paymentMethod as any,
     suggestedAccountId: document.receivedAccountId,
-    note: `Claim auto-generated from ${document.docType} creation.`,
+    note: `Claim auto-generated from ${document.docType} creation/action.`,
   };
 
   await addDoc(collection(db, 'paymentClaims'), {
       ...sanitizeForFirestore(newClaimData),
       createdAt: serverTimestamp(),
   });
+  
+  return { created: true };
 }
