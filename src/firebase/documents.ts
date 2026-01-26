@@ -49,7 +49,7 @@ interface CreateDocumentOptions {
  * @param userProfile The profile of the user creating the document.
  * @param newJobStatus Optional new status to set for the associated job.
  * @param options Optional parameters for manual backfilling.
- * @returns The full document number.
+ * @returns An object containing the new document's ID and number: { docId, docNo }.
  */
 export async function createDocument(
   db: Firestore,
@@ -58,7 +58,10 @@ export async function createDocument(
   userProfile: UserProfile,
   newJobStatus?: JobStatus,
   options?: CreateDocumentOptions
-): Promise<string> {
+): Promise<{ docId: string; docNo: string }> {
+
+  const newDocRef = doc(collection(db, 'documents'));
+  const docId = newDocRef.id;
 
   if (options?.manualDocNo) {
     // --- Manual Mode (Backfill) ---
@@ -72,10 +75,9 @@ export async function createDocument(
       throw new Error(`เลขที่เอกสาร '${manualDocNo}' ถูกใช้ไปแล้วสำหรับเอกสารประเภทนี้`);
     }
 
-    const newDocRef = doc(collection(db, 'documents'));
     const newDocumentData: Document = {
         ...data,
-        id: newDocRef.id,
+        id: docId,
         docNo: manualDocNo,
         docType,
         status: 'DRAFT',
@@ -102,16 +104,15 @@ export async function createDocument(
         await batch.commit();
     }
     
-    return manualDocNo;
+    return { docId, docNo: manualDocNo };
 
   } else {
     // --- Automatic Mode (Existing Logic) ---
     const year = new Date(data.docDate).getFullYear();
     const counterRef = doc(db, 'documentCounters', String(year));
     const docSettingsRef = doc(db, 'settings', 'documents');
-    const newDocRef = doc(collection(db, 'documents'));
 
-    const documentNumber = await runTransaction(db, async (transaction) => {
+    const docNo = await runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
         const docSettingsDoc = await transaction.get(docSettingsRef);
 
@@ -131,12 +132,12 @@ export async function createDocument(
         const counterField = docTypeToCounterField[docType];
         const newCount = (currentCounters[counterField] || 0) + 1;
 
-        const docNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
+        const generatedDocNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
         
         const newDocumentData: Document = {
             ...data,
-            id: newDocRef.id,
-            docNo,
+            id: docId,
+            docNo: generatedDocNo,
             docType,
             status: 'DRAFT',
             createdAt: serverTimestamp() as Timestamp,
@@ -155,7 +156,7 @@ export async function createDocument(
             }
             const activityRef = doc(collection(db, 'jobs', data.jobId, 'activities'));
             transaction.set(activityRef, {
-                text: `Created ${docType} document: ${docNo}`,
+                text: `Created ${docType} document: ${generatedDocNo}`,
                 userName: userProfile.displayName,
                 userId: userProfile.uid,
                 createdAt: serverTimestamp(),
@@ -163,9 +164,9 @@ export async function createDocument(
             });
         }
 
-        return docNo;
+        return generatedDocNo;
     });
 
-    return documentNumber;
+    return { docId, docNo };
   }
 }

@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { createDocument } from "@/firebase/documents";
+import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
 import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
@@ -43,6 +44,7 @@ const deliveryNoteFormSchema = z.object({
   jobId: z.string().optional(),
   customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1),
+  dueDate: z.string().min(1),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   subtotal: z.coerce.number(),
   discountAmount: z.coerce.number().min(0).optional(),
@@ -97,6 +99,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     defaultValues: {
       jobId: jobId || undefined,
       issueDate: new Date().toISOString().split("T")[0],
+      dueDate: new Date(new Date().setDate(new Date().getDate() + 15)).toISOString().split("T")[0],
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       subtotal: 0,
       discountAmount: 0,
@@ -257,20 +260,20 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     try {
         const documentData = {
             docDate: data.issueDate,
-            jobId: data.jobId,
             customerSnapshot: { ...customerSnapshot },
-            carSnapshot: job ? { licensePlate: job.carServiceDetails?.licensePlate, details: job.description } : (docToEdit?.carSnapshot || {}),
             storeSnapshot: { ...storeSettings },
             items: itemsForDoc,
-            subtotal: data.subtotal,
+            subtotal: data.subtotal, 
             discountAmount: data.discountAmount || 0,
             net: data.grandTotal,
             withTax: false,
             vatAmount: 0,
             grandTotal: data.grandTotal,
             notes: data.notes,
+            dueDate: data.dueDate,
             senderName: data.senderName,
             receiverName: data.receiverName,
+            jobId: data.jobId,
         };
 
         const backfillOptions = data.isBackfill ? { manualDocNo: data.manualDocNo } : undefined;
@@ -281,9 +284,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 ...documentData,
                 updatedAt: serverTimestamp(),
             }));
+            await ensurePaymentClaimForDocument(db, editDocId, profile);
             toast({ title: "อัปเดตใบส่งของสำเร็จ" });
         } else {
-            await createDocument(
+            const { docId } = await createDocument(
                 db,
                 'DELIVERY_NOTE',
                 documentData,
@@ -291,7 +295,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
                 backfillOptions
             );
-            toast({ title: "สร้างใบส่งของสำเร็จ" });
+            await ensurePaymentClaimForDocument(db, docId, profile);
+            toast({ title: "สร้างใบส่งของสำเร็จ และส่งเข้ารอตรวจสอบรายรับแล้ว" });
         }
         router.push('/app/office/documents/delivery-note');
 
@@ -418,7 +423,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                             <Input
                                                 type="number"
                                                 inputMode="decimal"
-                                                placeholder="0"
+                                                placeholder="—"
                                                 className="text-right"
                                                 value={(field.value ?? 0) === 0 ? "" : field.value}
                                                 onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}

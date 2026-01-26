@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { createDocument } from "@/firebase/documents";
+import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
 import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
@@ -310,9 +311,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 ...documentData,
                 updatedAt: serverTimestamp(),
             }));
+            await ensurePaymentClaimForDocument(db, editDocId, profile);
             toast({ title: "อัปเดตใบกำกับภาษีสำเร็จ" });
         } else {
-            await createDocument(
+            const { docId } = await createDocument(
                 db,
                 'TAX_INVOICE',
                 documentData,
@@ -320,7 +322,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
                 backfillOptions
             );
-            toast({ title: "สร้างใบกำกับภาษีสำเร็จ" });
+            await ensurePaymentClaimForDocument(db, docId, profile);
+            toast({ title: "สร้างใบกำกับภาษีสำเร็จ และส่งเข้ารอตรวจสอบรายรับแล้ว" });
         }
         router.push('/app/office/documents/tax-invoice');
     } catch (error: any) {
@@ -493,7 +496,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                         <Input
                                             type="number"
                                             inputMode="decimal"
-                                            placeholder="0"
+                                            placeholder="—"
                                             className="text-right"
                                             value={(field.value ?? 0) === 0 ? "" : field.value}
                                             onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
