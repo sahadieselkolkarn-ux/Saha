@@ -99,9 +99,8 @@ export default function JobDetailsPage() {
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
-  const canAddPhotos = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
-
   const isUserAdmin = profile?.role === 'ADMIN';
+  const isOfficeOrAdminOrMgmt = profile?.role === 'ADMIN' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   const isViewOnly = job?.status === 'CLOSED' && !allowEditing;
   const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
@@ -308,9 +307,7 @@ export default function JobDetailsPage() {
         const jobUpdates: any = { 
             lastActivityAt: serverTimestamp() 
         };
-        if (photoURLs.length > 0) {
-            jobUpdates.photos = arrayUnion(...photoURLs);
-        }
+        // This is for activity photos, NOT main job photos.
         
         // 1. Add new activity document
         batch.set(doc(activitiesColRef), {
@@ -321,7 +318,7 @@ export default function JobDetailsPage() {
             photos: photoURLs,
         });
         
-        // 2. Update main job document
+        // 2. Update main job document's last activity timestamp
         batch.update(jobDocRef, jobUpdates);
         
         await batch.commit();
@@ -370,7 +367,7 @@ export default function JobDetailsPage() {
 
         const photoURLs: string[] = [];
         for (const photo of validFiles) {
-            const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
+            const photoRef = ref(storage, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
             await uploadBytes(photoRef, photo);
             photoURLs.push(await getDownloadURL(photoRef));
         }
@@ -379,14 +376,14 @@ export default function JobDetailsPage() {
         
         // 1. Add activity log
         batch.set(doc(activitiesColRef), {
-            text: `Added ${validFiles.length} photo(s).`,
+            text: `Added ${validFiles.length} photo(s) to the main job.`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
-            photos: photoURLs,
+            photos: photoURLs, // Also log the photos in the activity for history
         });
         
-        // 2. Update main job document
+        // 2. Update main job document's photos array
         batch.update(jobDocRef, { 
             photos: arrayUnion(...photoURLs),
             lastActivityAt: serverTimestamp() 
@@ -621,8 +618,8 @@ const handlePartsReady = async () => {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Photos ({job.photos?.length ?? 0}/4)</CardTitle>
-                {canAddPhotos && (
+                <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
+                {isOfficeOrAdminOrMgmt && (
                     <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
                         <label htmlFor="quick-photo-upload" className="cursor-pointer flex items-center">
                             {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
@@ -650,7 +647,12 @@ const handlePartsReady = async () => {
                             </a>
                         ))}
                     </div>
-                ) : <p className="text-muted-foreground text-sm">No photos uploaded yet.</p>}
+                ) : <p className="text-muted-foreground text-sm">ยังไม่มีรูปตอนรับงาน</p>}
+                {!isOfficeOrAdminOrMgmt && !isViewOnly && (
+                    <p className="text-xs text-muted-foreground mt-4">
+                        ช่างเพิ่มรูปได้ที่ ‘กิจกรรมงาน (Activity)’ เท่านั้น
+                    </p>
+                )}
             </CardContent>
           </Card>
           
@@ -659,12 +661,12 @@ const handlePartsReady = async () => {
               <CardContent className="space-y-4">
                 <Textarea placeholder="Type your note here..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={isViewOnly} />
                 <div className="flex items-center justify-center w-full">
-                    <label htmlFor="activity-dropzone-file" className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg ${((job?.photos?.length || 0) + newPhotos.length) >= 4 || isViewOnly ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer bg-muted hover:bg-secondary"}`}>
+                    <label htmlFor="activity-dropzone-file" className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg ${ isViewOnly ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer bg-muted hover:bg-secondary"}`}>
                         <div className="flex flex-col items-center justify-center">
                         <Camera className="w-8 h-8 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground">Add Photos (up to 4 total)</p>
+                        <p className="text-xs text-muted-foreground">Add Photos to Activity</p>
                         </div>
-                        <Input id="activity-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={((job?.photos?.length || 0) + newPhotos.length) >= 4 || isViewOnly} />
+                        <Input id="activity-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={isViewOnly} />
                     </label>
                 </div>
                 {(photoPreviews.length > 0) && (

@@ -36,6 +36,10 @@ service cloud.firestore {
       return isAdmin() || (signedIn() && dept() == "MANAGEMENT");
     }
     
+    function isOfficeOrMgmt() {
+      return isMgmt() || (signedIn() && dept() == "OFFICE");
+    }
+    
     function isAccountingAllowed() {
       return isMgmt();
     }
@@ -80,7 +84,8 @@ service cloud.firestore {
     // Jobs & Main Documents (MVP)
     match /jobs/{jobId} {
       allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow create: if signedIn();
+      allow update: if signedIn() && (isOfficeOrMgmt() || request.resource.data.photos == resource.data.photos);
       allow delete: if isAdmin();
       match /activities/{activityId} {
         allow read: if signedIn();
@@ -92,11 +97,13 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn();
       allow update: if 
+         (
          (signedIn()
           && (resource.data.status in ['DRAFT', 'PENDING_REVIEW'])
           && request.resource.data.docNo == resource.data.docNo
          )
-         || isAccountingAllowed();
+         || isAccountingAllowed()
+         );
       allow delete: if isAdmin();
     }
     match /documentCounters/{yearId} {
