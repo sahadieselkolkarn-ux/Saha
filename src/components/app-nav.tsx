@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -96,6 +97,7 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
                 <SubNavLink href="/app/management/accounting/receivables-payables" label="ลูกหนี้/เจ้าหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/purchase-reports" label="รายงานการซื้อ" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
