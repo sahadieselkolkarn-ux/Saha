@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, query } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -13,155 +13,198 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowRight, Loader2, PlusCircle, Search, FileImage } from "lucide-react";
-import type { Job, JobDepartment } from "@/lib/types";
+import type { Job, JobStatus } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY } from "@/lib/constants";
 import { JobList } from "@/components/job-list";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { JOB_STATUS_DISPLAY } from "@/lib/constants";
 
 const isClosedStatus = (status?: Job['status']) => 
     ["CLOSED", "DONE", "COMPLETED"].includes(String(status || "").toUpperCase());
 
-function AllJobsTab({ searchTerm }: { searchTerm: string }) {
-  const { db } = useFirebase();
-  const { toast } = useToast();
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
+const getStatusVariant = (status: Job['status']) => {
+    switch (status) {
+        case 'RECEIVED': return 'secondary';
+        case 'IN_PROGRESS': return 'default';
+        case 'DONE': return 'outline';
+        case 'CLOSED': return 'destructive';
+        default: return 'outline';
+    }
+}
 
-  useEffect(() => {
-    if (!db) {
-      setLoading(false);
-      return;
+// Compact card for the status board view
+function JobStatusCard({ job }: { job: Job }) {
+    return (
+        <Card className="mb-2">
+            <CardContent className="p-3">
+                <div className="flex gap-3">
+                    {job.photos && job.photos.length > 0 && (
+                        <div className="relative w-16 h-16 rounded-md bg-muted flex-shrink-0">
+                            <Image src={job.photos[0]} alt="Job" fill className="object-cover rounded-md" />
+                        </div>
+                    )}
+                    <div className="flex-grow overflow-hidden">
+                        <p className="font-semibold truncate">{job.customerSnapshot.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{job.customerSnapshot.phone}</p>
+                        <p className="text-xs text-muted-foreground truncate">{job.description}</p>
+                        <div className="flex justify-between items-center mt-1">
+                            <Badge variant="outline" className="text-xs">{job.department}</Badge>
+                            <Button asChild size="sm" variant="ghost" className="h-auto px-2 py-1 text-xs">
+                                <Link href={`/app/jobs/${job.id}`}>View</Link>
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+// Kanban-style board for jobs by status
+function JobsByStatusTab({ jobs }: { jobs: Job[] }) {
+    const statusColumns: JobStatus[] = ['RECEIVED', 'IN_PROGRESS', 'WAITING_PARTS', 'WAITING_CUSTOMER_PICKUP', 'DONE'];
+    const statusLabels: Record<string, string> = {
+        RECEIVED: "รับงาน",
+        IN_PROGRESS: "กำลังทำ",
+        WAITING_PARTS: "รออะไหล่",
+        WAITING_CUSTOMER_PICKUP: "รอลูกค้ารับ",
+        DONE: "ทำเสร็จ",
+        OTHER: "อื่นๆ"
     };
 
-    setLoading(true);
-    const q = query(collection(db, "jobs"), orderBy("lastActivityAt", "desc"));
+    const jobsByStatus = useMemo(() => {
+        const grouped: Record<string, Job[]> = {};
+        const knownStatuses = new Set(statusColumns);
+
+        jobs.forEach(job => {
+            const statusKey = job.status;
+            if (knownStatuses.has(statusKey)) {
+                if (!grouped[statusKey]) grouped[statusKey] = [];
+                grouped[statusKey].push(job);
+            } else {
+                if (!grouped['OTHER']) grouped['OTHER'] = [];
+                grouped['OTHER'].push(job);
+            }
+        });
+        
+        // Sort jobs within each group
+        for (const status in grouped) {
+            grouped[status].sort((a, b) => (b.lastActivityAt?.toMillis() ?? 0) - (a.lastActivityAt?.toMillis() ?? 0));
+        }
+
+        return grouped;
+    }, [jobs, statusColumns]);
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
-      setJobs(jobsData);
-      setLoading(false);
-    }, (error) => {
-        toast({ variant: "destructive", title: "Error loading jobs", description: "Could not retrieve jobs from the database." });
-        setLoading(false);
-    });
+    const allColumnKeys = [...statusColumns];
+    if (jobsByStatus['OTHER']?.length > 0) {
+        allColumnKeys.push('OTHER' as JobStatus); // Cast for inclusion
+    }
 
-    return () => unsubscribe();
-  }, [db, toast]);
-  
-  const visibleJobs = useMemo(() => {
-    let filtered = jobs.filter(j => !isClosedStatus(j.status));
-
-    const q = searchTerm.trim().toLowerCase();
-    if (q) {
-        filtered = filtered.filter(j =>
-            (j.customerSnapshot?.name || "").toLowerCase().includes(q) ||
-            (j.customerSnapshot?.phone || "").includes(q)
+    if (jobs.length === 0) {
+        return (
+            <Card className="text-center py-12">
+                <CardHeader>
+                    <CardTitle>ไม่พบงานตามเงื่อนไขที่ค้นหา</CardTitle>
+                </CardHeader>
+            </Card>
         );
     }
-    return filtered;
-  }, [jobs, searchTerm]);
-  
-  const getStatusVariant = (status: Job['status']) => {
-    switch (status) {
-      case 'RECEIVED': return 'secondary';
-      case 'IN_PROGRESS': return 'default';
-      case 'DONE': return 'outline';
-      case 'CLOSED': return 'destructive';
-      default: return 'outline';
-    }
+
+    return (
+        <ScrollArea>
+            <div className="flex gap-4 pb-4">
+                {allColumnKeys.map(statusKey => {
+                    const columnJobs = jobsByStatus[statusKey] || [];
+                    return (
+                        <div key={statusKey} className="w-80 flex-shrink-0">
+                            <Card className="bg-muted/50">
+                                <CardHeader className="p-4">
+                                    <div className="flex justify-between items-center">
+                                        <CardTitle className="text-base">{statusLabels[statusKey] || statusKey}</CardTitle>
+                                        <Badge variant="secondary">{columnJobs.length}</Badge>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-4 pt-0 min-h-48">
+                                    {columnJobs.length > 0 ? (
+                                        columnJobs.map(job => <JobStatusCard key={job.id} job={job} />)
+                                    ) : (
+                                        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">ไม่มีงาน</div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    );
+                })}
+            </div>
+            <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+    );
+}
+
+
+function AllJobsTab({ jobs }: { jobs: Job[] }) {
+  if (jobs.length === 0) {
+    return (
+      <Card className="text-center py-12">
+        <CardHeader>
+          <CardTitle>ไม่พบงานตามเงื่อนไขที่ค้นหา</CardTitle>
+          <CardDescription>ลองเปลี่ยนคำค้นหาของคุณ</CardDescription>
+        </CardHeader>
+      </Card>
+    );
   }
 
   return (
-    <>
-      {loading ? (
-        <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
-      ) : visibleJobs.length === 0 ? (
-        <Card className="text-center py-12">
-            <CardHeader>
-                <CardTitle>{searchTerm ? "ไม่พบงานตามเงื่อนไขที่ค้นหา" : "No Ongoing Jobs Found"}</CardTitle>
-                <CardDescription>{searchTerm ? "ลองเปลี่ยนคำค้นหาของคุณ" : "There are currently no active jobs."}</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Button asChild>
-                    <Link href="/app/office/intake">Create the first job</Link>
-                </Button>
-            </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {visibleJobs.map(job => (
-            <Card key={job.id} className="flex flex-col">
-              <div className="relative aspect-video w-full bg-muted">
-                {job.photos && job.photos.length > 0 ? (
-                    <Image
-                        src={job.photos[0]}
-                        alt={job.description || "Job image"}
-                        fill
-                        className="object-cover"
-                    />
-                ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                        <FileImage className="h-10 w-10 text-muted-foreground/50" />
-                    </div>
-                )}
-              </div>
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-                  <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{JOB_STATUS_DISPLAY[job.status]}</Badge>
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {jobs.map(job => (
+        <Card key={job.id} className="flex flex-col">
+          <div className="relative aspect-video w-full bg-muted">
+            {job.photos && job.photos.length > 0 ? (
+                <Image
+                    src={job.photos[0]}
+                    alt={job.description || "Job image"}
+                    fill
+                    className="object-cover"
+                />
+            ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                    <FileImage className="h-10 w-10 text-muted-foreground/50" />
                 </div>
-                <CardDescription>
-                  {job.department} &bull; Last update: {safeFormat(job.lastActivityAt, 'PP')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-grow">
-                <p className="line-clamp-3 text-sm text-muted-foreground">{job.description}</p>
-              </CardContent>
-              <CardFooter>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={`/app/jobs/${job.id}`}>
-                    View Details <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      )}
-    </>
+            )}
+          </div>
+          <CardHeader>
+            <div className="flex justify-between items-start">
+              <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
+              <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{JOB_STATUS_DISPLAY[job.status]}</Badge>
+            </div>
+            <CardDescription>
+              {job.department} &bull; Last update: {safeFormat(job.lastActivityAt, 'PP')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex-grow">
+            <p className="line-clamp-3 text-sm text-muted-foreground">{job.description}</p>
+          </CardContent>
+          <CardFooter>
+            <Button asChild variant="outline" className="w-full">
+              <Link href={`/app/jobs/${job.id}`}>
+                View Details <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardFooter>
+        </Card>
+      ))}
+    </div>
   );
 }
 
 function JobsByDepartmentTab() {
-  const [selectedDepartment, setSelectedDepartment] = useState<JobDepartment | 'ALL'>('ALL');
-
   return (
     <div className="space-y-4">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex justify-start">
-            <Select onValueChange={(value) => setSelectedDepartment(value as JobDepartment | 'ALL')} defaultValue="ALL">
-              <SelectTrigger className="w-full sm:w-[280px]">
-                <SelectValue placeholder="เลือกแผนกเพื่อกรองข้อมูล" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">ทุกแผนก</SelectItem>
-                {JOB_DEPARTMENTS.map(dept => (
-                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-      
       <JobList 
-        department={selectedDepartment === 'ALL' ? undefined : selectedDepartment} 
         excludeStatus={["CLOSED", "DONE", "COMPLETED"]}
-        emptyTitle={selectedDepartment === 'ALL' ? 'ไม่มีงานในระบบ' : `ไม่พบงานในแผนก ${selectedDepartment}`}
-        emptyDescription="ลองเลือกแผนกอื่น หรือสร้างงานใหม่"
+        emptyTitle={'ไม่มีงานในระบบ'}
+        emptyDescription="ลองสร้างงานใหม่"
       />
     </div>
   )
@@ -170,6 +213,40 @@ function JobsByDepartmentTab() {
 
 export default function ManagementJobsPage() {
     const [searchTerm, setSearchTerm] = useState("");
+    const { db } = useFirebase();
+    const { toast } = useToast();
+    const [jobs, setJobs] = useState<Job[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!db) return;
+        setLoading(true);
+        const q = query(collection(db, "jobs"));
+        const unsubscribe = onSnapshot(q, 
+            (snapshot) => {
+                const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+                setJobs(jobsData);
+                setLoading(false);
+            }, 
+            (error) => {
+                toast({ variant: "destructive", title: "Error loading jobs" });
+                setLoading(false);
+            }
+        );
+        return () => unsubscribe();
+    }, [db, toast]);
+
+    const filteredJobs = useMemo(() => {
+        let filtered = jobs.filter(j => !isClosedStatus(j.status));
+        const q = searchTerm.trim().toLowerCase();
+        if (q) {
+            filtered = filtered.filter(j =>
+                (j.customerSnapshot?.name || "").toLowerCase().includes(q) ||
+                (j.customerSnapshot?.phone || "").includes(q)
+            );
+        }
+        return filtered;
+    }, [jobs, searchTerm]);
 
     return (
         <>
@@ -200,15 +277,16 @@ export default function ManagementJobsPage() {
                     <TabsTrigger value="by-status">งานตามสถานะ</TabsTrigger>
                 </TabsList>
                 <TabsContent value="all">
-                    <AllJobsTab searchTerm={searchTerm}/>
+                    {loading ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : <AllJobsTab jobs={filteredJobs}/>}
                 </TabsContent>
                 <TabsContent value="by-department">
                     <JobsByDepartmentTab />
                 </TabsContent>
                 <TabsContent value="by-status">
-                    <Card><CardHeader><CardTitle>งานตามสถานะ</CardTitle><CardDescription>ดูและจัดการงานทั้งหมดโดยแยกตามสถานะ</CardDescription></CardHeader><CardContent><p>Coming soon.</p></CardContent></Card>
+                    {loading ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : <JobsByStatusTab jobs={filteredJobs} />}
                 </TabsContent>
             </Tabs>
         </>
     );
 }
+
