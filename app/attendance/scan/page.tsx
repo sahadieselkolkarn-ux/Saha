@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Suspense, useRef, useCallback, useState, useEffect, useMemo } from 'react';
@@ -71,7 +72,7 @@ function ScanPageContent() {
     }
     
     try {
-      if (readerRef.current && typeof readerRef.current.reset === 'function') {
+      if (readerRef.current && typeof readerRef.current.reset === "function") {
         readerRef.current.reset();
       }
     } catch (e) {
@@ -79,137 +80,103 @@ function ScanPageContent() {
     }
   }, [controls]);
 
-  // Effect for camera scanning when no token is present
+  // Effect to get camera permissions and list devices
   useEffect(() => {
     if (kioskToken) return;
 
-    const startScan = async () => {
-        setIsScanning(true);
-        setScannerError(null);
+    const getPermissionsAndDevices = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        stream.getTracks().forEach(track => track.stop());
+        setHasPermission(true);
+
+        let videoInputDevices: MediaDeviceInfo[] = [];
         try {
-            // Get permissions and stream to show the user a preview
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: "environment" } },
-                audio: false,
-            });
-
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-                await videoRef.current.play(); // Ensure video starts playing
-            }
-
-            setHasPermission(true);
-
-            // Now list devices
-            if (!readerRef.current) {
-                readerRef.current = new BrowserMultiFormatReader();
-            }
-            const videoInputDevices = await readerRef.current.listVideoInputDevices();
-            setDevices(videoInputDevices);
-
-            if (videoInputDevices.length > 0) {
-                setSelectedDeviceId(videoInputDevices[0].deviceId);
-            }
-
-        } catch (err: any) {
-            setHasPermission(false);
-            if (err.name === 'NotAllowedError') {
-                setScannerError("Camera access was denied. Please enable it in your browser settings.");
-            } else if (err.name === 'NotFoundError') {
-                setScannerError("No camera found. Please ensure a camera is connected.");
-            } else if (err.name === 'NotReadableError') {
-                setScannerError("Camera is already in use by another application.");
-            }
-            else {
-                setScannerError(`An unexpected error occurred: ${err.name}`);
-            }
-            console.error("Camera access error:", err);
+          videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
+        } catch (e) {
+          console.warn("ZXing listVideoInputDevices failed, falling back to navigator.", e);
+          if (navigator.mediaDevices?.enumerateDevices) {
+            const allDevices = await navigator.mediaDevices.enumerateDevices();
+            videoInputDevices = allDevices.filter(d => d.kind === 'videoinput');
+          }
         }
+        
+        setDevices(videoInputDevices);
+        if (videoInputDevices.length > 0) {
+          const backCamera = videoInputDevices.find(d => d.label.toLowerCase().includes('back'));
+          setSelectedDeviceId(backCamera?.deviceId || videoInputDevices[0].deviceId);
+        }
+      } catch (err: any) {
+        setHasPermission(false);
+        if (err.name === 'NotAllowedError') {
+          setScannerError("Camera access was denied. Please enable it in your browser settings.");
+        } else {
+          setScannerError(`An unexpected error occurred: ${err.name}`);
+        }
+        console.error("Camera access error:", err);
+      }
     };
     
-    startScan();
+    getPermissionsAndDevices();
 
-    return () => {
-        resetScanner();
-        // Also stop the preview stream tracks
-        if (videoRef.current?.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
-        }
-    };
-  }, [kioskToken, resetScanner]);
+  }, [kioskToken]);
 
+  // Effect to start/restart the decoding process when the selected device changes
   useEffect(() => {
-    if (!selectedDeviceId || !videoRef.current || kioskToken) return;
-    
+    if (kioskToken || !selectedDeviceId || !videoRef.current) return;
+
     if (!readerRef.current) {
         readerRef.current = new BrowserMultiFormatReader();
     }
     const reader = readerRef.current;
-    let isCancelled = false;
-
-    const startDecoding = async () => {
-        setIsScanning(true);
-        try {
-            const newControls = await reader.decodeFromVideoElement(
-                videoRef.current,
-                (result, error, innerControls) => {
-                    if (isCancelled || !result) return;
-                    
-                    isCancelled = true;
-                    innerControls.stop();
-                    setControls(null);
-                    setIsScanning(false);
-                    const url = result.getText();
-                    if (url.includes('/app/attendance/scan')) {
-                         router.push(url);
-                    } else {
-                        toast({variant: 'destructive', title: 'Invalid QR Code', description: 'This QR code is not for attendance.'});
-                         setTimeout(() => {
-                            if (document.hidden) return; // Don't restart if tab is not visible
-                            isCancelled = false;
-                            startDecoding();
-                        }, 2000);
-                    }
-                }
-            );
-
-            setControls(newControls);
-
-            // Check for torch support
-            const stream = newControls.stream;
-            const track = stream.getVideoTracks()[0];
-            if (track && 'getCapabilities' in track) {
-                const capabilities = track.getCapabilities();
-                setTorchSupported(!!capabilities.torch);
-                if (!capabilities.torch) {
-                    setTorchOn(false);
-                }
+    
+    resetScanner();
+    setIsScanning(true);
+    setScannerError(null);
+    
+    reader.decodeFromVideoDevice(selectedDeviceId, videoRef.current, (result, error, innerControls) => {
+        if (error && !(error instanceof NotFoundException)) {
+            console.error("QR Decoding Error:", error);
+            // We don't set a hard error here as it could be a transient decoding failure.
+            return;
+        }
+        if (result) {
+            innerControls.stop();
+            setIsScanning(false);
+            const url = result.getText();
+            if (url.includes('/app/attendance/scan')) {
+                 router.push(url);
             } else {
-                setTorchSupported(false);
-            }
-        } catch(err) {
-            if (err instanceof NotFoundException) {
-                console.warn("No QR code found in frame, continuing scan.");
-            } else {
-                console.error("ZXing decode start error:", err);
-                setScannerError("Failed to start scanner with the selected camera.");
-            }
-        } finally {
-            if(!isCancelled) {
-              setIsScanning(false);
+                toast({variant: 'destructive', title: 'Invalid QR Code', description: 'This QR code is not for attendance.'});
+                 setTimeout(() => {
+                    if (document.hidden) return;
+                    router.replace('/app/attendance/scan');
+                }, 2000);
             }
         }
-    };
-    
-    startDecoding();
+    }).then(ctrls => {
+        setControls(ctrls);
+        const stream = ctrls.stream;
+        const track = stream.getVideoTracks()[0];
+        if (track && 'getCapabilities' in track) {
+            const capabilities = track.getCapabilities();
+            setTorchSupported(!!capabilities.torch);
+            if (!capabilities.torch) setTorchOn(false);
+        } else {
+            setTorchSupported(false);
+        }
+    }).catch(err => {
+        console.error("ZXing decodeFromVideoDevice error:", err);
+        setScannerError(`Failed to start scanner: ${err.message}`);
+    }).finally(() => {
+        setIsScanning(false);
+    });
 
     return () => {
-      isCancelled = true;
-      resetScanner();
+        resetScanner();
     }
-  }, [selectedDeviceId, router, toast, kioskToken, resetScanner]);
-
+  }, [kioskToken, selectedDeviceId, resetScanner, router, toast]);
+  
 
   const toggleTorch = useCallback(() => {
       if (controls && torchSupported) {
