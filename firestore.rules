@@ -9,11 +9,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // System admin fallback (กันล็อกตัวเอง)
-    function isSystemAdmin() {
-      return signedIn() && request.auth.token.email == "sahadieselkolkarn@gmail.com";
-    }
-
     // Read profile data from the /users collection
     function getProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -34,23 +29,15 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSystemAdmin() || (signedIn() && role() == "ADMIN");
+      return signedIn() && role() == "ADMIN";
     }
 
     function isMgmt() {
       return isAdmin() || (signedIn() && dept() == "MANAGEMENT");
     }
-
-    // Whitelist for accounting access. EDIT EMAILS HERE.
-    function isWhitelisted() {
-      return request.auth.token.email in [
-        'sahadiesel.joe@gmail.com', // พี่โจ้
-        'thinnakorn.saha@gmail.com' // พี่ถิน
-      ];
-    }
     
     function isAccountingAllowed() {
-      return isMgmt() || isWhitelisted();
+      return isMgmt();
     }
 
     // ===================================
