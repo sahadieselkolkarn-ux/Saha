@@ -129,8 +129,9 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
     match /accountingObligations/{id} {
-      allow write: if isAccountingAllowed();
-      allow read: if isAccountingAllowed();
+      allow create: if signedIn();
+      allow read: if signedIn();
+      allow update: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
     match /paymentClaims/{id} {
