@@ -522,7 +522,9 @@ export default function ManagementAccountingPayrollPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <CardTitle>จัดการเงินเดือน</CardTitle>
-              <CardDescription>เลือกงวดที่ต้องการคำนวณหรือดูข้อมูล</CardDescription>
+              <CardDescription>
+                เลือกงวดที่ต้องการคำนวณหรือดูข้อมูล (แสดงเฉพาะพนักงานสถานะ ACTIVE, มีเงินเดือน, และไม่ใช่ประเภท NOPAY)
+              </CardDescription>
             </div>
             <div className="flex items-center gap-2 self-end sm:self-center">
               <Button variant="outline" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
