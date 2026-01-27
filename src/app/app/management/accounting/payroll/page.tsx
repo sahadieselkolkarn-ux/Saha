@@ -99,7 +99,7 @@ export default function ManagementAccountingPayrollPage() {
             getDocs(leavesQuery),
             getDocs(holidaysQuery),
             getDocs(attendanceQuery),
-            getDocs(adjustmentsSnapshot),
+            getDocs(adjustmentsQuery),
         ]);
 
         const usersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
