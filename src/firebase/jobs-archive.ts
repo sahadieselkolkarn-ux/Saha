@@ -81,7 +81,7 @@ export async function archiveAndCloseJob(
       docsToDelete.push(activityDoc.ref);
       writeBatchCount++;
 
-      if (writeBatchCount >= 200) {
+      if (writeBatchCount >= 400) {
         await batch.commit();
         const deleteBatch = writeBatch(db);
         docsToDelete.forEach(ref => deleteBatch.delete(ref));
@@ -101,6 +101,8 @@ export async function archiveAndCloseJob(
     }
   } catch (error) {
     console.error(`Failed to move activities for job ${jobId}. The main job document was archived, but activities may remain in the original location.`, error);
+    // We don't re-throw here, as the main operation was successful.
+    // A background process could be used to clean up orphaned activity collections if this becomes an issue.
   }
   
   return { archiveCollection: archiveColName, archiveJobId: jobId };

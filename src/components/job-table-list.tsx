@@ -1,9 +1,10 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit, doc, deleteDoc, writeBatch, deleteField, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit, doc, deleteDoc, writeBatch, deleteField, serverTimestamp, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { archiveCollectionNameByYear } from "@/lib/archive-utils";
 
 interface JobTableListProps {
   department?: JobDepartment;
@@ -53,6 +55,8 @@ interface JobTableListProps {
   emptyTitle?: string;
   emptyDescription?: string;
   children?: React.ReactNode;
+  source?: 'active' | 'archive';
+  year?: number;
 }
 
 const getStatusVariant = (status: Job['status']) => {
@@ -84,7 +88,9 @@ export function JobTableList({
   limit: limitProp,
   emptyTitle = "No Jobs Found",
   emptyDescription = "There are no jobs that match the current criteria.",
-  children
+  children,
+  source = 'active',
+  year = new Date().getFullYear(),
 }: JobTableListProps) {
   const { db } = useFirebase();
   const { profile } = useAuth();
@@ -107,40 +113,37 @@ export function JobTableList({
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
-  const jobsQuery = useMemo(() => {
-    if (!db) return null;
-
-    const constraints: QueryConstraint[] = [];
-    if (department) {
-      constraints.push(where('department', '==', department));
-    }
-    if (status) {
-      constraints.push(where('status', '==', status));
-    }
-    
-    constraints.push(orderBy(orderByField, orderByDirection));
-
-    if (limitProp) {
-      constraints.push(limit(limitProp));
-    }
-
-    return query(collection(db, 'jobs'), ...constraints);
-  }, [db, department, status, orderByField, orderByDirection, retry, limitProp]);
-
-
   useEffect(() => {
-    if (!jobsQuery) {
-      setLoading(false);
-      return;
-    };
+    if (!db) return;
 
     setLoading(true);
     setError(null);
     setIndexState('ok');
     setIndexCreationUrl(null);
+    
+    const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
+    const constraints: QueryConstraint[] = [];
+    
+    if (source === 'active') {
+        if (department) constraints.push(where('department', '==', department));
+        if (status) constraints.push(where('status', '==', status));
+        constraints.push(orderBy(orderByField, orderByDirection));
+        if (limitProp) constraints.push(limit(limitProp));
+    }
+    // For archives, we fetch everything and filter/sort client-side to avoid complex indexing.
+    
+    const q = query(collection(db, collectionName), ...constraints);
 
-    const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+      
+      if (source === 'archive') {
+          // Client-side filtering for archives
+          if (department) jobsData = jobsData.filter(job => job.department === department);
+          if (status) jobsData = jobsData.filter(job => job.status === status);
+          jobsData.sort((a,b) => (b.closedDate || '').localeCompare(a.closedDate || ''));
+          if (limitProp) jobsData = jobsData.slice(0, limitProp);
+      }
       
       if (excludeStatus) {
         const statusesToExclude = Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
@@ -149,8 +152,6 @@ export function JobTableList({
       
       setJobs(jobsData);
       setLoading(false);
-      setError(null);
-      setIndexState('ok');
     }, (err) => {
         console.error(err);
         setError(err);
@@ -158,7 +159,8 @@ export function JobTableList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, JSON.stringify(excludeStatus)]);
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, JSON.stringify(excludeStatus), retry]);
+
   
   const filteredJobs = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -169,6 +171,7 @@ export function JobTableList({
       job.customerSnapshot.name.toLowerCase().includes(lowercasedFilter) ||
       job.customerSnapshot.phone.includes(searchTerm) ||
       job.description.toLowerCase().includes(lowercasedFilter) ||
+      job.carServiceDetails?.licensePlate?.toLowerCase().includes(lowercasedFilter) ||
       job.id.toLowerCase().includes(lowercasedFilter)
     );
   }, [jobs, searchTerm]);
