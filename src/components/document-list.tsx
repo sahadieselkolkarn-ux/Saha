@@ -32,6 +32,23 @@ const docTypeToEditPath: Record<string, string> = {
     // Add other doc types if they have dedicated edit pages
 };
 
+const getDocDisplayStatus = (doc: Document): { key: string; label: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
+    const status = String(doc.status ?? "").toUpperCase();
+    const hasRejectionInfo = doc.reviewRejectReason || doc.reviewRejectedAt || doc.reviewRejectedByName;
+
+    if (status === "CANCELLED") return { key: "CANCELLED", label: "ยกเลิก", variant: "destructive" };
+    if (status === "PAID") return { key: "PAID", label: "จ่ายแล้ว", variant: "default" };
+
+    if (status === "REJECTED" || !!hasRejectionInfo) return { key: "REJECTED", label: "ตีกลับ", variant: "destructive" };
+    
+    if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label: "รอตรวจสอบรายรับ", variant: "secondary" };
+    if (status === "DRAFT") return { key: "DRAFT", label: "ฉบับร่าง", variant: "outline" };
+
+    // Fallback for any other status
+    return { key: status, label: docStatusLabel(doc.status) || doc.status, variant: "outline" };
+};
+
+
 export function DocumentList({ docType }: DocumentListProps) {
   const { db } = useFirebase();
   const { toast } = useToast();
@@ -143,17 +160,6 @@ export function DocumentList({ docType }: DocumentListProps) {
     }
   };
 
-  const getStatusVariant = (status?: string) => {
-    switch(status) {
-        case 'PAID': return 'default';
-        case 'CANCELLED': return 'destructive';
-        case 'PENDING_REVIEW': return 'secondary';
-        case 'DRAFT':
-        default: return 'secondary';
-    }
-  }
-
-
   return (
     <>
       <Card>
@@ -195,7 +201,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
                     const editPath = docItem.docType === 'QUOTATION' 
-                        ? `/app/office/documents/quotation/${docItem.id}`
+                        ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
                         : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
                     
                     return (
@@ -204,12 +210,12 @@ export function DocumentList({ docType }: DocumentListProps) {
                       <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
                       <TableCell>{docItem.customerSnapshot.name}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                            <Badge variant={getStatusVariant(docItem.status)}>{docStatusLabel(docItem.status)}</Badge>
-                            {docItem.status === 'PENDING_REVIEW' && docItem.reviewRejectReason && (
-                                <Badge variant="destructive">{docStatusLabel('REJECTED')}</Badge>
-                            )}
-                        </div>
+                        {(() => {
+                          const displayStatus = getDocDisplayStatus(docItem);
+                          return (
+                            <Badge variant={displayStatus.variant}>{displayStatus.label}</Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                       <TableCell className="text-right">
