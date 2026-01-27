@@ -79,7 +79,9 @@ export default function ManagementAccountingPayrollPage() {
     const fetchPrerequisites = async () => {
       setManualLoading(true);
       setManualError(null);
+      let stage = 'initializing'; // To track which query failed
       try {
+        stage = 'defining queries';
         const dateRange = { from: startOfMonth(currentMonthDate), to: endOfMonth(currentMonthDate) };
         const year = currentMonthDate.getFullYear();
         const startStr = format(dateRange.from, 'yyyy-MM-dd');
@@ -93,35 +95,43 @@ export default function ManagementAccountingPayrollPage() {
         const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
         const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
 
-
-        const [usersSnapshot, leavesSnapshot, holidaysSnapshot, attendanceSnapshot, adjustmentsSnapshot] = await Promise.all([
-            getDocs(usersQuery),
-            getDocs(leavesQuery),
-            getDocs(holidaysQuery),
-            getDocs(attendanceQuery),
-            getDocs(adjustmentsQuery),
-        ]);
-
+        stage = 'usersQuery';
+        const usersSnapshot = await getDocs(usersQuery);
         const usersData = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
         setAllUsers(usersData);
         
+        stage = 'leavesQuery';
+        const leavesSnapshot = await getDocs(leavesQuery);
         const leavesData = leavesSnapshot.docs.map(d => d.data() as LeaveRequest);
         setAllYearLeaves(leavesData);
 
+        stage = 'holidaysQuery';
+        const holidaysSnapshot = await getDocs(holidaysQuery);
         const holidaysData = holidaysSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<HRHoliday>));
         setAllHolidays(holidaysData);
 
+        stage = 'attendanceQuery';
+        const attendanceSnapshot = await getDocs(attendanceQuery);
         const attendanceData = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
         setMonthAttendance(attendanceData);
         
+        stage = 'adjustmentsQuery';
+        const adjustmentsSnapshot = await getDocs(adjustmentsQuery);
         const adjustmentsData = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
         setMonthAdjustments(adjustmentsData);
-
+        
       } catch (e: any) {
-        console.error("Error fetching payroll prerequisite data:", e);
-        const errorMessage = "ไม่มีสิทธิ์เข้าถึงข้อมูล หรือการดึงข้อมูลถูกปฏิเสธ";
+        console.error(`Error during payroll prerequisite fetch at stage '${stage}':`, e);
+        
+        let errorMessage = `เกิดข้อผิดพลาดที่: ${stage}. Code: ${e.code || 'N/A'}`;
+        if (e.code === 'failed-precondition') {
+          errorMessage = 'ฐานข้อมูลต้องการ Index เพื่อทำงาน, กรุณาตรวจสอบ Console เพื่อสร้าง Index';
+        } else if (e.code === 'permission-denied') {
+          errorMessage = `สิทธิ์ถูกปฏิเสธในการเข้าถึงข้อมูล (${stage}).`;
+        }
+
         setManualError(new Error(errorMessage));
-        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: errorMessage });
+        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาดในการโหลดข้อมูล', description: errorMessage });
       } finally {
         setManualLoading(false);
       }
