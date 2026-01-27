@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -21,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEPARTMENTS, USER_ROLES, USER_STATUSES, PAY_TYPES } from "@/lib/constants";
-import type { UserProfile } from "@/lib/types";
+import type { UserProfile, SSOHospital } from "@/lib/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -118,6 +117,9 @@ export default function ManagementHREmployeesPage() {
   const [editingUser, setEditingUser] = useState<UserWithId | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  
+  const [ssoHospitals, setSsoHospitals] = useState<WithId<SSOHospital>[]>([]);
+  const [isLoadingHospitals, setIsLoadingHospitals] = useState(true);
 
   const isManagerOrAdmin = loggedInUser?.role === 'MANAGER' || loggedInUser?.role === 'ADMIN';
 
@@ -137,6 +139,20 @@ export default function ManagementHREmployeesPage() {
     (error) => {
       toast({ variant: "destructive", title: "Failed to load users" });
       setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [db, toast]);
+
+  useEffect(() => {
+    if (!db) return;
+    setIsLoadingHospitals(true);
+    const q = query(collection(db, "ssoHospitals"), orderBy("name", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        setSsoHospitals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<SSOHospital>)));
+        setIsLoadingHospitals(false);
+    }, (error) => {
+        toast({ variant: "destructive", title: "Failed to load SSO hospitals" });
+        setIsLoadingHospitals(false);
     });
     return () => unsubscribe();
   }, [db, toast]);
@@ -426,14 +442,35 @@ export default function ManagementHREmployeesPage() {
                                 )}
                               />
                             <FormField name="hr.payType" control={form.control} render={({ field }) => (<FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{PAY_TYPES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
-                             <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (
+                             <FormField
+                                name="hr.ssoHospital"
+                                control={form.control}
+                                render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>SSO Hospital</FormLabel>
-                                    <FormControl><Input {...field} value={field.value ?? ''} disabled={!isManagerOrAdmin} /></FormControl>
+                                    <Select
+                                    onValueChange={field.onChange}
+                                    value={field.value ?? ''}
+                                    disabled={!isManagerOrAdmin || isLoadingHospitals}
+                                    >
+                                    <FormControl>
+                                        <SelectTrigger>
+                                        <SelectValue placeholder={isLoadingHospitals ? "Loading..." : "Select hospital"} />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        {ssoHospitals.map((hospital) => (
+                                        <SelectItem key={hospital.id} value={hospital.name}>
+                                            {hospital.name}
+                                        </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                    </Select>
                                     {!isManagerOrAdmin && <FormDescription>แก้โรงพยาบาลประกันสังคมได้เฉพาะ Manager หรือ Admin</FormDescription>}
                                     <FormMessage />
                                 </FormItem>
-                            )} />
+                                )}
+                            />
                              <FormField name="hr.note" control={form.control} render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                         </CardContent>
                     </Card>

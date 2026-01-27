@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, collection, query, onSnapshot, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
@@ -23,6 +23,9 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PAY_TYPES } from "@/lib/constants";
+import type { SSOHospital } from "@/lib/types";
+import type { WithId } from "@/firebase/firestore/use-collection";
+
 
 const profileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -65,11 +68,28 @@ export default function SettingsPage() {
     const [isEditing, setIsEditing] = useState(false);
 
     const isManagerOrAdmin = profile?.role === 'MANAGER' || profile?.role === 'ADMIN';
+
+    const [ssoHospitals, setSsoHospitals] = useState<WithId<SSOHospital>[]>([]);
+    const [isLoadingHospitals, setIsLoadingHospitals] = useState(true);
     
     const form = useForm<z.infer<typeof profileSchema>>({
         resolver: zodResolver(profileSchema),
         defaultValues: {},
       });
+
+    useEffect(() => {
+        if (!db) return;
+        setIsLoadingHospitals(true);
+        const q = query(collection(db, "ssoHospitals"), orderBy("name", "asc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setSsoHospitals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<SSOHospital>)));
+            setIsLoadingHospitals(false);
+        }, (error) => {
+            toast({ variant: "destructive", title: "Failed to load SSO hospitals" });
+            setIsLoadingHospitals(false);
+        });
+        return () => unsubscribe();
+    }, [db, toast]);
 
     useEffect(() => {
         if (profile) {
@@ -215,14 +235,35 @@ export default function SettingsPage() {
                                     <FormField name="hr.payType" control={form.control} render={({ field }) => (
                                         <FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{PAY_TYPES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                                     )} />
-                                    <FormField control={form.control} name="hr.ssoHospital" render={({ field }) => (
+                                    <FormField
+                                        control={form.control}
+                                        name="hr.ssoHospital"
+                                        render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>SSO Hospital</FormLabel>
-                                            <FormControl><Input {...field} value={field.value ?? ''} disabled={!isManagerOrAdmin} /></FormControl>
+                                             <Select
+                                                onValueChange={field.onChange}
+                                                value={field.value ?? ''}
+                                                disabled={!isManagerOrAdmin || isLoadingHospitals}
+                                                >
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                    <SelectValue placeholder={isLoadingHospitals ? "Loading..." : "Select hospital"} />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {ssoHospitals.map((hospital) => (
+                                                    <SelectItem key={hospital.id} value={hospital.name}>
+                                                        {hospital.name}
+                                                    </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
                                             {!isManagerOrAdmin && <FormDescription>แก้โรงพยาบาลประกันสังคมได้เฉพาะ Manager หรือ Admin</FormDescription>}
                                             <FormMessage />
                                         </FormItem>
-                                    )} />
+                                        )}
+                                    />
                                     <FormField control={form.control} name="hr.note" render={({ field }) => (<FormItem><FormLabel>Note</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                                 </CardContent>
                             </Card>
