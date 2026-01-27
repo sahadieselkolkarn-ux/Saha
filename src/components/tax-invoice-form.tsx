@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -7,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, runTransaction, writeBatch } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -16,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown, FileDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,11 +25,12 @@ import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
+import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
-import type { Job, StoreSettings, Customer, Document as DocumentType, DocumentCounters, DocumentSettings, AccountingAccount } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { DeliveryAndPaymentDialog, type DeliveryAndPaymentData } from "./delivery-and-payment-dialog";
+import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -87,17 +86,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   
-  const [accountingAccounts, setAccountingAccounts] = useState<AccountingAccount[]>([]);
-  const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
-
-  const [validatedData, setValidatedData] = useState<TaxInvoiceFormData | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitAction, setSubmitAction] = useState<'draft' | 'send'>('draft');
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
-  const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
+  const { data: job, isLoading: isLoadingJob } = useDoc<Job>(jobDocRef);
   const { data: docToEdit, isLoading: isLoadingDocToEdit } = useDoc<DocumentType>(docToEditRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
@@ -127,7 +123,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         : "กรุณาตรวจสอบข้อมูลในฟอร์ม",
     });
   };
-
+  
   const selectedCustomerId = form.watch('customerId');
   
   const customerDocRef = useMemo(() => {
@@ -154,15 +150,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       setIsLoadingCustomers(false);
     });
 
-    const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
-    const unsubAccounts = onSnapshot(accountsQuery, (snapshot) => {
-        setAccountingAccounts(snapshot.docs.map(d => ({id:d.id, ...d.data()} as AccountingAccount)));
-        setIsLoadingAccounts(false);
-    });
-
     return () => {
         unsubscribe();
-        unsubAccounts();
     };
   }, [db, jobId, editDocId, toast]);
   
@@ -289,119 +278,112 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       description: `ดึง ${itemsFromQuotation.length} รายการ จากใบเสนอราคาเลขที่ ${quotation.docNo}`,
     });
   };
-
-  const openConfirmationDialog = (data: TaxInvoiceFormData) => {
-    setValidatedData(data);
-  };
   
-  const handleConfirmAndSave = async (paymentDialogData: DeliveryAndPaymentData) => {
-     if (!validatedData || !customer || !storeSettings || !profile) {
-      toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'ไม่สามารถสร้างเอกสารได้' });
+  const handleSave = async (data: TaxInvoiceFormData) => {
+    const sendForReview = submitAction === 'send';
+    const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
+    if (!db || !customerSnapshot || !storeSettings || !profile) {
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
       return;
     }
     
-    setIsConfirming(true);
-
-    const paidThisDialog = paymentDialogData.paymentLines.reduce((sum, line) => sum + (line.amountReceived || 0), 0);
-    const remainingBalance = validatedData.grandTotal - paidThisDialog;
+    setIsSubmitting(true);
 
     const documentDataPayload = {
-      customerId: validatedData.customerId,
-      docDate: validatedData.issueDate,
-      jobId: validatedData.jobId,
-      customerSnapshot: { ...customer },
+      customerId: data.customerId,
+      docDate: data.issueDate,
+      jobId: data.jobId,
+      customerSnapshot: { ...customerSnapshot },
       carSnapshot: (job || docToEdit?.jobId) ? { licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, details: job?.description || docToEdit?.carSnapshot?.details } : {},
       storeSnapshot: { ...storeSettings },
-      items: validatedData.items,
-      subtotal: validatedData.subtotal,
-      discountAmount: validatedData.discountAmount || 0,
-      net: validatedData.net,
-      withTax: validatedData.isVat,
-      vatAmount: validatedData.vatAmount,
-      grandTotal: validatedData.grandTotal,
-      notes: validatedData.notes,
-      senderName: validatedData.senderName,
-      receiverName: validatedData.receiverName,
-      delivery: paymentDialogData.delivery,
+      items: data.items,
+      subtotal: data.subtotal,
+      discountAmount: data.discountAmount || 0,
+      net: data.net,
+      withTax: data.isVat,
+      vatAmount: data.vatAmount,
+      grandTotal: data.grandTotal,
+      notes: data.notes,
+      senderName: data.senderName,
+      receiverName: data.receiverName,
       paymentSummary: {
         paidTotal: 0,
-        balance: validatedData.grandTotal,
+        balance: data.grandTotal,
         paymentStatus: 'UNPAID' as 'UNPAID' | 'PARTIAL' | 'PAID',
       },
     };
 
     try {
-        let savedDocId: string;
-        let savedDocNo: string;
-
+        let docId: string;
+        let docNo: string;
+        const newStatus = sendForReview ? 'PENDING_REVIEW' : 'DRAFT';
+        
         if (isEditing && editDocId) {
-            const batch = writeBatch(db);
-            const docRef = doc(db, 'documents', editDocId);
-
-            batch.update(docRef, sanitizeForFirestore({ ...documentDataPayload, status: 'PENDING_REVIEW', updatedAt: serverTimestamp() }));
-            
-            paymentDialogData.paymentLines.forEach(line => {
-                const claimRef = doc(collection(db, "paymentClaims"));
-                const { withholdingEnabled, withholdingAmount, amountReceived, ...restOfLine } = line;
-                batch.set(claimRef, sanitizeForFirestore({ /* ...claim data... */ }));
-            });
-            // ... AR logic ...
-
-            await batch.commit();
-            savedDocId = editDocId;
+            docId = editDocId;
+            const docRef = doc(db, 'documents', docId);
+            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, status: newStatus, updatedAt: serverTimestamp() }));
+            docNo = docToEdit!.docNo;
         } else {
-            // New Document Creation using runTransaction
-            const docType = 'TAX_INVOICE';
-            const newDocRef = doc(collection(db, "documents"));
-            savedDocId = newDocRef.id;
+            const options = {
+                ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
+                initialStatus: newStatus,
+            };
+            const result = await createDocument(db, 'TAX_INVOICE', documentDataPayload, profile, data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined, options);
+            docId = result.docId;
+            docNo = result.docNo;
+        }
 
-            savedDocNo = await runTransaction(db, async (transaction) => {
-                // ... counter logic ...
-                return "GENERATED_DOC_NO";
+        if (data.jobId) {
+            const jobRef = doc(db, 'jobs', data.jobId);
+            await updateDoc(jobRef, {
+                salesDocType: 'TAX_INVOICE',
+                salesDocId: docId,
+                salesDocNo: docNo,
+                lastActivityAt: serverTimestamp()
             });
         }
         
-        await ensurePaymentClaimForDocument(db, savedDocId, profile);
-        toast({ title: isEditing ? "บันทึกแล้ว และส่งเข้ารอตรวจสอบรายรับ" : "สร้างใบกำกับภาษีแล้ว และส่งเข้ารอตรวจสอบรายรับ" });
+        if (sendForReview) {
+            try {
+                await ensurePaymentClaimForDocument(db, docId, profile);
+                toast({ title: isEditing ? "บันทึกและส่งตรวจสำเร็จ" : "สร้างและส่งตรวจสำเร็จ" });
+            } catch (claimError: any) {
+                console.error("Failed to create payment claim, but document was saved:", claimError);
+                toast({
+                    variant: 'default',
+                    title: "บันทึกเอกสารสำเร็จ (แต่ส่งตรวจอาจไม่สำเร็จ)",
+                    description: "กรุณาตรวจสอบหน้า Inbox หรือกด 'ส่งเข้ารอตรวจสอบ' ที่หน้าเอกสารอีกครั้ง",
+                    duration: 10000,
+                });
+            }
+        } else {
+            toast({ title: isEditing ? "บันทึกฉบับร่างสำเร็จ" : "สร้างฉบับร่างสำเร็จ" });
+        }
+        
         router.push('/app/office/documents/tax-invoice');
 
-    } catch (e: any) {
-        toast({ variant: 'destructive', title: 'Error saving document', description: e.message });
+    } catch (error: any) {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     } finally {
-        setIsConfirming(false);
-        setValidatedData(null);
+        setIsSubmitting(false);
     }
   };
+
 
   const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
+  const isCustomerSelectionDisabled = isLocked || !!jobId || (isEditing && !!docToEdit?.customerId);
 
-  const tempDocumentForDialog = useMemo(() => {
-    if (!validatedData) return null;
-    const { grandTotal } = form.getValues();
-    return {
-        id: editDocId || 'new',
-        docNo: docToEdit?.docNo || 'New Document',
-        docType: 'TAX_INVOICE',
-        grandTotal: grandTotal,
-        customerSnapshot: displayCustomer,
-    } as DocumentType;
-  }, [validatedData, form, editDocId, docToEdit, displayCustomer]);
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
-  }
-  
-  if (jobError) {
-      return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>Error loading job: {jobError.message}</div>
   }
 
   return (
     <>
       {isLocked && (
           <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
               <AlertTitle>เอกสารถูกล็อก</AlertTitle>
               <AlertDescription>
                   เอกสารนี้ถูกยืนยันรายรับแล้ว จึงไม่สามารถแก้ไขได้
@@ -409,13 +391,27 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </Alert>
       )}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(openConfirmationDialog, onInvalid)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(handleSave, onInvalid)} className="space-y-6">
           <div className="flex justify-between items-center">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-            <Button type="submit" disabled={isConfirming || isLocked}>
-              {isConfirming ? <Loader2 className="animate-spin" /> : <Save />}
-              บันทึกและส่งตรวจ
-            </Button>
+             <div className="flex gap-2">
+              {jobId ? (
+                <Button type="submit" onClick={() => setSubmitAction('draft')} disabled={isSubmitting || isLocked}>
+                  {isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
+                  บันทึก
+                </Button>
+              ) : (
+                <>
+                  <Button type="submit" variant="outline" onClick={() => setSubmitAction('draft')} disabled={isSubmitting || isLocked}>
+                    บันทึกฉบับร่าง
+                  </Button>
+                  <Button type="submit" onClick={() => setSubmitAction('send')} disabled={isSubmitting || isLocked}>
+                    {isSubmitting && submitAction === 'send' ? <Loader2 className="animate-spin" /> : <Save />}
+                    บันทึกและส่งตรวจ
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           <Card>
@@ -436,7 +432,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                               </FormControl>
                               <div className="space-y-1 leading-none">
                                   <FormLabel>บันทึกย้อนหลัง (Backfill)</FormLabel>
-                                  <FormDescription>ใช้สำหรับคีย์เอกสารย้อนหลังจากสมุด/ระบบเก่า</FormDescription>
+                                  <FormMessage/>
                               </div>
                               </FormItem>
                           )}
@@ -467,7 +463,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                           <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                               <PopoverTrigger asChild>
                               <FormControl>
-                                  <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={isLocked || !!jobId || (isEditing && !!docToEdit?.customerId)}>
+                                  <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
                                   {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                   </Button>
@@ -478,11 +474,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                       <Input autoFocus placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                   </div>
                                   <ScrollArea className="h-fit max-h-60">
-                                      {filteredCustomers.map((c) => (
-                                      <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
-                                          <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
-                                      </Button>
-                                      ))}
+                                      {filteredCustomers.length > 0 ? (
+                                        filteredCustomers.map((c) => (
+                                          <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
+                                              <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
+                                          </Button>
+                                          ))
+                                      ) : (<p className="text-center p-4 text-sm text-muted-foreground">No customers found.</p>)}
                                   </ScrollArea>
                               </PopoverContent>
                           </Popover>
@@ -592,25 +590,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
               <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
               <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
           </div>
-          <div className="flex justify-end gap-4">
-              <Button type="button" variant="outline" onClick={() => router.back()} disabled={isConfirming}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
-              <Button type="submit" disabled={isConfirming || isLocked}>
-                {isConfirming ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-                บันทึกและส่งตรวจ
-              </Button>
-          </div>
         </form>
       </Form>
-      {validatedData && tempDocumentForDialog && (
-          <DeliveryAndPaymentDialog
-            isOpen={!!validatedData}
-            onClose={() => setValidatedData(null)}
-            onConfirm={handleConfirmAndSave}
-            document={tempDocumentForDialog}
-            accounts={accountingAccounts}
-            isLoading={isConfirming || isLoadingAccounts}
-          />
-      )}
     </>
   );
 }

@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, deleteField } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -282,6 +282,12 @@ export function JobList({
         const batch = writeBatch(db);
         const jobRef = doc(db, 'jobs', closingJob.id);
         const activityRef = doc(collection(db, 'jobs', closingJob.id, 'activities'));
+
+        // If the selected sales document is a draft, update it to PENDING_REVIEW
+        if (selectedDoc.status === 'DRAFT') {
+            const docRef = doc(db, 'documents', selectedDoc.id);
+            batch.update(docRef, { status: 'PENDING_REVIEW', updatedAt: serverTimestamp() });
+        }
 
         // 1. Update Job
         batch.update(jobRef, {
