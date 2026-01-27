@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
@@ -472,7 +473,7 @@ export default function ManagementAccountingPayrollPage() {
 
     const data = payrollRun ? payslips : calculatedPayrollData;
     
-     if (!isLoading && data.length === 0) {
+     if (!isLoading && (!data || data.length === 0)) {
         return (
             <div className="text-center text-muted-foreground p-8">
                 ยังไม่มีพนักงานที่แอคทีฟและมีการตั้งเงินเดือนในงวดนี้
@@ -657,3 +658,4 @@ export default function ManagementAccountingPayrollPage() {
     </>
   );
 }
+
