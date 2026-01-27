@@ -13,9 +13,16 @@ import {
   where,
   addDoc,
   limit,
+  setDoc,
 } from 'firebase/firestore';
 import type { Document, UserProfile, PaymentClaim } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
+
+interface ClaimOptions {
+  suggestedPaymentMethod?: 'CASH' | 'TRANSFER' | 'CREDIT';
+  suggestedAccountId?: string;
+  note?: string;
+}
 
 /**
  * Ensures a payment claim exists for a given sales document.
@@ -25,14 +32,16 @@ import { sanitizeForFirestore } from '@/lib/utils';
  * @param db The Firestore instance.
  * @param documentId The ID of the source document (e.g., DELIVERY_NOTE, TAX_INVOICE).
  * @param userProfile The profile of the user who initiated the action.
+ * @param options Optional parameters for the claim.
  * @returns A promise that resolves to an object with a `created` boolean.
  * @throws Will throw an error if the document is not found or if there's a Firestore issue.
  */
 export async function ensurePaymentClaimForDocument(
   db: Firestore,
   documentId: string,
-  userProfile?: UserProfile | null
-): Promise<{ created: boolean }> {
+  userProfile?: UserProfile | null,
+  options?: ClaimOptions
+): Promise<{ created: boolean, claimId: string | null }> {
   
   const docRef = doc(db, 'documents', documentId);
   const docSnap = await getDoc(docRef);
@@ -41,30 +50,27 @@ export async function ensurePaymentClaimForDocument(
     throw new Error(`Document with ID ${documentId} not found.`);
   }
 
-  const document = docSnap.data() as Document;
+  const document = {id: docSnap.id, ...docSnap.data()} as Document;
 
-  // Only create claims for specific document types that aren't cancelled.
   if (!['DELIVERY_NOTE', 'TAX_INVOICE'].includes(document.docType) || document.status === 'CANCELLED') {
-    return { created: false };
+    return { created: false, claimId: null };
   }
 
-  // Check if a pending claim already exists for this document to prevent duplicates.
   const claimsQuery = query(
     collection(db, 'paymentClaims'),
     where('sourceDocId', '==', documentId),
-    limit(10) // Fetch a few potential claims to check client-side
+    limit(10)
   );
 
   const existingClaimsSnap = await getDocs(claimsQuery);
-  const hasPendingClaim = existingClaimsSnap.docs.some(d => d.data()?.status === 'PENDING');
+  const pendingClaim = existingClaimsSnap.docs.find(d => d.data()?.status === 'PENDING');
 
-  if (hasPendingClaim) {
-    // A pending claim already exists, do nothing.
+  if (pendingClaim) {
     console.log(`Pending payment claim for doc ${documentId} already exists.`);
-    return { created: false };
+    return { created: false, claimId: pendingClaim.id };
   }
 
-  // No pending claim found, so create one.
+  const newClaimRef = doc(collection(db, 'paymentClaims'));
   const newClaimData: Omit<PaymentClaim, 'id' | 'createdAt'> = {
     status: 'PENDING',
     createdByUid: userProfile?.uid ?? 'SYSTEM',
@@ -75,15 +81,15 @@ export async function ensurePaymentClaimForDocument(
     sourceDocNo: document.docNo,
     customerNameSnapshot: document.customerSnapshot?.name,
     amountDue: document.grandTotal,
-    suggestedPaymentMethod: document.paymentMethod as any,
-    suggestedAccountId: document.receivedAccountId,
-    note: `Claim auto-generated from ${document.docType} creation/action.`,
+    suggestedPaymentMethod: options?.suggestedPaymentMethod ?? document.paymentMethod as any,
+    suggestedAccountId: options?.suggestedAccountId ?? document.receivedAccountId,
+    note: options?.note || `Claim auto-generated from ${document.docType} action.`,
   };
 
-  await addDoc(collection(db, 'paymentClaims'), {
+  await setDoc(newClaimRef, {
       ...sanitizeForFirestore(newClaimData),
       createdAt: serverTimestamp(),
   });
   
-  return { created: true };
+  return { created: true, claimId: newClaimRef.id };
 }

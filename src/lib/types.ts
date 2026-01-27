@@ -111,6 +111,13 @@ export interface Job {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastActivityAt: Timestamp;
+  // Archive fields
+  isArchived?: boolean;
+  archivedAt?: Timestamp;
+  archivedAtDate?: string; // YYYY-MM-DD
+  closedByName?: string;
+  closedByUid?: string;
+  originalJobId?: string;
 }
 
 export interface JobActivity {

@@ -1,11 +1,12 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +48,8 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { archiveAndCloseJob } from "@/firebase/jobs-archive";
+import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
 
 interface JobListProps {
   department?: JobDepartment;
@@ -308,55 +311,20 @@ export function JobList({
     
     setIsClosing(true);
     try {
-        const batch = writeBatch(db);
-        const jobRef = doc(db, 'jobs', closingJob.id);
-        const activityRef = doc(collection(db, 'jobs', closingJob.id, 'activities'));
-
-        // If the selected sales document is a draft, update it to PENDING_REVIEW
-        if (selectedDoc.status === 'DRAFT') {
-            const docRef = doc(db, 'documents', selectedDoc.id);
-            batch.update(docRef, { status: 'PENDING_REVIEW', updatedAt: serverTimestamp() });
-        }
-
-        // 1. Update Job
-        batch.update(jobRef, {
-            status: 'CLOSED',
-            pickupDate: pickupDate,
-            closedDate: pickupDate,
-            salesDocType: selectedDoc.docType,
-            salesDocId: selectedDoc.id,
-            salesDocNo: selectedDoc.docNo,
-            paymentStatusAtClose: paymentMode,
-            lastActivityAt: serverTimestamp(),
-        });
-
-        // 2. Add Activity
-        const activityText = `ส่งมอบงาน/ปิดงาน วันที่ ${pickupDate} | เอกสาร: ${selectedDoc.docNo} | สถานะชำระ: ${paymentMode === 'PAID' ? 'จ่ายแล้ว' : 'เครดิต'}`;
-        batch.set(activityRef, { text: activityText, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-        
-        // 3. Create Payment Claim or AR Obligation
         if (paymentMode === 'PAID') {
-            const claimRef = doc(collection(db, 'paymentClaims'));
-            batch.set(claimRef, {
-                status: 'PENDING',
-                createdAt: serverTimestamp(),
-                createdByUid: profile.uid,
-                createdByName: profile.displayName,
-                jobId: closingJob.id,
-                sourceDocType: selectedDoc.docType,
-                sourceDocId: selectedDoc.id,
-                sourceDocNo: selectedDoc.docNo,
-                customerNameSnapshot: closingJob.customerSnapshot.name,
-                amountDue: selectedDoc.grandTotal,
-                suggestedPaymentMethod: paymentMethod,
-                suggestedAccountId: suggestedAccountId,
-                note: paymentNotes || `ส่งมอบงานแล้ว รอตรวจสอบรายรับ`,
-                withholdingEnabled: false,
-            });
-            toast({ title: 'ส่งงานแล้ว (รอตรวจสอบรายรับโดยบัญชี)' });
+            await ensurePaymentClaimForDocument(
+                db,
+                selectedDoc.id,
+                profile,
+                {
+                    suggestedPaymentMethod: paymentMethod,
+                    suggestedAccountId: suggestedAccountId,
+                    note: paymentNotes || `ส่งมอบงานแล้ว รอตรวจสอบรายรับ`,
+                }
+            );
         } else { // UNPAID / CREDIT
-             const arRef = doc(collection(db, 'accountingObligations'));
-             batch.set(arRef, {
+            const arRef = doc(collection(db, 'accountingObligations'));
+            const arData = {
                 type: 'AR',
                 status: 'UNPAID',
                 jobId: closingJob.id,
@@ -371,11 +339,25 @@ export function JobList({
                 dueDate: creditDueDate || null,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-             });
-             toast({ title: 'ส่งงานแล้ว (บันทึกลูกหนี้แล้ว)' });
+            };
+            await setDoc(arRef, arData);
         }
 
-        await batch.commit();
+        if (selectedDoc.status === 'DRAFT') {
+            const docRefToUpdate = doc(db, 'documents', selectedDoc.id);
+            await updateDoc(docRefToUpdate, { status: 'PENDING_REVIEW', updatedAt: serverTimestamp() });
+        }
+        
+        const salesDocInfo = {
+            salesDocType: selectedDoc.docType,
+            salesDocId: selectedDoc.id,
+            salesDocNo: selectedDoc.docNo,
+            paymentStatusAtClose: paymentMode
+        };
+
+        await archiveAndCloseJob(db, closingJob.id, pickupDate, profile, salesDocInfo);
+
+        toast({ title: 'ปิดงานและย้ายไปที่ประวัติสำเร็จ' });
         setClosingJob(null);
     } catch (error: any) {
         toast({ variant: 'destructive', title: 'ปิดงานไม่สำเร็จ', description: error.message });
