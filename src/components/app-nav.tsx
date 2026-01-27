@@ -260,7 +260,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'MANAGEMENT' && (
                     <>
                         <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/jobs/by-worker" label="งานตามพนักงาน" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         {canSeeAccounting && (
                             <>
