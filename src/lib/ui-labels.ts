@@ -43,6 +43,13 @@ const DOC_STATUS_LABELS: Record<string, string> = {
     REJECTED: "ตีกลับ",
 };
 
+const PAY_TYPE_LABELS: Record<string, string> = {
+    MONTHLY: "รายเดือน",
+    DAILY: "รายวัน",
+    MONTHLY_NOSCAN: "รายเดือน (ไม่ใช้สแกน)",
+    NOPAY: "ไม่คิดเงินเดือน",
+};
+
 export function deptLabel(dept: string | undefined): string {
     if (!dept) return '';
     return DEPARTMENT_LABELS[dept] || dept;
@@ -61,4 +68,9 @@ export function docTypeLabel(docType: string | undefined): string {
 export function docStatusLabel(status: string | undefined): string {
     if (!status) return '';
     return DOC_STATUS_LABELS[status] || status;
+}
+
+export function payTypeLabel(payType: string | undefined): string {
+    if (!payType) return '';
+    return PAY_TYPE_LABELS[payType] || payType;
 }

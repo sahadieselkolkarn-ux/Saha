@@ -1,4 +1,5 @@
 
+
 export const DEPARTMENTS = ["MANAGEMENT", "OFFICE", "CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"] as const;
 export type Department = (typeof DEPARTMENTS)[number];
 
@@ -13,18 +14,6 @@ export type PayType = (typeof PAY_TYPES)[number];
 
 export const JOB_STATUSES = ["RECEIVED", "IN_PROGRESS", "WAITING_QUOTATION", "WAITING_APPROVE", "PENDING_PARTS", "IN_REPAIR_PROCESS", "DONE", "WAITING_CUSTOMER_PICKUP", "CLOSED"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
-
-export const JOB_STATUS_DISPLAY: Record<JobStatus, string> = {
-  RECEIVED: "งานใหม่รอรับ",
-  IN_PROGRESS: "กำลังตรวจเช็ค",
-  WAITING_QUOTATION: "รอเสนอราคา",
-  WAITING_APPROVE: "รอลูกค้าอนุมัติ",
-  PENDING_PARTS: "รอจัดอะไหล่",
-  IN_REPAIR_PROCESS: "กำลังดำเนินการซ่อม",
-  DONE: "งานเสร็จรอทำบิล",
-  WAITING_CUSTOMER_PICKUP: "รอลูกค้ารับสินค้า",
-  CLOSED: "ปิดงาน",
-};
 
 export const JOB_DEPARTMENTS = ["OFFICE", "CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"] as const;
 export type JobDepartment = (typeof JOB_DEPARTMENTS)[number];

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import { useCollection, WithId } from "@/firebase/firestore/use-collection";
+import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
 import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -384,7 +384,7 @@ export default function ManagementAccountingPayrollPage() {
   if (!hasPermission) {
     return (
         <>
-            <PageHeader title="Payroll" description="Calculate and manage employee payroll runs." />
+            <PageHeader title="เงินเดือน" description="คำนวณและจัดการการจ่ายเงินเดือนพนักงาน" />
             <Card className="text-center py-12">
                 <CardHeader>
                     <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
@@ -403,7 +403,7 @@ export default function ManagementAccountingPayrollPage() {
       return (
         <div className="text-destructive text-center p-8 bg-destructive/10 rounded-lg">
             <AlertCircle className="mx-auto h-8 w-8 mb-2" />
-            <h3 className="font-semibold">Error Loading Payroll Data</h3>
+            <h3 className="font-semibold">เกิดข้อผิดพลาดในการโหลดข้อมูล</h3>
             <p className="text-sm">{manualError.message}</p>
         </div>
       );
@@ -412,10 +412,10 @@ export default function ManagementAccountingPayrollPage() {
         return (
             <div className="text-center p-8">
                 <AlertCircle className="mx-auto h-8 w-8 mb-2 text-destructive" />
-                <h3 className="font-semibold">HR Settings Not Found</h3>
-                <p className="text-muted-foreground text-sm">Please configure HR settings before calculating payroll.</p>
+                <h3 className="font-semibold">ไม่พบการตั้งค่า HR</h3>
+                <p className="text-muted-foreground text-sm">กรุณาตั้งค่า HR ก่อนการคำนวณเงินเดือน</p>
                 <Button asChild variant="link" className="mt-2">
-                    <Link href="/app/management/hr/settings">Go to HR Settings</Link>
+                    <Link href="/app/management/hr/settings">ไปที่หน้าตั้งค่า HR</Link>
                 </Button>
             </div>
         )
@@ -426,9 +426,7 @@ export default function ManagementAccountingPayrollPage() {
      if (!isLoading && data.length === 0) {
         return (
             <div className="text-center text-muted-foreground p-8">
-                No active employees with salary found for this period.
-                <br/>
-                (ยังไม่มีพนักงานที่แอคทีฟและมีการตั้งเงินเดือนในงวดนี้)
+                ยังไม่มีพนักงานที่แอคทีฟและมีการตั้งเงินเดือนในงวดนี้
             </div>
         );
      }
@@ -437,10 +435,10 @@ export default function ManagementAccountingPayrollPage() {
         <Table>
             <TableHeader>
                 <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Net Salary</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>พนักงาน</TableHead>
+                    <TableHead>เงินเดือนสุทธิ</TableHead>
+                    <TableHead>สถานะ</TableHead>
+                    <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -456,7 +454,7 @@ export default function ManagementAccountingPayrollPage() {
                         <TableCell className="text-right">
                             <Button variant="outline" size="sm" onClick={() => setViewingPayslip(p)}>
                                 <View className="mr-2 h-4 w-4"/>
-                                View Slip
+                                ดูสลิป
                             </Button>
                         </TableCell>
                     </TableRow>
@@ -468,14 +466,14 @@ export default function ManagementAccountingPayrollPage() {
 
   return (
     <>
-      <PageHeader title="Payroll" description="Calculate and manage employee payroll runs." />
+      <PageHeader title="เงินเดือน" description="คำนวณและจัดการการจ่ายเงินเดือนพนักงาน" />
       
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <CardTitle>Payroll Management</CardTitle>
-              <CardDescription>Select a period to calculate or view a payroll run.</CardDescription>
+              <CardTitle>จัดการเงินเดือน</CardTitle>
+              <CardDescription>เลือกงวดที่ต้องการคำนวณหรือดูข้อมูล</CardDescription>
             </div>
             <div className="flex items-center gap-2 self-end sm:self-center">
               <Button variant="outline" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
@@ -484,15 +482,15 @@ export default function ManagementAccountingPayrollPage() {
               <Select value={period.toString()} onValueChange={(v) => setPeriod(Number(v) as 1 | 2)}>
                   <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                      <SelectItem value="1">Period 1 (1-15)</SelectItem>
-                      <SelectItem value="2">Period 2 (16-EOM)</SelectItem>
+                      <SelectItem value="1">งวดที่ 1 (1-15)</SelectItem>
+                      <SelectItem value="2">งวดที่ 2 (16-สิ้นเดือน)</SelectItem>
                   </SelectContent>
               </Select>
             </div>
           </div>
            {payrollRun && (
             <div className="pt-4 flex items-center gap-2">
-                <span className="text-sm font-semibold">Status:</span>
+                <span className="text-sm font-semibold">สถานะ:</span>
                 {getStatusBadge(payrollRun.status)}
             </div>
           )}
@@ -505,13 +503,13 @@ export default function ManagementAccountingPayrollPage() {
                 {!payrollRun && (
                     <Button onClick={handleCreateDraft} disabled={isSubmitting || (calculatedPayrollData && calculatedPayrollData.length === 0)}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FilePlus className="mr-2 h-4 w-4"/>}
-                        Create Draft
+                        สร้างฉบับร่าง
                     </Button>
                 )}
                  {payrollRun && payrollRun.status === 'DRAFT_HR' && (
                     <Button onClick={handleSendToEmployees} disabled={isSubmitting}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
-                        Send to Employees for Review
+                        ส่งให้พนักงานตรวจสอบ
                     </Button>
                 )}
             </CardFooter>
@@ -521,7 +519,7 @@ export default function ManagementAccountingPayrollPage() {
       <Dialog open={!!viewingPayslip} onOpenChange={(open) => !open && setViewingPayslip(null)}>
         <DialogContent className="sm:max-w-md">
            <DialogHeader>
-             <DialogTitle>Draft Salary Slip</DialogTitle>
+             <DialogTitle>สลิปเงินเดือน (ฉบับร่าง)</DialogTitle>
              <DialogDescription>
                 {viewingPayslip?.userName} - {format(currentMonthDate, 'MMMM yyyy')} Period {period}
              </DialogDescription>
@@ -529,23 +527,23 @@ export default function ManagementAccountingPayrollPage() {
            {viewingPayslip && (
             <>
                 <div className="mb-2 text-center grid grid-cols-5 gap-1 text-xs">
-                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.totalPresent}</p><p className="text-green-600">Present</p></div>
-                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.totalLate}</p><p className="text-yellow-600">Late</p></div>
-                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.totalAbsent}</p><p className="text-red-600">Absent</p></div>
-                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.totalLeave}</p><p className="text-blue-600">Leave</p></div>
-                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">Late (min)</p></div>
+                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.totalPresent}</p><p className="text-green-600">มาทำงาน</p></div>
+                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.totalLate}</p><p className="text-yellow-600">สาย</p></div>
+                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.totalAbsent}</p><p className="text-red-600">ขาด</p></div>
+                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.totalLeave}</p><p className="text-blue-600">ลา</p></div>
+                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">สาย (นาที)</p></div>
                 </div>
 
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Description</TableHead>
-                            <TableHead className="text-right">Amount (THB)</TableHead>
+                            <TableHead>รายการ</TableHead>
+                            <TableHead className="text-right">จำนวนเงิน (บาท)</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         <TableRow>
-                            <TableCell className="font-medium">Base Salary (for period)</TableCell>
+                            <TableCell className="font-medium">เงินเดือน (สำหรับงวด)</TableCell>
                             <TableCell className="text-right">{viewingPayslip.baseSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                         </TableRow>
                         {viewingPayslip.deductions.map((ded: any, i: number) => (
@@ -558,30 +556,30 @@ export default function ManagementAccountingPayrollPage() {
                             </TableRow>
                         ))}
                         <TableRow className="bg-background font-bold text-base">
-                            <TableCell>Net Salary</TableCell>
+                            <TableCell>เงินเดือนสุทธิ</TableCell>
                             <TableCell className="text-right">{viewingPayslip.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
                         </TableRow>
                     </TableBody>
                 </Table>
                 {payrollRun && payrollRun.status === 'DRAFT_HR' && 'hrNote' in viewingPayslip && (
                     <div className="mt-4 pt-4 border-t">
-                    <h5 className="font-semibold text-sm mb-2">HR Notes & Adjustments</h5>
+                    <h5 className="font-semibold text-sm mb-2">หมายเหตุจาก HR</h5>
                     {editingPayslipId === viewingPayslip.userId ? (
                         <div className="space-y-2">
                         <Textarea
                             defaultValue={viewingPayslip.hrNote || ""}
                             onChange={(e) => setCurrentHrNote(e.target.value)}
-                            placeholder="Add manual adjustments or notes..."
+                            placeholder="เพิ่มการปรับปรุงหรือหมายเหตุ..."
                         />
                         <div className="flex gap-2">
-                            <Button size="sm" onClick={() => handleSaveHrNote(viewingPayslip.userId)}>Save Note</Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditingPayslipId(null)}>Cancel</Button>
+                            <Button size="sm" onClick={() => handleSaveHrNote(viewingPayslip.userId)}>บันทึก</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingPayslipId(null)}>ยกเลิก</Button>
                         </div>
                         </div>
                     ) : (
                         <div className="space-y-2 group">
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap rounded-md p-2 bg-muted min-h-10">
-                            {viewingPayslip.hrNote || "No notes added."}
+                            {viewingPayslip.hrNote || "ไม่มีหมายเหตุ"}
                         </p>
                         <Button
                             size="sm"
@@ -592,7 +590,7 @@ export default function ManagementAccountingPayrollPage() {
                             }}
                         >
                             <Edit className="mr-2 h-3 w-3"/>
-                            Edit Note
+                            แก้ไขหมายเหตุ
                         </Button>
                         </div>
                     )}
@@ -601,7 +599,7 @@ export default function ManagementAccountingPayrollPage() {
             </>
            )}
            <DialogFooter>
-             <Button variant="outline" onClick={() => setViewingPayslip(null)}>Close</Button>
+             <Button variant="outline" onClick={() => setViewingPayslip(null)}>ปิด</Button>
            </DialogFooter>
         </DialogContent>
       </Dialog>
