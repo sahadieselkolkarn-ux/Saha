@@ -8,7 +8,7 @@ import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday, set } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
 import { PageHeader } from "@/components/page-header";
@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment } from "@/lib/types";
+import { payTypeLabel } from "@/lib/ui-labels";
 
 function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, end: Date}) {
   const start = max([range1.start, range2.start]);
@@ -33,11 +34,11 @@ function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, 
 const PayslipStatusBadge = ({ status }: { status: Payslip['employeeStatus'] }) => {
     switch (status) {
         case 'PENDING_REVIEW':
-            return <Badge variant="secondary">Pending Review</Badge>;
+            return <Badge variant="secondary">รอตรวจสอบ</Badge>;
         case 'ACCEPTED':
-            return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">Accepted</Badge>;
+            return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">ยอมรับ</Badge>;
         case 'REJECTED':
-            return <Badge variant="destructive">Needs Fix</Badge>;
+            return <Badge variant="destructive">ต้องแก้ไข</Badge>;
         default:
             return null;
     }
@@ -130,7 +131,7 @@ export default function ManagementAccountingPayrollPage() {
 
   const users = useMemo(() => {
     if (!allUsers) return null;
-    return allUsers.filter(u => u.status === 'ACTIVE' && u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
+    return allUsers.filter(u => u.status === 'ACTIVE' && u.hr?.payType !== 'NOPAY' && u.hr?.salaryMonthly && u.hr.salaryMonthly > 0);
   }, [allUsers]);
 
   const payrollRunId = useMemo(() => `${format(currentMonthDate, 'yyyy-MM')}-${period}`, [currentMonthDate, period]);
@@ -148,8 +149,11 @@ export default function ManagementAccountingPayrollPage() {
     const today = startOfToday();
     const approvedLeaves = allYearLeaves.filter(l => l.status === 'APPROVED');
     const holidaysMap = new Map(allHolidays.map(h => [h.date, h.name]));
+    
     const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
     const graceMinutes = hrSettings.graceMinutes || 0;
+    const [absentCutoffHour, absentCutoffMinute] = (hrSettings.absentCutoffTime || '09:00').split(':').map(Number);
+    const [afternoonCutoffHour, afternoonCutoffMinute] = (hrSettings.afternoonCutoffTime || '13:00').split(':').map(Number);
     const weekendMode = hrSettings.weekendPolicy?.mode || 'SAT_SUN';
     
     const period1StartDay = hrSettings.payroll?.period1Start || 1;
@@ -170,76 +174,95 @@ export default function ManagementAccountingPayrollPage() {
       const salary = user.hr?.salaryMonthly || 0;
       const baseSalaryForPeriod = salary / 2;
       const deductions: PayslipDeduction[] = [];
+      const isNoScan = user.hr?.payType === 'MONTHLY_NOSCAN';
       
       const userLeaves = approvedLeaves.filter(l => l.userId === user.id);
       const userAttendance = monthAttendance.filter(a => a.userId === user.id);
       const userAdjustments = monthAdjustments.filter(a => a.userId === user.id);
       
-      let totalPresent = 0, totalLate = 0, totalAbsent = 0, totalLeaveInPeriod = 0, totalLateMinutes = 0;
+      let totalPresent = 0, totalLate = 0, totalAbsentDays = 0, totalLeaveInPeriod = 0, totalLateMinutes = 0;
       
-      daysInPeriod.forEach(day => {
-        const dayStr = format(day, 'yyyy-MM-dd');
-        
-        if (isAfter(day, today)) return;
-        if (holidaysMap.has(dayStr)) return;
-        const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
-        if (isWeekendDay) return;
+      if (!isNoScan) {
+        daysInPeriod.forEach(day => {
+          const dayStr = format(day, 'yyyy-MM-dd');
+          
+          if (isAfter(day, today)) return;
+          if (holidaysMap.has(dayStr)) return;
+          const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
+          if (isWeekendDay) return;
 
-        const onLeave = userLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
-        if (onLeave) {
-          totalLeaveInPeriod += 1;
-          return;
-        }
-
-        const adjustmentForDay = userAdjustments.find(a => a.date === dayStr);
-
-        const attendanceForDay = userAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
-        let firstIn = attendanceForDay.filter(a=>a.type === 'IN').sort((a,b)=>a.timestamp.toMillis() - b.timestamp.toMillis())[0]?.timestamp.toDate();
-
-        if (adjustmentForDay?.type === 'ADD_RECORD' && adjustmentForDay.adjustedIn) {
-            firstIn = adjustmentForDay.adjustedIn.toDate();
-        }
-
-        if (!firstIn) {
-            totalAbsent += 1;
+          const onLeave = userLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+          if (onLeave) {
+            totalLeaveInPeriod += 1;
             return;
-        }
-        
-        const workStartTimeWithGrace = setMinutes(setHours(day, workStartHour), workStartMinute + graceMinutes);
-        let lateMins = differenceInMinutes(firstIn, workStartTimeWithGrace);
-        if (lateMins < 0) lateMins = 0;
-        if (adjustmentForDay?.type === 'FORGIVE_LATE') lateMins = 0;
+          }
 
-        if (lateMins > 0) {
-            totalLate += 1;
-            totalLateMinutes += lateMins;
-        } else {
-            totalPresent += 1;
-        }
-      });
-      
-      // Leave Deduction
-      const overLimitLeaves = userLeaves.filter(l => l.overLimit === true);
-      overLimitLeaves.forEach(leave => {
-          const leaveDateRange = { start: parseISO(leave.startDate), end: parseISO(leave.endDate) };
-          const overlappingDays = getOverlapDays(payPeriod, leaveDateRange);
-          if (overlappingDays > 0) {
-            const policy = hrSettings.leavePolicy?.leaveTypes?.[leave.leaveType];
-            if (policy?.overLimitHandling?.mode === 'DEDUCT_SALARY') {
-              const deductionBaseDays = policy.salaryDeductionBaseDays || 26;
-              const dailyRate = salary / deductionBaseDays;
-              const deductionAmount = overlappingDays * dailyRate;
-              deductions.push({ name: `Deduction: ${leave.leaveType} Leave`, amount: deductionAmount, notes: `${overlappingDays} over-limit day(s)` });
+          const adjustmentForDay = userAdjustments.find(a => a.date === dayStr);
+          const attendanceForDay = userAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
+          let firstIn = attendanceForDay.filter(a=>a.type === 'IN').sort((a,b)=>a.timestamp.toMillis() - b.timestamp.toMillis())[0]?.timestamp.toDate();
+
+          if (adjustmentForDay?.type === 'ADD_RECORD' && adjustmentForDay.adjustedIn) {
+              firstIn = adjustmentForDay.adjustedIn.toDate();
+          }
+
+          let absentUnits = 0;
+          let lateMins = 0;
+
+          if (!firstIn) {
+            absentUnits = 1.0; // Full day absent if no clock-in
+          } else {
+            const absentCutoff = set(day, { hours: absentCutoffHour, minutes: absentCutoffMinute, seconds: 0 });
+            const afternoonCutoff = set(day, { hours: afternoonCutoffHour, minutes: afternoonCutoffMinute, seconds: 0 });
+
+            let absentMorning = isAfter(firstIn, absentCutoff);
+            let absentAfternoon = isAfter(firstIn, afternoonCutoff);
+
+            if (absentMorning) absentUnits += 0.5;
+            if (absentAfternoon) absentUnits += 0.5;
+            
+            // Lateness is only calculated if the morning is not considered absent
+            if (!absentMorning) {
+                const workStartTimeWithGrace = setMinutes(setHours(day, workStartHour), workStartMinute + graceMinutes);
+                lateMins = differenceInMinutes(firstIn, workStartTimeWithGrace);
+                if (lateMins < 0) lateMins = 0;
+                if (adjustmentForDay?.type === 'FORGIVE_LATE') lateMins = 0;
             }
           }
-      });
 
-      // Absent Deduction
-      if (totalAbsent > 0) {
-        const sickLeavePolicy = hrSettings.leavePolicy?.leaveTypes?.SICK;
-        const deductionBaseDays = sickLeavePolicy?.overLimitHandling?.salaryDeductionBaseDays || 26;
-        const dailyRate = salary / deductionBaseDays;
-        deductions.push({ name: 'Deduction: Absent', amount: dailyRate * totalAbsent, notes: `${totalAbsent} absent day(s)` });
+          if (absentUnits > 0) {
+            totalAbsentDays += absentUnits;
+          } else if (lateMins > 0) {
+            totalLate += 1;
+            totalLateMinutes += lateMins;
+          } else {
+            totalPresent += 1;
+          }
+        });
+        
+        // Leave Deduction
+        const overLimitLeaves = userLeaves.filter(l => l.overLimit === true);
+        overLimitLeaves.forEach(leave => {
+            const leaveDateRange = { start: parseISO(leave.startDate), end: parseISO(leave.endDate) };
+            const overlappingDays = getOverlapDays(payPeriod, leaveDateRange);
+            if (overlappingDays > 0) {
+              const policy = hrSettings.leavePolicy?.leaveTypes?.[leave.leaveType];
+              if (policy?.overLimitHandling?.mode === 'DEDUCT_SALARY') {
+                const deductionBaseDays = policy.salaryDeductionBaseDays || 26;
+                const dailyRate = salary / deductionBaseDays;
+                const deductionAmount = overlappingDays * dailyRate;
+                deductions.push({ name: `หักเงิน (ลาเกิน): ${leave.leaveType}`, amount: deductionAmount, notes: `${overlappingDays} วันที่ลาเกินกำหนด` });
+              }
+            }
+        });
+
+        // Absent Deduction based on units
+        if (totalAbsentDays > 0) {
+          const deductionBaseDays = hrSettings.payroll?.salaryDeductionBaseDays || 26;
+          const dailyRate = salary / deductionBaseDays;
+          deductions.push({ name: 'หักเงิน (ขาดงาน)', amount: dailyRate * totalAbsentDays, notes: `ขาดงานรวม ${totalAbsentDays} วัน` });
+        }
+      } else {
+          deductions.push({ name: 'ไม่ต้องสแกนเวลา', amount: 0, notes: 'คำนวณเงินเดือนเต็มตามปกติ' });
       }
       
       // SSO Deduction
@@ -247,14 +270,14 @@ export default function ManagementAccountingPayrollPage() {
       if (ssoPolicy?.employeePercent && ssoPolicy.monthlyCap) {
           const fullMonthSSO = Math.min((salary * (ssoPolicy.employeePercent / 100)), ssoPolicy.monthlyCap);
           const ssoEmployeeDeduction = fullMonthSSO / 2;
-          deductions.push({ name: 'Social Security (SSO)', amount: ssoEmployeeDeduction, notes: `${ssoPolicy.employeePercent}% of salary, capped & split.` });
+          deductions.push({ name: 'ประกันสังคม', amount: ssoEmployeeDeduction, notes: `หัก ${ssoPolicy.employeePercent}% ของเงินเดือน, สูงสุดไม่เกิน ${ssoPolicy.monthlyCap} (หาร 2 ตามงวด)` });
       }
       
       // Withholding Tax
       const whPolicy = hrSettings.withholding;
       if (whPolicy?.enabled && whPolicy.defaultPercent) {
           const whDeduction = (baseSalaryForPeriod * (whPolicy.defaultPercent / 100));
-          deductions.push({ name: 'Withholding Tax', amount: whDeduction, notes: `Standard ${whPolicy.defaultPercent}% of base pay for period.` });
+          deductions.push({ name: 'ภาษีหัก ณ ที่จ่าย', amount: whDeduction, notes: `หัก ${whPolicy.defaultPercent}% ของเงินเดือนสำหรับงวดนี้` });
       }
       
       const totalDeductions = deductions.reduce((sum, d) => sum + d.amount, 0);
@@ -269,7 +292,7 @@ export default function ManagementAccountingPayrollPage() {
         payrollRunId,
         totalPresent,
         totalLate,
-        totalAbsent,
+        totalAbsentDays,
         totalLeave: totalLeaveInPeriod,
         totalLateMinutes,
       };
@@ -294,7 +317,7 @@ export default function ManagementAccountingPayrollPage() {
         });
         
         calculatedPayrollData.forEach(payslipData => {
-            const { totalPresent, totalLate, totalAbsent, totalLeave, totalLateMinutes, ...slipDataToSave } = payslipData;
+            const { totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes, ...slipDataToSave } = payslipData;
             const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', slipDataToSave.userId);
             batch.set(payslipRef, { 
                 id: payslipRef.id, 
@@ -305,9 +328,9 @@ export default function ManagementAccountingPayrollPage() {
         });
 
         await batch.commit();
-        toast({ title: 'Draft Created', description: 'Payroll draft has been saved.' });
+        toast({ title: 'สร้างฉบับร่างแล้ว', description: 'สร้างฉบับร่างสำหรับรอบจ่ายเงินเดือนนี้แล้ว' });
     } catch(error: any) {
-        toast({ variant: 'destructive', title: 'Error Creating Draft', description: error.message });
+        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาดในการสร้าง', description: error.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -333,9 +356,9 @@ export default function ManagementAccountingPayrollPage() {
 
         await batch.commit();
         
-        toast({ title: 'Sent to Employees', description: 'Payslips have been sent for employee review.' });
+        toast({ title: 'ส่งให้พนักงานแล้ว', description: 'ส่งสลิปเงินเดือนให้พนักงานตรวจสอบแล้ว' });
      } catch(error: any) {
-        toast({ variant: 'destructive', title: 'Error', description: error.message });
+        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: error.message });
      } finally {
         setIsSubmitting(false);
      }
@@ -348,9 +371,9 @@ export default function ManagementAccountingPayrollPage() {
       await updateDoc(payslipRef, {
         hrNote: currentHrNote,
       });
-      toast({ title: "Note saved successfully." });
+      toast({ title: "บันทึกหมายเหตุสำเร็จ" });
     } catch(e: any) {
-      toast({ variant: 'destructive', title: 'Error saving note', description: e.message });
+      toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาดในการบันทึก', description: e.message });
     } finally {
       setEditingPayslipId(null);
     }
@@ -361,9 +384,9 @@ export default function ManagementAccountingPayrollPage() {
   
   const getStatusBadge = (status: string) => {
     switch (status) {
-        case 'DRAFT_HR': return <Badge variant="secondary">Draft</Badge>;
-        case 'SENT_TO_EMPLOYEE': return <Badge>Sent to Employees</Badge>;
-        case 'FINAL': return <Badge variant="default">Final</Badge>;
+        case 'DRAFT_HR': return <Badge variant="secondary">ฉบับร่าง</Badge>;
+        case 'SENT_TO_EMPLOYEE': return <Badge>ส่งให้พนักงาน</Badge>;
+        case 'FINAL': return <Badge variant="default">สุดท้าย</Badge>;
         default: return <Badge variant="outline">{status}</Badge>;
     }
   }
@@ -516,7 +539,7 @@ export default function ManagementAccountingPayrollPage() {
            <DialogHeader>
              <DialogTitle>สลิปเงินเดือน (ฉบับร่าง)</DialogTitle>
              <DialogDescription>
-                {viewingPayslip?.userName} - {format(currentMonthDate, 'MMMM yyyy')} Period {period}
+                {viewingPayslip?.userName} - {format(currentMonthDate, 'MMMM yyyy')} งวดที่ {period}
              </DialogDescription>
            </DialogHeader>
            {viewingPayslip && (
@@ -524,7 +547,7 @@ export default function ManagementAccountingPayrollPage() {
                 <div className="mb-2 text-center grid grid-cols-5 gap-1 text-xs">
                     <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.totalPresent}</p><p className="text-green-600">มาทำงาน</p></div>
                     <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.totalLate}</p><p className="text-yellow-600">สาย</p></div>
-                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.totalAbsent}</p><p className="text-red-600">ขาด</p></div>
+                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.totalAbsentDays?.toFixed(1)}</p><p className="text-red-600">ขาด (วัน)</p></div>
                     <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.totalLeave}</p><p className="text-blue-600">ลา</p></div>
                     <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">สาย (นาที)</p></div>
                 </div>
