@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
@@ -267,10 +268,30 @@ export default function ManagementAccountingPayrollPage() {
       
       // SSO Deduction
       const ssoPolicy = hrSettings.sso;
-      if (ssoPolicy?.employeePercent && ssoPolicy.monthlyCap) {
-          const fullMonthSSO = Math.min((salary * (ssoPolicy.employeePercent / 100)), ssoPolicy.monthlyCap);
-          const ssoEmployeeDeduction = fullMonthSSO / 2;
-          deductions.push({ name: 'ประกันสังคม', amount: ssoEmployeeDeduction, notes: `หัก ${ssoPolicy.employeePercent}% ของเงินเดือน, สูงสุดไม่เกิน ${ssoPolicy.monthlyCap} (หาร 2 ตามงวด)` });
+      if (ssoPolicy?.employeePercent && ssoPolicy.employeePercent > 0) {
+          const wageBase = (ssoPolicy.monthlyCap && ssoPolicy.monthlyCap > 0)
+              ? Math.min(salary, ssoPolicy.monthlyCap)
+              : salary;
+      
+          const monthlySSOEmployee = wageBase * (ssoPolicy.employeePercent / 100);
+          
+          let ssoDeductionForPeriod = 0;
+          if (period === 1) {
+              ssoDeductionForPeriod = Math.floor((monthlySSOEmployee / 2) * 100) / 100;
+          } else { 
+              const period1Deduction = Math.floor((monthlySSOEmployee / 2) * 100) / 100;
+              ssoDeductionForPeriod = (Math.round(monthlySSOEmployee * 100) / 100) - period1Deduction;
+          }
+      
+          ssoDeductionForPeriod = Math.round(ssoDeductionForPeriod * 100) / 100;
+      
+          if (ssoDeductionForPeriod > 0) {
+              deductions.push({ 
+                  name: 'ประกันสังคม', 
+                  amount: ssoDeductionForPeriod, 
+                  notes: `หัก ${ssoPolicy.employeePercent}% จากฐาน ${wageBase.toLocaleString('th-TH')} (สูงสุด ${ssoPolicy.monthlyCap?.toLocaleString('th-TH')})` 
+              });
+          }
       }
       
       // Withholding Tax
