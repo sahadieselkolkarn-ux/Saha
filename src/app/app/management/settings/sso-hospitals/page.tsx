@@ -9,7 +9,7 @@ import { collection, query, orderBy, addDoc, updateDoc, deleteDoc, serverTimesta
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { useCollection, WithId } from "@/firebase/firestore/use-collection";
+import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
 import type { SSOHospital } from "@/lib/types";
 
 import { PageHeader } from "@/components/page-header";
