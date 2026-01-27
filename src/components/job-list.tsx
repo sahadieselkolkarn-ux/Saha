@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -141,19 +141,24 @@ export function JobList({
     if (!db) return null;
 
     const constraints: QueryConstraint[] = [];
-    if (department) {
-      constraints.push(where('department', '==', department));
-    }
-    if (status && !Array.isArray(status)) {
-      constraints.push(where('status', '==', status));
-    }
+    
+    // If assigneeUid is present, query only by it to avoid composite index requirement.
+    // Other filtering and sorting will happen on the client-side.
     if (assigneeUid) {
       constraints.push(where('assigneeUid', '==', assigneeUid));
-    }
-    constraints.push(orderBy(orderByField, orderByDirection));
+    } else {
+      // Original logic for other list views
+      if (department) {
+        constraints.push(where('department', '==', department));
+      }
+      if (status && !Array.isArray(status)) {
+        constraints.push(where('status', '==', status));
+      }
+      constraints.push(orderBy(orderByField, orderByDirection));
 
-    if (limitProp) {
-      constraints.push(limit(limitProp));
+      if (limitProp) {
+        constraints.push(limit(limitProp));
+      }
     }
 
     return query(collection(db, 'jobs'), ...constraints);
@@ -174,13 +179,37 @@ export function JobList({
     const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
       
-      if (status && Array.isArray(status)) {
-        jobsData = jobsData.filter(job => status.includes(job.status));
+      // Client-side filtering logic
+      if (assigneeUid) {
+        // This query was only by assigneeUid, so we must apply other filters now.
+        if (department) {
+            jobsData = jobsData.filter(job => job.department === department);
+        }
+        if (status) {
+            const statuses = Array.isArray(status) ? status : [status];
+            jobsData = jobsData.filter(job => statuses.includes(job.status));
+        }
+      } else {
+        // This was the original logic for queries that didn't use assigneeUid
+        if (status && Array.isArray(status)) {
+          jobsData = jobsData.filter(job => status.includes(job.status));
+        }
       }
       
       if (excludeStatus) {
         const statusesToExclude = Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
         jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
+      }
+      
+      // Client-side sorting if we didn't use orderBy in the query
+      if (assigneeUid) {
+        jobsData.sort((a, b) => {
+            const timeA = a[orderByField as keyof Job] as Timestamp | undefined;
+            const timeB = b[orderByField as keyof Job] as Timestamp | undefined;
+            const valA = timeA?.toMillis() || 0;
+            const valB = timeB?.toMillis() || 0;
+            return orderByDirection === 'desc' ? valB - valA : valA - valB;
+        });
       }
 
       setJobs(jobsData);
@@ -194,7 +223,7 @@ export function JobList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, JSON.stringify(status), JSON.stringify(excludeStatus)]);
+  }, [jobsQuery, assigneeUid, department, JSON.stringify(status), JSON.stringify(excludeStatus), orderByField, orderByDirection]);
 
   useEffect(() => {
     if (error?.message?.includes('requires an index')) {
