@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo } from "react";
@@ -113,8 +114,19 @@ export default function SsoHospitalsPage() {
     }
   };
 
+  if (!profile) {
+    return <div className="flex justify-center p-8"><Loader2 className="animate-spin"/></div>
+  }
+
   if (!hasPermission) {
-    return <PageHeader title="ไม่มีสิทธิ์เข้าถึง" description="สำหรับผู้ดูแลระบบและฝ่ายบริหารเท่านั้น" />;
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
+                <CardDescription>สำหรับผู้ดูแลระบบและฝ่ายบริหารเท่านั้น</CardDescription>
+            </CardHeader>
+        </Card>
+    );
   }
 
   return (
