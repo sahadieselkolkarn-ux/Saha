@@ -9,27 +9,30 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Read profile data from the /users collection
-    function getProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
     function userExists() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function role() {
-      return request.auth.token.role != null ? request.auth.token.role
-        : userExists() ? getProfile().role
-        : '';
+    function getProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    function dept() {
-      return request.auth.token.department != null ? request.auth.token.department
-        : userExists() ? getProfile().department
-        : '';
+
+    function isEmailAdmin() {
+      return signedIn() && request.auth.token.email == "sahadiesel@gmail.com";
+    }
+
+    function isRoleAdmin() {
+      // Check for user document existence before accessing its data.
+      return signedIn() && userExists() && getProfile().role == "ADMIN";
     }
 
     function isAdmin() {
-      return signedIn() && role() == "ADMIN";
+      return isEmailAdmin() || isRoleAdmin();
+    }
+    
+    // Safely get department
+    function dept() {
+      return signedIn() && userExists() ? getProfile().department : '';
     }
 
     function isMgmt() {
@@ -59,6 +62,7 @@ service cloud.firestore {
     // User Profiles
     match /users/{uid} {
       allow read: if signedIn();
+      // Allow updates if user is an admin OR if the user is editing their own profile.
       allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow delete: if isAdmin();
     }
@@ -136,7 +140,7 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
     match /accountingObligations/{id} {
-      allow create: if signedIn();
+      allow create: if signedIn(); 
       allow read: if signedIn();
       allow update: if isAccountingAllowed();
       allow delete: if isAdmin();
