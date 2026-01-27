@@ -260,7 +260,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'MANAGEMENT' && (
                     <>
                         <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/jobs" label="ภาพรวมงานซ่อม" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/jobs/by-worker" label="งานตามพนักงาน" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         {canSeeAccounting && (
                             <>
@@ -316,20 +316,20 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                        {profile?.role === 'OFFICER' ? (
                             <CarServiceByWorkerNav onLinkClick={onLinkClick} />
                        ) : (
-                            <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
+                            profile?.role === 'WORKER' && <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                        )}
                     </>
                 )}
                 {department === 'COMMONRAIL' && (
                     <>
                        <SubNavLink href="/app/commonrail/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
-                       <SubNavLink href="/app/commonrail/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
+                       {profile?.role === 'WORKER' && <SubNavLink href="/app/commonrail/jobs/my" label="งานของฉัน" onClick={onLinkClick} />}
                     </>
                 )}
                 {department === 'MECHANIC' && (
                     <>
                        <SubNavLink href="/app/mechanic/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
-                       <SubNavLink href="/app/mechanic/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
+                       {profile?.role === 'WORKER' && <SubNavLink href="/app/mechanic/jobs/my" label="งานของฉัน" onClick={onLinkClick} />}
                     </>
                 )}
                  {department === 'OUTSOURCE' && (
@@ -364,7 +364,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const departmentsToShow = useMemo(() => {
         if (!profile) return [];
 
-        if (profile.role === 'ADMIN') {
+        if (profile.role === 'ADMIN' || profile.role === 'MANAGER') {
             return DEPARTMENTS;
         }
 
