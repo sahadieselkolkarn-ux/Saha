@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -53,6 +54,7 @@ const hrSettingsSchema = z.object({
   breakEnd: z.string().optional(),
   graceMinutes: z.coerce.number().min(0).optional(),
   absentCutoffTime: z.string().optional(),
+  afternoonCutoffTime: z.string().optional(),
   minSecondsBetweenScans: z.coerce.number().min(0).optional(),
   weekendPolicy: z.object({
     mode: z.enum(["SAT_SUN", "SUN_ONLY"]).optional(),
@@ -64,6 +66,7 @@ const hrSettingsSchema = z.object({
     payday2: z.string().optional(),
     period2Start: z.coerce.number().min(1).max(31).optional(),
     period2End: z.string().optional(),
+    salaryDeductionBaseDays: z.coerce.number().min(1).optional(),
   }).optional(),
   sso: z.object({
     employeePercent: z.coerce.number().min(0).max(100).optional(),
@@ -175,6 +178,7 @@ export function HRSettingsForm() {
       breakEnd: "",
       graceMinutes: 0,
       absentCutoffTime: "",
+      afternoonCutoffTime: "",
       minSecondsBetweenScans: 60,
       weekendPolicy: {
         mode: 'SAT_SUN',
@@ -186,6 +190,7 @@ export function HRSettingsForm() {
         payday2: "EOM",
         period2Start: 16,
         period2End: "EOM",
+        salaryDeductionBaseDays: 26,
       },
       sso: {
         employeePercent: 0,
@@ -218,6 +223,7 @@ export function HRSettingsForm() {
         breakEnd: settings.breakEnd || "",
         graceMinutes: settings.graceMinutes ?? 0,
         absentCutoffTime: settings.absentCutoffTime || "",
+        afternoonCutoffTime: settings.afternoonCutoffTime || "",
         minSecondsBetweenScans: settings.minSecondsBetweenScans ?? 60,
         weekendPolicy: { ...defaultValues.weekendPolicy, ...settings.weekendPolicy },
         payroll: { ...defaultValues.payroll, ...settings.payroll },
@@ -315,9 +321,10 @@ export function HRSettingsForm() {
                 <CardHeader>
                     <CardTitle>Attendance Rules</CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div><p className="text-sm font-medium text-muted-foreground">Grace Period (minutes)</p><p>{settings?.graceMinutes ?? '-'}</p></div>
                     <div><p className="text-sm font-medium text-muted-foreground">Absent Cutoff Time</p><p>{settings?.absentCutoffTime || '-'}</p></div>
+                    <div><p className="text-sm font-medium text-muted-foreground">Afternoon Cutoff Time</p><p>{settings?.afternoonCutoffTime || '-'}</p></div>
                     <div><p className="text-sm font-medium text-muted-foreground">Scan Cooldown (seconds)</p><p>{settings?.minSecondsBetweenScans ?? '-'}</p></div>
                 </CardContent>
             </Card>
@@ -366,6 +373,12 @@ export function HRSettingsForm() {
              <Card>
                 <CardHeader><CardTitle>Payroll Cycles</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
+                    <div>
+                      <h4 className="font-medium mb-2">General</h4>
+                      <div className="grid grid-cols-3 gap-4 p-4 border rounded-md">
+                        <div><p className="text-sm font-medium text-muted-foreground">Salary Deduction Base Days</p><p>{settings?.payroll?.salaryDeductionBaseDays ?? '-'}</p></div>
+                      </div>
+                    </div>
                     <div>
                       <h4 className="font-medium mb-2">Period 1</h4>
                       <div className="grid grid-cols-3 gap-4 p-4 border rounded-md">
@@ -433,9 +446,10 @@ export function HRSettingsForm() {
               กฎการมาสาย, ขาด, และการป้องกันการสแกนซ้ำ
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <FormField control={form.control} name="graceMinutes" render={({ field }) => (<FormItem><FormLabel>Grace Period (minutes)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl><FormDescription>นาทีที่อนุญาตให้สายได้</FormDescription></FormItem>)} />
             <FormField control={form.control} name="absentCutoffTime" render={({ field }) => (<FormItem><FormLabel>Absent Cutoff Time</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl><FormDescription>หลังเวลานี้ถือว่าขาด</FormDescription></FormItem>)} />
+            <FormField control={form.control} name="afternoonCutoffTime" render={({ field }) => (<FormItem><FormLabel>Afternoon Cutoff Time</FormLabel><FormControl><Input type="time" {...field} value={field.value ?? ""} /></FormControl><FormDescription>เวลาตัดรอบ บ่าย/ครึ่งวัน</FormDescription></FormItem>)} />
             <FormField control={form.control} name="minSecondsBetweenScans" render={({ field }) => (<FormItem><FormLabel>Scan Cooldown (seconds)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl><FormDescription>กันการสแกนซ้ำ</FormDescription></FormItem>)} />
           </CardContent>
         </Card>
@@ -495,6 +509,12 @@ export function HRSettingsForm() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div>
+              <h4 className="font-medium mb-2">General</h4>
+              <div className="grid grid-cols-3 gap-4 p-4 border rounded-md">
+                <FormField control={form.control} name="payroll.salaryDeductionBaseDays" render={({ field }) => (<FormItem className="col-span-1"><FormLabel>Deduction Base Days</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? ''} /></FormControl><FormDescription>Default days for salary deduction.</FormDescription></FormItem>)} />
+              </div>
+            </div>
             <div>
               <h4 className="font-medium mb-2">Period 1</h4>
               <div className="grid grid-cols-3 gap-4 p-4 border rounded-md">

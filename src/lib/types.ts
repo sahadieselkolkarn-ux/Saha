@@ -160,6 +160,7 @@ export interface HRSettings {
   breakEnd?: string;
   graceMinutes?: number;
   absentCutoffTime?: string;
+  afternoonCutoffTime?: string;
   minSecondsBetweenScans?: number;
   weekendPolicy?: {
     mode?: 'SAT_SUN' | 'SUN_ONLY';
@@ -171,6 +172,7 @@ export interface HRSettings {
     period1End?: number;
     period2Start?: number;
     period2End?: string;
+    salaryDeductionBaseDays?: number;
   };
   sso?: {
     employeePercent?: number;
