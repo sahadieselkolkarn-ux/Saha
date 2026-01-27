@@ -1,7 +1,7 @@
 
 
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus, AccountingCategory } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus, AccountingCategory, PayType } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -27,7 +27,7 @@ export interface UserProfile {
   };
   hr?: {
     salaryMonthly?: number;
-    payType?: 'MONTHLY' | 'DAILY' | 'MONTHLY_NOSCAN' | 'NOPAY';
+    payType?: PayType;
     ssoHospital?: string;
     note?: string;
     startDate?: string; // YYYY-MM-DD

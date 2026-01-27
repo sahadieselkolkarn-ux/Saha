@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -19,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DEPARTMENTS, USER_ROLES, USER_STATUSES } from "@/lib/constants";
+import { DEPARTMENTS, USER_ROLES, USER_STATUSES, PAY_TYPES } from "@/lib/constants";
 import type { UserProfile } from "@/lib/types";
 import {
   AlertDialog,
@@ -56,7 +57,7 @@ const userProfileSchema = z.object({
   }).optional(),
   hr: z.object({
     salaryMonthly: z.coerce.number().optional(),
-    payType: z.enum(["MONTHLY", "DAILY"]).optional(),
+    payType: z.enum(PAY_TYPES).optional(),
     startDate: z.string().optional().default(''),
     endDate: z.string().optional().default(''),
     ssoHospital: z.string().optional().default(''),
@@ -424,7 +425,7 @@ export default function ManagementHREmployeesPage() {
                                   </FormItem>
                                 )}
                               />
-                            <FormField name="hr.payType" control={form.control} render={({ field }) => (<FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                            <FormField name="hr.payType" control={form.control} render={({ field }) => (<FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{PAY_TYPES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                              <FormField name="hr.ssoHospital" control={form.control} render={({ field }) => (
                                 <FormItem>
                                     <FormLabel>SSO Hospital</FormLabel>

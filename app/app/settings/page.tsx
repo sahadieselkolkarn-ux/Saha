@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -21,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { PAY_TYPES } from "@/lib/constants";
 
 const profileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -41,7 +43,7 @@ const profileSchema = z.object({
   }).optional(),
   hr: z.object({
     salaryMonthly: z.coerce.number().optional(),
-    payType: z.enum(["MONTHLY", "DAILY"]).optional(),
+    payType: z.enum(PAY_TYPES).optional(),
     ssoHospital: z.string().optional().default(''),
     note: z.string().optional().default(''),
   }).optional(),
@@ -211,7 +213,7 @@ export default function SettingsPage() {
                                         )}
                                     />
                                     <FormField name="hr.payType" control={form.control} render={({ field }) => (
-                                        <FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent><SelectItem value="MONTHLY">Monthly</SelectItem><SelectItem value="DAILY">Daily</SelectItem></SelectContent></Select><FormMessage /></FormItem>
+                                        <FormItem><FormLabel>Pay Type</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger></FormControl><SelectContent>{PAY_TYPES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>
                                     )} />
                                     <FormField control={form.control} name="hr.ssoHospital" render={({ field }) => (
                                         <FormItem>
