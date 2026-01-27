@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from 'next/link';
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -22,8 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check } from "lucide-react";
-import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType } from "@/lib/types";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck } from "lucide-react";
+import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
@@ -77,6 +77,12 @@ export default function JobDetailsPage() {
   const [transferDepartment, setTransferDepartment] = useState<JobDepartment | ''>('');
   const [transferNote, setTransferNote] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
+  
+  const [isReassignDialogOpen, setIsReassignDialogOpen] = useState(false);
+  const [departmentWorkers, setDepartmentWorkers] = useState<UserProfile[]>([]);
+  const [isFetchingWorkers, setIsFetchingWorkers] = useState(false);
+  const [reassignWorkerId, setReassignWorkerId] = useState<string | null>(null);
+  const [isReassigning, setIsReassigning] = useState(false);
 
   const [techReport, setTechReport] = useState("");
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
@@ -443,6 +449,71 @@ export default function JobDetailsPage() {
     }
   };
 
+  const handleOpenReassignDialog = async () => {
+    if (!db || !job) return;
+    setIsReassignDialogOpen(true);
+    setReassignWorkerId(null);
+    setIsFetchingWorkers(true);
+    try {
+      const q = query(
+        collection(db, "users"),
+        where("department", "==", job.department),
+        where("role", "==", "WORKER"),
+        where("status", "==", "ACTIVE")
+      );
+      const snapshot = await getDocs(q);
+      const workers = snapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as UserProfile));
+      // Exclude the current assignee from the list
+      setDepartmentWorkers(workers.filter(w => w.uid !== job.assigneeUid));
+    } catch (error) {
+      toast({ variant: 'destructive', title: "Failed to fetch workers" });
+      setDepartmentWorkers([]);
+    } finally {
+      setIsFetchingWorkers(false);
+    }
+  };
+
+  const handleReassignJob = async () => {
+    if (!db || !profile || !job || !reassignWorkerId) return;
+
+    const newWorker = departmentWorkers.find(w => w.uid === reassignWorkerId);
+    if (!newWorker) {
+      toast({ variant: "destructive", title: "Selected worker not found." });
+      return;
+    }
+
+    setIsReassigning(true);
+    try {
+      const batch = writeBatch(db);
+      const jobDocRef = doc(db, "jobs", job.id);
+      const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
+
+      batch.update(jobDocRef, {
+        assigneeUid: newWorker.uid,
+        assigneeName: newWorker.displayName,
+        lastActivityAt: serverTimestamp(),
+      });
+
+      const activityText = `แอดมินเปลี่ยนพนักงานซ่อม จาก ${job.assigneeName || 'ยังไม่ได้มอบหมาย'} เป็น ${newWorker.displayName}`;
+      batch.set(activityDocRef, {
+        text: activityText,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp(),
+        photos: [],
+      });
+      
+      await batch.commit();
+      toast({ title: "มอบหมายงานใหม่สำเร็จ" });
+      setIsReassignDialogOpen(false);
+
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: "การมอบหมายงานล้มเหลว", description: error.message });
+    } finally {
+      setIsReassigning(false);
+    }
+  };
+
   const handleCustomerApproval = async () => {
     if (!jobId || !db || !profile) return;
     setIsApprovalActionLoading(true);
@@ -779,6 +850,11 @@ const handlePartsReady = async () => {
           <Card>
               <CardHeader><CardTitle className="text-base font-semibold">แจ้งความประสงค์</CardTitle></CardHeader>
               <CardContent className="space-y-2">
+                  {isUserAdmin && job.assigneeUid && (
+                    <Button onClick={handleOpenReassignDialog} className="w-full" variant="outline" disabled={isViewOnly || isReassigning}>
+                        <UserCheck className="mr-2 h-4 w-4" /> เปลี่ยนพนักงานซ่อม
+                    </Button>
+                  )}
                   {isUserAdmin && (
                     <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline" disabled={isViewOnly}>
                         <Send className="mr-2 h-4 w-4" /> โอนย้ายแผนก
@@ -861,6 +937,47 @@ const handlePartsReady = async () => {
               </DialogFooter>
           </DialogContent>
       </Dialog>
+
+      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}>
+        <DialogContent
+            onInteractOutside={(e) => {if (isReassigning) e.preventDefault()}}
+            onEscapeKeyDown={(e) => {if (isReassigning) e.preventDefault()}}
+        >
+            <DialogHeader>
+                <DialogTitle>เปลี่ยนพนักงานซ่อม</DialogTitle>
+                <DialogDescription>
+                    เลือกพนักงานใหม่สำหรับงานนี้ งานจะยังคงอยู่ในแผนก {job.department}
+                </DialogDescription>
+            </DialogHeader>
+            {isFetchingWorkers ? (
+                <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>
+            ) : (
+                <div className="py-4">
+                    <Label htmlFor="worker-select">พนักงานใหม่</Label>
+                    <Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}>
+                        <SelectTrigger id="worker-select">
+                            <SelectValue placeholder="เลือกพนักงาน..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {departmentWorkers.length > 0 ? (
+                                departmentWorkers.map(w => <SelectItem key={w.uid} value={w.uid}>{w.displayName}</SelectItem>)
+                            ) : (
+                                <div className="p-4 text-sm text-muted-foreground text-center">ไม่พบช่างคนอื่นในแผนกนี้</div>
+                            )}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsReassignDialogOpen(false)} disabled={isReassigning}>ยกเลิก</Button>
+                <Button onClick={handleReassignJob} disabled={isReassigning || isFetchingWorkers || !reassignWorkerId}>
+                    {isReassigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    ยืนยันการเปลี่ยน
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
       {/* Customer Approval Dialogs */}
       <AlertDialog open={isApproveConfirmOpen} onOpenChange={setIsApproveConfirmOpen}>
           <AlertDialogContent>
