@@ -771,6 +771,19 @@
         "createdAt"
       ]
     },
+    "SSOHospital": {
+      "title": "SSO Hospital",
+      "description": "Represents a hospital for Social Security.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "description": "Name of the hospital." },
+        "address": { "type": "string", "description": "Address of the hospital." },
+        "emergencyContact": { "type": "string", "description": "Emergency contact number for the hospital." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "createdAt"]
+    },
     "LeaveRequest": {
       "title": "Leave Request",
       "description": "Represents a single leave request submitted by an employee.",
@@ -1312,6 +1325,12 @@
         "$ref": "#/backend/entities/HRHoliday"
       },
       "description": "Stores company holiday records."
+    },
+    "/ssoHospitals/{hospitalId}": {
+      "schema": {
+        "$ref": "#/backend/entities/SSOHospital"
+      },
+      "description": "Stores information about SSO hospitals."
     },
     "/hrLeaves/{leaveId}": {
       "schema": {

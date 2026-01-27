@@ -154,6 +154,10 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /hrHolidays/{id} { allow read, write: if isMgmt(); }
+    match /ssoHospitals/{hospitalId} {
+      allow read: if signedIn();
+      allow write: if isMgmt();
+    }
     match /hrLeaves/{id} {
         allow read: if isMgmt() || request.auth.uid == resource.data.userId;
         allow create: if signedIn();

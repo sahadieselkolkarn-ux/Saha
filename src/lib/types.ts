@@ -31,7 +31,7 @@ export interface UserProfile {
     ssoHospital?: string;
     note?: string;
     startDate?: string; // YYYY-MM-DD
-    endDate?: string | null; // YYYY-MM-DD or null
+    endDate?: string | null; // YYYY-MM-DD
   };
   createdAt: Timestamp;
   updatedAt?: Timestamp;
@@ -190,6 +190,14 @@ export interface HRHoliday {
   id: string;
   date: string; // YYYY-MM-DD
   name: string;
+  createdAt: Timestamp;
+}
+
+export interface SSOHospital {
+  id: string;
+  name: string;
+  address?: string;
+  emergencyContact?: string;
   createdAt: Timestamp;
 }
 

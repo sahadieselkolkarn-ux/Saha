@@ -159,6 +159,7 @@ const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/management/settings/store" label="ตั้งค่าร้าน/เวลา" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/settings/documents" label="ตั้งค่าเลขที่เอกสาร" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/settings/sso-hospitals" label="รพ. ประกันสังคม" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
