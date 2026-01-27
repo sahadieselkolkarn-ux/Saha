@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -315,32 +316,26 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
     try {
         let docId: string;
-        let docNo: string;
         const newStatus = sendForReview ? 'PENDING_REVIEW' : 'DRAFT';
+        const options = {
+            ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
+            initialStatus: newStatus,
+        };
         
         if (isEditing && editDocId) {
             docId = editDocId;
             const docRef = doc(db, 'documents', docId);
             await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, status: newStatus, updatedAt: serverTimestamp() }));
-            docNo = docToEdit!.docNo;
         } else {
-            const options = {
-                ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
-                initialStatus: newStatus,
-            };
-            const result = await createDocument(db, 'TAX_INVOICE', documentDataPayload, profile, data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined, options);
+            const result = await createDocument(
+                db,
+                'TAX_INVOICE',
+                documentDataPayload,
+                profile,
+                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
+                options
+            );
             docId = result.docId;
-            docNo = result.docNo;
-        }
-
-        if (data.jobId) {
-            const jobRef = doc(db, 'jobs', data.jobId);
-            await updateDoc(jobRef, {
-                salesDocType: 'TAX_INVOICE',
-                salesDocId: docId,
-                salesDocNo: docNo,
-                lastActivityAt: serverTimestamp()
-            });
         }
         
         if (sendForReview) {
@@ -375,11 +370,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
   const isCustomerSelectionDisabled = isLocked || !!jobId || (isEditing && !!docToEdit?.customerId);
 
-
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
   }
-
+  
   return (
     <>
       {isLocked && (
