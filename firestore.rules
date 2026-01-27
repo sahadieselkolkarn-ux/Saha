@@ -25,7 +25,10 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return signedIn() && (role() == "ADMIN" || request.auth.token.email == "sahadiesel@gmail.com");
+      return signedIn() && (
+        role() == "ADMIN"
+        || request.auth.token.email in ["sahadieselkolkarn@gmail.com", "sahadiesel@gmail.com"]
+      );
     }
 
     function isMgmt() {
