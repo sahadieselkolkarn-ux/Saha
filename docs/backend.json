@@ -101,8 +101,13 @@
               "type": "number"
             },
             "payType": {
-                "type": "string",
-                "enum": ["MONTHLY", "DAILY"]
+              "type": "string",
+              "enum": [
+                "MONTHLY",
+                "DAILY",
+                "MONTHLY_NOSCAN",
+                "NOPAY"
+              ]
             },
             "startDate": {
               "type": "string",
@@ -1081,8 +1086,8 @@
         "sourceDocNo": { "type": "string" },
         "customerNameSnapshot": { "type": "string" },
         "amountDue": { "type": "number" },
-        "suggestedAccountId": { "type": "string" },
         "suggestedPaymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
+        "suggestedAccountId": { "type": "string" },
         "note": { "type": "string" },
         "approvedAt": { "type": "string", "format": "date-time" },
         "approvedByUid": { "type": "string" },

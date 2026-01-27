@@ -27,7 +27,7 @@ export interface UserProfile {
   };
   hr?: {
     salaryMonthly?: number;
-    payType?: 'MONTHLY' | 'DAILY';
+    payType?: 'MONTHLY' | 'DAILY' | 'MONTHLY_NOSCAN' | 'NOPAY';
     ssoHospital?: string;
     note?: string;
     startDate?: string; // YYYY-MM-DD
