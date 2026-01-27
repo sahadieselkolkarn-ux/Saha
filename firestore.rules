@@ -17,15 +17,13 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
     
-    // Safely get role and department directly from the database profile.
     function role() {
-      return signedIn() && userExists() ? getProfile().role : '';
+      return userExists() ? getProfile().role : '';
     }
     function dept() {
-      return signedIn() && userExists() ? getProfile().department : '';
+      return userExists() ? getProfile().department : '';
     }
     
-    // isAdmin now uses the safer role() function and includes the super-admin email.
     function isAdmin() {
       return signedIn() && (role() == "ADMIN" || request.auth.token.email == "sahadiesel@gmail.com");
     }
