@@ -280,6 +280,12 @@ export interface Payslip {
   hrCheckedByName?: string;
   hrCheckedAt?: Timestamp;
   hrNote?: string | null;
+  // Calculation details for audit
+  totalPresent?: number;
+  totalLate?: number;
+  totalAbsentDays?: number;
+  totalLeave?: number;
+  totalLateMinutes?: number;
 }
 
 export interface StoreSettings {

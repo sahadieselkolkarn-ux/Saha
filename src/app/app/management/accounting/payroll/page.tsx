@@ -322,6 +322,7 @@ export default function ManagementAccountingPayrollPage() {
             batch.set(payslipRef, { 
                 id: payslipRef.id, 
                 ...slipDataToSave,
+                totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes,
                 employeeStatus: "PENDING_REVIEW",
                 hrNote: null,
             });
