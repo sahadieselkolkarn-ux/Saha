@@ -8,6 +8,10 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+    
+    function isSystemAdmin() {
+      return signedIn() && (request.auth.uid == "oh3jF10Am4PPGelNzFhjWX6GE5E2");
+    }
 
     function userExists() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
@@ -25,14 +29,11 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return signedIn() && (
-        role() == "ADMIN"
-        || request.auth.token.email in ["sahadieselkolkarn@gmail.com", "sahadiesel@gmail.com"]
-      );
+      return isSystemAdmin() || (signedIn() && role() == "ADMIN");
     }
 
     function isMgmt() {
-      return isAdmin() || (signedIn() && dept() == "MANAGEMENT");
+      return isSystemAdmin() || (signedIn() && dept() == "MANAGEMENT") || role() == "ADMIN";
     }
     
     function isOfficeOrMgmt() {
@@ -40,7 +41,7 @@ service cloud.firestore {
     }
     
     function isAccountingAllowed() {
-      return isMgmt();
+      return isSystemAdmin() || isMgmt();
     }
 
     // ===================================
