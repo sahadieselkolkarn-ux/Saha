@@ -6,13 +6,15 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from 'next/link';
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where, getDocs } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where, getDocs, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useCollection } from "@/firebase/firestore/use-collection";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
+import { archiveCollectionNameByYear } from '@/lib/archive-utils';
+import { jobStatusLabel } from "@/lib/ui-labels";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { JOB_DEPARTMENTS, JOB_STATUS_DISPLAY, type JobStatus } from "@/lib/constants";
+import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
 import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck } from "lucide-react";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -66,6 +68,7 @@ export default function JobDetailsPage() {
   
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFoundInPrimary, setNotFoundInPrimary] = useState(false);
   
   const [newNote, setNewNote] = useState("");
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -100,15 +103,19 @@ export default function JobDetailsPage() {
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
+    if (job?.isArchived) {
+      const year = new Date(job.closedDate!).getFullYear();
+      return query(collection(db, archiveCollectionNameByYear(year), jobId as string, "activities"), orderBy("createdAt", "desc"));
+    }
     return query(collection(db, "jobs", jobId as string, "activities"), orderBy("createdAt", "desc"));
-  }, [db, jobId]);
+  }, [db, jobId, job]);
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
   const isUserAdmin = profile?.role === 'ADMIN';
   const isOfficeOrAdminOrMgmt = profile?.role === 'ADMIN' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
-  const isViewOnly = job?.status === 'CLOSED' && !allowEditing;
+  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived;
   const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
 
   useEffect(() => {
@@ -160,11 +167,11 @@ export default function JobDetailsPage() {
         const jobData = { id: doc.id, ...doc.data() } as Job;
         setJob(jobData);
         setTechReport(jobData.technicalReport || "");
+        setLoading(false);
+        setNotFoundInPrimary(false);
       } else {
-        setJob(null);
-        toast({ variant: "destructive", title: "Job not found" });
+        setNotFoundInPrimary(true);
       }
-      setLoading(false);
     },
     (error) => {
       toast({ variant: "destructive", title: "Error", description: "Failed to load job details."});
@@ -172,6 +179,35 @@ export default function JobDetailsPage() {
     });
     return () => unsubscribe();
   }, [jobId, toast, db]);
+
+  useEffect(() => {
+    if (!notFoundInPrimary || !db) return;
+
+    setLoading(true);
+    const searchArchives = async () => {
+      const currentYear = new Date().getFullYear();
+      for (let i = 0; i < 5; i++) { // Search last 5 years
+        const year = currentYear - i;
+        const archiveColName = archiveCollectionNameByYear(year);
+        try {
+          const archiveDocRef = doc(db, archiveColName, jobId as string);
+          const docSnap = await getDoc(archiveDocRef);
+          if (docSnap.exists()) {
+            const jobData = { id: docSnap.id, ...docSnap.data() } as Job;
+            setJob(jobData);
+            setTechReport(jobData.technicalReport || "");
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.log(`Could not search archive ${archiveColName}`, e);
+        }
+      }
+      setLoading(false); // Job is still null if not found
+    };
+
+    searchArchives();
+  }, [notFoundInPrimary, db, jobId]);
 
   const handleMarkAsDone = async () => {
     if (!jobId || !db || !job || !profile) return;
@@ -188,7 +224,7 @@ export default function JobDetailsPage() {
         });
 
         batch.set(activityDocRef, {
-            text: `เปลี่ยนสถานะเป็น "${JOB_STATUS_DISPLAY['DONE']}"`,
+            text: `เปลี่ยนสถานะเป็น "${jobStatusLabel('DONE')}"`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
@@ -517,7 +553,7 @@ export default function JobDetailsPage() {
   const handleCustomerApproval = async () => {
     if (!jobId || !db || !profile) return;
     setIsApprovalActionLoading(true);
-    const activityText = `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "${JOB_STATUS_DISPLAY['PENDING_PARTS']}"`;
+    const activityText = `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "${jobStatusLabel('PENDING_PARTS')}"`;
     
     try {
         const batch = writeBatch(db);
@@ -580,7 +616,7 @@ const handleCustomerRejection = async () => {
 const handlePartsReady = async () => {
     if (!jobId || !db || !profile || !job) return;
     setIsApprovalActionLoading(true);
-    const activityText = `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "ดำเนินการซ่อม". แจ้งเตือนถึงแผนก ${job.department}: จัดเตรียมอะไหล่เรียบร้อยแล้ว ให้ดำเนินการเบิกอะไหล่ และจัดการซ่อมได้`;
+    const activityText = `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "${jobStatusLabel('IN_REPAIR_PROCESS')}". แจ้งเตือนถึงแผนก ${job.department}: จัดเตรียมอะไหล่เรียบร้อยแล้ว ให้ดำเนินการเบิกอะไหล่ และจัดการซ่อมได้`;
     
     try {
         const batch = writeBatch(db);
@@ -799,7 +835,7 @@ const handlePartsReady = async () => {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base font-semibold">Status</CardTitle>
-              <Badge variant={getStatusVariant(job.status)}>{JOB_STATUS_DISPLAY[job.status]}</Badge>
+              <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
             </CardHeader>
           </Card>
           <Card>
@@ -1057,3 +1093,4 @@ const handlePartsReady = async () => {
     </>
   );
 }
+
