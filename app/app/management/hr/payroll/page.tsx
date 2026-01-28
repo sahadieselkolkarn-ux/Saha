@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -13,7 +14,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, Edit } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, Edit, MoreVertical } from "lucide-react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayType, PayslipSnapshot } from "@/lib/types";
 import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
@@ -145,8 +153,9 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(payslipsQuery)
             ]);
 
-            const activeUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            const usersToProcess = activeUsers.filter(user => user.hr?.payType !== 'NOPAY');
+            const activeUsers = usersSnap.docs
+                .map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>))
+                .filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
 
             const allHolidays = new Map(holidaysSnap.docs.map(d => [d.data().date, d.data().name]));
             const allLeaves = leavesSnap.docs.map(d => d.data() as LeaveRequest);
@@ -154,7 +163,7 @@ export default function HRGeneratePayslipsPage() {
             const allAdjustments = adjustmentsSnap.docs.map(d => d.data() as AttendanceAdjustment);
             const existingPayslips = new Map(payslipsSnap.docs.map(d => [d.id, d.data() as PayslipNew]));
 
-            const data = usersToProcess.map(user => {
+            const data = activeUsers.map(user => {
                 const userLeaves = allLeaves.filter(l => l.userId === user.id);
                 const userAttendance = allAttendance.filter(a => a.userId === user.id);
                 const userAdjustments = allAdjustments.filter(a => a.userId === user.id);
@@ -314,17 +323,35 @@ export default function HRGeneratePayslipsPage() {
                                         <TableCell>{payTypeLabel(user.hr.payType)}</TableCell>
                                         <TableCell>{user.calculatedWorkDays}</TableCell>
                                         <TableCell><Badge variant={getStatusBadgeVariant(user.payslipStatus)}>{newPayslipStatusLabel(user.payslipStatus) || user.payslipStatus}</Badge></TableCell>
-                                        <TableCell className="text-right space-x-2">
-                                            <Button variant="outline" size="sm" disabled={true}><Edit className="mr-2"/>แก้ไขเวลา</Button>
-                                            <Button variant="outline" size="sm" disabled={true} asChild><Link href="/app/management/hr/leaves">แก้ไขใบลา</Link></Button>
-                                            <Button size="sm" onClick={() => handleCreateUpdateDraft(user)} disabled={isActing !== null}>
-                                                {isActing === user.id ? <Loader2 className="animate-spin"/> : <FilePlus/>}
-                                                สร้าง/อัปเดตร่าง
-                                            </Button>
-                                             <Button size="sm" onClick={() => handleSendToEmployee(user)} disabled={isActing !== null || !['DRAFT', 'REVISION_REQUESTED'].includes(user.payslipStatus)}>
-                                                {isActing === user.id ? <Loader2 className="animate-spin"/> : <Send/>}
-                                                ส่งให้พนักงาน
-                                            </Button>
+                                        <TableCell className="text-right">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" disabled={isActing !== null} aria-label="เมนูการจัดการ">
+                                                    <MoreVertical className="h-4 w-4" />
+                                                </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem disabled>
+                                                        <Edit className="mr-2 h-4 w-4" /> แก้ไขเวลา
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem asChild>
+                                                        <Link href="/app/management/hr/leaves"><Edit className="mr-2 h-4 w-4" /> แก้ไขใบลา</Link>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
+                                                        onClick={() => handleCreateUpdateDraft(user)}
+                                                        disabled={user.payslipStatus === 'PAID'}
+                                                    >
+                                                        <FilePlus className="mr-2 h-4 w-4" /> สร้าง/อัปเดตร่าง
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onClick={() => handleSendToEmployee(user)}
+                                                        disabled={user.payslipStatus === 'ไม่มีสลิป' || user.payslipStatus === 'PAID' || user.payslipStatus === 'SENT_TO_EMPLOYEE'}
+                                                    >
+                                                        <Send className="mr-2 h-4 w-4" /> ส่งให้พนักงานตรวจสอบ
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </TableCell>
                                     </TableRow>
                                 ))}
