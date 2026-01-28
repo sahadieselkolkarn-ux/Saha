@@ -1,13 +1,23 @@
 'use client';
 
 import { firebaseConfig } from '@/firebase/config';
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore'
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
+  // This check prevents Firebase from being initialized on the server.
+  if (typeof window === 'undefined') {
+    return {
+      firebaseApp: null,
+      firestore: null,
+      storage: null,
+      auth: null
+    };
+  }
+
   if (getApps().length) {
     return getSdks(getApp());
   }
