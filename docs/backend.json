@@ -900,142 +900,75 @@
       },
       "required": ["id", "userId", "date", "type", "notes", "updatedBy", "updatedById", "updatedAt"]
     },
-    "PayrollRun": {
-      "title": "Payroll Run",
+    "PayrollBatch": {
+      "title": "Payroll Batch",
       "description": "Represents a single payroll processing cycle for a specific period.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "year": { "type": "number" },
         "month": { "type": "number" },
-        "period": { "type": "number", "description": "1 for first half, 2 for second half." },
-        "status": { "type": "string", "enum": ["DRAFT_HR", "SENT_TO_EMPLOYEE", "FINAL"] },
+        "periodNo": { "type": "number", "description": "1 for first half, 2 for second half." },
+        "startDate": { "type": "string", "format": "date" },
+        "endDate": { "type": "string", "format": "date" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "finalizedAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "description": "UID of the creator" },
         "statusSummary": {
-            "type": "object",
-            "properties": {
-                "draftCount": { "type": "number" },
-                "sentCount": { "type": "number" },
-                "requestedCount": { "type": "number" },
-                "readyCount": { "type": "number" },
-                "paidCount": { "type": "number" }
-            }
+          "type": "object",
+          "properties": {
+            "draftCount": { "type": "number" },
+            "sentCount": { "type": "number" },
+            "requestedCount": { "type": "number" },
+            "readyCount": { "type": "number" },
+            "paidCount": { "type": "number" }
+          }
         }
       },
-      "required": ["id", "year", "month", "period", "status", "createdAt"]
+      "required": ["id", "year", "month", "periodNo", "startDate", "endDate", "createdAt", "createdBy"]
     },
     "Payslip": {
       "title": "Payslip",
-      "description": "Represents an individual employee's payslip for a specific payroll run.",
+      "description": "Represents an individual employee's payslip for a specific payroll batch.",
       "type": "object",
       "properties": {
-        "id": {
-          "type": "string"
-        },
-        "payrollRunId": {
-          "type": "string"
-        },
-        "userId": {
-          "type": "string"
-        },
-        "userName": {
-          "type": "string"
-        },
+        "id": { "type": "string", "description": "The user ID." },
+        "payrollBatchId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
         "status": {
           "type": "string",
-          "enum": [
-            "DRAFT",
-            "SENT_TO_EMPLOYEE",
-            "REVISION_REQUESTED",
-            "READY_TO_PAY",
-            "PAID"
-          ]
+          "enum": ["DRAFT", "SENT_TO_EMPLOYEE", "REVISION_REQUESTED", "READY_TO_PAY", "PAID"]
         },
+        "revisionNo": { "type": "number" },
         "snapshot": {
-            "type": "object",
-            "description": "A locked-in snapshot of the payroll calculation.",
-            "properties": {
-                "baseSalaryForPeriod": { "type": "number" },
-                "attendanceSummary": { 
-                    "type": "object",
-                    "properties": {
-                        "totalPresent": { "type": "number" },
-                        "totalLate": { "type": "number" },
-                        "totalAbsent": { "type": "number" },
-                        "totalLeave": { "type": "number" },
-                        "totalLateMinutes": { "type": "number" }
-                    }
-                },
-                "leaveSummary": {
-                    "type": "object",
-                    "properties": {
-                        "sick": { "type": "number" },
-                        "business": { "type": "number" },
-                        "vacation": { "type": "number" }
-                    }
-                },
-                "deductions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string" },
-                            "amount": { "type": "number" },
-                            "notes": { "type": "string" }
-                        }
-                    }
-                },
-                "additions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": { "type": "string" },
-                            "amount": { "type": "number" },
-                            "notes": { "type": "string" }
-                        }
-                    }
-                },
-                "netPay": { "type": "number" }
-            }
+          "type": "object",
+          "properties": {
+            "basePay": { "type": "number" },
+            "netPay": { "type": "number" },
+            "deductions": {
+              "type": "array",
+              "items": { "type": "object", "properties": { "name": { "type": "string" }, "amount": { "type": "number" }, "notes": { "type": "string" } } }
+            },
+            "additions": {
+              "type": "array",
+              "items": { "type": "object", "properties": { "name": { "type": "string" }, "amount": { "type": "number" }, "notes": { "type": "string" } } }
+            },
+            "attendanceSummary": { "type": "object" },
+            "leaveSummary": { "type": "object" }
+          }
         },
-        "isOverridden": {
-          "type": "boolean"
-        },
-        "overrideNotes": {
-          "type": "string"
-        },
-        "sentAt": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "employeeAcceptedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "employeeNote": {
-          "type": "string"
-        },
-        "hrNote": {
-          "type": "string"
-        },
-        "lockedAt": {
-            "type": "string",
-            "format": "date-time"
-        },
-        "revisionNo": {
-            "type": "number"
-        }
+        "hrNote": { "type": "string" },
+        "employeeNote": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "employeeAcceptedAt": { "type": "string", "format": "date-time" },
+        "lockedAt": { "type": "string", "format": "date-time" },
+        "paidAt": { "type": "string", "format": "date-time" },
+        "paidBy": { "type": "string", "description": "UID of who paid." },
+        "accountId": { "type": "string" },
+        "method": { "type": "string", "enum": ["CASH", "TRANSFER"] },
+        "accountingEntryId": { "type": "string" }
       },
-      "required": [
-        "id",
-        "payrollRunId",
-        "userId",
-        "userName",
-        "status",
-        "snapshot"
-      ]
+      "required": ["id", "payrollBatchId", "userId", "userName", "status", "revisionNo", "snapshot"]
     },
     "StoreSettings": {
       "title": "Store Settings",
@@ -1372,17 +1305,17 @@
       },
       "description": "Stores manual adjustments to attendance records."
     },
-    "/payrollRuns/{runId}": {
+    "/payrollBatches/{batchId}": {
       "schema": {
-        "$ref": "#/backend/entities/PayrollRun"
+        "$ref": "#/backend/entities/PayrollBatch"
       },
-      "description": "Stores payroll run information."
+      "description": "Stores payroll batch information."
     },
-    "/payrollRuns/{runId}/payslips/{payslipId}": {
+    "/payrollBatches/{batchId}/payslips/{payslipId}": {
       "schema": {
         "$ref": "#/backend/entities/Payslip"
       },
-      "description": "Stores individual payslips for a payroll run."
+      "description": "Stores individual payslips for a payroll batch."
     },
     "/accountingAccounts/{accountId}": {
       "schema": {

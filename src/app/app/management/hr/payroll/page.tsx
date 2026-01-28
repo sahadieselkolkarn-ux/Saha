@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { doc, collection, query, where, orderBy, getDocs, Timestamp, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -16,8 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, Edit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus, PayType } from "@/lib/types";
-import { deptLabel, payTypeLabel, leaveStatusLabel } from "@/lib/ui-labels";
+import type { HRSettings, UserProfile, LeaveRequest, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus, PayType, PayslipSnapshot } from "@/lib/types";
+import { deptLabel, payTypeLabel } from "@/lib/ui-labels";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
 
@@ -34,7 +34,7 @@ function calculateUserPeriodSummary(
     const today = startOfToday();
     if (isAfter(period.start, today)) return 0; // Don't calculate for future periods
 
-    const daysInPeriod = eachDayOfInterval({start: period.start, end: min([period.end, today])});
+    const daysInPeriod = eachDayOfInterval({start: period.start, end: Math.min(period.end.getTime(), today.getTime()) as any});
     
     const weekendMode = hrSettings.weekendPolicy?.mode || 'SAT_SUN';
     const [absentCutoffHour, absentCutoffMinute] = (hrSettings.absentCutoffTime || '09:00').split(':').map(Number);
@@ -141,8 +141,8 @@ export default function HRGeneratePayslipsPage() {
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED'));
             const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', payPeriod.start), where('timestamp', '<=', payPeriod.end));
             const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<=', endStr));
-            const payrollRunId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
-            const payslipsQuery = query(collection(db, 'payrollRuns', payrollRunId, 'payslips'));
+            const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
+            const payslipsQuery = query(collection(db, 'payrollBatches', payrollBatchId, 'payslips'));
 
             const [
                 usersSnap, holidaysSnap, leavesSnap, attendanceSnap, adjustmentsSnap, payslipsSnap
@@ -187,16 +187,18 @@ export default function HRGeneratePayslipsPage() {
         if (!db) return;
         setIsActing(user.id);
         
-        const payrollRunId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
-        const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', user.id);
+        const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
+        const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', user.id);
 
         try {
             // Placeholder snapshot. A real implementation would calculate deductions, etc.
-            const snapshot = {
-                baseSalaryForPeriod: (user.hr?.salaryMonthly ?? 0) / 2, // Simple assumption
-                attendanceSummary: { calculatedWorkDays: user.calculatedWorkDays },
-                // ... other calculated fields would go here
+            const snapshot: PayslipSnapshot = {
+                basePay: (user.hr?.salaryMonthly ?? 0) / 2, // Simple assumption
                 netPay: (user.hr?.salaryMonthly ?? 0) / 2, // Placeholder
+                deductions: [],
+                additions: [],
+                attendanceSummary: { calculatedWorkDays: user.calculatedWorkDays },
+                leaveSummary: {} // Empty for now
             };
 
             await setDoc(payslipRef, {
@@ -204,7 +206,7 @@ export default function HRGeneratePayslipsPage() {
                 snapshot: snapshot,
                 userId: user.id,
                 userName: user.displayName,
-                payrollRunId: payrollRunId,
+                payrollBatchId: payrollBatchId,
                 revisionNo: 1, // This should be incremented on subsequent updates
                 updatedAt: serverTimestamp(),
             }, { merge: true });
@@ -221,8 +223,8 @@ export default function HRGeneratePayslipsPage() {
     const handleSendToEmployee = async (user: any) => {
          if (!db) return;
         setIsActing(user.id);
-        const payrollRunId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
-        const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', user.id);
+        const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
+        const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', user.id);
 
         try {
             await updateDoc(payslipRef, {
@@ -314,5 +316,3 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
-
-    
