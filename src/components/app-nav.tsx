@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -136,8 +137,6 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/management/hr/employees" label="ผู้ใช้และพนักงาน" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/hr/settings" label="ตั้งค่า HR" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/hr/holidays" label="วันหยุด" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/hr/leaves" label="วันลา" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/hr/attendance-summary" label="สรุปลงเวลา" onClick={onLinkClick} />
             </CollapsibleContent>
@@ -147,7 +146,7 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
 
 const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
-    const isOpen = pathname.startsWith('/app/management/settings');
+    const isOpen = pathname.startsWith('/app/management/settings') || pathname.startsWith('/app/management/hr/settings') || pathname.startsWith('/app/management/hr/holidays');
     return (
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
@@ -159,6 +158,8 @@ const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/management/settings/store" label="ตั้งค่าร้าน/เวลา" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/settings/documents" label="ตั้งค่าเลขที่เอกสาร" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/hr/settings" label="ตั้งค่า HR" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/hr/holidays" label="วันหยุด" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/settings/sso-hospitals" label="รพ. ประกันสังคม" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
