@@ -593,9 +593,11 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
           }
         });
         
-        const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true), orderBy("shortName", "asc"));
+        const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true));
         const unsubVendors = onSnapshot(vendorsQ, (snap) => {
-            setVendors(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>)));
+            const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>));
+            data.sort((a, b) => String(a.shortName || "").localeCompare(String(b.shortName || ""), 'th'));
+            setVendors(data);
         }, (err) => {
           console.error("Error loading vendors:", err);
           if (err.message.includes('permission-denied')) {
