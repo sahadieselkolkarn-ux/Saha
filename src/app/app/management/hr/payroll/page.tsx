@@ -137,7 +137,12 @@ export default function HRGeneratePayslipsPage() {
             const [
                 usersSnap, holidaysSnap, leavesSnap, attendanceSnap, adjustmentsSnap, payslipsSnap
             ] = await Promise.all([
-                getDocs(usersQuery), getDocs(holidaysQuery), getDocs(leavesQuery), getDocs(attendanceSnap), getDocs(adjustmentsQuery), getDocs(payslipsSnap)
+                getDocs(usersQuery),
+                getDocs(holidaysQuery),
+                getDocs(leavesQuery),
+                getDocs(attendanceQuery),
+                getDocs(adjustmentsQuery),
+                getDocs(payslipsQuery),
             ]);
 
             const activeUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
