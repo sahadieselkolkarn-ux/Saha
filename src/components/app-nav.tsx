@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -95,7 +96,6 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
                 <SubNavLink href="/app/management/accounting/cashbook" label="รับ–จ่ายเงิน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/receivables-payables" label="ลูกหนี้/เจ้าหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/purchase-reports" label="รายงานการซื้อ" onClick={onLinkClick} />
                 <Collapsible defaultOpen={pathname.startsWith('/app/management/accounting/documents')}>
                     <CollapsibleTrigger asChild>
@@ -152,8 +152,8 @@ const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
                 <SubNavLink href="/app/management/settings/store" label="ตั้งค่าร้าน/เวลา" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/settings/documents" label="ตั้งค่าเลขที่เอกสาร" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/hr/settings" label="ตั้งค่า HR" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/hr/holidays" label="ตั้งค่าวันหยุด" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/settings/sso-hospitals" label="รพ. ประกันสังคม" onClick={onLinkClick} />
+                 <SubNavLink href="/app/management/hr/holidays" label="ตั้งค่าวันหยุด" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
