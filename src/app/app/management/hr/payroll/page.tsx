@@ -2,26 +2,26 @@
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs, Timestamp, setDoc } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs, Timestamp, setDoc, serverTimestamp } from "firebase/firestore";
 import Link from "next/link";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday, set } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, set, differenceInMinutes, startOfToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit, View, CalendarDays } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, Edit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus } from "@/lib/types";
-import { deptLabel, payTypeLabel } from "@/lib/ui-labels";
+import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus, PayType } from "@/lib/types";
+import { deptLabel, payTypeLabel, leaveStatusLabel } from "@/lib/ui-labels";
+import { WithId } from "@/firebase/firestore/use-collection";
+import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
 
-// This logic is complex and adapted from the accounting payroll page
-// It calculates the summary of attendance for a given user in a period
+// This logic is complex and adapted from the attendance summary page
 function calculateUserPeriodSummary(
     user: WithId<UserProfile>,
     period: { start: Date; end: Date },
@@ -32,24 +32,26 @@ function calculateUserPeriodSummary(
     allHolidays: Map<string, string>
 ) {
     const today = startOfToday();
-    const daysInPeriod = eachDayOfInterval(period);
-    const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
-    const graceMinutes = hrSettings.graceMinutes || 0;
+    if (isAfter(period.start, today)) return 0; // Don't calculate for future periods
+
+    const daysInPeriod = eachDayOfInterval({start: period.start, end: min([period.end, today])});
+    
     const weekendMode = hrSettings.weekendPolicy?.mode || 'SAT_SUN';
     const [absentCutoffHour, absentCutoffMinute] = (hrSettings.absentCutoffTime || '09:00').split(':').map(Number);
     
     let workDays = 0;
     
     daysInPeriod.forEach(day => {
-        if (isAfter(day, today)) return;
-        
+        if (user.hr?.startDate && isBefore(day, parseISO(user.hr.startDate))) return;
+        if (user.hr?.endDate && isAfter(day, parseISO(user.hr.endDate))) return;
+
         const dayStr = format(day, 'yyyy-MM-dd');
         if (allHolidays.has(dayStr)) return;
         const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
         if (isWeekendDay) return;
 
         const onLeave = allUserLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
-        if (onLeave) return;
+        if (onLeave) return; // On leave doesn't count as a work day for this purpose
 
         const attendanceForDay = allUserAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
         let firstIn = attendanceForDay.find(a => a.type === 'IN')?.timestamp.toDate();
@@ -70,16 +72,35 @@ function calculateUserPeriodSummary(
     return workDays;
 }
 
+const getStatusBadgeVariant = (status?: PayslipStatus) => {
+    switch (status) {
+        case 'DRAFT': return 'secondary';
+        case 'SENT_TO_EMPLOYEE': return 'default';
+        case 'REVISION_REQUESTED': return 'destructive';
+        case 'READY_TO_PAY': return 'outline';
+        case 'PAID': return 'default'; // could be a different color
+        default: return 'outline';
+    }
+}
 
-// New page component
+const payslipStatusLabel: Record<string, string> = {
+    DRAFT: "ฉบับร่าง",
+    SENT_TO_EMPLOYEE: "ส่งให้พนักงานแล้ว",
+    REVISION_REQUESTED: "ขอแก้ไข",
+    READY_TO_PAY: "พร้อมจ่าย",
+    PAID: "จ่ายแล้ว"
+}
+
+
 export default function HRGeneratePayslipsPage() {
     const { db } = useFirebase();
     const { toast } = useToast();
     const { profile: adminProfile } = useAuth();
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [period, setPeriod] = useState<1 | 2>(1);
+    const [period, setPeriod] = useState<1 | 2>(new Date().getDate() <= 15 ? 1 : 2);
     
     const [isLoading, setIsLoading] = useState(false);
+    const [isActing, setIsActing] = useState<string | null>(null); // For per-row actions
     const [error, setError] = useState<Error | null>(null);
 
     const [employeeData, setEmployeeData] = useState<any[]>([]);
@@ -104,10 +125,10 @@ export default function HRGeneratePayslipsPage() {
             const period2StartDay = hrSettings.payroll?.period2Start || 16;
             
             const periodStartDate = period === 1 
-              ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), period1StartDay) 
-              : new Date(currentMonth.getFullYear(), currentMonth.getMonth(), period2StartDay);
+              ? set(currentMonth, { date: period1StartDay })
+              : set(currentMonth, { date: period2StartDay });
             const periodEndDate = period === 1 
-              ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), period1EndDay) 
+              ? set(currentMonth, { date: period1EndDay })
               : endOfMonth(currentMonth);
             
             const payPeriod = { start: periodStartDate, end: periodEndDate };
@@ -126,11 +147,11 @@ export default function HRGeneratePayslipsPage() {
             const [
                 usersSnap, holidaysSnap, leavesSnap, attendanceSnap, adjustmentsSnap, payslipsSnap
             ] = await Promise.all([
-                getDocs(usersQuery), getDocs(holidaysQuery), getDocs(leavesQuery), getDocs(attendanceQuery), getDocs(adjustmentsQuery), getDocs(payslipsQuery)
+                getDocs(usersQuery), getDocs(holidaysQuery), getDocs(leavesQuery), getDocs(attendanceSnap), getDocs(adjustmentsQuery), getDocs(payslipsSnap)
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            const activeUsers = allUsers.filter(u => u.hr?.salaryMonthly && u.hr.salaryMonthly > 0 && u.hr.payType !== 'NOPAY');
+            const activeUsers = allUsers.filter(u => u.hr?.payType !== 'NOPAY' && u.hr?.payType !== 'MONTHLY_NOSCAN' && u.status === 'ACTIVE');
 
             const allHolidays = new Map(holidaysSnap.docs.map(d => [d.data().date, d.data().name]));
             const allLeaves = leavesSnap.docs.map(d => d.data() as LeaveRequest);
@@ -163,10 +184,62 @@ export default function HRGeneratePayslipsPage() {
     }, [db, hrSettings, currentMonth, period, toast]);
 
     const handleCreateUpdateDraft = async (user: any) => {
-        // This is a complex function that calculates the full payslip.
-        // For this prompt, I will create a placeholder action.
-        toast({ title: `กำลังสร้าง/อัปเดตสลิปสำหรับ ${user.displayName}` });
+        if (!db) return;
+        setIsActing(user.id);
+        
+        const payrollRunId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
+        const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', user.id);
+
+        try {
+            // Placeholder snapshot. A real implementation would calculate deductions, etc.
+            const snapshot = {
+                baseSalaryForPeriod: (user.hr?.salaryMonthly ?? 0) / 2, // Simple assumption
+                attendanceSummary: { calculatedWorkDays: user.calculatedWorkDays },
+                // ... other calculated fields would go here
+                netPay: (user.hr?.salaryMonthly ?? 0) / 2, // Placeholder
+            };
+
+            await setDoc(payslipRef, {
+                status: 'DRAFT',
+                snapshot: snapshot,
+                userId: user.id,
+                userName: user.displayName,
+                payrollRunId: payrollRunId,
+                revisionNo: 1, // This should be incremented on subsequent updates
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+
+            setEmployeeData(prev => prev.map(e => e.id === user.id ? { ...e, payslipStatus: 'DRAFT' } : e));
+            toast({ title: `สร้าง/อัปเดตสลิปร่างสำหรับ ${user.displayName} สำเร็จ` });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
+        } finally {
+            setIsActing(null);
+        }
     };
+    
+    const handleSendToEmployee = async (user: any) => {
+         if (!db) return;
+        setIsActing(user.id);
+        const payrollRunId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
+        const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', user.id);
+
+        try {
+            await updateDoc(payslipRef, {
+                status: 'SENT_TO_EMPLOYEE',
+                sentAt: serverTimestamp(),
+                lockedAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+            setEmployeeData(prev => prev.map(e => e.id === user.id ? { ...e, payslipStatus: 'SENT_TO_EMPLOYEE' } : e));
+            toast({ title: `ส่งสลิปให้ ${user.displayName} แล้ว` });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
+        } finally {
+            setIsActing(null);
+        }
+    }
+
 
     if (!hasPermission) {
         return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle></CardHeader></Card>;
@@ -186,8 +259,8 @@ export default function HRGeneratePayslipsPage() {
                             <Select value={period.toString()} onValueChange={(v) => setPeriod(Number(v) as 1 | 2)}>
                                 <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="1">งวดที่ 1 (1-15)</SelectItem>
-                                    <SelectItem value="2">งวดที่ 2 (16-สิ้นเดือน)</SelectItem>
+                                    <SelectItem value="1">งวดที่ 1 ({hrSettings?.payroll?.period1Start}-{hrSettings?.payroll?.period1End})</SelectItem>
+                                    <SelectItem value="2">งวดที่ 2 ({hrSettings?.payroll?.period2Start}-สิ้นเดือน)</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -218,11 +291,18 @@ export default function HRGeneratePayslipsPage() {
                                         <TableCell>{deptLabel(user.department)}</TableCell>
                                         <TableCell>{payTypeLabel(user.hr.payType)}</TableCell>
                                         <TableCell>{user.calculatedWorkDays}</TableCell>
-                                        <TableCell><Badge variant={user.payslipStatus === 'ไม่มีสลิป' ? 'outline' : 'secondary'}>{user.payslipStatus}</Badge></TableCell>
+                                        <TableCell><Badge variant={getStatusBadgeVariant(user.payslipStatus)}>{payslipStatusLabel[user.payslipStatus] || user.payslipStatus}</Badge></TableCell>
                                         <TableCell className="text-right space-x-2">
-                                            <Button variant="outline" size="sm">แก้ไขเวลา</Button>
-                                            <Button variant="outline" size="sm">แก้ไขใบลา</Button>
-                                            <Button size="sm" onClick={() => handleCreateUpdateDraft(user)}>สร้าง/อัปเดตฉบับร่าง</Button>
+                                            <Button variant="outline" size="sm" disabled={isActing !== null}><Edit className="mr-2"/>แก้ไขเวลา</Button>
+                                            <Button variant="outline" size="sm" disabled={isActing !== null} asChild><Link href="/app/management/hr/leaves">แก้ไขใบลา</Link></Button>
+                                            <Button size="sm" onClick={() => handleCreateUpdateDraft(user)} disabled={isActing !== null}>
+                                                {isActing === user.id ? <Loader2 className="animate-spin"/> : <FilePlus/>}
+                                                สร้าง/อัปเดตฉบับร่าง
+                                            </Button>
+                                             <Button size="sm" onClick={() => handleSendToEmployee(user)} disabled={isActing !== null || !['DRAFT', 'REVISION_REQUESTED'].includes(user.payslipStatus)}>
+                                                {isActing === user.id ? <Loader2 className="animate-spin"/> : <Send/>}
+                                                ส่งให้พนักงาน
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -234,3 +314,5 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
+
+    
