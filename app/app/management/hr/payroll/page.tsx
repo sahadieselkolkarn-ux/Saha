@@ -3,7 +3,6 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { doc, collection, query, where, orderBy, getDocs, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import Link from "next/link";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -14,19 +13,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, Edit, MoreVertical } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayType, PayslipSnapshot } from "@/lib/types";
 import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
 import { WithId } from "@/firebase/firestore/use-collection";
-import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
 
 // This calculation logic is complex and might need refinement based on business rules.
 function calculateUserPeriodSummary(
@@ -153,9 +150,9 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(payslipsQuery)
             ]);
 
-            const activeUsers = usersSnap.docs
-                .map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>))
-                .filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
+            const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+
+            const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
 
             const allHolidays = new Map(holidaysSnap.docs.map(d => [d.data().date, d.data().name]));
             const allLeaves = leavesSnap.docs.map(d => d.data() as LeaveRequest);
@@ -331,22 +328,15 @@ export default function HRGeneratePayslipsPage() {
                                                 </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem disabled>
-                                                        <Edit className="mr-2 h-4 w-4" /> แก้ไขเวลา
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem asChild>
-                                                        <Link href="/app/management/hr/leaves"><Edit className="mr-2 h-4 w-4" /> แก้ไขใบลา</Link>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
                                                     <DropdownMenuItem
                                                         onClick={() => handleCreateUpdateDraft(user)}
-                                                        disabled={user.payslipStatus === 'PAID'}
+                                                        disabled={isActing !== null || user.payslipStatus === 'PAID'}
                                                     >
                                                         <FilePlus className="mr-2 h-4 w-4" /> สร้าง/อัปเดตร่าง
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem
                                                         onClick={() => handleSendToEmployee(user)}
-                                                        disabled={user.payslipStatus === 'ไม่มีสลิป' || user.payslipStatus === 'PAID' || user.payslipStatus === 'SENT_TO_EMPLOYEE'}
+                                                        disabled={isActing !== null || user.payslipStatus === 'ไม่มีสลิป' || user.payslipStatus === 'PAID' || user.payslipStatus === 'SENT_TO_EMPLOYEE'}
                                                     >
                                                         <Send className="mr-2 h-4 w-4" /> ส่งให้พนักงานตรวจสอบ
                                                     </DropdownMenuItem>
