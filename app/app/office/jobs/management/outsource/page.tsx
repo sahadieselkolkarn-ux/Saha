@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -6,7 +7,7 @@ import { JobList } from "@/components/job-list";
 export default function OfficeJobManagementOutsourcePage() {
   return (
     <>
-      <PageHeader title="บริหารงานซ่อม - งานส่งออกร้านนอก" description="งานทั้งหมดที่ส่งออกไปให้ร้านนอก" />
+      <PageHeader title="จัดการงานซ่อม - งานส่งออกร้านนอก" description="งานทั้งหมดที่ส่งออกไปให้ร้านนอก" />
       <JobList 
         department="OUTSOURCE" 
         excludeStatus={["CLOSED"]}

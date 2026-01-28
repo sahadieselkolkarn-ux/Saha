@@ -1,11 +1,11 @@
 
 
 const DEPARTMENT_LABELS: Record<string, string> = {
-    MANAGEMENT: "ผู้บริหาร",
-    OFFICE: "ออฟฟิศ",
-    CAR_SERVICE: "รถหน้าร้าน",
-    COMMONRAIL: "คอมมอนเรล",
-    MECHANIC: "ปั๊มหัวฉีดแมคคานิค",
+    MANAGEMENT: "ฝ่ายบริการ",
+    OFFICE: "แผนกออฟฟิศ",
+    CAR_SERVICE: "งานซ่อมหน้าร้าน",
+    COMMONRAIL: "แผนกปั๊มหัวฉีดคอมมอนเรล",
+    MECHANIC: "แผนกปั๊มหัวฉีดแมคคานิค",
     OUTSOURCE: "งานนอก",
 };
 

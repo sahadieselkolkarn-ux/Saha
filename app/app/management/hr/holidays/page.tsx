@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState } from "react";
@@ -81,7 +82,7 @@ export default function ManagementHRHolidaysPage() {
 
   return (
     <>
-        <PageHeader title="วันหยุด" description="จัดการวันหยุดประจำปีของบริษัท" />
+        <PageHeader title="ตั้งค่าวันหยุด" description="จัดการวันหยุดประจำปีของบริษัท" />
         <div className="grid gap-8 md:grid-cols-3">
         <div className="md:col-span-1">
             <Card>

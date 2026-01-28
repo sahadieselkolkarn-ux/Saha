@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -6,7 +7,7 @@ import { JobList } from "@/components/job-list";
 export default function OfficeJobManagementQuotationPage() {
   return (
     <>
-      <PageHeader title="บริหารงานซ่อม - งานเสนอราคา" description="งานที่รอการสร้างใบเสนอราคา" />
+      <PageHeader title="จัดการงานซ่อม - งานเสนอราคา" description="งานที่รอการสร้างใบเสนอราคา" />
       <JobList 
         status='WAITING_QUOTATION'
         emptyTitle="ไม่มีงานที่รอเสนอราคา"

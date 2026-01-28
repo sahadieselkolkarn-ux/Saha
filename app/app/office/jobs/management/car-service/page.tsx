@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -6,7 +7,7 @@ import { JobList } from "@/components/job-list";
 export default function OfficeJobManagementCarServicePage() {
   return (
     <>
-      <PageHeader title="บริหารงานซ่อม - งานซ่อมหน้าร้าน" description="งานทั้งหมดของแผนก Car Service" />
+      <PageHeader title="จัดการงานซ่อม - งานซ่อมหน้าร้าน" description="งานทั้งหมดของแผนก Car Service" />
       <JobList 
         department="CAR_SERVICE" 
         excludeStatus={["CLOSED"]}

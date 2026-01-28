@@ -25,11 +25,11 @@ import type { UserProfile } from "@/lib/types"
 
 
 const departmentNames: Record<Department, string> = {
-    MANAGEMENT: "ผู้บริหาร",
-    OFFICE: "ออฟฟิศ",
-    CAR_SERVICE: "หน้าร้าน",
-    COMMONRAIL: "คอมมอนเรล",
-    MECHANIC: "แมคคานิค",
+    MANAGEMENT: "ฝ่ายบริการ",
+    OFFICE: "แผนกออฟฟิศ",
+    CAR_SERVICE: "งานซ่อมหน้าร้าน",
+    COMMONRAIL: "แผนกปั๊มหัวฉีดคอมมอนเรล",
+    MECHANIC: "แผนกปั๊มหัวฉีดแมคคานิค",
     OUTSOURCE: "งานนอก",
 };
 
@@ -56,7 +56,7 @@ const OfficeJobManagementSubMenu = ({ onLinkClick }: { onLinkClick?: () => void 
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
                  <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
-                    บริหารงานซ่อม
+                    จัดการงานซ่อม
                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                 </Button>
             </CollapsibleTrigger>
@@ -86,7 +86,7 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
                 <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
-                    บริหารบัญชี
+                    แผนกบัญชี
                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                 </Button>
             </CollapsibleTrigger>
@@ -131,14 +131,14 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
                 <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
-                    บริหารงานบุคคล
+                    แผนกบุคคล
                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
-                <SubNavLink href="/app/management/hr/employees" label="ผู้ใช้และพนักงาน" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/hr/leaves" label="วันลา" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/hr/attendance-summary" label="สรุปลงเวลา" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/hr/employees" label="จัดการพนักงาน" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/hr/leaves" label="จัดการวันลาพนักงาน" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/hr/attendance-summary" label="จัดการการลงเวลา" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
@@ -159,7 +159,7 @@ const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
                 <SubNavLink href="/app/management/settings/store" label="ตั้งค่าร้าน/เวลา" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/settings/documents" label="ตั้งค่าเลขที่เอกสาร" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/hr/settings" label="ตั้งค่า HR" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/hr/holidays" label="วันหยุด" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/hr/holidays" label="ตั้งค่าวันหยุด" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/settings/sso-hospitals" label="รพ. ประกันสังคม" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
@@ -283,7 +283,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
                             <CollapsibleTrigger asChild>
                                 <Button variant={pathname.startsWith('/app/office/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
-                                    เอกสาร
+                                    สร้างเอกสาร
                                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                                 </Button>
                             </CollapsibleTrigger>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -459,7 +460,7 @@ export default function ManagementHRAttendanceSummaryPage() {
 
   return (
     <>
-      <PageHeader title="สรุปลงเวลา" description="สรุปการลงเวลาทำงานรายวันของพนักงานทุกคน" />
+      <PageHeader title="จัดการการลงเวลา" description="สรุปการลงเวลาทำงานรายวันของพนักงานทุกคน" />
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

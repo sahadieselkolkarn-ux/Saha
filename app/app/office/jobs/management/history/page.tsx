@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -6,7 +7,7 @@ import { JobTableList } from "@/components/job-table-list";
 export default function OfficeJobManagementHistoryPage() {
   return (
     <>
-      <PageHeader title="บริหารงานซ่อม - ประวัติงานซ่อม" description="งานที่ปิดไปแล้วทั้งหมด" />
+      <PageHeader title="จัดการงานซ่อม - ประวัติงานซ่อม" description="งานที่ปิดไปแล้วทั้งหมด" />
       <JobTableList 
         status="CLOSED"
         limit={20}

@@ -7,7 +7,7 @@ import { JobList } from "@/components/job-list";
 export default function OfficeJobManagementPendingPartsPage() {
   return (
     <>
-      <PageHeader title="บริหารงานซ่อม - กำลังจัดอะไหล่" description="งานที่อนุมัติแล้ว และรอการจัดหาอะไหล่" />
+      <PageHeader title="จัดการงานซ่อม - กำลังจัดอะไหล่" description="งานที่อนุมัติแล้ว และรอการจัดหาอะไหล่" />
       <JobList 
         status="PENDING_PARTS"
         actionPreset="pendingPartsReady"
