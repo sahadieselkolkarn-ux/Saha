@@ -132,7 +132,7 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
                 <SubNavLink href="/management/hr/employees" label="จัดการพนักงาน" onClick={onLinkClick} />
                 <SubNavLink href="/management/hr/leaves" label="จัดการวันลาพนักงาน" onClick={onLinkClick} />
                 <SubNavLink href="/management/hr/attendance-summary" label="จัดการการลงเวลา" onClick={onLinkClick} />
-                <SubNavLink href="/management/hr/payroll" label="การจ่ายเงินเดือน" onClick={onLinkClick} />
+                <SubNavLink href="/management/hr/payroll" label="สลิปเงินเดือน" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
