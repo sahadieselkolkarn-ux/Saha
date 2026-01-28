@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { addDoc, collection, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
-import { format, differenceInCalendarDays, getYear, isBefore, startOfToday } from 'date-fns';
+import { format, differenceInCalendarDays, getYear, isBefore, startOfToday, subMonths } from 'date-fns';
 
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { LEAVE_TYPES, type LeaveType, type LeaveStatus } from '@/lib/constants';
 import type { LeaveRequest, HRSettings } from '@/lib/types';
+import { leaveTypeLabel } from '@/lib/ui-labels';
 
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,6 +58,8 @@ export default function MyLeavesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingLeaveData, setPendingLeaveData] = useState<LeaveFormData | null>(null);
   const [isOverLimitConfirmOpen, setIsOverLimitConfirmOpen] = useState(false);
+
+  const employeeLeaveTypes = LEAVE_TYPES.filter(t => t === 'SICK' || t === 'BUSINESS');
 
   const form = useForm<LeaveFormData>({
     resolver: zodResolver(leaveRequestSchema),
@@ -193,8 +196,8 @@ export default function MyLeavesPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {LEAVE_TYPES.map(type => (
-                              <SelectItem key={type} value={type}>{type.charAt(0) + type.slice(1).toLowerCase()}</SelectItem>
+                            {employeeLeaveTypes.map(type => (
+                              <SelectItem key={type} value={type}>{leaveTypeLabel(type)}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -241,7 +244,7 @@ export default function MyLeavesPage() {
                               defaultMonth={field.value?.from}
                               selected={field.value}
                               onSelect={field.onChange}
-                              disabled={(date) => isBefore(date, startOfToday())}
+                              disabled={(date) => isBefore(date, subMonths(startOfToday(), 1))}
                               numberOfMonths={1}
                             />
                           </PopoverContent>
@@ -302,7 +305,7 @@ export default function MyLeavesPage() {
                                         <TableCell className="font-medium">
                                           {format(new Date(leave.startDate), 'dd/MM/yy')} - {format(new Date(leave.endDate), 'dd/MM/yy')}
                                         </TableCell>
-                                        <TableCell>{leave.leaveType}</TableCell>
+                                        <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
                                         <TableCell>{leave.days}</TableCell>
                                         <TableCell>
                                             <Badge variant={getStatusVariant(leave.status)}>{leave.status}</Badge>
