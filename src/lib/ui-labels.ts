@@ -50,6 +50,19 @@ const PAY_TYPE_LABELS: Record<string, string> = {
     NOPAY: "ไม่คิดเงินเดือน",
 };
 
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+    SICK: "ลาป่วย",
+    BUSINESS: "ลากิจ",
+    VACATION: "ลาพักร้อน",
+};
+
+const LEAVE_STATUS_LABELS: Record<string, string> = {
+    SUBMITTED: "ส่งแล้ว",
+    APPROVED: "อนุมัติแล้ว",
+    REJECTED: "ไม่อนุมัติ",
+    CANCELLED: "ยกเลิกแล้ว",
+};
+
 export function deptLabel(dept: string | undefined): string {
     if (!dept) return '';
     return DEPARTMENT_LABELS[dept] || dept;
@@ -73,4 +86,14 @@ export function docStatusLabel(status: string | undefined): string {
 export function payTypeLabel(payType: string | undefined): string {
     if (!payType) return '';
     return PAY_TYPE_LABELS[payType] || payType;
+}
+
+export function leaveTypeLabel(type: string | undefined): string {
+    if (!type) return '';
+    return LEAVE_TYPE_LABELS[type] || type;
+}
+
+export function leaveStatusLabel(status: string | undefined): string {
+    if (!status) return '';
+    return LEAVE_STATUS_LABELS[status] || status;
 }

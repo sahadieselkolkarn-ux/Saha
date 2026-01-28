@@ -34,6 +34,7 @@ import { useDoc } from "@/firebase/firestore/use-doc";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { leaveStatusLabel, leaveTypeLabel } from "@/lib/ui-labels";
 
 
 export default function ManagementHRLeavesPage() {
@@ -303,7 +304,7 @@ export default function ManagementHRLeavesPage() {
                 </Select>
                 <Select value={filters.status} onValueChange={(v) => setFilters(f => ({...f, status: v}))}>
                     <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem key="status-all" value="ALL">ทุกสถานะ</SelectItem>{LEAVE_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                    <SelectContent><SelectItem key="status-all" value="ALL">ทุกสถานะ</SelectItem>{LEAVE_STATUSES.map(s=><SelectItem key={s} value={s}>{leaveStatusLabel(s)}</SelectItem>)}</SelectContent>
                 </Select>
                 <Select value={filters.userId} onValueChange={(v) => setFilters(f => ({...f, userId: v}))}>
                     <SelectTrigger className="w-full sm:w-[180px]"><SelectValue /></SelectTrigger>
@@ -325,10 +326,10 @@ export default function ManagementHRLeavesPage() {
                     {filteredLeaves.length > 0 ? filteredLeaves.map(leave => (
                     <TableRow key={leave.id}>
                         <TableCell>{leave.userName}</TableCell>
-                        <TableCell>{leave.leaveType}</TableCell>
+                        <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
                         <TableCell>{safeFormat(parseISO(leave.startDate), 'dd/MM/yy')} - {safeFormat(parseISO(leave.endDate), 'dd/MM/yy')}</TableCell>
                         <TableCell>{leave.days}</TableCell>
-                        <TableCell><Badge variant={getStatusVariant(leave.status)}>{leave.status}</Badge></TableCell>
+                        <TableCell><Badge variant={getStatusVariant(leave.status)}>{leaveStatusLabel(leave.status)}</Badge></TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
