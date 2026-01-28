@@ -6,8 +6,11 @@ import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, get
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
+import { useForm } from "react-hook-form";
+import * as z from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -15,9 +18,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle, XCircle, ShieldAlert, MoreHorizontal, Trash2 } from "lucide-react";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Loader2, CheckCircle, XCircle, ShieldAlert, MoreHorizontal, Trash2, Edit } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LEAVE_STATUSES } from "@/lib/constants";
+import { LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
 import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus } from "@/lib/types";
 import {
   AlertDialog,
@@ -35,6 +39,77 @@ import { WithId } from "@/firebase/firestore/use-collection";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { leaveStatusLabel, leaveTypeLabel } from "@/lib/ui-labels";
+import { Input } from "@/components/ui/input";
+
+const editLeaveSchema = z.object({
+  leaveType: z.enum(LEAVE_TYPES),
+  startDate: z.string().min(1, "กรุณาเลือกวันเริ่ม"),
+  endDate: z.string().min(1, "กรุณาเลือกวันสิ้นสุด"),
+  reason: z.string().min(1, "กรุณาระบุเหตุผล"),
+}).refine(data => !isBefore(new Date(data.endDate), new Date(data.startDate)), {
+    message: 'วันที่สิ้นสุดต้องไม่มาก่อนวันเริ่มต้น',
+    path: ['endDate'],
+});
+type EditLeaveFormData = z.infer<typeof editLeaveSchema>;
+
+
+function EditLeaveDialog({ leave, isOpen, onClose, onConfirm, isSubmitting }: { leave: WithId<LeaveRequest>, isOpen: boolean, onClose: () => void, onConfirm: (data: EditLeaveFormData) => Promise<void>, isSubmitting: boolean }) {
+  const form = useForm<EditLeaveFormData>({
+    resolver: zodResolver(editLeaveSchema),
+    defaultValues: {
+      leaveType: leave.leaveType,
+      startDate: leave.startDate,
+      endDate: leave.endDate,
+      reason: leave.reason,
+    }
+  });
+
+  useEffect(() => {
+    form.reset({
+      leaveType: leave.leaveType,
+      startDate: leave.startDate,
+      endDate: leave.endDate,
+      reason: leave.reason,
+    })
+  }, [leave, form, isOpen]);
+  
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>แก้ไขข้อมูลการลา</DialogTitle>
+            <DialogDescription>
+              สำหรับ: {leave.userName}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form id="edit-leave-form" onSubmit={form.handleSubmit(onConfirm)} className="space-y-4 py-4">
+               <FormField control={form.control} name="leaveType" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ประเภทการลา</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                      <SelectContent>{LEAVE_TYPES.map(t => <SelectItem key={t} value={t}>{leaveTypeLabel(t)}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+                <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="startDate" render={({ field }) => (<FormItem><FormLabel>วันเริ่มลา</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                    <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem><FormLabel>วันสิ้นสุด</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                </div>
+                <FormField control={form.control} name="reason" render={({ field }) => (<FormItem><FormLabel>เหตุผล</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+            </form>
+          </Form>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
+            <Button type="submit" form="edit-leave-form" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 animate-spin"/> : 'บันทึกการแก้ไข'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+  );
+}
 
 
 export default function ManagementHRLeavesPage() {
@@ -48,6 +123,7 @@ export default function ManagementHRLeavesPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [approvingLeave, setApprovingLeave] = useState<WithId<LeaveRequest> | null>(null);
   const [deletingLeave, setDeletingLeave] = useState<WithId<LeaveRequest> | null>(null);
+  const [editingLeave, setEditingLeave] = useState<WithId<LeaveRequest> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Use state for one-time fetches
@@ -215,6 +291,27 @@ export default function ManagementHRLeavesPage() {
     }
   };
 
+  const handleEditSave = async (data: EditLeaveFormData) => {
+    if (!db || !editingLeave) return;
+    setIsSubmitting(true);
+    try {
+        const days = differenceInCalendarDays(new Date(data.endDate), new Date(data.startDate)) + 1;
+        await updateDoc(doc(db, 'hrLeaves', editingLeave.id), {
+            ...data,
+            days,
+            year: getYear(new Date(data.startDate)),
+            updatedAt: serverTimestamp(),
+        });
+        setAllLeaves(prev => prev.map(l => l.id === editingLeave.id ? { ...l, ...data, days, year: getYear(new Date(data.startDate)) } as WithId<LeaveRequest> : l));
+        toast({ title: "แก้ไขใบลาสำเร็จ" });
+        setEditingLeave(null);
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "แก้ไขไม่สำเร็จ", description: e.message });
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!db || !deletingLeave) return;
     setIsSubmitting(true);
@@ -338,6 +435,11 @@ export default function ManagementHRLeavesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => setEditingLeave(leave)}>
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    <span>แก้ไข</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator/>
                                 <DropdownMenuItem onSelect={() => setApprovingLeave(leave)} disabled={leave.status !== 'SUBMITTED'}>
                                     <CheckCircle className="mr-2 h-4 w-4" />
                                     <span>อนุมัติ</span>
@@ -368,6 +470,7 @@ export default function ManagementHRLeavesPage() {
             </CardContent>
             </Card>
         </TabsContent>
+        {editingLeave && <EditLeaveDialog leave={editingLeave} isOpen={!!editingLeave} onClose={() => setEditingLeave(null)} onConfirm={handleEditSave} isSubmitting={isSubmitting} />}
         <AlertDialog open={!!approvingLeave} onOpenChange={(open) => !open && setApprovingLeave(null)}>
             <AlertDialogContent>
             <AlertDialogHeader>
@@ -436,3 +539,4 @@ export default function ManagementHRLeavesPage() {
   );
 }
 
+    
