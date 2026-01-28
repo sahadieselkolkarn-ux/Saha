@@ -39,7 +39,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const getStatusVariant = (status: Job['status']) => {
+const getStatusVariant = (status?: Job['status']) => {
+  if (!status) return 'outline';
   switch (status) {
     case 'RECEIVED':
     case 'WAITING_QUOTATION':
@@ -883,34 +884,7 @@ const handlePartsReady = async () => {
               }
             </CardContent>
           </Card>
-          <Card>
-              <CardHeader><CardTitle className="text-base font-semibold">แจ้งความประสงค์</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                  {isUserAdmin && job.assigneeUid && (
-                    <Button onClick={handleOpenReassignDialog} className="w-full" variant="outline" disabled={isViewOnly || isReassigning}>
-                        <UserCheck className="mr-2 h-4 w-4" /> เปลี่ยนพนักงานซ่อม
-                    </Button>
-                  )}
-                  {isUserAdmin && (
-                    <Button onClick={() => setIsTransferDialogOpen(true)} className="w-full" variant="outline" disabled={isViewOnly}>
-                        <Send className="mr-2 h-4 w-4" /> โอนย้ายแผนก
-                    </Button>
-                  )}
-                  {job.status === 'IN_PROGRESS' && (
-                     <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isSavingTechReport || isViewOnly} className="w-full" variant="outline">
-                        {isRequestingQuotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4"/>}
-                        แจ้งเสนอราคา
-                    </Button>
-                  )}
-                  {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
-                    <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isSavingTechReport || isViewOnly} className="w-full" variant="outline">
-                        {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
-                        งานเรียบร้อย
-                    </Button>
-                  )}
-              </CardContent>
-          </Card>
-
+          
           {isOfficeOrAdmin && ['WAITING_APPROVE', 'PENDING_PARTS'].includes(job.status) && (
             <Card>
               <CardHeader><CardTitle className="text-base font-semibold">การอนุมัติของลูกค้า</CardTitle></CardHeader>
@@ -1093,4 +1067,3 @@ const handlePartsReady = async () => {
     </>
   );
 }
-
