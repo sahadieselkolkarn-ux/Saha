@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -127,7 +126,7 @@ export default function HRGeneratePayslipsPage() {
             const startStr = format(payPeriod.start, 'yyyy-MM-dd');
             const endStr = format(payPeriod.end, 'yyyy-MM-dd');
             
-            const usersQuery = query(collection(db, 'users'), where('status', '==', 'ACTIVE'), where('hr.payType', '!=', 'NOPAY'));
+            const usersQuery = query(collection(db, 'users'), where('status', '==', 'ACTIVE'));
             const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<=', endStr));
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED'));
             const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', payPeriod.start), where('timestamp', '<=', payPeriod.end));
@@ -138,17 +137,24 @@ export default function HRGeneratePayslipsPage() {
             const [
                 usersSnap, holidaysSnap, leavesSnap, attendanceSnap, adjustmentsSnap, payslipsSnap
             ] = await Promise.all([
-                getDocs(usersQuery), getDocs(holidaysQuery), getDocs(leavesQuery), getDocs(attendanceSnap), getDocs(adjustmentsQuery), getDocs(payslipsSnap)
+                getDocs(usersQuery),
+                getDocs(holidaysQuery),
+                getDocs(leavesQuery),
+                getDocs(attendanceQuery),
+                getDocs(adjustmentsQuery),
+                getDocs(payslipsQuery)
             ]);
 
             const activeUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+            const usersToProcess = activeUsers.filter(user => user.hr?.payType !== 'NOPAY');
+
             const allHolidays = new Map(holidaysSnap.docs.map(d => [d.data().date, d.data().name]));
             const allLeaves = leavesSnap.docs.map(d => d.data() as LeaveRequest);
             const allAttendance = attendanceSnap.docs.map(d => d.data() as Attendance);
             const allAdjustments = adjustmentsSnap.docs.map(d => d.data() as AttendanceAdjustment);
             const existingPayslips = new Map(payslipsSnap.docs.map(d => [d.id, d.data() as PayslipNew]));
 
-            const data = activeUsers.map(user => {
+            const data = usersToProcess.map(user => {
                 const userLeaves = allLeaves.filter(l => l.userId === user.id);
                 const userAttendance = allAttendance.filter(a => a.userId === user.id);
                 const userAdjustments = allAdjustments.filter(a => a.userId === user.id);
