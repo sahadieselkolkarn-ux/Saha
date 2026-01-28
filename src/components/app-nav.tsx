@@ -97,6 +97,7 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
                 <SubNavLink href="/app/management/accounting/receivables-payables" label="ลูกหนี้/เจ้าหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/purchase-reports" label="รายงานการซื้อ" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/payroll-payouts" label="จ่ายเงินเดือน" onClick={onLinkClick} />
                 <Collapsible defaultOpen={pathname.startsWith('/app/management/accounting/documents')}>
                     <CollapsibleTrigger asChild>
                         <Button variant={pathname.startsWith('/app/management/accounting/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
@@ -131,7 +132,7 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
                 <SubNavLink href="/app/management/hr/employees" label="จัดการพนักงาน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/hr/leaves" label="จัดการวันลาพนักงาน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/hr/attendance-summary" label="จัดการการลงเวลา" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/hr/payroll" label="สร้างสลิปเงินเดือน" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/hr/payroll" label="การจ่ายเงินเดือน" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
