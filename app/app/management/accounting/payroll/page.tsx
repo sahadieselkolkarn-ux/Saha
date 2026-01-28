@@ -1,43 +1,34 @@
 
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs, Timestamp } from "firebase/firestore";
+import { useMemo, useState, useEffect, useCallback } from "react";
+import { doc, collection, query, where, orderBy, writeBatch, serverTimestamp, updateDoc, getDocs, Timestamp, setDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday, set } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
-
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit, View } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit, View, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus } from "@/lib/types";
 import { payTypeLabel, deptLabel } from "@/lib/ui-labels";
 
-function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, end: Date}) {
-  const start = max([range1.start, range2.start]);
-  const end = min([range1.end, range2.end]);
-
-  if (start > end) return 0;
-  return differenceInCalendarDays(end, start) + 1;
-}
-
 const PayslipStatusBadge = ({ status }: { status: Payslip['status'] }) => {
     switch (status) {
-        case 'DRAFT': return <Badge variant="outline">Draft</Badge>;
-        case 'SENT_TO_EMPLOYEE': return <Badge>Sent to Employee</Badge>;
-        case 'REVISION_REQUESTED': return <Badge variant="destructive">Revision Requested</Badge>;
-        case 'READY_TO_PAY': return <Badge className="bg-yellow-500 hover:bg-yellow-500/80">Ready to Pay</Badge>;
-        case 'PAID': return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">Paid</Badge>;
+        case 'DRAFT': return <Badge variant="outline">ฉบับร่าง</Badge>;
+        case 'SENT_TO_EMPLOYEE': return <Badge>ส่งให้พนักงาน</Badge>;
+        case 'REVISION_REQUESTED': return <Badge variant="destructive">ขอแก้ไข</Badge>;
+        case 'READY_TO_PAY': return <Badge className="bg-yellow-500 hover:bg-yellow-500/80">พร้อมจ่าย</Badge>;
+        case 'PAID': return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">จ่ายแล้ว</Badge>;
         default: return null;
     }
 };
@@ -152,7 +143,7 @@ export default function ManagementAccountingPayrollPage() {
   const isLoading = isLoadingSettings || manualLoading || isLoadingRun || isLoadingPayslips;
 
   const calculatedPayrollData = useMemo(() => {
-    if (!hrSettings || !users || !allYearLeaves || !allHolidays || !monthAttendance || !monthAdjustments) return [];
+    if (isLoading || !hrSettings || !users || !allYearLeaves || !allHolidays || !monthAttendance || !monthAdjustments) return [];
 
     const today = startOfToday();
     const approvedLeaves = allYearLeaves.filter(l => l.status === 'APPROVED');
@@ -314,19 +305,19 @@ export default function ManagementAccountingPayrollPage() {
       return {
         userId: user.id,
         userName: user.displayName,
-        baseSalary: baseSalaryForPeriod,
-        deductions,
         netSalary,
         payrollRunId,
-        totalPresent,
-        totalLate,
-        totalAbsentDays,
-        totalLeave: totalLeaveInPeriod,
-        totalLateMinutes,
+        snapshot: {
+          baseSalaryForPeriod: baseSalaryForPeriod,
+          attendanceSummary: { totalPresent, totalLate, totalAbsent: totalAbsentDays, totalLeave: totalLeaveInPeriod, totalLateMinutes },
+          leaveSummary: { sick: 0, business: 0, vacation: 0 },
+          deductions: deductions,
+          additions: [],
+          netPay: netSalary,
+        },
       };
     });
-  }, [hrSettings, users, allYearLeaves, allHolidays, monthAttendance, monthAdjustments, currentMonthDate, period]);
-
+  }, [isLoading, hrSettings, users, allYearLeaves, allHolidays, monthAttendance, monthAdjustments, currentMonthDate, period]);
 
   const handleCreateDraft = async () => {
     if (!db || !calculatedPayrollData || calculatedPayrollData.length === 0 || !adminProfile) return;
@@ -345,25 +336,13 @@ export default function ManagementAccountingPayrollPage() {
         });
         
         calculatedPayrollData.forEach(slipData => {
-            const { totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes, baseSalary, deductions, netSalary, ...payslipBase } = slipData;
+            const { netSalary, ...payslipBase } = slipData;
             const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', slipData.userId);
             
-            const snapshot = {
-                baseSalaryForPeriod: baseSalary,
-                attendanceSummary: { totalPresent, totalLate, totalAbsent: totalAbsentDays, totalLeave, totalLateMinutes },
-                leaveSummary: { sick: 0, business: 0, vacation: 0 },
-                deductions: deductions,
-                additions: [],
-                netPay: netSalary,
-            };
-
             batch.set(payslipRef, { 
+                ...payslipBase,
                 id: payslipRef.id, 
-                payrollRunId: payrollRunId,
-                userId: slipData.userId,
-                userName: slipData.userName,
                 status: "DRAFT",
-                snapshot: snapshot,
                 revisionNo: 1,
             });
         });
@@ -435,29 +414,34 @@ export default function ManagementAccountingPayrollPage() {
     }
   }
 
-  if (!adminProfile) {
-      return (
-        <div className="flex justify-center items-center h-64">
-            <Loader2 className="animate-spin h-8 w-8" />
-        </div>
-      )
-  }
-
-  if (!hasPermission) {
-    return (
-        <>
-            <PageHeader title="เงินเดือน" description="คำนวณและจัดการการจ่ายเงินเดือนพนักงาน" />
-            <Card className="text-center py-12">
-                <CardHeader>
-                    <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
-                    <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
-                </CardHeader>
-            </Card>
-        </>
-    );
-  }
-  
   const renderContent = () => {
+    const normalizedPayslips = useMemo(() => {
+        if (!payslips) return null;
+        return payslips.map(p => {
+            const isLegacy = !p.snapshot;
+            // @ts-ignore
+            const legacyNetSalary = p.netSalary;
+
+            const snapshot = p.snapshot ?? {
+                netPay: legacyNetSalary ?? 0,
+                baseSalaryForPeriod: (p as any).baseSalary ?? 0,
+                deductions: (p as any).deductions ?? [],
+                additions: (p as any).additions ?? [],
+                attendanceSummary: { totalPresent: 0, totalLate: 0, totalAbsent: 0, totalLeave: 0, totalLateMinutes: 0 },
+                leaveSummary: { sick: 0, business: 0, vacation: 0 },
+            };
+            
+            return {
+                ...p,
+                snapshot,
+                isLegacy,
+                netSalary: snapshot.netPay,
+            };
+        });
+    }, [payslips]);
+
+    const data = payrollRun ? normalizedPayslips : calculatedPayrollData;
+
     if (isLoading) {
       return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>
     }
@@ -483,17 +467,6 @@ export default function ManagementAccountingPayrollPage() {
         )
     }
 
-    const data = payrollRun && payslips ? payslips.map(p => {
-        return {
-            userId: p.userId,
-            userName: p.userName,
-            netSalary: p.snapshot.netPay,
-            status: p.status,
-            snapshot: p.snapshot,
-            hrNote: p.hrNote,
-        }
-    }) : calculatedPayrollData;
-    
      if (!isLoading && (!data || data.length === 0)) {
         return (
             <div className="text-center text-muted-foreground p-8">
@@ -513,10 +486,10 @@ export default function ManagementAccountingPayrollPage() {
                 </TableRow>
             </TableHeader>
             <TableBody>
-                {data.map(p => (
+                {data?.map(p => (
                     <TableRow key={p.userId}>
                         <TableCell className="font-medium">{p.userName}</TableCell>
-                        <TableCell className="font-mono">{(p.netSalary ?? p.snapshot?.netPay).toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
+                        <TableCell className="font-mono">{p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
                         <TableCell>
                             {payrollRun && 'status' in p && (
                                 <PayslipStatusBadge status={p.status as PayslipStatus} />
@@ -533,6 +506,28 @@ export default function ManagementAccountingPayrollPage() {
             </TableBody>
         </Table>
      );
+  }
+
+  if (!adminProfile) {
+      return (
+        <div className="flex justify-center items-center h-64">
+            <Loader2 className="animate-spin h-8 w-8" />
+        </div>
+      )
+  }
+
+  if (!hasPermission) {
+    return (
+        <>
+            <PageHeader title="เงินเดือน" description="คำนวณและจัดการการจ่ายเงินเดือนพนักงาน" />
+            <Card className="text-center py-12">
+                <CardHeader>
+                    <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
+                    <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
+                </CardHeader>
+            </Card>
+        </>
+    );
   }
 
   return (
@@ -599,12 +594,15 @@ export default function ManagementAccountingPayrollPage() {
            </DialogHeader>
            {viewingPayslip && (
             <>
+                {viewingPayslip.isLegacy && (
+                    <Badge variant="outline" className="mb-2 w-fit">ข้อมูลจากโครงสร้างเก่า</Badge>
+                )}
                 <div className="mb-2 text-center grid grid-cols-5 gap-1 text-xs">
-                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.snapshot?.attendanceSummary.totalPresent ?? viewingPayslip.totalPresent}</p><p className="text-green-600">มาทำงาน</p></div>
-                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.snapshot?.attendanceSummary.totalLate ?? viewingPayslip.totalLate}</p><p className="text-yellow-600">สาย</p></div>
-                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{(viewingPayslip.snapshot?.attendanceSummary.totalAbsent ?? viewingPayslip.totalAbsentDays)?.toFixed(1)}</p><p className="text-red-600">ขาด (วัน)</p></div>
-                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.snapshot?.attendanceSummary.totalLeave ?? viewingPayslip.totalLeave}</p><p className="text-blue-600">ลา</p></div>
-                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.snapshot?.attendanceSummary.totalLateMinutes ?? viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">สาย (นาที)</p></div>
+                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.snapshot?.attendanceSummary?.totalPresent ?? 0}</p><p className="text-green-600">มาทำงาน</p></div>
+                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.snapshot?.attendanceSummary?.totalLate ?? 0}</p><p className="text-yellow-600">สาย</p></div>
+                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{(viewingPayslip.snapshot?.attendanceSummary?.totalAbsent ?? 0)?.toFixed(1)}</p><p className="text-red-600">ขาด (วัน)</p></div>
+                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.snapshot?.attendanceSummary?.totalLeave ?? 0}</p><p className="text-blue-600">ลา</p></div>
+                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.snapshot?.attendanceSummary?.totalLateMinutes ?? 0}</p><p className="text-orange-600">สาย (นาที)</p></div>
                 </div>
 
                 <Table>
@@ -617,9 +615,9 @@ export default function ManagementAccountingPayrollPage() {
                     <TableBody>
                         <TableRow>
                             <TableCell className="font-medium">เงินเดือน (สำหรับงวด)</TableCell>
-                            <TableCell className="text-right">{(viewingPayslip.snapshot?.baseSalaryForPeriod ?? viewingPayslip.baseSalary).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">{(viewingPayslip.snapshot?.baseSalaryForPeriod ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                         </TableRow>
-                        {(viewingPayslip.snapshot?.deductions ?? viewingPayslip.deductions).map((ded: any, i: number) => (
+                        {(viewingPayslip.snapshot?.deductions ?? []).map((ded: any, i: number) => (
                             <TableRow key={i}>
                             <TableCell>
                                 <p className="font-medium text-destructive">(-) {ded.name}</p>
@@ -630,7 +628,7 @@ export default function ManagementAccountingPayrollPage() {
                         ))}
                         <TableRow className="bg-background font-bold text-base">
                             <TableCell>เงินเดือนสุทธิ</TableCell>
-                            <TableCell className="text-right">{(viewingPayslip.snapshot?.netPay ?? viewingPayslip.netSalary).toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
+                            <TableCell className="text-right">{(viewingPayslip.snapshot?.netPay ?? 0).toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
                         </TableRow>
                     </TableBody>
                 </Table>
@@ -680,3 +678,13 @@ export default function ManagementAccountingPayrollPage() {
   );
 }
 
+// Helper to get overlap days
+function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, end: Date}) {
+  const start = max([range1.start, range2.start]);
+  const end = min([range1.end, range2.end]);
+
+  if (start > end) return 0;
+  return differenceInCalendarDays(end, start) + 1;
+}
+
+    
