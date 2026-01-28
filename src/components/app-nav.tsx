@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -81,7 +80,7 @@ const OfficeJobManagementSubMenu = ({ onLinkClick }: { onLinkClick?: () => void 
 
 const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
-    const isOpen = pathname.startsWith('/app/management/accounting') && !pathname.startsWith('/app/management/accounting/documents');
+    const isOpen = pathname.startsWith('/app/management/accounting');
     return (
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
@@ -98,27 +97,20 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/payroll" label="เงินเดือน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/purchase-reports" label="รายงานการซื้อ" onClick={onLinkClick} />
-            </CollapsibleContent>
-        </Collapsible>
-    );
-};
-
-const ManagementAccountingDocumentsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
-    const pathname = usePathname();
-    const isOpen = pathname.startsWith('/app/management/accounting/documents');
-    return (
-        <Collapsible defaultOpen={isOpen}>
-            <CollapsibleTrigger asChild>
-                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
-                    เอกสารบัญชี
-                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="py-1 pl-4 space-y-1">
-                <SubNavLink href="/app/management/accounting/documents/receipt" label="ใบเสร็จรับเงิน" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/documents/billing-note" label="ใบวางบิล" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/documents/credit-note" label="ใบลดหนี้" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/documents/withholding-tax" label="ใบหัก ณ ที่จ่าย" onClick={onLinkClick} />
+                <Collapsible defaultOpen={pathname.startsWith('/app/management/accounting/documents')}>
+                    <CollapsibleTrigger asChild>
+                        <Button variant={pathname.startsWith('/app/management/accounting/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
+                            เอกสารบัญชี
+                            <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                        </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="py-1 pl-4 space-y-1">
+                        <SubNavLink href="/app/management/accounting/documents/receipt" label="ใบเสร็จรับเงิน" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/accounting/documents/billing-note" label="ใบวางบิล" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/accounting/documents/credit-note" label="ใบลดหนี้" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/accounting/documents/withholding-tax" label="ใบหัก ณ ที่จ่าย" onClick={onLinkClick} />
+                    </CollapsibleContent>
+                </Collapsible>
             </CollapsibleContent>
         </Collapsible>
     );
@@ -264,10 +256,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         {canSeeAccounting && (
-                            <>
-                                <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
-                                <ManagementAccountingDocumentsSubMenu onLinkClick={onLinkClick} />
-                            </>
+                           <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
                         )}
                         <HRSubMenu onLinkClick={onLinkClick} />
                         <SettingsSubMenu onLinkClick={onLinkClick} />
