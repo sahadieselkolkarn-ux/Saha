@@ -338,21 +338,17 @@ export default function ManagementHRLeavesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {leave.status === 'SUBMITTED' && (
-                                <>
-                                  <DropdownMenuItem onSelect={() => setApprovingLeave(leave)}>
+                                <DropdownMenuItem onSelect={() => setApprovingLeave(leave)} disabled={leave.status !== 'SUBMITTED'}>
                                     <CheckCircle className="mr-2 h-4 w-4" />
                                     <span>อนุมัติ</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => setRejectingLeave(leave)} className="text-destructive focus:text-destructive">
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setRejectingLeave(leave)} className="text-destructive focus:text-destructive" disabled={leave.status !== 'SUBMITTED'}>
                                     <XCircle className="mr-2 h-4 w-4" />
                                     <span>ไม่อนุมัติ</span>
-                                  </DropdownMenuItem>
-                                </>
-                              )}
+                                </DropdownMenuItem>
                               {adminProfile?.role === 'ADMIN' && (
                                 <>
-                                  {leave.status === 'SUBMITTED' && <DropdownMenuSeparator />}
+                                  <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     className="text-destructive focus:text-destructive"
                                     onSelect={() => setDeletingLeave(leave)}
@@ -439,3 +435,4 @@ export default function ManagementHRLeavesPage() {
     </>
   );
 }
+
