@@ -1,6 +1,5 @@
-
 import { redirect } from 'next/navigation';
 
 export default function Page() {
-  redirect('/app/settings/my-payslips');
+  redirect('/app/management/settings/sso-hospitals');
 }
