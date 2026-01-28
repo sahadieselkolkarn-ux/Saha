@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function Page() {
-  redirect('/app/management/hr/employees');
+  redirect('/management/hr/employees');
 }
