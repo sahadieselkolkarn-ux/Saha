@@ -221,9 +221,9 @@ export default function ManagementHRLeavesPage() {
     try {
       await deleteDoc(doc(db, 'hrLeaves', deletingLeave.id));
       setAllLeaves(prevLeaves => prevLeaves.filter(l => l.id !== deletingLeave.id));
-      toast({ title: 'ลบใบลาสำเร็จ' });
+      toast({ title: 'ลบรายการลาเรียบร้อย' });
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'การลบล้มเหลว', description: error.message });
+      toast({ variant: 'destructive', title: 'ลบไม่สำเร็จ', description: error.message });
     } finally {
       setIsSubmitting(false);
       setDeletingLeave(null);
@@ -424,13 +424,13 @@ export default function ManagementHRLeavesPage() {
             <AlertDialogHeader>
                 <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
                 <AlertDialogDescription>
-                คุณต้องการลบใบลาของ <span className="font-bold">{deletingLeave?.userName}</span> ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้
+                ต้องการลบรายการลาของ {deletingLeave?.userName} ใช่หรือไม่? การลบไม่สามารถกู้คืนได้
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
                 <AlertDialogCancel disabled={isSubmitting}>ยกเลิก</AlertDialogCancel>
                 <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการลบ'}
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันลบ'}
                 </AlertDialogAction>
             </AlertDialogFooter>
             </AlertDialogContent>
