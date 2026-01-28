@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit } from "lucide-react";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -39,8 +39,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const getStatusVariant = (status?: Job['status']) => {
-  if (!status) return 'outline';
+const getStatusVariant = (status: Job['status']) => {
   switch (status) {
     case 'RECEIVED':
     case 'WAITING_QUOTATION':
@@ -101,6 +100,11 @@ export default function JobDetailsPage() {
   
   const [relatedDocuments, setRelatedDocuments] = useState<Partial<Record<DocType, DocumentType[]>>>({});
   const [loadingDocs, setLoadingDocs] = useState(true);
+
+  // New states for description edit dialog
+  const [isEditDescriptionDialogOpen, setIsEditDescriptionDialogOpen] = useState(false);
+  const [descriptionToEdit, setDescriptionToEdit] = useState("");
+  const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
@@ -209,6 +213,43 @@ export default function JobDetailsPage() {
 
     searchArchives();
   }, [notFoundInPrimary, db, jobId]);
+
+  const handleOpenEditDescriptionDialog = () => {
+    setDescriptionToEdit(job?.description || "");
+    setIsEditDescriptionDialogOpen(true);
+  }
+
+  const handleUpdateDescription = async () => {
+    if (!db || !job || !profile) return;
+    
+    setIsUpdatingDescription(true);
+    
+    try {
+      const batch = writeBatch(db);
+      const jobDocRef = doc(db, "jobs", job.id);
+      const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
+
+      batch.update(jobDocRef, {
+        description: descriptionToEdit,
+        lastActivityAt: serverTimestamp(),
+      });
+      batch.set(activityDocRef, {
+          text: `แก้ไขรายการแจ้งซ่อม`,
+          userName: profile.displayName,
+          userId: profile.uid,
+          createdAt: serverTimestamp(),
+      });
+      
+      await batch.commit();
+
+      toast({ title: "อัปเดตรายการแจ้งซ่อมสำเร็จ" });
+      setIsEditDescriptionDialogOpen(false);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+        setIsUpdatingDescription(false);
+    }
+  };
 
   const handleMarkAsDone = async () => {
     if (!jobId || !db || !job || !profile) return;
@@ -673,9 +714,12 @@ const handlePartsReady = async () => {
   }
 
   if (!job) {
-    return <PageHeader title="Job Not Found" />;
+    return <PageHeader title="ไม่พบงาน" />;
   }
   
+  const statusKey = job?.status;
+  const statusText = (statusKey && jobStatusLabel(statusKey)) ? jobStatusLabel(statusKey) : (statusKey ?? "-");
+
   return (
     <>
       <Button variant="outline" size="sm" className="mb-4" onClick={() => router.back()}>
@@ -687,17 +731,29 @@ const handlePartsReady = async () => {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <Card>
-            <CardHeader><CardTitle>Job Details</CardTitle></CardHeader>
+            <CardHeader><CardTitle>รายละเอียดใบงาน</CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <div><h4 className="font-semibold text-base">Customer</h4><p>{job.customerSnapshot.name} ({job.customerSnapshot.phone})</p></div>
-              <div><h4 className="font-semibold text-base">Department</h4><p>{job.department}</p></div>
+              <div><h4 className="font-semibold text-base">ลูกค้า</h4><p>{job.customerSnapshot.name} ({job.customerSnapshot.phone})</p></div>
+              <div><h4 className="font-semibold text-base">แผนก</h4><p>{job.department}</p></div>
               {job.assigneeName && (
-                  <div><h4 className="font-semibold text-base">Assigned To</h4><p>{job.assigneeName}</p></div>
+                  <div><h4 className="font-semibold text-base">ผู้รับผิดชอบ</h4><p>{job.assigneeName}</p></div>
               )}
                {job.status === 'CLOSED' && job.salesDocNo && (
                 <div><h4 className="font-semibold text-base">เอกสารขายที่ใช้ปิดงาน</h4><p>{job.salesDocType}: {job.salesDocNo}</p></div>
               )}
-              <div><h4 className="font-semibold text-base">Description</h4><p className="whitespace-pre-wrap">{job.description}</p></div>
+              <div><h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4><p className="whitespace-pre-wrap">{job.description}</p></div>
+               <div className="flex gap-2 pt-4 border-t">
+                  {isUserAdmin && (
+                      <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>
+                          เปลี่ยนแปลงแผนก
+                      </Button>
+                  )}
+                  {isOfficeOrAdminOrMgmt && (
+                      <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" disabled={isViewOnly}>
+                          เพิ่มเติมรายละเอียด
+                      </Button>
+                  )}
+              </div>
             </CardContent>
           </Card>
           
@@ -836,7 +892,7 @@ const handlePartsReady = async () => {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base font-semibold">Status</CardTitle>
-              <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
+              <Badge variant={getStatusVariant(job.status)}>{statusText}</Badge>
             </CardHeader>
           </Card>
           <Card>
@@ -947,6 +1003,32 @@ const handlePartsReady = async () => {
               </DialogFooter>
           </DialogContent>
       </Dialog>
+      
+      <Dialog open={isEditDescriptionDialogOpen} onOpenChange={setIsEditDescriptionDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>แก้ไขรายการแจ้งซ่อม</DialogTitle>
+                <DialogDescription>
+                    แก้ไขรายละเอียดของรายการแจ้งซ่อมสำหรับงานนี้
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <Textarea 
+                    value={descriptionToEdit} 
+                    onChange={(e) => setDescriptionToEdit(e.target.value)}
+                    rows={8}
+                    placeholder="ใส่รายละเอียดการแจ้งซ่อม..."
+                />
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEditDescriptionDialogOpen(false)} disabled={isUpdatingDescription}>ยกเลิก</Button>
+                <Button onClick={handleUpdateDescription} disabled={isUpdatingDescription}>
+                    {isUpdatingDescription && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    บันทึก
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
 
       <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}>
         <DialogContent
