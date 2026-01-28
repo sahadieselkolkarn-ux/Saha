@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect } from 'react';
@@ -17,7 +18,7 @@ export default function AppRedirectPage() {
     const { role, department } = profile;
 
     if (role === 'ADMIN') {
-      router.replace('/app/jobs');
+      router.replace('/app/management/dashboard');
       return;
     }
 
@@ -33,7 +34,7 @@ export default function AppRedirectPage() {
     if (role === 'MANAGER' || role === 'WORKER') {
       switch (department) {
         case 'MANAGEMENT':
-          router.replace('/app/management/overview');
+          router.replace('/app/management/dashboard');
           break;
         case 'OFFICE':
           router.replace('/app/office/intake');
@@ -51,13 +52,13 @@ export default function AppRedirectPage() {
           router.replace('/app/outsource/export/new');
           break;
         default:
-          router.replace('/app/jobs');
+          router.replace('/app/management/dashboard');
           break;
       }
       return;
     }
 
-    router.replace('/app/jobs');
+    router.replace('/app/management/dashboard');
 
   }, [profile, loading, router]);
 

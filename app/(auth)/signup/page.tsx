@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -56,7 +57,7 @@ export default function SignupPage() {
     try {
       await signUp(values.email, values.password, values.displayName, values.phone);
       toast({ title: "Signup Successful", description: "Your account has been created and is pending approval." });
-      router.push("/"); // Redirect to home, which will handle routing to /pending.
+      router.push("/app"); // Redirect to home, which will handle routing to /pending.
     } catch (error: any) {
       toast({
         variant: "destructive",

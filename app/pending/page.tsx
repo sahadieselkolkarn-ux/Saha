@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect } from "react";
@@ -28,7 +29,7 @@ export default function PendingPage() {
     
     // If profile is loaded and the status is now ACTIVE, redirect to the app
     if (profile?.status === "ACTIVE") {
-      router.replace("/jobs");
+      router.replace("/app");
     }
   }, [user, profile, loading, router]);
 
