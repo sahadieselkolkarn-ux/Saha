@@ -153,9 +153,9 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(payslipsQuery)
             ]);
 
-            const activeUsers = usersSnap.docs
-                .map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>))
-                .filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
+            const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
+
+            const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
 
             const allHolidays = new Map(holidaysSnap.docs.map(d => [d.data().date, d.data().name]));
             const allLeaves = leavesSnap.docs.map(d => d.data() as LeaveRequest);
@@ -331,13 +331,6 @@ export default function HRGeneratePayslipsPage() {
                                                 </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem disabled>
-                                                        <Edit className="mr-2 h-4 w-4" /> แก้ไขเวลา
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem asChild>
-                                                        <Link href="/app/management/hr/leaves"><Edit className="mr-2 h-4 w-4" /> แก้ไขใบลา</Link>
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuSeparator />
                                                     <DropdownMenuItem
                                                         onClick={() => handleCreateUpdateDraft(user)}
                                                         disabled={user.payslipStatus === 'PAID'}
