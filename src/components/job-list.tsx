@@ -64,6 +64,7 @@ interface JobListProps {
   children?: React.ReactNode;
   hideQuotationButton?: boolean;
   actionPreset?: 'default' | 'waitingApprove' | 'pendingPartsReady';
+  searchTerm?: string;
 }
 
 const getStatusVariant = (status: Job['status']) => {
@@ -98,6 +99,7 @@ export function JobList({
   children,
   hideQuotationButton = false,
   actionPreset = 'default',
+  searchTerm = "",
 }: JobListProps) {
   const { db } = useFirebase();
   const { profile } = useAuth();
@@ -228,6 +230,17 @@ export function JobList({
     return () => unsubscribe();
   }, [jobsQuery, assigneeUid, department, JSON.stringify(status), JSON.stringify(excludeStatus), orderByField, orderByDirection]);
 
+  const filteredJobs = useMemo(() => {
+    if (!searchTerm) return jobs;
+    const lowercasedTerm = searchTerm.toLowerCase();
+    return jobs.filter(job =>
+        (job.customerSnapshot?.name || "").toLowerCase().includes(lowercasedTerm) ||
+        (job.customerSnapshot?.phone || "").includes(searchTerm) ||
+        (job.description || "").toLowerCase().includes(lowercasedTerm) ||
+        (job.carServiceDetails?.licensePlate || "").toLowerCase().includes(lowercasedTerm)
+    );
+  }, [jobs, searchTerm]);
+
   useEffect(() => {
     if (error?.message?.includes('requires an index')) {
       const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
@@ -319,7 +332,7 @@ export function JobList({
                 {
                     suggestedPaymentMethod: paymentMethod,
                     suggestedAccountId: suggestedAccountId,
-                    note: paymentNotes || `ส่งมอบงานแล้ว รอตรวจสอบรายรับ`,
+                    note: paymentNotes || 'ส่งมอบงานแล้ว รอตรวจสอบรายรับ',
                 }
             );
         } else { // UNPAID / CREDIT
@@ -591,13 +604,25 @@ export function JobList({
         </Card>
     );
   }
+  
+  if (error) {
+       return (
+        <Card className="text-center py-12">
+            <CardHeader className="items-center">
+                <AlertCircle className="h-10 w-10 text-destructive mb-4" />
+                <CardTitle>Error Loading Jobs</CardTitle>
+                <CardDescription>{error.message}</CardDescription>
+            </CardHeader>
+        </Card>
+       );
+  }
 
-  if (jobs.length === 0) {
+  if (filteredJobs.length === 0) {
      return (
         <Card className="text-center py-12">
             <CardHeader>
-                <CardTitle>{emptyTitle}</CardTitle>
-                <CardDescription>{emptyDescription}</CardDescription>
+                <CardTitle>{searchTerm ? 'No jobs match your search' : emptyTitle}</CardTitle>
+                <CardDescription>{searchTerm ? 'Try a different search term.' : emptyDescription}</CardDescription>
             </CardHeader>
             {children && <CardContent>{children}</CardContent>}
         </Card>
@@ -607,7 +632,7 @@ export function JobList({
   return (
     <>
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {jobs.map(job => (
+      {filteredJobs.map(job => (
         <Card key={job.id} className="flex flex-col overflow-hidden">
           <div className="relative aspect-[16/10] w-full bg-muted">
             {job.photos && job.photos.length > 0 ? (
