@@ -911,7 +911,17 @@
         "period": { "type": "number", "description": "1 for first half, 2 for second half." },
         "status": { "type": "string", "enum": ["DRAFT_HR", "SENT_TO_EMPLOYEE", "FINAL"] },
         "createdAt": { "type": "string", "format": "date-time" },
-        "finalizedAt": { "type": "string", "format": "date-time" }
+        "finalizedAt": { "type": "string", "format": "date-time" },
+        "statusSummary": {
+            "type": "object",
+            "properties": {
+                "draftCount": { "type": "number" },
+                "sentCount": { "type": "number" },
+                "requestedCount": { "type": "number" },
+                "readyCount": { "type": "number" },
+                "paidCount": { "type": "number" }
+            }
+        }
       },
       "required": ["id", "year", "month", "period", "status", "createdAt"]
     },
@@ -932,34 +942,63 @@
         "userName": {
           "type": "string"
         },
-        "baseSalary": {
-          "type": "number",
-          "description": "The base salary for the period before deductions."
+        "status": {
+          "type": "string",
+          "enum": [
+            "DRAFT",
+            "SENT_TO_EMPLOYEE",
+            "REVISION_REQUESTED",
+            "READY_TO_PAY",
+            "PAID"
+          ]
         },
-        "deductions": {
-          "type": "array",
-          "items": {
+        "snapshot": {
             "type": "object",
+            "description": "A locked-in snapshot of the payroll calculation.",
             "properties": {
-              "name": {
-                "type": "string"
-              },
-              "amount": {
-                "type": "number"
-              },
-              "notes": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "amount"
-            ]
-          }
-        },
-        "netSalary": {
-          "type": "number",
-          "description": "Final salary after all deductions."
+                "baseSalaryForPeriod": { "type": "number" },
+                "attendanceSummary": { 
+                    "type": "object",
+                    "properties": {
+                        "totalPresent": { "type": "number" },
+                        "totalLate": { "type": "number" },
+                        "totalAbsent": { "type": "number" },
+                        "totalLeave": { "type": "number" },
+                        "totalLateMinutes": { "type": "number" }
+                    }
+                },
+                "leaveSummary": {
+                    "type": "object",
+                    "properties": {
+                        "sick": { "type": "number" },
+                        "business": { "type": "number" },
+                        "vacation": { "type": "number" }
+                    }
+                },
+                "deductions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "amount": { "type": "number" },
+                            "notes": { "type": "string" }
+                        }
+                    }
+                },
+                "additions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "amount": { "type": "number" },
+                            "notes": { "type": "string" }
+                        }
+                    }
+                },
+                "netPay": { "type": "number" }
+            }
         },
         "isOverridden": {
           "type": "boolean"
@@ -967,16 +1006,9 @@
         "overrideNotes": {
           "type": "string"
         },
-        "employeeStatus": {
-          "type": "string",
-          "enum": [
-            "PENDING_REVIEW",
-            "ACCEPTED",
-            "REJECTED"
-          ]
-        },
-        "employeeAccepted": {
-          "type": "boolean"
+        "sentAt": {
+            "type": "string",
+            "format": "date-time"
         },
         "employeeAcceptedAt": {
           "type": "string",
@@ -985,28 +1017,24 @@
         "employeeNote": {
           "type": "string"
         },
-        "sentToEmployeeAt": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp of when the payslip was sent to the employee for review."
-        },
-        "hrCheckedByName": {
-          "type": "string"
-        },
-        "hrCheckedAt": {
-          "type": "string",
-          "format": "date-time"
-        },
         "hrNote": {
           "type": "string"
+        },
+        "lockedAt": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "revisionNo": {
+            "type": "number"
         }
       },
       "required": [
         "id",
         "payrollRunId",
         "userId",
-        "baseSalary",
-        "netSalary"
+        "userName",
+        "status",
+        "snapshot"
       ]
     },
     "StoreSettings": {

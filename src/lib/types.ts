@@ -1,7 +1,7 @@
 
 
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollStatus, AccountingCategory, PayType } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollRunStatus, PayslipStatus, AccountingCategory, PayType } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -249,9 +249,16 @@ export interface PayrollRun {
   year: number;
   month: number; // 1-12
   period: 1 | 2;
-  status: PayrollStatus;
+  status: PayrollRunStatus;
   createdAt: Timestamp;
   finalizedAt?: Timestamp;
+  statusSummary?: {
+    draftCount: number;
+    sentCount: number;
+    requestedCount: number;
+    readyCount: number;
+    paidCount: number;
+  }
 }
 
 export interface PayslipDeduction {
@@ -260,32 +267,46 @@ export interface PayslipDeduction {
     notes?: string;
 }
 
+export interface PayslipAddition {
+    name: string;
+    amount: number;
+    notes?: string;
+}
+
+export interface PayslipSnapshot {
+    baseSalaryForPeriod: number;
+    attendanceSummary: {
+        totalPresent: number;
+        totalLate: number;
+        totalAbsent: number;
+        totalLeave: number;
+        totalLateMinutes: number;
+    };
+    leaveSummary: {
+        sick: number;
+        business: number;
+        vacation: number;
+    };
+    deductions: PayslipDeduction[];
+    additions: PayslipAddition[];
+    netPay: number;
+}
+
 export interface Payslip {
   id: string;
   payrollRunId: string;
   userId: string;
   userName: string;
-  baseSalary: number;
-  deductions: PayslipDeduction[];
-  netSalary: number;
+  status: PayslipStatus;
+  snapshot: PayslipSnapshot;
   isOverridden?: boolean;
   overrideNotes?: string;
-  // Fields for employee review flow
-  employeeStatus?: 'PENDING_REVIEW' | 'ACCEPTED' | 'REJECTED';
-  employeeAccepted?: boolean;
+  sentAt?: Timestamp;
   employeeAcceptedAt?: Timestamp | null;
   employeeNote?: string | null;
-  sentToEmployeeAt?: Timestamp;
-  // Fields for HR audit
-  hrCheckedByName?: string;
-  hrCheckedAt?: Timestamp;
   hrNote?: string | null;
-  // Calculation details for audit
-  totalPresent?: number;
-  totalLate?: number;
-  totalAbsentDays?: number;
-  totalLeave?: number;
-  totalLateMinutes?: number;
+  lockedAt?: Timestamp | null;
+  revisionNo?: number;
 }
 
 export interface StoreSettings {

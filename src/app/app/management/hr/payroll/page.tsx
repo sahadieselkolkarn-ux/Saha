@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit, View, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, UserStatus } from "@/lib/types";
+import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus } from "@/lib/types";
 import { deptLabel, payTypeLabel } from "@/lib/ui-labels";
 
 // This logic is complex and adapted from the accounting payroll page
@@ -147,7 +148,7 @@ export default function HRGeneratePayslipsPage() {
                 return {
                     ...user,
                     calculatedWorkDays: workDays,
-                    payslipStatus: existingPayslips.get(user.id)?.employeeStatus ?? 'ไม่มีสลิป'
+                    payslipStatus: existingPayslips.get(user.id)?.status ?? 'ไม่มีสลิป'
                 };
             });
 

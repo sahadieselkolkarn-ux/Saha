@@ -21,7 +21,7 @@ import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit, 
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment } from "@/lib/types";
+import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus } from "@/lib/types";
 import { payTypeLabel } from "@/lib/ui-labels";
 
 function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, end: Date}) {
@@ -32,16 +32,21 @@ function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, 
   return differenceInCalendarDays(end, start) + 1;
 }
 
-const PayslipStatusBadge = ({ status }: { status: Payslip['employeeStatus'] }) => {
+const PayslipStatusBadge = ({ status }: { status: PayslipStatus | undefined }) => {
+    if (!status) return null;
     switch (status) {
-        case 'PENDING_REVIEW':
-            return <Badge variant="secondary">รอตรวจสอบ</Badge>;
-        case 'ACCEPTED':
-            return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">ยอมรับ</Badge>;
-        case 'REJECTED':
-            return <Badge variant="destructive">ต้องแก้ไข</Badge>;
+        case 'DRAFT':
+            return <Badge variant="secondary">ฉบับร่าง</Badge>;
+        case 'SENT_TO_EMPLOYEE':
+             return <Badge>ส่งให้พนักงาน</Badge>;
+        case 'REVISION_REQUESTED':
+            return <Badge variant="destructive">ขอแก้ไข</Badge>;
+        case 'READY_TO_PAY':
+            return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">พร้อมจ่าย</Badge>;
+        case 'PAID':
+             return <Badge variant="outline">จ่ายแล้ว</Badge>;
         default:
-            return null;
+            return <Badge variant="secondary">{status}</Badge>;
     }
 };
 
@@ -317,22 +322,27 @@ export default function ManagementAccountingPayrollPage() {
       return {
         userId: user.id,
         userName: user.displayName,
-        baseSalary: baseSalaryForPeriod,
-        deductions,
-        netSalary,
-        payrollRunId,
-        totalPresent,
-        totalLate,
-        totalAbsentDays,
-        totalLeave: totalLeaveInPeriod,
-        totalLateMinutes,
+        snapshot: {
+            baseSalaryForPeriod,
+            deductions,
+            netPay: netSalary,
+            attendanceSummary: {
+                totalPresent,
+                totalLate,
+                totalAbsent: totalAbsentDays,
+                totalLeave: totalLeaveInPeriod,
+                totalLateMinutes,
+            },
+            additions: [],
+            leaveSummary: { sick: 0, business: 0, vacation: 0 }
+        }
       };
     });
   }, [hrSettings, users, allYearLeaves, allHolidays, monthAttendance, monthAdjustments, currentMonthDate, period]);
 
 
   const handleCreateDraft = async () => {
-    if (!db || calculatedPayrollData.length === 0 || !adminProfile) return;
+    if (!db || !calculatedPayrollData || calculatedPayrollData.length === 0 || !adminProfile) return;
     setIsSubmitting(true);
     try {
         const batch = writeBatch(db);
@@ -348,13 +358,14 @@ export default function ManagementAccountingPayrollPage() {
         });
         
         calculatedPayrollData.forEach(payslipData => {
-            const { totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes, ...slipDataToSave } = payslipData;
-            const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', slipDataToSave.userId);
+            const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', payslipData.userId);
             batch.set(payslipRef, { 
                 id: payslipRef.id, 
-                ...slipDataToSave,
-                totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes,
-                employeeStatus: "PENDING_REVIEW",
+                userId: payslipData.userId,
+                userName: payslipData.userName,
+                payrollRunId,
+                snapshot: payslipData.snapshot,
+                status: "DRAFT",
                 hrNote: null,
             });
         });
@@ -382,7 +393,8 @@ export default function ManagementAccountingPayrollPage() {
         const payslipsSnapshot = await getDocs(payslipsQuery);
         payslipsSnapshot.forEach(payslipDoc => {
             batch.update(payslipDoc.ref, {
-                sentToEmployeeAt: serverTimestamp()
+                status: 'SENT_TO_EMPLOYEE',
+                sentAt: serverTimestamp()
             });
         });
 
@@ -471,9 +483,9 @@ export default function ManagementAccountingPayrollPage() {
         )
     }
 
-    const data = payrollRun ? payslips : calculatedPayrollData;
+    const data = payrollRun ? payslips : (calculatedPayrollData || []);
     
-     if (!isLoading && data.length === 0) {
+     if (!isLoading && (!data || data.length === 0)) {
         return (
             <div className="text-center text-muted-foreground p-8">
                 ยังไม่มีพนักงานที่แอคทีฟและมีการตั้งเงินเดือนในงวดนี้
@@ -495,11 +507,9 @@ export default function ManagementAccountingPayrollPage() {
                 {data.map(p => (
                     <TableRow key={p.userId}>
                         <TableCell className="font-medium">{p.userName}</TableCell>
-                        <TableCell className="font-mono">{p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
+                        <TableCell className="font-mono">{p.snapshot.netPay.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
                         <TableCell>
-                            {payrollRun && payrollRun.status !== 'DRAFT_HR' && 'employeeStatus' in p && (
-                                <PayslipStatusBadge status={p.employeeStatus} />
-                            )}
+                            <PayslipStatusBadge status={p.status} />
                         </TableCell>
                         <TableCell className="text-right">
                             <Button variant="outline" size="sm" onClick={() => setViewingPayslip(p)}>
@@ -523,7 +533,9 @@ export default function ManagementAccountingPayrollPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <CardTitle>จัดการเงินเดือน</CardTitle>
-              <CardDescription>เลือกงวดที่ต้องการคำนวณหรือดูข้อมูล</CardDescription>
+              <CardDescription>
+                เลือกงวดที่ต้องการคำนวณหรือดูข้อมูล (แสดงเฉพาะพนักงานสถานะ ACTIVE, มีเงินเดือน, และไม่ใช่ประเภท NOPAY)
+              </CardDescription>
             </div>
             <div className="flex items-center gap-2 self-end sm:self-center">
               <Button variant="outline" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
@@ -551,7 +563,7 @@ export default function ManagementAccountingPayrollPage() {
         {!isLoading && !manualError && hrSettings && (
              <CardFooter>
                 {!payrollRun && (
-                    <Button onClick={handleCreateDraft} disabled={isSubmitting || (calculatedPayrollData && calculatedPayrollData.length === 0)}>
+                    <Button onClick={handleCreateDraft} disabled={isSubmitting || !calculatedPayrollData || calculatedPayrollData.length === 0}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FilePlus className="mr-2 h-4 w-4"/>}
                         สร้างฉบับร่าง
                     </Button>
@@ -577,11 +589,11 @@ export default function ManagementAccountingPayrollPage() {
            {viewingPayslip && (
             <>
                 <div className="mb-2 text-center grid grid-cols-5 gap-1 text-xs">
-                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.totalPresent}</p><p className="text-green-600">มาทำงาน</p></div>
-                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.totalLate}</p><p className="text-yellow-600">สาย</p></div>
-                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.totalAbsentDays?.toFixed(1)}</p><p className="text-red-600">ขาด (วัน)</p></div>
-                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.totalLeave}</p><p className="text-blue-600">ลา</p></div>
-                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">สาย (นาที)</p></div>
+                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.snapshot.attendanceSummary?.totalPresent}</p><p className="text-green-600">มาทำงาน</p></div>
+                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.snapshot.attendanceSummary?.totalLate}</p><p className="text-yellow-600">สาย</p></div>
+                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.snapshot.attendanceSummary?.totalAbsent?.toFixed(1)}</p><p className="text-red-600">ขาด (วัน)</p></div>
+                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.snapshot.attendanceSummary?.totalLeave}</p><p className="text-blue-600">ลา</p></div>
+                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.snapshot.attendanceSummary?.totalLateMinutes}</p><p className="text-orange-600">สาย (นาที)</p></div>
                 </div>
 
                 <Table>
@@ -594,9 +606,9 @@ export default function ManagementAccountingPayrollPage() {
                     <TableBody>
                         <TableRow>
                             <TableCell className="font-medium">เงินเดือน (สำหรับงวด)</TableCell>
-                            <TableCell className="text-right">{viewingPayslip.baseSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">{viewingPayslip.snapshot.baseSalaryForPeriod.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                         </TableRow>
-                        {viewingPayslip.deductions.map((ded: any, i: number) => (
+                        {viewingPayslip.snapshot.deductions.map((ded: any, i: number) => (
                             <TableRow key={i}>
                             <TableCell>
                                 <p className="font-medium text-destructive">(-) {ded.name}</p>
@@ -607,11 +619,11 @@ export default function ManagementAccountingPayrollPage() {
                         ))}
                         <TableRow className="bg-background font-bold text-base">
                             <TableCell>เงินเดือนสุทธิ</TableCell>
-                            <TableCell className="text-right">{viewingPayslip.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
+                            <TableCell className="text-right">{viewingPayslip.snapshot.netPay.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
                         </TableRow>
                     </TableBody>
                 </Table>
-                {payrollRun && payrollRun.status === 'DRAFT_HR' && 'hrNote' in viewingPayslip && (
+                {payrollRun && payrollRun.status === 'DRAFT_HR' && (
                     <div className="mt-4 pt-4 border-t">
                     <h5 className="font-semibold text-sm mb-2">หมายเหตุจาก HR</h5>
                     {editingPayslipId === viewingPayslip.userId ? (
@@ -656,3 +668,4 @@ export default function ManagementAccountingPayrollPage() {
     </>
   );
 }
+
