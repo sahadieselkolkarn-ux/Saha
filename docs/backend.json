@@ -912,7 +912,8 @@
         "startDate": { "type": "string", "format": "date" },
         "endDate": { "type": "string", "format": "date" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "createdBy": { "type": "string", "description": "UID of the creator" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
         "statusSummary": {
           "type": "object",
           "properties": {
@@ -924,7 +925,69 @@
           }
         }
       },
-      "required": ["id", "year", "month", "periodNo", "startDate", "endDate", "createdAt", "createdBy"]
+      "required": ["id", "year", "month", "periodNo", "startDate", "endDate", "createdAt", "createdByUid", "createdByName"]
+    },
+    "PayslipNew": {
+      "title": "Payslip (New)",
+      "description": "Represents an individual employee's payslip for a specific payroll batch.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Should be equal to the userId." },
+        "batchId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["DRAFT", "SENT_TO_EMPLOYEE", "REVISION_REQUESTED", "READY_TO_PAY", "PAID"]
+        },
+        "revisionNo": { "type": "number" },
+        "snapshot": {
+          "type": "object",
+          "properties": {
+            "basePay": { "type": "number" },
+            "netPay": { "type": "number" },
+            "additions": {
+              "type": "array",
+              "items": { "type": "object", "properties": { "name": { "type": "string" }, "amount": { "type": "number" }, "notes": { "type": "string" } } }
+            },
+            "deductions": {
+              "type": "array",
+              "items": { "type": "object", "properties": { "name": { "type": "string" }, "amount": { "type": "number" }, "notes": { "type": "string" } } }
+            },
+            "attendanceSummary": {
+                "type": "object",
+                "properties": {
+                    "presentDays": {"type": "number"},
+                    "lateDays": {"type": "number"},
+                    "absentUnits": {"type": "number"},
+                    "leaveDays": {"type": "number"},
+                    "lateMinutes": {"type": "number"}
+                }
+            },
+            "leaveSummary": {
+                "type": "object",
+                "properties": {
+                    "sickDays": {"type": "number"},
+                    "businessDays": {"type": "number"},
+                    "vacationDays": {"type": "number"},
+                    "overLimitDays": {"type": "number"}
+                }
+            },
+            "calcNotes": { "type": "string" }
+          }
+        },
+        "hrNote": { "type": "string" },
+        "employeeNote": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "employeeAcceptedAt": { "type": "string", "format": "date-time" },
+        "paidAt": { "type": "string", "format": "date-time" },
+        "paidByUid": { "type": "string" },
+        "paidByName": { "type": "string" },
+        "accountId": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER"] },
+        "accountingEntryId": { "type": "string" }
+      },
+      "required": ["id", "batchId", "userId", "userName", "status", "revisionNo", "snapshot"]
     },
     "Payslip": {
       "title": "Payslip",
@@ -1306,10 +1369,16 @@
       "description": "Stores manual adjustments to attendance records."
     },
     "/payrollBatches/{batchId}": {
-      "schema": {
-        "$ref": "#/backend/entities/PayrollBatch"
-      },
-      "description": "Stores payroll batch information."
+        "schema": {
+            "$ref": "#/backend/entities/PayrollBatch"
+        },
+        "description": "Stores payroll batch information."
+    },
+    "/payrollBatches/{batchId}/payslips/{userId}": {
+        "schema": {
+            "$ref": "#/backend/entities/PayslipNew"
+        },
+        "description": "Stores individual payslips for a payroll batch."
     },
     "/payrollBatches/{batchId}/payslips/{payslipId}": {
       "schema": {

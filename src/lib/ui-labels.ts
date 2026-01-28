@@ -63,6 +63,19 @@ const LEAVE_STATUS_LABELS: Record<string, string> = {
     CANCELLED: "ยกเลิกแล้ว",
 };
 
+const NEW_PAYSLIP_STATUS_LABELS: Record<string, string> = {
+    DRAFT: "ฉบับร่าง",
+    SENT_TO_EMPLOYEE: "ส่งให้พนักงานตรวจสอบ",
+    REVISION_REQUESTED: "ร้องขอแก้ไข",
+    READY_TO_PAY: "รอจ่ายเงิน",
+    PAID: "จ่ายแล้ว"
+};
+
+export function newPayslipStatusLabel(status: string | undefined): string {
+    if (!status) return '';
+    return NEW_PAYSLIP_STATUS_LABELS[status] || status;
+}
+
 export function deptLabel(dept: string | undefined): string {
     if (!dept) return '';
     return DEPARTMENT_LABELS[dept] || dept;

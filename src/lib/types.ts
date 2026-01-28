@@ -1,7 +1,7 @@
 
 
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -245,15 +245,15 @@ export interface AttendanceAdjustment {
 }
 
 export interface PayrollBatch {
-  id: string; // e.g. "2024-07-1"
+  id: string;
   year: number;
   month: number;
   periodNo: 1 | 2;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
   createdAt: Timestamp;
-  createdBy: string; // UID
-  status?: PayrollBatchStatus;
+  createdByUid: string;
+  createdByName: string;
   statusSummary?: {
     draftCount: number;
     sentCount: number;
@@ -278,21 +278,42 @@ export interface PayslipAddition {
 export interface PayslipSnapshot {
     basePay: number;
     netPay: number;
-    deductions: PayslipDeduction[];
-    additions: PayslipAddition[];
+    additions: { name: string; amount: number; notes?: string; }[];
+    deductions: { name: string; amount: number; notes?: string; }[];
     attendanceSummary: {
-        totalPresent?: number;
-        totalLate?: number;
-        totalAbsent?: number;
-        totalLeave?: number;
-        totalLateMinutes?: number;
-        calculatedWorkDays?: number;
+        presentDays?: number;
+        lateDays?: number;
+        absentUnits?: number;
+        leaveDays?: number;
+        lateMinutes?: number;
     };
     leaveSummary: {
-        sick?: number;
-        business?: number;
-        vacation?: number;
+        sickDays?: number;
+        businessDays?: number;
+        vacationDays?: number;
+        overLimitDays?: number;
     };
+    calcNotes?: string;
+}
+
+export interface PayslipNew {
+    id: string; // Should be userId
+    batchId: string;
+    userId: string;
+    userName: string;
+    status: PayslipStatusNew;
+    revisionNo: number;
+    snapshot: PayslipSnapshot;
+    hrNote?: string | null;
+    employeeNote?: string | null;
+    sentAt?: Timestamp;
+    employeeAcceptedAt?: Timestamp;
+    paidAt?: Timestamp;
+    paidByUid?: string;
+    paidByName?: string;
+    accountId?: string;
+    paymentMethod?: 'CASH' | 'TRANSFER';
+    accountingEntryId?: string;
 }
 
 export interface Payslip {

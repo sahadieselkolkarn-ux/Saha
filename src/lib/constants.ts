@@ -30,6 +30,9 @@ export type PayrollBatchStatus = (typeof PAYROLL_BATCH_STATUSES)[number];
 export const PAYSLIP_STATUSES = ["DRAFT", "SENT_TO_EMPLOYEE", "REVISION_REQUESTED", "READY_TO_PAY", "PAID"] as const;
 export type PayslipStatus = (typeof PAYSLIP_STATUSES)[number];
 
+export const PAYSLIP_STATUS_NEW = ['DRAFT', 'SENT_TO_EMPLOYEE', 'REVISION_REQUESTED', 'READY_TO_PAY', 'PAID'] as const;
+export type PayslipStatusNew = (typeof PAYSLIP_STATUS_NEW)[number];
+
 export const TOKEN_TTL_MS = 30000; // 30 seconds
 export const TOKEN_BUFFER_MS = 5000; // 5 seconds buffer
 
