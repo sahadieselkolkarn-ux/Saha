@@ -13,6 +13,7 @@ import {
   collection,
   runTransaction,
   increment,
+  orderBy,
   type FirestoreError,
 } from "firebase/firestore";
 import { format } from "date-fns";
@@ -84,7 +85,7 @@ function PayDialog({
         <DialogHeader>
           <DialogTitle>บันทึกการจ่ายเงินเดือน</DialogTitle>
           <DialogDescription>
-            พนักงาน: {payslip.userName} | งวด: {payslip.payrollRunId}
+            พนักงาน: {payslip.userName} | งวด: {payslip.payrollBatchId}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -144,8 +145,7 @@ export default function PayrollPayoutsPage() {
     
     const accountsQuery = query(
         collection(db, "accountingAccounts"),
-        where("isActive", "==", true),
-        orderBy("name")
+        where("isActive", "==", true)
     );
 
     const unsubPayslips = onSnapshot(payslipsQuery, (snapshot) => {
@@ -159,7 +159,9 @@ export default function PayrollPayoutsPage() {
     });
 
     const unsubAccounts = onSnapshot(accountsQuery, (snapshot) => {
-        setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>)))
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>));
+        data.sort((a,b) => String(a.name || "").localeCompare(String(b.name || ""), 'th'));
+        setAccounts(data);
     }, (err) => {
         toast({ variant: 'destructive', title: 'ไม่สามารถโหลดบัญชี', description: err.message });
     });
@@ -177,9 +179,9 @@ export default function PayrollPayoutsPage() {
 
     try {
         const payslipRef = payingPayslip.ref;
-        const payrollRunRef = payslipRef.parent.parent; // This should be the payrollRun doc
+        const payrollBatchRef = payslipRef.parent.parent; // This should be the payrollBatch doc
 
-        if (!payrollRunRef) {
+        if (!payrollBatchRef) {
             throw new Error("Could not find parent payroll run.");
         }
 
@@ -193,10 +195,10 @@ export default function PayrollPayoutsPage() {
                 amount: payingPayslip.snapshot?.netPay ?? 0,
                 accountId: formData.accountId,
                 paymentMethod: formData.paymentMethod,
-                description: `จ่ายเงินเดือน: ${payingPayslip.userName} งวด ${payingPayslip.payrollRunId}`,
+                description: `จ่ายเงินเดือน: ${payslip.userName} งวด ${payslip.payrollBatchId}`,
                 sourceDocType: 'PAYSLIP',
                 sourceDocId: payingPayslip.id,
-                sourceDocNo: `PAYSLIP-${payingPayslip.payrollRunId}-${payingPayslip.userId.slice(0, 5)}`,
+                sourceDocNo: `PAYSLIP-${payslip.payrollBatchId}-${payslip.userId.slice(0, 5)}`,
                 categoryMain: 'ค่าแรง/เงินเดือน',
                 categorySub: 'เงินเดือน',
                 referenceNo: formData.referenceNo,
@@ -214,8 +216,8 @@ export default function PayrollPayoutsPage() {
                 accountingEntryId: entryRef.id,
             });
 
-            // 3. Update payroll run summary
-            transaction.update(payrollRunRef, {
+            // 3. Update payroll batch summary
+            transaction.update(payrollBatchRef, {
                 'statusSummary.readyCount': increment(-1),
                 'statusSummary.paidCount': increment(1),
             });
@@ -272,7 +274,7 @@ export default function PayrollPayoutsPage() {
                         {payslips.map(p => (
                             <TableRow key={p.id}>
                                 <TableCell>{p.userName}</TableCell>
-                                <TableCell>{p.payrollRunId}</TableCell>
+                                <TableCell>{p.payrollBatchId}</TableCell>
                                 <TableCell><Badge variant="outline">พร้อมจ่าย</Badge></TableCell>
                                 <TableCell className="text-right font-bold">{formatCurrency(p.snapshot?.netPay ?? 0)}</TableCell>
                                 <TableCell className="text-right">
