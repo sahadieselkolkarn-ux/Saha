@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
@@ -9,7 +8,7 @@ import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday, set } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, differenceInCalendarDays, max, min, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, setHours, setMinutes, differenceInMinutes, startOfToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
 import { PageHeader } from "@/components/page-header";
@@ -21,8 +20,8 @@ import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, AlertCircle, Edit, 
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment } from "@/lib/types";
-import { payTypeLabel } from "@/lib/ui-labels";
+import type { HRSettings, UserProfile, LeaveRequest, PayrollRun, Payslip, PayslipDeduction, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatus } from "@/lib/types";
+import { payTypeLabel, deptLabel } from "@/lib/ui-labels";
 
 function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, end: Date}) {
   const start = max([range1.start, range2.start]);
@@ -32,16 +31,14 @@ function getOverlapDays(range1: {start: Date, end: Date}, range2: {start: Date, 
   return differenceInCalendarDays(end, start) + 1;
 }
 
-const PayslipStatusBadge = ({ status }: { status: Payslip['employeeStatus'] }) => {
+const PayslipStatusBadge = ({ status }: { status: Payslip['status'] }) => {
     switch (status) {
-        case 'PENDING_REVIEW':
-            return <Badge variant="secondary">รอตรวจสอบ</Badge>;
-        case 'ACCEPTED':
-            return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">ยอมรับ</Badge>;
-        case 'REJECTED':
-            return <Badge variant="destructive">ต้องแก้ไข</Badge>;
-        default:
-            return null;
+        case 'DRAFT': return <Badge variant="outline">Draft</Badge>;
+        case 'SENT_TO_EMPLOYEE': return <Badge>Sent to Employee</Badge>;
+        case 'REVISION_REQUESTED': return <Badge variant="destructive">Revision Requested</Badge>;
+        case 'READY_TO_PAY': return <Badge className="bg-yellow-500 hover:bg-yellow-500/80">Ready to Pay</Badge>;
+        case 'PAID': return <Badge variant="default" className="bg-green-600 hover:bg-green-600/80">Paid</Badge>;
+        default: return null;
     }
 };
 
@@ -332,7 +329,7 @@ export default function ManagementAccountingPayrollPage() {
 
 
   const handleCreateDraft = async () => {
-    if (!db || calculatedPayrollData.length === 0 || !adminProfile) return;
+    if (!db || !calculatedPayrollData || calculatedPayrollData.length === 0 || !adminProfile) return;
     setIsSubmitting(true);
     try {
         const batch = writeBatch(db);
@@ -347,15 +344,27 @@ export default function ManagementAccountingPayrollPage() {
             createdAt: serverTimestamp(),
         });
         
-        calculatedPayrollData.forEach(payslipData => {
-            const { totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes, ...slipDataToSave } = payslipData;
-            const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', slipDataToSave.userId);
+        calculatedPayrollData.forEach(slipData => {
+            const { totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes, baseSalary, deductions, netSalary, ...payslipBase } = slipData;
+            const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', slipData.userId);
+            
+            const snapshot = {
+                baseSalaryForPeriod: baseSalary,
+                attendanceSummary: { totalPresent, totalLate, totalAbsent: totalAbsentDays, totalLeave, totalLateMinutes },
+                leaveSummary: { sick: 0, business: 0, vacation: 0 },
+                deductions: deductions,
+                additions: [],
+                netPay: netSalary,
+            };
+
             batch.set(payslipRef, { 
                 id: payslipRef.id, 
-                ...slipDataToSave,
-                totalPresent, totalLate, totalAbsentDays, totalLeave, totalLateMinutes,
-                employeeStatus: "PENDING_REVIEW",
-                hrNote: null,
+                payrollRunId: payrollRunId,
+                userId: slipData.userId,
+                userName: slipData.userName,
+                status: "DRAFT",
+                snapshot: snapshot,
+                revisionNo: 1,
             });
         });
 
@@ -369,7 +378,7 @@ export default function ManagementAccountingPayrollPage() {
   }
 
   const handleSendToEmployees = async () => {
-    if (!db || !payrollRun || !payslipsQuery) return;
+    if (!db || !payrollRun || !payslips) return;
      setIsSubmitting(true);
      try {
         const batch = writeBatch(db);
@@ -379,11 +388,14 @@ export default function ManagementAccountingPayrollPage() {
             status: 'SENT_TO_EMPLOYEE'
         });
 
-        const payslipsSnapshot = await getDocs(payslipsQuery);
-        payslipsSnapshot.forEach(payslipDoc => {
-            batch.update(payslipDoc.ref, {
-                sentToEmployeeAt: serverTimestamp()
-            });
+        payslips.forEach(payslip => {
+            if (payslip.status === 'DRAFT') {
+                const payslipRef = doc(db, 'payrollRuns', payrollRunId, 'payslips', payslip.id);
+                batch.update(payslipRef, {
+                    status: 'SENT_TO_EMPLOYEE',
+                    sentAt: serverTimestamp()
+                });
+            }
         });
 
         await batch.commit();
@@ -471,7 +483,16 @@ export default function ManagementAccountingPayrollPage() {
         )
     }
 
-    const data = payrollRun ? payslips : calculatedPayrollData;
+    const data = payrollRun && payslips ? payslips.map(p => {
+        return {
+            userId: p.userId,
+            userName: p.userName,
+            netSalary: p.snapshot.netPay,
+            status: p.status,
+            snapshot: p.snapshot,
+            hrNote: p.hrNote,
+        }
+    }) : calculatedPayrollData;
     
      if (!isLoading && (!data || data.length === 0)) {
         return (
@@ -495,10 +516,10 @@ export default function ManagementAccountingPayrollPage() {
                 {data.map(p => (
                     <TableRow key={p.userId}>
                         <TableCell className="font-medium">{p.userName}</TableCell>
-                        <TableCell className="font-mono">{p.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
+                        <TableCell className="font-mono">{(p.netSalary ?? p.snapshot?.netPay).toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
                         <TableCell>
-                            {payrollRun && payrollRun.status !== 'DRAFT_HR' && 'employeeStatus' in p && (
-                                <PayslipStatusBadge status={p.employeeStatus} />
+                            {payrollRun && 'status' in p && (
+                                <PayslipStatusBadge status={p.status as PayslipStatus} />
                             )}
                         </TableCell>
                         <TableCell className="text-right">
@@ -553,7 +574,7 @@ export default function ManagementAccountingPayrollPage() {
         {!isLoading && !manualError && hrSettings && (
              <CardFooter>
                 {!payrollRun && (
-                    <Button onClick={handleCreateDraft} disabled={isSubmitting || (calculatedPayrollData && calculatedPayrollData.length === 0)}>
+                    <Button onClick={handleCreateDraft} disabled={isSubmitting || !calculatedPayrollData || calculatedPayrollData.length === 0}>
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <FilePlus className="mr-2 h-4 w-4"/>}
                         สร้างฉบับร่าง
                     </Button>
@@ -579,11 +600,11 @@ export default function ManagementAccountingPayrollPage() {
            {viewingPayslip && (
             <>
                 <div className="mb-2 text-center grid grid-cols-5 gap-1 text-xs">
-                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.totalPresent}</p><p className="text-green-600">มาทำงาน</p></div>
-                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.totalLate}</p><p className="text-yellow-600">สาย</p></div>
-                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{viewingPayslip.totalAbsentDays?.toFixed(1)}</p><p className="text-red-600">ขาด (วัน)</p></div>
-                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.totalLeave}</p><p className="text-blue-600">ลา</p></div>
-                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">สาย (นาที)</p></div>
+                    <div className="bg-green-100 p-2 rounded-lg"><p className="font-bold text-lg text-green-700">{viewingPayslip.snapshot?.attendanceSummary.totalPresent ?? viewingPayslip.totalPresent}</p><p className="text-green-600">มาทำงาน</p></div>
+                    <div className="bg-yellow-100 p-2 rounded-lg"><p className="font-bold text-lg text-yellow-700">{viewingPayslip.snapshot?.attendanceSummary.totalLate ?? viewingPayslip.totalLate}</p><p className="text-yellow-600">สาย</p></div>
+                    <div className="bg-red-100 p-2 rounded-lg"><p className="font-bold text-lg text-red-700">{(viewingPayslip.snapshot?.attendanceSummary.totalAbsent ?? viewingPayslip.totalAbsentDays)?.toFixed(1)}</p><p className="text-red-600">ขาด (วัน)</p></div>
+                    <div className="bg-blue-100 p-2 rounded-lg"><p className="font-bold text-lg text-blue-700">{viewingPayslip.snapshot?.attendanceSummary.totalLeave ?? viewingPayslip.totalLeave}</p><p className="text-blue-600">ลา</p></div>
+                    <div className="bg-orange-100 p-2 rounded-lg"><p className="font-bold text-lg text-orange-700">{viewingPayslip.snapshot?.attendanceSummary.totalLateMinutes ?? viewingPayslip.totalLateMinutes}</p><p className="text-orange-600">สาย (นาที)</p></div>
                 </div>
 
                 <Table>
@@ -596,9 +617,9 @@ export default function ManagementAccountingPayrollPage() {
                     <TableBody>
                         <TableRow>
                             <TableCell className="font-medium">เงินเดือน (สำหรับงวด)</TableCell>
-                            <TableCell className="text-right">{viewingPayslip.baseSalary.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">{(viewingPayslip.snapshot?.baseSalaryForPeriod ?? viewingPayslip.baseSalary).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                         </TableRow>
-                        {viewingPayslip.deductions.map((ded: any, i: number) => (
+                        {(viewingPayslip.snapshot?.deductions ?? viewingPayslip.deductions).map((ded: any, i: number) => (
                             <TableRow key={i}>
                             <TableCell>
                                 <p className="font-medium text-destructive">(-) {ded.name}</p>
@@ -609,7 +630,7 @@ export default function ManagementAccountingPayrollPage() {
                         ))}
                         <TableRow className="bg-background font-bold text-base">
                             <TableCell>เงินเดือนสุทธิ</TableCell>
-                            <TableCell className="text-right">{viewingPayslip.netSalary.toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
+                            <TableCell className="text-right">{(viewingPayslip.snapshot?.netPay ?? viewingPayslip.netSalary).toLocaleString('th-TH', { style: 'currency', currency: 'THB' })}</TableCell>
                         </TableRow>
                     </TableBody>
                 </Table>
