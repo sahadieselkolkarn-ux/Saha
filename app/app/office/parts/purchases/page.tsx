@@ -3,7 +3,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, orderBy, where } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, where, limit } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
