@@ -14,15 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, RefreshCw } from "lucide-react";
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
-    ),
-  ]);
-}
-
 export default function KioskPage() {
   const { db, auth } = useFirebase();
   const { toast } = useToast();
@@ -66,12 +57,7 @@ export default function KioskPage() {
       // Test read to confirm connection
       await getDoc(doc(db, 'users', profile.uid));
 
-      // Pass the current token to be deactivated
-      const { newTokenId, expiresAtMs: newExpiresAtMs } = await withTimeout(
-        generateKioskToken(db),
-        8000,
-        "generateKioskToken"
-      );
+      const { newTokenId, expiresAtMs: newExpiresAtMs } = await generateKioskToken(db);
       
       setCurrentToken(newTokenId);
       setExpiresAtMs(newExpiresAtMs);
