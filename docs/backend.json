@@ -308,6 +308,10 @@
           "type": "string",
           "description": "Description of the job (symptoms/details)."
         },
+        "officeNote": {
+          "type": "string",
+          "description": "Internal notes for the office department."
+        },
         "photos": {
           "type": "array",
           "description": "Array of URLs for photos related to the job.",

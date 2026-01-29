@@ -83,6 +83,7 @@ export interface Job {
   department: JobDepartment;
   status: JobStatus;
   description: string;
+  officeNote?: string;
   photos: string[];
   technicalReport?: string;
   assigneeUid?: string;

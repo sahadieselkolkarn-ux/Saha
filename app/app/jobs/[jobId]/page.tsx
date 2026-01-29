@@ -105,6 +105,11 @@ export default function JobDetailsPage() {
   const [isEditDescriptionDialogOpen, setIsEditDescriptionDialogOpen] = useState(false);
   const [descriptionToEdit, setDescriptionToEdit] = useState("");
   const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
+
+  // New states for office note edit dialog
+  const [isEditOfficeNoteDialogOpen, setIsEditOfficeNoteDialogOpen] = useState(false);
+  const [officeNoteToEdit, setOfficeNoteToEdit] = useState("");
+  const [isUpdatingOfficeNote, setIsUpdatingOfficeNote] = useState(false);
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
@@ -248,6 +253,43 @@ export default function JobDetailsPage() {
       toast({ variant: "destructive", title: "Update Failed", description: error.message });
     } finally {
         setIsUpdatingDescription(false);
+    }
+  };
+
+  const handleOpenEditOfficeNoteDialog = () => {
+    setOfficeNoteToEdit(job?.officeNote || "");
+    setIsEditOfficeNoteDialogOpen(true);
+  }
+
+  const handleUpdateOfficeNote = async () => {
+    if (!db || !job || !profile) return;
+    
+    setIsUpdatingOfficeNote(true);
+    
+    try {
+      const batch = writeBatch(db);
+      const jobDocRef = doc(db, "jobs", job.id);
+      const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
+
+      batch.update(jobDocRef, {
+        officeNote: officeNoteToEdit,
+        lastActivityAt: serverTimestamp(),
+      });
+      batch.set(activityDocRef, {
+          text: `แก้ไขบันทึกข้อความ`,
+          userName: profile.displayName,
+          userId: profile.uid,
+          createdAt: serverTimestamp(),
+      });
+      
+      await batch.commit();
+
+      toast({ title: "อัปเดตบันทึกข้อความสำเร็จ" });
+      setIsEditOfficeNoteDialogOpen(false);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+        setIsUpdatingOfficeNote(false);
     }
   };
 
@@ -819,6 +861,22 @@ const handlePartsReady = async () => {
                 )}
             </CardContent>
           </Card>
+
+          {isOfficeOrAdminOrMgmt && (
+            <Card>
+              <CardHeader>
+                  <CardTitle>บันทึกข้อความ</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="whitespace-pre-wrap text-sm">{job.officeNote || 'ยังไม่มีบันทึก'}</p>
+                <div className="flex gap-2 pt-4 border-t">
+                    <Button onClick={handleOpenEditOfficeNoteDialog} variant="outline" size="sm" disabled={isViewOnly}>
+                        เพิ่มเติมข้อความ
+                    </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           
           <Card>
               <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
@@ -1038,6 +1096,32 @@ const handlePartsReady = async () => {
                 <Button variant="outline" onClick={() => setIsEditDescriptionDialogOpen(false)} disabled={isUpdatingDescription}>ยกเลิก</Button>
                 <Button onClick={handleUpdateDescription} disabled={isUpdatingDescription}>
                     {isUpdatingDescription && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    บันทึก
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={isEditOfficeNoteDialogOpen} onOpenChange={setIsEditOfficeNoteDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>แก้ไขบันทึกข้อความ</DialogTitle>
+                <DialogDescription>
+                    แก้ไขรายละเอียดของบันทึกข้อความสำหรับงานนี้
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+                <Textarea 
+                    value={officeNoteToEdit} 
+                    onChange={(e) => setOfficeNoteToEdit(e.target.value)}
+                    rows={8}
+                    placeholder="ใส่บันทึกข้อความ..."
+                />
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEditOfficeNoteDialogOpen(false)} disabled={isUpdatingOfficeNote}>ยกเลิก</Button>
+                <Button onClick={handleUpdateOfficeNote} disabled={isUpdatingOfficeNote}>
+                    {isUpdatingOfficeNote && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     บันทึก
                 </Button>
             </DialogFooter>
