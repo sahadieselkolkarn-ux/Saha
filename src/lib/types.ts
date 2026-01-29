@@ -1,5 +1,4 @@
 
-
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew } from './constants';
 
@@ -636,7 +635,7 @@ export interface PurchaseClaim {
 }
 
 export interface BillingRun {
-  id: string; // YYYY-MM
+  id?: string; // YYYY-MM
   monthId: string; // YYYY-MM
   deferredInvoices?: Record<string, boolean>;
   separateInvoiceGroups?: Record<string, string>;

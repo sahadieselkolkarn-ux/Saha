@@ -180,8 +180,7 @@ export function BillingNoteForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
+        <div className="flex justify-end items-center">
             <Button type="submit" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
               Save Billing Note
@@ -193,7 +192,6 @@ export function BillingNoteForm() {
             <CardContent>
                 <FormField
                     name="customerId"
-                    control={form.control}
                     render={({ field }) => (
                         <FormItem>
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>

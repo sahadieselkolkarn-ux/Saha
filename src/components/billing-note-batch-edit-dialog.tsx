@@ -18,30 +18,38 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Document, Customer } from '@/lib/types';
 
-interface GroupedInvoices {
-  included: Document[];
-  deferred: Document[];
-  separate: Record<string, Document[]>;
-}
-
 interface EditDialogProps {
   isOpen: boolean;
   onClose: () => void;
   customer: Customer;
   invoices: Document[];
+  initialOverrides: {
+    deferred: Record<string, boolean>;
+    separate: Record<string, string>;
+  };
   onSave: (customerId: string, deferred: Record<string, boolean>, separate: Record<string, string>) => void;
 }
 
-export function BillingNoteBatchEditDialog({ isOpen, onClose, customer, invoices, onSave }: EditDialogProps) {
+export function BillingNoteBatchEditDialog({ isOpen, onClose, customer, invoices, initialOverrides, onSave }: EditDialogProps) {
   const [invoiceStates, setInvoiceStates] = useState<Record<string, { group: 'include' | 'defer' | 'separate', separateKey: string }>>({});
 
   useEffect(() => {
     const initialStates: Record<string, { group: 'include' | 'defer' | 'separate', separateKey: string }> = {};
     invoices.forEach(inv => {
-      initialStates[inv.id] = { group: 'include', separateKey: '' };
+      let group: 'include' | 'defer' | 'separate' = 'include';
+      let separateKey = '';
+
+      if (initialOverrides.deferred[inv.id]) {
+        group = 'defer';
+      } else if (initialOverrides.separate[inv.id]) {
+        group = 'separate';
+        separateKey = initialOverrides.separate[inv.id];
+      }
+      
+      initialStates[inv.id] = { group, separateKey };
     });
     setInvoiceStates(initialStates);
-  }, [invoices, isOpen]);
+  }, [invoices, isOpen, initialOverrides]);
 
   const handleSave = () => {
     const deferred: Record<string, boolean> = {};

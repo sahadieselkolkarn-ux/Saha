@@ -1,17 +1,11 @@
 
 "use client";
 
-import { PageHeader } from "@/components/page-header";
-import { BillingNoteForm } from "@/components/billing-note-form";
+import { redirect } from 'next/navigation';
 
-export default function NewBillingNotePage() {
-  return (
-    <>
-      <PageHeader
-        title="สร้างใบวางบิล (รายลูกค้า)"
-        description="เลือกใบกำกับภาษีที่ยังไม่จ่ายของลูกค้าเพื่อสร้างใบวางบิล"
-      />
-      <BillingNoteForm />
-    </>
-  );
+// This page is now consolidated into the main billing note page with tabs.
+// Redirecting to the main page.
+export default function DeprecatedNewBillingNotePage() {
+    redirect('/app/management/accounting/documents/billing-note?tab=new');
+    return null;
 }
