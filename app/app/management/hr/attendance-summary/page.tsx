@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
@@ -395,12 +395,11 @@ export default function ManagementHRAttendanceSummaryPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredSummaryData.map((summary, idx) => {
+            {filteredSummaryData.map((summary) => {
               const isOpen = openUserIds.has(summary.userId);
               return (
-                <>
+                <Fragment key={summary.userId}>
                   <TableRow
-                    key={summary.userId}
                     className={cn(
                       "cursor-pointer hover:bg-muted/50",
                       isOpen && "bg-muted/50"
@@ -489,7 +488,7 @@ export default function ManagementHRAttendanceSummaryPage() {
                       </TableCell>
                     </TableRow>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </TableBody>
