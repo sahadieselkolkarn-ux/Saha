@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { PlusCircle, Trash2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 // --- Helper Functions ---
 const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -45,13 +46,6 @@ interface PayslipSlipViewProps {
   onChange?: (nextSnapshot: PayslipSnapshot) => void;
   className?: string;
 }
-
-const SummaryRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
-    <div className="flex justify-between items-center text-sm">
-      <p className="text-muted-foreground">{label}</p>
-      <p className="font-medium">{value}</p>
-    </div>
-  );
 
 // --- Main Component ---
 export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType, onChange, className }: PayslipSlipViewProps) {
@@ -156,23 +150,33 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
             {payType !== 'MONTHLY_NOSCAN' && snapshot.attendanceSummary && (
                 <Card>
                     <CardHeader><CardTitle className="text-base">สรุปการลงเวลา</CardTitle></CardHeader>
-                    <CardContent className="space-y-1">
-                        <SummaryRow label="วันทำงานตามตาราง" value={snapshot.attendanceSummary?.scheduledWorkDays ?? '-'} />
-                        <SummaryRow label="วันทำงาน" value={snapshot.attendanceSummary?.presentDays ?? '-'} />
-                        <SummaryRow label="วันมาสาย" value={snapshot.attendanceSummary?.lateDays ?? '-'} />
-                        <SummaryRow label="จำนวนนาทีที่สาย" value={snapshot.attendanceSummary?.lateMinutes ?? '-'} />
-                        <SummaryRow label="หน่วยที่ขาด" value={snapshot.attendanceSummary?.absentUnits ?? '-'} />
-                        <SummaryRow label="วันลา" value={snapshot.attendanceSummary?.leaveDays ?? '-'} />
+                    <CardContent>
+                        <Table>
+                            <TableHeader><TableRow><TableHead>รายการ</TableHead><TableHead className="text-right">งวดนี้</TableHead><TableHead className="text-right">สะสมปีนี้</TableHead></TableRow></TableHeader>
+                            <TableBody>
+                                <TableRow><TableCell>วันทำงานตามตาราง</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.scheduledWorkDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.scheduledWorkDays ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>วันทำงาน</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.presentDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.presentDays ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>วันมาสาย</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.lateDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.lateDays ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>จำนวนนาทีที่สาย</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.lateMinutes ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.lateMinutes ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>หน่วยที่ขาด</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.absentUnits ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.absentUnits ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>วันลา</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.leaveDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.leaveDays ?? '-'}</TableCell></TableRow>
+                            </TableBody>
+                        </Table>
                     </CardContent>
                 </Card>
             )}
              <Card>
                 <CardHeader><CardTitle className="text-base">สรุปการลา</CardTitle></CardHeader>
-                <CardContent className="space-y-1">
-                    <SummaryRow label="ลาป่วย" value={`${snapshot.leaveSummary?.sickDays ?? '-'} วัน`} />
-                    <SummaryRow label="ลากิจ" value={`${snapshot.leaveSummary?.businessDays ?? '-'} วัน`} />
-                    <SummaryRow label="ลาพักร้อน" value={`${snapshot.leaveSummary?.vacationDays ?? '-'} วัน`} />
-                    <SummaryRow label="ลาเกินสิทธิ์" value={`${snapshot.leaveSummary?.overLimitDays ?? '-'} วัน`} />
+                <CardContent>
+                     <Table>
+                        <TableHeader><TableRow><TableHead>รายการ</TableHead><TableHead className="text-right">งวดนี้</TableHead><TableHead className="text-right">สะสมปีนี้</TableHead></TableRow></TableHeader>
+                        <TableBody>
+                            <TableRow><TableCell>ลาป่วย</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.sickDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.sickDays ?? '-'}</TableCell></TableRow>
+                            <TableRow><TableCell>ลากิจ</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.businessDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.businessDays ?? '-'}</TableCell></TableRow>
+                            <TableRow><TableCell>ลาพักร้อน</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.vacationDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.vacationDays ?? '-'}</TableCell></TableRow>
+                            <TableRow><TableCell>ลาเกินสิทธิ์</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.overLimitDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.overLimitDays ?? '-'}</TableCell></TableRow>
+                        </TableBody>
+                    </Table>
                 </CardContent>
             </Card>
         </div>

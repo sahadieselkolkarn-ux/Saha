@@ -308,6 +308,22 @@ export interface PayslipSnapshot {
         vacationDays?: number;
         overLimitDays?: number;
     };
+    attendanceSummaryYtd?: {
+        presentDays?: number;
+        lateDays?: number;
+        absentUnits?: number;
+        leaveDays?: number;
+        lateMinutes?: number;
+        scheduledWorkDays?: number;
+        payableUnits?: number;
+        warnings?: string[];
+    };
+    leaveSummaryYtd?: {
+        sickDays?: number;
+        businessDays?: number;
+        vacationDays?: number;
+        overLimitDays?: number;
+    };
     calcNotes?: string;
 }
 

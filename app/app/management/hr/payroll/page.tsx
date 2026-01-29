@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -6,7 +7,7 @@ import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, set
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +45,7 @@ const getStatusBadgeVariant = (status?: PayslipStatusNew) => {
 
 interface EmployeeRowData extends WithId<UserProfile> {
     periodMetrics: PeriodMetrics | null;
+    periodMetricsYtd: PeriodMetrics | null;
     payslipStatus?: PayslipStatusNew | 'ไม่มีสลิป';
     snapshot: PayslipSnapshot | null;
     revisionNo?: number;
@@ -97,8 +99,10 @@ export default function HRGeneratePayslipsPage() {
             
             const payPeriod = { start: periodStartDate, end: periodEndDate };
             const year = currentMonth.getFullYear();
-            const startStr = format(payPeriod.start, 'yyyy-MM-dd');
-            const endStr = format(payPeriod.end, 'yyyy-MM-dd');
+            
+            const ytdStart = startOfYear(currentMonth);
+            const ytdStartStr = format(ytdStart, 'yyyy-MM-dd');
+            const periodEndStr = format(payPeriod.end, 'yyyy-MM-dd');
             
             const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
             
@@ -126,18 +130,25 @@ export default function HRGeneratePayslipsPage() {
             const usersQuery = query(collection(db, 'users'), where('status', '==', 'ACTIVE'));
             const holidaysQuery = query(collection(db, 'hrHolidays'));
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED'));
-            const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', payPeriod.start), where('timestamp', '<=', payPeriod.end));
-            const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<=', endStr));
+            const attendancePeriodQuery = query(collection(db, 'attendance'), where('timestamp', '>=', payPeriod.start), where('timestamp', '<=', payPeriod.end));
+            const adjustmentsPeriodQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', format(payPeriod.start, 'yyyy-MM-dd')), where('date', '<=', format(payPeriod.end, 'yyyy-MM-dd')));
+            const attendanceYtdQuery = query(collection(db, 'attendance'), where('timestamp', '>=', ytdStart), where('timestamp', '<=', payPeriod.end));
+            const adjustmentsYtdQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', ytdStartStr), where('date', '<=', periodEndStr));
             const payslipsQuery = query(collection(db, 'payrollBatches', payrollBatchId, 'payslips'));
 
             const [
-                usersSnap, holidaysSnap, leavesSnap, attendanceSnap, adjustmentsSnap, payslipsSnap
+                usersSnap, holidaysSnap, leavesSnap, 
+                attendancePeriodSnap, adjustmentsPeriodSnap,
+                attendanceYtdSnap, adjustmentsYtdSnap,
+                payslipsSnap
             ] = await Promise.all([
                 getDocs(usersQuery),
                 getDocs(holidaysQuery),
                 getDocs(leavesQuery),
-                getDocs(attendanceQuery),
-                getDocs(adjustmentsQuery),
+                getDocs(attendancePeriodQuery),
+                getDocs(adjustmentsPeriodQuery),
+                getDocs(attendanceYtdQuery),
+                getDocs(adjustmentsYtdQuery),
                 getDocs(payslipsQuery),
             ]);
 
@@ -145,20 +156,25 @@ export default function HRGeneratePayslipsPage() {
             const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
 
             const allHolidays = new Map(holidaysSnap.docs.map(d => [d.data().date, d.data().name]));
-            const allLeaves = leavesSnap.docs.map(d => d.data() as LeaveRequest);
-            const allAttendance = attendanceSnap.docs.map(d => d.data() as Attendance);
-            const allAdjustments = adjustmentsSnap.docs.map(d => ({id: d.id, ...d.data()} as WithId<AttendanceAdjustment>));
+            const allLeavesYear = leavesSnap.docs.map(d => d.data() as LeaveRequest);
+            const allAttendancePeriod = attendancePeriodSnap.docs.map(d => d.data() as Attendance);
+            const allAdjustmentsPeriod = adjustmentsPeriodSnap.docs.map(d => ({id: d.id, ...d.data()} as WithId<AttendanceAdjustment>));
+            const allAttendanceYtd = attendanceYtdSnap.docs.map(d => d.data() as Attendance);
+            const allAdjustmentsYtd = adjustmentsYtdSnap.docs.map(d => ({id: d.id, ...d.data()} as WithId<AttendanceAdjustment>));
             const existingPayslips = new Map(payslipsSnap.docs.map(d => [d.id, d.data() as PayslipNew]));
 
             const data = activeUsers.map(user => {
-                const userLeaves = allLeaves.filter(l => l.userId === user.id);
-                const userAttendance = allAttendance.filter(a => a.userId === user.id);
-                const userAdjustments = allAdjustments.filter(a => a.userId === user.id);
+                const userLeavesYear = allLeavesYear.filter(l => l.userId === user.id);
+                const userAttendanceThisPeriod = allAttendancePeriod.filter(a => a.userId === user.id);
+                const userAdjustmentsThisPeriod = allAdjustmentsPeriod.filter(a => a.userId === user.id);
+                const userAttendanceYtd = allAttendanceYtd.filter(a => a.userId === user.id);
+                const userAdjustmentsYtd = allAdjustmentsYtd.filter(a => a.userId === user.id);
 
-                const periodMetrics = computePeriodMetrics({ user, payType: user.hr!.payType!, period: payPeriod, hrSettings, holidays: allHolidays, userLeavesApprovedYear: userLeaves, userAttendance, userAdjustments, today: new Date() });
+                const periodMetrics = computePeriodMetrics({ user, payType: user.hr!.payType!, period: payPeriod, hrSettings, holidays: allHolidays, userLeavesApprovedYear, userAttendance: userAttendanceThisPeriod, userAdjustments: userAdjustmentsThisPeriod, today: new Date() });
+                const periodMetricsYtd = computePeriodMetrics({ user, payType: user.hr!.payType!, period: {start: ytdStart, end: payPeriod.end }, hrSettings, holidays: allHolidays, userLeavesApprovedYear, userAttendance: userAttendanceYtd, userAdjustments: userAdjustmentsYtd, today: new Date() });
                 const existingSlip = existingPayslips.get(user.id);
                 
-                return { ...user, periodMetrics, payslipStatus: existingSlip?.status ?? 'ไม่มีสลิป', snapshot: existingSlip?.snapshot ?? null, revisionNo: existingSlip?.revisionNo };
+                return { ...user, periodMetrics, periodMetricsYtd, payslipStatus: existingSlip?.status ?? 'ไม่มีสลิป', snapshot: existingSlip?.snapshot ?? null, revisionNo: existingSlip?.revisionNo };
             });
             setEmployeeData(data);
         } catch (e: any) {
@@ -184,10 +200,10 @@ export default function HRGeneratePayslipsPage() {
 
     const handleOpenDrawer = async (user: EmployeeRowData) => {
         setEditingPayslip(user);
-        const { periodMetrics, snapshot: existingSnapshot, hr } = user;
+        const { periodMetrics, periodMetricsYtd, snapshot: existingSnapshot, hr } = user;
 
         if (!hr?.payType || hr.payType === 'NOPAY') return;
-        if (!periodMetrics) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); setEditingPayslip(null); return; }
+        if (!periodMetrics || !periodMetricsYtd) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); setEditingPayslip(null); return; }
         
         let basePay = 0;
         if (hr.payType === 'DAILY') {
@@ -207,6 +223,8 @@ export default function HRGeneratePayslipsPage() {
             deductions: [...manualDeductions, ...periodMetrics.autoDeductions],
             attendanceSummary: periodMetrics.attendanceSummary,
             leaveSummary: periodMetrics.leaveSummary,
+            attendanceSummaryYtd: periodMetricsYtd.attendanceSummary,
+            leaveSummaryYtd: periodMetricsYtd.leaveSummary,
             calcNotes: periodMetrics.calcNotes,
         };
         
