@@ -20,6 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { safeFormat } from '@/lib/date-utils';
 import type { Document, DocType } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 interface DocumentListProps {
   docType: DocType;
@@ -59,6 +60,7 @@ export function DocumentList({ docType }: DocumentListProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FirestoreError | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   
   const [docToAction, setDocToAction] = useState<Document | null>(null);
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
@@ -103,18 +105,30 @@ export function DocumentList({ docType }: DocumentListProps) {
 
     return () => unsubscribe();
   }, [db, docType, toast]);
+  
+  const uniqueStatuses = useMemo(() => {
+    const allStatuses = new Set(documents.map(doc => getDocDisplayStatus(doc).key));
+    return ["ALL", ...Array.from(allStatuses)];
+  }, [documents]);
 
   const filteredDocuments = useMemo(() => {
-    if (!searchTerm) return documents;
+    let filtered = documents;
+
+    if (statusFilter !== "ALL") {
+        filtered = filtered.filter(doc => getDocDisplayStatus(doc).key === statusFilter);
+    }
+
+    if (!searchTerm) return filtered;
     const lowercasedTerm = searchTerm.toLowerCase();
-    return documents.filter(doc =>
+    
+    return filtered.filter(doc =>
       doc.docNo.toLowerCase().includes(lowercasedTerm) ||
       doc.customerSnapshot.name?.toLowerCase().includes(lowercasedTerm) ||
       doc.customerSnapshot.phone?.includes(lowercasedTerm) ||
       doc.jobId?.toLowerCase().includes(lowercasedTerm) ||
       doc.carSnapshot?.licensePlate?.toLowerCase().includes(lowercasedTerm)
     );
-  }, [documents, searchTerm]);
+  }, [documents, searchTerm, statusFilter]);
 
   const handleCancelRequest = (doc: Document) => {
     setDocToAction(doc);
@@ -164,14 +178,28 @@ export function DocumentList({ docType }: DocumentListProps) {
     <>
       <Card>
         <CardContent className="pt-6 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="ค้นหาจากเลขที่, ชื่อลูกค้า, เบอร์โทร, ทะเบียนรถ, หรือรหัสงาน..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="ค้นหาจากเลขที่, ชื่อลูกค้า, เบอร์โทร, ทะเบียนรถ, หรือรหัสงาน..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filter by status..." />
+              </SelectTrigger>
+              <SelectContent>
+                {uniqueStatuses.map(status => (
+                    <SelectItem key={status} value={status}>
+                        {status === "ALL" ? "ทุกสถานะ" : docStatusLabel(status) || status}
+                    </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           {loading ? (
