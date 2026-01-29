@@ -96,7 +96,6 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
                 <SubNavLink href="/app/management/accounting/cashbook" label="รับ–จ่ายเงิน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/receivables-payables" label="ลูกหนี้/เจ้าหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/purchase-reports" label="รายงานการซื้อ" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/payroll-payouts" label="จ่ายเงินเดือน" onClick={onLinkClick} />
                 <Collapsible defaultOpen={pathname.startsWith('/app/management/accounting/documents')}>
                     <CollapsibleTrigger asChild>
