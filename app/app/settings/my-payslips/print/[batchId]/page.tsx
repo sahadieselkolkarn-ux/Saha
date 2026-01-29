@@ -1,16 +1,17 @@
 
 "use client";
 
-import { useMemo, Suspense, useEffect, useRef } from "react";
+import { useMemo, Suspense, useEffect, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
-import { doc } from "firebase/firestore";
+import { collection, query, where, limit, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase/firestore/use-doc";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Printer, ExternalLink, Loader2 } from "lucide-react";
-import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
+import { PayslipSlipView } from "@/components/payroll/PayslipSlipView";
 import type { PayslipNew } from "@/lib/types";
+import type { WithId } from "@/firebase/firestore/use-collection";
+
 
 function PrintPayslipContent() {
     const { batchId } = useParams();
@@ -20,15 +21,44 @@ function PrintPayslipContent() {
     const { db } = useFirebase();
     const { profile } = useAuth();
     
+    const [payslip, setPayslip] = useState<WithId<PayslipNew> | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
+
     const printedRef = useRef(false);
     const shouldAutoprint = searchParams.get('autoprint') === '1';
 
-    const payslipDocRef = useMemo(() => {
-        if (!db || !profile?.uid || typeof batchId !== 'string') return null;
-        return doc(db, 'payrollBatches', batchId, 'payslips', profile.uid);
+    useEffect(() => {
+        if (!db || !profile?.uid || typeof batchId !== 'string') {
+            setIsLoading(false);
+            return;
+        }
+
+        const fetchPayslip = async () => {
+            setIsLoading(true);
+            setError(null);
+            try {
+                const slipsCol = collection(db, "payrollBatches", batchId as string, "payslips");
+                const q = query(slipsCol, where("userId", "==", profile.uid), limit(1));
+                const snap = await getDocs(q);
+
+                if (snap.empty) {
+                    setPayslip(null);
+                } else {
+                    const slipDoc = snap.docs[0];
+                    setPayslip({ id: slipDoc.id, ...slipDoc.data() } as WithId<PayslipNew>);
+                }
+            } catch (e: any) {
+                setError(e);
+                console.error("Failed to fetch payslip:", e);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchPayslip();
     }, [db, profile?.uid, batchId]);
 
-    const { data: payslip, isLoading, error } = useDoc<PayslipNew>(payslipDocRef);
 
     useEffect(() => {
         if (shouldAutoprint && payslip && !isLoading && !printedRef.current) {
