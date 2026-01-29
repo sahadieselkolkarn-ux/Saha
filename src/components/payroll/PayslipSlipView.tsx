@@ -171,10 +171,10 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
                      <Table>
                         <TableHeader><TableRow><TableHead>รายการ</TableHead><TableHead className="text-right">งวดนี้</TableHead><TableHead className="text-right">สะสมปีนี้</TableHead></TableRow></TableHeader>
                         <TableBody>
-                            <TableRow><TableCell>ลาป่วย</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.sickDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.sickDays ?? '-'}</TableCell></TableRow>
-                            <TableRow><TableCell>ลากิจ</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.businessDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.businessDays ?? '-'}</TableCell></TableRow>
-                            <TableRow><TableCell>ลาพักร้อน</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.vacationDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.vacationDays ?? '-'}</TableCell></TableRow>
-                            <TableRow><TableCell>ลาเกินสิทธิ์</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.overLimitDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.overLimitDays ?? '-'}</TableCell></TableRow>
+                            <TableRow><TableCell>ลาป่วย</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.sickDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.sickDays ?? 0}</TableCell></TableRow>
+                            <TableRow><TableCell>ลากิจ</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.businessDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.businessDays ?? 0}</TableCell></TableRow>
+                            <TableRow><TableCell>ลาพักร้อน</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.vacationDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.vacationDays ?? 0}</TableCell></TableRow>
+                            <TableRow><TableCell>ลาเกินสิทธิ์</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.overLimitDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.overLimitDays ?? 0}</TableCell></TableRow>
                         </TableBody>
                     </Table>
                 </CardContent>
