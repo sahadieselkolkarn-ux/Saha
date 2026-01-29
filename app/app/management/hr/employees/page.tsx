@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -58,6 +59,7 @@ const userProfileSchema = z.object({
   }).optional(),
   hr: z.object({
     salaryMonthly: z.coerce.number().optional(),
+    salaryDaily: z.coerce.number().optional(),
     payType: z.enum(["MONTHLY", "DAILY", "MONTHLY_NOSCAN", "NOPAY"]).optional(),
     startDate: z.string().optional().default(''),
     endDate: z.string().optional().default(''),
@@ -210,6 +212,7 @@ export default function ManagementHREmployeesPage() {
           },
           hr: {
               salaryMonthly: editingUser.hr?.salaryMonthly,
+              salaryDaily: editingUser.hr?.salaryDaily,
               payType: editingUser.hr?.payType,
               startDate: editingUser.hr?.startDate || '',
               endDate: editingUser.hr?.endDate || '',
@@ -259,6 +262,7 @@ export default function ManagementHREmployeesPage() {
         
         if (isManagerOrAdmin) {
             finalUpdate['hr.salaryMonthly'] = formValues.hr?.salaryMonthly === undefined || (formValues.hr.salaryMonthly as any) === '' ? null : Number(formValues.hr.salaryMonthly);
+            finalUpdate['hr.salaryDaily'] = formValues.hr?.salaryDaily === undefined || (formValues.hr.salaryDaily as any) === '' ? null : Number(formValues.hr.salaryDaily);
         }
         
         const userDoc = doc(db, "users", editingUser.id);
@@ -446,33 +450,28 @@ export default function ManagementHREmployeesPage() {
                                     </FormItem>
                                 )} />
                               </div>
-                              <FormField
-                                name="hr.salaryMonthly"
-                                control={form.control}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>เงินเดือน</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        type="number"
-                                        {...field}
-                                        disabled={!isManagerOrAdmin}
-                                        value={field.value ?? ''}
-                                        onChange={(e) => {
-                                          const value = e.target.value;
-                                          field.onChange(value === '' ? undefined : Number(value));
-                                        }}
-                                      />
-                                    </FormControl>
-                                    {!isManagerOrAdmin && <FormDescription>แก้เงินเดือนได้เฉพาะ Manager หรือ Admin</FormDescription>}
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <FormField name="hr.salaryMonthly" control={form.control} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>เงินเดือน</FormLabel>
+                                        <FormControl><Input type="number" {...field} disabled={!isManagerOrAdmin} value={field.value ?? ''} onChange={(e) => { const value = e.target.value; field.onChange(value === '' ? undefined : Number(value)); }} /></FormControl>
+                                        {!isManagerOrAdmin && <FormDescription>เฉพาะ Manager/Admin</FormDescription>}
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                                <FormField name="hr.salaryDaily" control={form.control} render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>ค่าแรงรายวัน</FormLabel>
+                                        <FormControl><Input type="number" {...field} disabled={!isManagerOrAdmin} value={field.value ?? ''} onChange={(e) => { const value = e.target.value; field.onChange(value === '' ? undefined : Number(value)); }} /></FormControl>
+                                        {!isManagerOrAdmin && <FormDescription>เฉพาะ Manager/Admin</FormDescription>}
+                                        <FormMessage />
+                                    </FormItem>
+                                )}/>
+                              </div>
                             <FormField name="hr.payType" control={form.control} render={({ field }) => (
                               <FormItem>
                                 <FormLabel>ประเภทการจ่ายเงิน</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                                <Select onValueChange={field.onChange} value={field.value}>
                                   <FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl>
                                   <SelectContent>
                                     {PAY_TYPES.map(p => <SelectItem key={p} value={p}>{payTypeLabel(p)}</SelectItem>)}
@@ -505,7 +504,7 @@ export default function ManagementHREmployeesPage() {
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    {!isManagerOrAdmin && <FormDescription>แก้โรงพยาบาลประกันสังคมได้เฉพาะ Manager หรือ Admin</FormDescription>}
+                                    {!isManagerOrAdmin && <FormDescription>เฉพาะ Manager/Admin</FormDescription>}
                                     <FormMessage />
                                 </FormItem>
                                 )}
@@ -541,3 +540,4 @@ export default function ManagementHREmployeesPage() {
     </>
   );
 }
+

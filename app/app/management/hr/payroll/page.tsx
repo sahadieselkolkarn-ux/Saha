@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -13,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical, Save } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical, Save, AlertCircle } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -21,7 +22,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayType, PayslipSnapshot } from "@/lib/types";
+import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayslipSnapshot } from "@/lib/types";
 import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
@@ -167,20 +168,33 @@ export default function HRGeneratePayslipsPage() {
 
     const handleOpenDrawer = (user: EmployeeRowData) => {
         setEditingPayslip(user);
-        if (!user.periodMetrics) {
+        const { periodMetrics, snapshot: existingSnapshot, hr } = user;
+
+        if (!periodMetrics) {
             toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'});
             return;
         }
+        
+        let basePay = 0;
+        if (hr?.payType === 'DAILY') {
+            if (!hr.salaryDaily || hr.salaryDaily <= 0) {
+                 toast({variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: `กรุณาตั้งค่าแรงรายวันสำหรับ ${user.displayName} ก่อน`});
+                 setEditingPayslip(null);
+                 return;
+            }
+            basePay = (hr.salaryDaily || 0) * periodMetrics.attendanceSummary.payableUnits;
+        } else {
+            basePay = (hr?.salaryMonthly ?? 0) / 2;
+        }
 
-        const basePay = (user.hr?.salaryMonthly ?? 0) / 2; // Simple assumption
-        const initialSnapshot: PayslipSnapshot = user.snapshot ?? {
+        const initialSnapshot: PayslipSnapshot = existingSnapshot ?? {
             basePay: basePay,
-            netPay: basePay, // Will be recalculated by calcTotals
+            netPay: 0, // Will be recalculated by calcTotals
             additions: [],
-            deductions: user.periodMetrics.autoDeductions,
-            attendanceSummary: user.periodMetrics.attendanceSummary,
-            leaveSummary: user.periodMetrics.leaveSummary,
-            calcNotes: user.periodMetrics.calcNotes,
+            deductions: periodMetrics.autoDeductions,
+            attendanceSummary: periodMetrics.attendanceSummary,
+            leaveSummary: periodMetrics.leaveSummary,
+            calcNotes: periodMetrics.calcNotes,
         };
         const totals = calcTotals(initialSnapshot);
         setDrawerSnapshot({ ...initialSnapshot, netPay: totals.netPay });
@@ -352,7 +366,7 @@ export default function HRGeneratePayslipsPage() {
                     onOpenChange={(open) => !open && setEditingPayslip(null)}
                     title="แก้ไขสลิปเงินเดือน"
                     description={`${editingPayslip.displayName} - ${periodLabel}`}
-                    copyText={formatPayslipAsText({ userName: editingPayslip.displayName, periodLabel, snapshot: drawerSnapshot, totals: drawerTotals })}
+                    copyText={formatPayslipAsText({ userName: editingPayslip.displayName, periodLabel, snapshot: drawerSnapshot, payType: editingPayslip.hr?.payType, totals: drawerTotals })}
                     copyJson={formatPayslipAsJson(drawerSnapshot)}
                     footerActions={
                       (editingPayslip.payslipStatus !== 'PAID' && editingPayslip.payslipStatus !== 'SENT_TO_EMPLOYEE' && editingPayslip.payslipStatus !== 'READY_TO_PAY') && (
@@ -375,6 +389,7 @@ export default function HRGeneratePayslipsPage() {
                         periodLabel={periodLabel}
                         snapshot={drawerSnapshot}
                         mode="edit"
+                        payType={editingPayslip.hr?.payType}
                         onChange={setDrawerSnapshot}
                     />
                 </PayslipSlipDrawer>

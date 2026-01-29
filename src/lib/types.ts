@@ -27,6 +27,7 @@ export interface UserProfile {
   };
   hr?: {
     salaryMonthly?: number;
+    salaryDaily?: number;
     payType?: PayType;
     ssoHospital?: string;
     note?: string;
@@ -287,6 +288,9 @@ export interface PayslipSnapshot {
         absentUnits?: number;
         leaveDays?: number;
         lateMinutes?: number;
+        scheduledWorkDays?: number;
+        payableUnits?: number;
+        warnings?: string[];
     };
     leaveSummary: {
         sickDays?: number;

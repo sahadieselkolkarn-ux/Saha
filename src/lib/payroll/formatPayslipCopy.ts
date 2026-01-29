@@ -1,5 +1,6 @@
 
-import type { PayslipSnapshot } from '@/lib/types';
+
+import type { PayslipSnapshot, PayType } from '@/lib/types';
 
 const formatCurrency = (value: number | undefined) => {
     return (value ?? 0).toLocaleString("th-TH", {
@@ -12,6 +13,7 @@ interface SlipData {
     userName: string;
     periodLabel: string;
     snapshot: PayslipSnapshot;
+    payType?: PayType;
     totals: {
         basePay: number;
         addTotal: number;
@@ -21,7 +23,7 @@ interface SlipData {
 }
 
 export function formatPayslipAsText(data: SlipData): string {
-    const { userName, periodLabel, snapshot, totals } = data;
+    const { userName, periodLabel, snapshot, payType, totals } = data;
     
     let text = `ใบเงินเดือน\n`;
     text += `--------------------------------\n`;
@@ -55,12 +57,19 @@ export function formatPayslipAsText(data: SlipData): string {
     text += `ยอดสุทธิ: ${formatCurrency(totals.netPay)}\n`;
     text += `--------------------------------\n\n`;
 
-    if (snapshot.attendanceSummary) {
+    if (snapshot.attendanceSummary && payType !== 'MONTHLY_NOSCAN') {
         text += `สรุปการทำงาน:\n`;
         text += ` - วันทำงาน: ${snapshot.attendanceSummary.presentDays ?? 0}\n`;
         text += ` - มาสาย: ${snapshot.attendanceSummary.lateDays ?? 0} วัน (${snapshot.attendanceSummary.lateMinutes ?? 0} นาที)\n`;
         text += ` - ขาด: ${snapshot.attendanceSummary.absentUnits ?? 0} หน่วย\n`;
         text += ` - ลา: ${snapshot.attendanceSummary.leaveDays ?? 0} วัน\n\n`;
+    }
+
+    if (snapshot.leaveSummary) {
+        text += `สรุปการลา:\n`;
+        text += ` - ลาป่วย: ${snapshot.leaveSummary.sickDays ?? 0} วัน\n`;
+        text += ` - ลากิจ: ${snapshot.leaveSummary.businessDays ?? 0} วัน\n`;
+        text += ` - ลาพักร้อน: ${snapshot.leaveSummary.vacationDays ?? 0} วัน\n`;
     }
 
     if (snapshot.calcNotes) {

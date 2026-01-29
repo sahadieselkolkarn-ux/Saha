@@ -1,4 +1,5 @@
 
+
 import {
   format,
   eachDayOfInterval,
@@ -28,11 +29,14 @@ import { WithId } from '@/firebase/firestore/use-collection';
 
 export type PeriodMetrics = {
   attendanceSummary: {
-    presentDays: number;
+    scheduledWorkDays: number;
+    presentDays: number;         // for MONTHLY: scheduled minus absentUnits minus leaveDays (clamped)
     lateDays: number;
     lateMinutes: number;
-    absentUnits: number;
+    absentUnits: number;         // 0.5, 1.0 ...
     leaveDays: number;
+    payableUnits: number;        // for DAILY: sum of payable day units (1 - absentUnits that day), excluding leave
+    warnings: string[];          // e.g. missing OUT dates
   };
   leaveSummary: {
     sickDays: number;
@@ -40,8 +44,8 @@ export type PeriodMetrics = {
     vacationDays: number;
     overLimitDays: number;
   };
-  calcNotes: string;
   autoDeductions: PayslipDeduction[];
+  calcNotes: string;
 };
 
 export function computePeriodMetrics(params: {
@@ -51,8 +55,8 @@ export function computePeriodMetrics(params: {
   hrSettings: HRSettings;
   holidays: Map<string, string>; // yyyy-mm-dd -> name
   userLeavesApprovedYear: LeaveRequest[]; // year approved (already fetched)
-  userAttendance: Attendance[]; // period range
-  userAdjustments: AttendanceAdjustment[]; // period range
+  userAttendance: Attendance[]; // in period
+  userAdjustments: AttendanceAdjustment[]; // in period
   today: Date;
 }): PeriodMetrics {
   const {
@@ -67,7 +71,7 @@ export function computePeriodMetrics(params: {
     today,
   } = params;
 
-  let attendanceSummary = { presentDays: 0, lateDays: 0, lateMinutes: 0, absentUnits: 0, leaveDays: 0 };
+  let attendanceSummary = { scheduledWorkDays: 0, presentDays: 0, lateDays: 0, lateMinutes: 0, absentUnits: 0, leaveDays: 0, payableUnits: 0, warnings: [] as string[] };
   let leaveSummary = { sickDays: 0, businessDays: 0, vacationDays: 0, overLimitDays: 0 };
   let calcNotes = '';
   let autoDeductions: PayslipDeduction[] = [];
@@ -83,8 +87,8 @@ export function computePeriodMetrics(params: {
   const userEndDate = user.hr?.endDate ? parseISO(user.hr.endDate) : null;
 
   let scheduledWorkDays = 0;
+  let tempPayableUnits = 0;
 
-  // 1. Determine scheduled working days and leave days
   periodDays.forEach(day => {
     if (userStartDate && isBefore(day, userStartDate)) return;
     if (userEndDate && isAfter(day, userEndDate)) return;
@@ -103,69 +107,56 @@ export function computePeriodMetrics(params: {
       if (onLeave.leaveType === 'SICK') leaveSummary.sickDays++;
       if (onLeave.leaveType === 'BUSINESS') leaveSummary.businessDays++;
       if (onLeave.leaveType === 'VACATION') leaveSummary.vacationDays++;
+      return; // Skip attendance processing for leave days
+    }
+
+    if (payType === 'MONTHLY' || payType === 'DAILY') {
+        const adjustmentForDay = userAdjustments.find(a => a.date === dayStr);
+        const attendanceForDay = userAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
+        
+        let firstIn = attendanceForDay.filter(a => a.type === 'IN').map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime())[0] ?? null;
+        let lastOut = attendanceForDay.filter(a => a.type === 'OUT').map(a => a.timestamp.toDate()).sort((a,b) => b.getTime() - a.getTime())[0] ?? null;
+
+        if (adjustmentForDay?.type === 'ADD_RECORD') {
+            if (adjustmentForDay.adjustedIn) firstIn = adjustmentForDay.adjustedIn.toDate();
+            if (adjustmentForDay.adjustedOut) lastOut = adjustmentForDay.adjustedOut.toDate();
+        }
+
+        let dayPayableUnit = 1;
+        if (!firstIn) {
+            attendanceSummary.absentUnits += 1;
+            dayPayableUnit = 0;
+        } else {
+            const absentCutoff = set(day, { hours: absentCutoffHour, minutes: absentCutoffMinute });
+            if (isAfter(firstIn, absentCutoff)) {
+                attendanceSummary.absentUnits += 0.5;
+                dayPayableUnit -= 0.5;
+            } else {
+                const lateThreshold = set(day, { hours: workStartHour, minutes: workStartMinute + graceMinutes });
+                const isForgiven = adjustmentForDay?.type === 'FORGIVE_LATE';
+                if (isAfter(firstIn, lateThreshold) && !isForgiven) {
+                    attendanceSummary.lateDays++;
+                    attendanceSummary.lateMinutes += differenceInMinutes(firstIn, set(day, { hours: workStartHour, minutes: workStartMinute }));
+                }
+            }
+            if (!lastOut && isBefore(day, today)) {
+                 attendanceSummary.warnings.push(`วันที่ ${dayStr} ไม่มีสแกนออก (OUT) กรุณาแก้ด้วย ADD_RECORD ก่อนสรุป`);
+            }
+        }
+        tempPayableUnits += dayPayableUnit;
     }
   });
 
-  // 2. Handle MONTHLY_NOSCAN
   if (payType === 'MONTHLY_NOSCAN') {
-    attendanceSummary.presentDays = scheduledWorkDays - attendanceSummary.leaveDays;
-    // late, absent are 0 by default
+    attendanceSummary.presentDays = Math.max(0, scheduledWorkDays - attendanceSummary.leaveDays);
   } else {
-    // 3. Handle scan-required types (MONTHLY, DAILY)
-    let tempAbsentUnits = 0;
-    periodDays.forEach(day => {
-      // Basic checks again for each day
-      if (userStartDate && isBefore(day, userStartDate)) return;
-      if (userEndDate && isAfter(day, userEndDate)) return;
-      const dayStr = format(day, 'yyyy-MM-dd');
-      if (holidays.has(dayStr)) return;
-      const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
-      if (isWeekendDay) return;
-      const onLeave = userLeavesApprovedYear.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
-      if (onLeave) return;
-
-      // Attendance logic
-      const adjustmentForDay = userAdjustments.find(a => a.date === dayStr);
-      const attendanceForDay = userAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
-      
-      let firstIn = attendanceForDay.filter(a => a.type === 'IN').map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime())[0] ?? null;
-      let lastOut = attendanceForDay.filter(a => a.type === 'OUT').map(a => a.timestamp.toDate()).sort((a,b) => b.getTime() - a.getTime())[0] ?? null;
-
-      if (adjustmentForDay?.type === 'ADD_RECORD') {
-        if (adjustmentForDay.adjustedIn) firstIn = adjustmentForDay.adjustedIn.toDate();
-        if (adjustmentForDay.adjustedOut) lastOut = adjustmentForDay.adjustedOut.toDate();
-      }
-
-      if (!firstIn) {
-        tempAbsentUnits += 1; // Full day absent
-        return;
-      }
-      
-      const absentCutoff = set(day, { hours: absentCutoffHour, minutes: absentCutoffMinute });
-      if (isAfter(firstIn, absentCutoff)) {
-        tempAbsentUnits += 0.5; // Morning absent
-      } else {
-        const lateThreshold = set(day, { hours: workStartHour, minutes: workStartMinute + graceMinutes });
-        const isForgiven = adjustmentForDay?.type === 'FORGIVE_LATE';
-        if (isAfter(firstIn, lateThreshold) && !isForgiven) {
-          attendanceSummary.lateDays++;
-          attendanceSummary.lateMinutes += differenceInMinutes(firstIn, set(day, { hours: workStartHour, minutes: workStartMinute }));
-        }
-      }
-
-      if (hrSettings.afternoonCutoffTime) {
-          const afternoonCutoff = set(day, { hours: afternoonCutoffHour, minutes: afternoonCutoffMinute });
-          if (isBefore(day, today) && (!lastOut || isBefore(lastOut, afternoonCutoff))) {
-              tempAbsentUnits += 0.5;
-          }
-      }
-    });
-
-    attendanceSummary.absentUnits = Math.round(tempAbsentUnits * 2) / 2; // Round to nearest 0.5
+    attendanceSummary.absentUnits = Math.round(attendanceSummary.absentUnits * 2) / 2;
     attendanceSummary.presentDays = Math.max(0, scheduledWorkDays - attendanceSummary.leaveDays - Math.floor(attendanceSummary.absentUnits));
+    attendanceSummary.payableUnits = tempPayableUnits;
   }
+  attendanceSummary.scheduledWorkDays = scheduledWorkDays;
 
-  // 4. Over-limit deductions
+  // Over-limit leave calculation
   (Object.keys(hrSettings.leavePolicy?.leaveTypes || {}) as TLeaveType[]).forEach(leaveType => {
       const policy = hrSettings.leavePolicy?.leaveTypes?.[leaveType];
       if (!policy?.annualEntitlement) return;
@@ -180,7 +171,7 @@ export function computePeriodMetrics(params: {
           const leaveStart = parseISO(leave.startDate);
           const leaveEnd = parseISO(leave.endDate);
 
-          for (let day = leaveStart; day <= leaveEnd; day.setDate(day.getDate() + 1)) {
+          for (let day = startOfDay(leaveStart); day <= endOfDay(leaveEnd); day.setDate(day.getDate() + 1)) {
               daysTakenThisYear++;
               if (daysTakenThisYear > annualEntitlement) {
                   if (isWithinInterval(day, {start: period.start, end: period.end})) {
@@ -194,7 +185,7 @@ export function computePeriodMetrics(params: {
       const overLimitMode = policy.overLimitHandling?.mode;
       const salary = user.hr?.salaryMonthly;
 
-      if (overLimitDaysThisPeriod > 0 && salary && overLimitMode === 'DEDUCT_SALARY') {
+      if (overLimitDaysThisPeriod > 0 && salary && (overLimitMode === 'DEDUCT_SALARY' || overLimitMode === 'UNPAID')) {
           const baseDays = policy.overLimitHandling?.salaryDeductionBaseDays || hrSettings.payroll?.salaryDeductionBaseDays || 26;
           const deductionAmount = (salary / baseDays) * overLimitDaysThisPeriod;
           autoDeductions.push({
@@ -203,22 +194,32 @@ export function computePeriodMetrics(params: {
               notes: `${overLimitDaysThisPeriod} วัน`
           });
       } else if (overLimitDaysThisPeriod > 0 && overLimitMode === 'DISALLOW') {
-          calcNotes += `คำเตือน: การลา${leaveType} เกินสิทธิ์ ${overLimitDaysThisPeriod} วัน แต่ระบบตั้งค่าไม่อนุญาตให้หักเงิน\n`;
+          calcNotes += `คำเตือน: การลา ${leaveType} เกินสิทธิ์ ${overLimitDaysThisPeriod} วัน แต่ระบบตั้งค่าไม่อนุญาตให้หักเงิน\n`;
       }
   });
 
 
-  // 5. Absent deductions
-  if (attendanceSummary.absentUnits > 0 && user.hr?.salaryMonthly && payType !== 'MONTHLY_NOSCAN') {
+  // Money deductions for MONTHLY
+  if (payType === 'MONTHLY' && user.hr?.salaryMonthly) {
       const baseDays = hrSettings.payroll?.salaryDeductionBaseDays || 26;
-      autoDeductions.push({
-          name: `หักขาดงาน`,
-          amount: (user.hr.salaryMonthly / baseDays) * attendanceSummary.absentUnits,
-          notes: `${attendanceSummary.absentUnits} หน่วย`
-      });
+      const ratePerDay = user.hr.salaryMonthly / baseDays;
+      const ratePerMinute = (ratePerDay / 8) / 60; // Assume 8 hour work day
+
+      if (attendanceSummary.absentUnits > 0) {
+        autoDeductions.push({
+            name: `หักขาดงาน`,
+            amount: ratePerDay * attendanceSummary.absentUnits,
+            notes: `${attendanceSummary.absentUnits} หน่วย`
+        });
+      }
+      if (attendanceSummary.lateMinutes > 0) {
+        autoDeductions.push({
+            name: `หักมาสาย`,
+            amount: ratePerMinute * attendanceSummary.lateMinutes,
+            notes: `${attendanceSummary.lateMinutes} นาที`
+        });
+      }
   }
 
   return { attendanceSummary, leaveSummary, calcNotes: calcNotes.trim(), autoDeductions };
 }
-
-    

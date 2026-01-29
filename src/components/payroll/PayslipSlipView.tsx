@@ -1,16 +1,18 @@
 
+
 "use client";
 
 import { useMemo } from "react";
-import type { PayslipSnapshot } from "@/lib/types";
+import type { PayslipSnapshot, PayType } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, Trash2 } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // --- Helper Functions ---
 const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -39,6 +41,7 @@ interface PayslipSlipViewProps {
   periodLabel: string;
   snapshot: PayslipSnapshot;
   mode: "read" | "edit";
+  payType?: PayType;
   onChange?: (nextSnapshot: PayslipSnapshot) => void;
   className?: string;
 }
@@ -51,7 +54,7 @@ const SummaryRow = ({ label, value }: { label: string; value: React.ReactNode })
   );
 
 // --- Main Component ---
-export function PayslipSlipView({ userName, periodLabel, snapshot, mode, onChange, className }: PayslipSlipViewProps) {
+export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType, onChange, className }: PayslipSlipViewProps) {
   const isEdit = mode === 'edit';
   const totals = useMemo(() => calcTotals(snapshot), [snapshot]);
 
@@ -108,6 +111,18 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, onChang
             <p className="text-muted-foreground">{periodLabel}</p>
         </div>
 
+        {snapshot.attendanceSummary?.warnings && snapshot.attendanceSummary.warnings.length > 0 && (
+            <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>คำเตือน</AlertTitle>
+                <AlertDescription>
+                    <ul className="list-disc pl-4">
+                       {snapshot.attendanceSummary.warnings.map((warn, i) => <li key={i}>{warn}</li>)}
+                    </ul>
+                </AlertDescription>
+            </Alert>
+        )}
+
         <Card>
             <CardHeader>
                 <CardTitle className="text-lg">สรุป</CardTitle>
@@ -138,16 +153,19 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, onChang
         </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-                <CardHeader><CardTitle className="text-base">สรุปการลงเวลา</CardTitle></CardHeader>
-                <CardContent className="space-y-1">
-                    <SummaryRow label="วันทำงาน" value={snapshot.attendanceSummary?.presentDays ?? '-'} />
-                    <SummaryRow label="วันมาสาย" value={snapshot.attendanceSummary?.lateDays ?? '-'} />
-                    <SummaryRow label="จำนวนนาทีที่สาย" value={snapshot.attendanceSummary?.lateMinutes ?? '-'} />
-                    <SummaryRow label="หน่วยที่ขาด" value={snapshot.attendanceSummary?.absentUnits ?? '-'} />
-                    <SummaryRow label="วันลา" value={snapshot.attendanceSummary?.leaveDays ?? '-'} />
-                </CardContent>
-            </Card>
+            {payType !== 'MONTHLY_NOSCAN' && snapshot.attendanceSummary && (
+                <Card>
+                    <CardHeader><CardTitle className="text-base">สรุปการลงเวลา</CardTitle></CardHeader>
+                    <CardContent className="space-y-1">
+                        <SummaryRow label="วันทำงานตามตาราง" value={snapshot.attendanceSummary?.scheduledWorkDays ?? '-'} />
+                        <SummaryRow label="วันทำงาน" value={snapshot.attendanceSummary?.presentDays ?? '-'} />
+                        <SummaryRow label="วันมาสาย" value={snapshot.attendanceSummary?.lateDays ?? '-'} />
+                        <SummaryRow label="จำนวนนาทีที่สาย" value={snapshot.attendanceSummary?.lateMinutes ?? '-'} />
+                        <SummaryRow label="หน่วยที่ขาด" value={snapshot.attendanceSummary?.absentUnits ?? '-'} />
+                        <SummaryRow label="วันลา" value={snapshot.attendanceSummary?.leaveDays ?? '-'} />
+                    </CardContent>
+                </Card>
+            )}
              <Card>
                 <CardHeader><CardTitle className="text-base">สรุปการลา</CardTitle></CardHeader>
                 <CardContent className="space-y-1">
