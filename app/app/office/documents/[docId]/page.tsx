@@ -39,6 +39,10 @@ function DocumentView({ document }: { document: Document }) {
     const displayCustomerName = isTaxDoc
         ? document.customerSnapshot.taxName || document.customerSnapshot.name
         : document.customerSnapshot.name;
+        
+    const displayCustomerAddress = isTaxDoc
+        ? document.customerSnapshot.taxAddress || 'N/A'
+        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'N/A');
 
     return (
         <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none print:bg-white">
@@ -72,9 +76,9 @@ function DocumentView({ document }: { document: Document }) {
                 </CardHeader>
                 <CardContent className="text-sm space-y-1">
                     <p className="font-semibold">{displayCustomerName}</p>
-                    <p className="text-muted-foreground whitespace-pre-wrap">{document.customerSnapshot.taxAddress || 'N/A'}</p>
+                    <p className="text-muted-foreground whitespace-pre-wrap">{displayCustomerAddress}</p>
                     <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
-                    {!isDeliveryNote && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
+                    {isTaxDoc && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
                 </CardContent>
             </Card>
 
