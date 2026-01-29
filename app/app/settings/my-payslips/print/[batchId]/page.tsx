@@ -7,10 +7,8 @@ import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, ExternalLink } from "lucide-react";
+import { AlertCircle, Printer, ExternalLink, Loader2 } from "lucide-react";
 import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
 import type { PayslipNew } from "@/lib/types";
 
