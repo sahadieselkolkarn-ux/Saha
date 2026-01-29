@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Copy, CopyCheck, X } from "lucide-react";
@@ -88,6 +88,10 @@ export function PayslipSlipDrawer({
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-2xl p-0 flex flex-col h-[90dvh]">
+          <DialogTitle className="sr-only">{title}</DialogTitle>
+          {description ? (
+            <DialogDescription className="sr-only">{description}</DialogDescription>
+          ) : null}
           <DrawerHeader />
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="p-6">
