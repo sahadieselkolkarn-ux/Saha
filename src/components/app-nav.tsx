@@ -259,8 +259,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" onClick={onLinkClick} />
                         <OfficeJobManagementSubMenu onLinkClick={onLinkClick} />
                         <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า" onClick={onLinkClick} />
-                        <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
-
                         <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
                             <CollapsibleTrigger asChild>
                                 <Button variant={pathname.startsWith('/app/office/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
@@ -290,6 +288,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                                 <SubNavLink href="/app/office/parts/vendors" label="รายชื่อร้านค้า" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
+                        <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
                     </>
                 )}
                 {department === 'CAR_SERVICE' && (
@@ -372,10 +371,11 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                     </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="py-1 pl-6 space-y-1">
-                    {profile?.role === 'OFFICER' && (
+                    {profile?.role === 'OFFICER' ? (
                         <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
+                    ) : (
+                        <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
                     )}
-                    <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
                 </CollapsibleContent>
             </Collapsible>
             
