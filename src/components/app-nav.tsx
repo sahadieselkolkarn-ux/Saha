@@ -61,18 +61,9 @@ const OfficeJobManagementSubMenu = ({ onLinkClick }: { onLinkClick?: () => void 
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
-                <p className="px-2 py-1 text-xs font-semibold text-muted-foreground/80">ตามแผนก</p>
-                <SubNavLink href="/app/office/jobs/management/car-service" label="งานซ่อมหน้าร้าน" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/commonrail" label="งานแผนกคอมมอนเรล" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/mechanic" label="งานแผนกแมคคานิค" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/outsource" label="งานส่งออกร้านนอก" onClick={onLinkClick} />
-                <p className="px-2 pt-2 pb-1 text-xs font-semibold text-muted-foreground/80">ตามสถานะงาน</p>
-                <SubNavLink href="/app/office/jobs/management/quotation" label="งานเสนอราคา" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/waiting-approve" label="รอลูกค้าอนุมัติ" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/pending-parts" label="กำลังจัดอะไหล่" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/done" label="งานเสร็จรอทำบิล" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/pickup" label="รอลูกค้ารับสินค้า" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/history" label="ประวัติงานซ่อม/ค้นหา" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/by-department" label="งานตามแผนก" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/by-status" label="งานตามสถานะ" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/history" label="ประวัติงานซ่อม" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
