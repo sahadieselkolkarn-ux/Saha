@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -18,7 +19,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, MoreHorizontal, PlusCircle, Upload, Search } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Upload, Search, Edit, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { Customer } from "@/lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 
 const customerSchema = z.object({
@@ -59,7 +61,9 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive">
+                            Delete
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -91,7 +95,6 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
 
-
   const form = useForm<z.infer<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
     defaultValues: {
@@ -121,7 +124,7 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
     });
     return () => unsubscribe();
   }, [db, toast]);
-
+  
   const filteredCustomers = useMemo(() => {
     if (!searchTerm.trim()) {
       return customers;
@@ -134,19 +137,21 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
   }, [customers, searchTerm]);
 
   useEffect(() => {
-    if (!isDialogOpen) {
+    if (isDialogOpen) {
+      if (editingCustomer) {
+        form.reset(editingCustomer);
+      }
+    } else {
       setEditingCustomer(null);
       form.reset({
-          name: "",
-          phone: "",
-          detail: "",
-          useTax: false,
-          taxName: "",
-          taxAddress: "",
-          taxId: "",
+        name: "",
+        phone: "",
+        detail: "",
+        useTax: false,
+        taxName: "",
+        taxAddress: "",
+        taxId: "",
       });
-    } else if (editingCustomer) {
-        form.reset(editingCustomer);
     }
   }, [isDialogOpen, editingCustomer, form]);
 
@@ -180,8 +185,8 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
   const confirmDelete = async () => {
     if (!db || !customerToDelete) return;
     
-    const customerDoc = doc(db, "customers", customerToDelete);
     try {
+      const customerDoc = doc(db, "customers", customerToDelete);
       await deleteDoc(customerDoc)
       toast({title: "Customer deleted successfully"});
     } catch (error: any) {
@@ -255,54 +260,64 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
-        <DialogContent 
-            className="sm:max-w-[600px]"
-            onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
-            onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
+        <DialogContent
+          className="sm:max-w-[600px] p-0 flex flex-col max-h-[90dvh]"
+          onInteractOutside={(e) => {
+            if (isSubmitting) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (isSubmitting) e.preventDefault();
+          }}
         >
-          <DialogHeader>
+          <DialogHeader className="p-6 pb-2 shrink-0">
             <DialogTitle>Edit Customer</DialogTitle>
             <DialogDescription>Update the details below.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-              <FormField name="name" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="phone" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="detail" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Details</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="useTax" control={form.control} render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Use Tax Invoice</FormLabel>
-                    <FormMessage />
-                  </div>
-                </FormItem>
-              )} />
-              {useTax && (
-                <div className="space-y-4 p-4 border rounded-md bg-muted/50">
-                    <FormField name="taxName" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField name="taxAddress" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField name="taxId" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col min-h-0">
+              <ScrollArea className="flex-1 min-h-0 px-6">
+                <div className="space-y-4 pb-6 pt-4">
+                  <FormField name="name" control={form.control} render={({ field }) => (
+                    <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField name="phone" control={form.control} render={({ field }) => (
+                    <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField name="detail" control={form.control} render={({ field }) => (
+                    <FormItem><FormLabel>Details</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField name="useTax" control={form.control} render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Use Tax Invoice</FormLabel>
+                        <FormMessage />
+                      </div>
+                    </FormItem>
+                  )} />
+                  {useTax && (
+                    <div className="space-y-4 p-4 border rounded-md bg-muted/50">
+                        <FormField name="taxName" control={form.control} render={({ field }) => (
+                            <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                        )} />
+                        <FormField name="taxAddress" control={form.control} render={({ field }) => (
+                            <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                        )} />
+                        <FormField name="taxId" control={form.control} render={({ field }) => (
+                            <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                        )} />
+                    </div>
+                  )}
                 </div>
-              )}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+              </ScrollArea>
+              <div className="shrink-0 border-t bg-background px-6 py-4 flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </Button>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
                 </Button>
-              </DialogFooter>
+              </div>
             </form>
           </Form>
         </DialogContent>
@@ -525,3 +540,5 @@ export default function CustomersPage() {
         </>
     );
 }
+
+    
