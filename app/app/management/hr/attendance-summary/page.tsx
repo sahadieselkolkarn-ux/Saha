@@ -398,8 +398,9 @@ export default function ManagementHRAttendanceSummaryPage() {
             {filteredSummaryData.map((summary, idx) => {
               const isOpen = openUserIds.has(summary.userId);
               return (
-                <React.Fragment key={summary.userId}>
+                <>
                   <TableRow
+                    key={summary.userId}
                     className={cn(
                       "cursor-pointer hover:bg-muted/50",
                       isOpen && "bg-muted/50"
@@ -488,7 +489,7 @@ export default function ManagementHRAttendanceSummaryPage() {
                       </TableCell>
                     </TableRow>
                   )}
-                </React.Fragment>
+                </>
               );
             })}
           </TableBody>
