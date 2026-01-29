@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical, Save } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -24,6 +24,10 @@ import { Badge } from "@/components/ui/badge";
 import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayType, PayslipSnapshot } from "@/lib/types";
 import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
 import { WithId } from "@/firebase/firestore/use-collection";
+import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
+import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
+import { formatPayslipAsText, formatPayslipAsJson } from "@/lib/payroll/formatPayslipCopy";
+
 
 // This calculation logic is complex and might need refinement based on business rules.
 function calculateUserPeriodSummary(
@@ -95,10 +99,14 @@ export default function HRGeneratePayslipsPage() {
     const [period, setPeriod] = useState<1 | 2>(new Date().getDate() <= 15 ? 1 : 2);
     
     const [isLoading, setIsLoading] = useState(false);
-    const [isActing, setIsActing] = useState<string | null>(null); // For per-row actions
+    const [isActing, setIsActing] = useState<string | null>(null);
     const [error, setError] = useState<Error | null>(null);
 
     const [employeeData, setEmployeeData] = useState<any[]>([]);
+    
+    // Drawer State
+    const [editingPayslip, setEditingPayslip] = useState<any | null>(null);
+    const [drawerSnapshot, setDrawerSnapshot] = useState<PayslipSnapshot | null>(null);
     
     const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
     const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
@@ -146,8 +154,8 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(holidaysQuery),
                 getDocs(leavesQuery),
                 getDocs(attendanceQuery),
-                getDocs(adjustmentsQuery),
-                getDocs(payslipsQuery),
+                getDocs(adjustmentsSnap),
+                getDocs(payslipsSnap),
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
@@ -166,11 +174,14 @@ export default function HRGeneratePayslipsPage() {
                 const userAdjustments = allAdjustments.filter(a => a.userId === user.id);
 
                 const workDays = calculateUserPeriodSummary(user, payPeriod, hrSettings, userLeaves, userAttendance, userAdjustments, allHolidays);
-
+                const existingSlip = existingPayslips.get(user.id);
+                
                 return {
                     ...user,
                     calculatedWorkDays: workDays,
-                    payslipStatus: existingPayslips.get(user.id)?.status ?? 'ไม่มีสลิป'
+                    payslipStatus: existingSlip?.status ?? 'ไม่มีสลิป',
+                    snapshot: existingSlip?.snapshot ?? null,
+                    revisionNo: existingSlip?.revisionNo,
                 };
             });
 
@@ -184,58 +195,57 @@ export default function HRGeneratePayslipsPage() {
         }
     }, [db, hrSettings, currentMonth, period, toast]);
 
-    const handleCreateUpdateDraft = async (user: any) => {
-        if (!db || !adminProfile) return;
-        setIsActing(user.id);
+    const handleOpenDrawer = (user: any) => {
+        setEditingPayslip(user);
+        const basePay = (user.hr?.salaryMonthly ?? 0) / 2; // Simple assumption
+        const initialSnapshot: PayslipSnapshot = user.snapshot ?? {
+            basePay: basePay,
+            netPay: basePay, // Will be recalculated by calcTotals
+            additions: [],
+            deductions: [],
+            attendanceSummary: { presentDays: user.calculatedWorkDays },
+            leaveSummary: {},
+            calcNotes: '',
+        };
+        const totals = calcTotals(initialSnapshot);
+        setDrawerSnapshot({ ...initialSnapshot, netPay: totals.netPay });
+    };
+
+    const handleSaveDraft = async () => {
+        if (!db || !adminProfile || !editingPayslip || !drawerSnapshot) return;
+        setIsActing(editingPayslip.id);
         
         const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
         const batchRef = doc(db, 'payrollBatches', payrollBatchId);
-        const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', user.id);
+        const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', editingPayslip.id);
 
         try {
-            const period1StartDay = hrSettings?.payroll?.period1Start || 1;
-            const period2StartDay = hrSettings?.payroll?.period2Start || 16;
-            
-            const startDate = period === 1 
-              ? set(currentMonth, { date: period1StartDay })
-              : set(currentMonth, { date: period2StartDay });
-            const endDate = period === 1 
-              ? set(currentMonth, { date: hrSettings?.payroll?.period1End || 15 })
-              : endOfMonth(currentMonth);
-
             await setDoc(batchRef, {
                 year: currentMonth.getFullYear(),
                 month: currentMonth.getMonth() + 1,
                 periodNo: period,
-                startDate: format(startDate, 'yyyy-MM-dd'),
-                endDate: format(endDate, 'yyyy-MM-dd'),
                 createdAt: serverTimestamp(),
                 createdByUid: adminProfile.uid,
                 createdByName: adminProfile.displayName
             }, { merge: true });
 
-            // Placeholder snapshot. A real implementation would calculate deductions, etc.
-            const snapshot: PayslipSnapshot = {
-                basePay: (user.hr?.salaryMonthly ?? 0) / 2, // Simple assumption
-                netPay: (user.hr?.salaryMonthly ?? 0) / 2, // Placeholder
-                deductions: [],
-                additions: [],
-                attendanceSummary: { presentDays: user.calculatedWorkDays },
-                leaveSummary: {} // Empty for now
-            };
+            const totals = calcTotals(drawerSnapshot);
+            const finalSnapshot = { ...drawerSnapshot, netPay: totals.netPay };
 
             await setDoc(payslipRef, {
                 status: 'DRAFT',
-                snapshot: snapshot,
-                userId: user.id,
-                userName: user.displayName,
+                snapshot: finalSnapshot,
+                userId: editingPayslip.id,
+                userName: editingPayslip.displayName,
                 batchId: payrollBatchId,
-                revisionNo: 1, // This should be incremented on subsequent updates
+                revisionNo: editingPayslip.revisionNo || 0,
                 updatedAt: serverTimestamp(),
             }, { merge: true });
 
-            setEmployeeData(prev => prev.map(e => e.id === user.id ? { ...e, payslipStatus: 'DRAFT' } : e));
-            toast({ title: `สร้าง/อัปเดตสลิปร่างสำหรับ ${user.displayName} สำเร็จ` });
+            setEmployeeData(prev => prev.map(e => e.id === editingPayslip.id ? { ...e, payslipStatus: 'DRAFT', snapshot: finalSnapshot, revisionNo: editingPayslip.revisionNo || 0 } : e));
+            toast({ title: `บันทึกสลิปร่างสำหรับ ${editingPayslip.displayName} สำเร็จ` });
+            setEditingPayslip(null);
+            setDrawerSnapshot(null);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
         } finally {
@@ -243,35 +253,54 @@ export default function HRGeneratePayslipsPage() {
         }
     };
     
-    const handleSendToEmployee = async (user: any) => {
-         if (!db || !adminProfile) return;
-        setIsActing(user.id);
+    const handleSaveAndSend = async () => {
+        if (!db || !adminProfile || !editingPayslip || !drawerSnapshot) return;
+        setIsActing(editingPayslip.id);
+
         const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
-        const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', user.id);
+        const batchRef = doc(db, 'payrollBatches', payrollBatchId);
+        const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', editingPayslip.id);
 
         try {
-            const currentPayslip = (await getDocs(query(collection(db, 'payrollBatches', payrollBatchId, 'payslips'), where('userId', '==', user.id)))).docs[0]?.data() as PayslipNew;
+            await setDoc(batchRef, {
+                year: currentMonth.getFullYear(), month: currentMonth.getMonth() + 1, periodNo: period,
+                createdAt: serverTimestamp(), createdByUid: adminProfile.uid, createdByName: adminProfile.displayName
+            }, { merge: true });
+
+            const totals = calcTotals(drawerSnapshot);
+            const finalSnapshot = { ...drawerSnapshot, netPay: totals.netPay };
             
-            await updateDoc(payslipRef, {
+            const nextRevisionNo = (editingPayslip.revisionNo || 0) + 1;
+
+            await setDoc(payslipRef, {
                 status: 'SENT_TO_EMPLOYEE',
-                sentAt: serverTimestamp(),
-                lockedAt: serverTimestamp(),
-                revisionNo: (currentPayslip?.revisionNo || 0) + 1,
+                snapshot: finalSnapshot,
+                userId: editingPayslip.id,
+                userName: editingPayslip.displayName,
+                batchId: payrollBatchId,
+                revisionNo: nextRevisionNo,
                 updatedAt: serverTimestamp(),
-            });
-            setEmployeeData(prev => prev.map(e => e.id === user.id ? { ...e, payslipStatus: 'SENT_TO_EMPLOYEE' } : e));
-            toast({ title: `ส่งสลิปให้ ${user.displayName} แล้ว` });
+                sentAt: serverTimestamp(),
+                lockedAt: serverTimestamp()
+            }, { merge: true });
+
+            setEmployeeData(prev => prev.map(e => e.id === editingPayslip.id ? { ...e, payslipStatus: 'SENT_TO_EMPLOYEE', snapshot: finalSnapshot, revisionNo: nextRevisionNo } : e));
+            toast({ title: `ส่งสลิปให้ ${editingPayslip.displayName} แล้ว` });
+            setEditingPayslip(null);
+            setDrawerSnapshot(null);
         } catch (e: any) {
             toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
         } finally {
             setIsActing(null);
         }
-    }
-
+    };
 
     if (!hasPermission) {
         return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle></CardHeader></Card>;
     }
+
+    const periodLabel = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
+    const drawerTotals = useMemo(() => calcTotals(drawerSnapshot), [drawerSnapshot]);
 
     return (
         <>
@@ -328,17 +357,8 @@ export default function HRGeneratePayslipsPage() {
                                                 </Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem
-                                                        onClick={() => handleCreateUpdateDraft(user)}
-                                                        disabled={isActing !== null || user.payslipStatus === 'PAID'}
-                                                    >
-                                                        <FilePlus className="mr-2 h-4 w-4" /> สร้าง/อัปเดตร่าง
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                        onClick={() => handleSendToEmployee(user)}
-                                                        disabled={isActing !== null || user.payslipStatus === 'ไม่มีสลิป' || user.payslipStatus === 'PAID' || user.payslipStatus === 'SENT_TO_EMPLOYEE'}
-                                                    >
-                                                        <Send className="mr-2 h-4 w-4" /> ส่งให้พนักงานตรวจสอบ
+                                                    <DropdownMenuItem onClick={() => handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID'}>
+                                                        <FilePlus className="mr-2 h-4 w-4" /> สร้าง/แก้ไขสลิป
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
@@ -349,6 +369,40 @@ export default function HRGeneratePayslipsPage() {
                         </Table>
                     </CardContent>
                 </Card>
+            )}
+
+            {editingPayslip && drawerSnapshot && (
+                <PayslipSlipDrawer
+                    open={!!editingPayslip}
+                    onOpenChange={(open) => !open && setEditingPayslip(null)}
+                    title="แก้ไขสลิปเงินเดือน"
+                    description={`${editingPayslip.displayName} - ${periodLabel}`}
+                    copyText={formatPayslipAsText({ userName: editingPayslip.displayName, periodLabel, snapshot: drawerSnapshot, totals: drawerTotals })}
+                    copyJson={formatPayslipAsJson(drawerSnapshot)}
+                    footerActions={
+                      (editingPayslip.payslipStatus !== 'PAID' && editingPayslip.payslipStatus !== 'SENT_TO_EMPLOYEE' && editingPayslip.payslipStatus !== 'READY_TO_PAY') && (
+                        <>
+                          <Button variant="outline" onClick={() => setEditingPayslip(null)} disabled={isActing === editingPayslip.id}>ยกเลิก</Button>
+                          <Button onClick={handleSaveDraft} disabled={isActing === editingPayslip.id}>
+                            {isActing === editingPayslip.id ? <Loader2 className="animate-spin mr-2"/> : <Save className="mr-2"/>}
+                            บันทึกฉบับร่าง
+                          </Button>
+                          <Button onClick={handleSaveAndSend} disabled={isActing === editingPayslip.id}>
+                             {isActing === editingPayslip.id ? <Loader2 className="animate-spin mr-2"/> : <Send className="mr-2"/>}
+                            ส่งให้พนักงาน
+                          </Button>
+                        </>
+                      )
+                    }
+                >
+                    <PayslipSlipView
+                        userName={editingPayslip.displayName}
+                        periodLabel={periodLabel}
+                        snapshot={drawerSnapshot}
+                        mode="edit"
+                        onChange={setDrawerSnapshot}
+                    />
+                </PayslipSlipDrawer>
             )}
         </>
     );
