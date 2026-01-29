@@ -6,7 +6,7 @@ import { doc, collection, query, where, orderBy, getDocs, Timestamp, setDoc, ser
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isWithinInterval, parseISO, eachDayOfInterval, isSaturday, isSunday, isAfter, isBefore, set, differenceInMinutes, startOfToday } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,59 +27,10 @@ import { WithId } from "@/firebase/firestore/use-collection";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
 import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
 import { formatPayslipAsText, formatPayslipAsJson } from "@/lib/payroll/formatPayslipCopy";
+import { computePeriodMetrics, PeriodMetrics } from "@/lib/payroll/payslip-period-metrics";
 
 
 // This calculation logic is complex and might need refinement based on business rules.
-function calculateUserPeriodSummary(
-    user: WithId<UserProfile>,
-    period: { start: Date; end: Date },
-    hrSettings: HRSettings,
-    allUserLeaves: LeaveRequest[],
-    allUserAttendance: Attendance[],
-    allUserAdjustments: AttendanceAdjustment[],
-    allHolidays: Map<string, string>
-) {
-    const today = startOfToday();
-    if (isAfter(period.start, today)) return 0; // Don't calculate for future periods
-
-    const daysInPeriod = eachDayOfInterval({start: period.start, end: Math.min(period.end.getTime(), today.getTime()) as any});
-    
-    const weekendMode = hrSettings.weekendPolicy?.mode || 'SAT_SUN';
-    const [absentCutoffHour, absentCutoffMinute] = (hrSettings.absentCutoffTime || '09:00').split(':').map(Number);
-    
-    let workDays = 0;
-    
-    daysInPeriod.forEach(day => {
-        if (user.hr?.startDate && isBefore(day, parseISO(user.hr.startDate))) return;
-        if (user.hr?.endDate && isAfter(day, parseISO(user.hr.endDate))) return;
-
-        const dayStr = format(day, 'yyyy-MM-dd');
-        if (allHolidays.has(dayStr)) return;
-        const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
-        if (isWeekendDay) return;
-
-        const onLeave = allUserLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
-        if (onLeave) return; // On leave doesn't count as a work day for this purpose
-
-        const attendanceForDay = allUserAttendance.filter(a => a.timestamp && format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr);
-        let firstIn = attendanceForDay.find(a => a.type === 'IN')?.timestamp.toDate();
-
-        const adjustmentForDay = allUserAdjustments.find(a => a.date === dayStr);
-        if (adjustmentForDay?.type === 'ADD_RECORD' && adjustmentForDay.adjustedIn) {
-            firstIn = adjustmentForDay.adjustedIn.toDate();
-        }
-        
-        if (!firstIn) return; // Absent
-
-        const absentCutoff = set(day, { hours: absentCutoffHour, minutes: absentCutoffMinute });
-        if (isAfter(firstIn, absentCutoff)) return; // Absent
-        
-        workDays++;
-    });
-
-    return workDays;
-}
-
 const getStatusBadgeVariant = (status?: PayslipStatusNew) => {
     switch (status) {
         case 'DRAFT': return 'secondary';
@@ -90,6 +41,14 @@ const getStatusBadgeVariant = (status?: PayslipStatusNew) => {
         default: return 'outline';
     }
 }
+
+interface EmployeeRowData extends WithId<UserProfile> {
+    periodMetrics: PeriodMetrics | null;
+    payslipStatus?: PayslipStatusNew | 'ไม่มีสลิป';
+    snapshot: PayslipSnapshot | null;
+    revisionNo?: number;
+}
+
 
 export default function HRGeneratePayslipsPage() {
     const { db } = useFirebase();
@@ -102,10 +61,10 @@ export default function HRGeneratePayslipsPage() {
     const [isActing, setIsActing] = useState<string | null>(null);
     const [error, setError] = useState<Error | null>(null);
 
-    const [employeeData, setEmployeeData] = useState<any[]>([]);
+    const [employeeData, setEmployeeData] = useState<EmployeeRowData[]>([]);
     
     // Drawer State
-    const [editingPayslip, setEditingPayslip] = useState<any | null>(null);
+    const [editingPayslip, setEditingPayslip] = useState<EmployeeRowData | null>(null);
     const [drawerSnapshot, setDrawerSnapshot] = useState<PayslipSnapshot | null>(null);
     
     const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
@@ -140,7 +99,7 @@ export default function HRGeneratePayslipsPage() {
             const endStr = format(payPeriod.end, 'yyyy-MM-dd');
             
             const usersQuery = query(collection(db, 'users'), where('status', '==', 'ACTIVE'));
-            const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<=', endStr));
+            const holidaysQuery = query(collection(db, 'hrHolidays'));
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED'));
             const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', payPeriod.start), where('timestamp', '<=', payPeriod.end));
             const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<=', endStr));
@@ -165,7 +124,7 @@ export default function HRGeneratePayslipsPage() {
             const allHolidays = new Map(holidaysSnap.docs.map(d => [d.data().date, d.data().name]));
             const allLeaves = leavesSnap.docs.map(d => d.data() as LeaveRequest);
             const allAttendance = attendanceSnap.docs.map(d => d.data() as Attendance);
-            const allAdjustments = adjustmentsSnap.docs.map(d => d.data() as AttendanceAdjustment);
+            const allAdjustments = adjustmentsSnap.docs.map(d => ({id: d.id, ...d.data()} as WithId<AttendanceAdjustment>));
             const existingPayslips = new Map(payslipsSnap.docs.map(d => [d.id, d.data() as PayslipNew]));
 
             const data = activeUsers.map(user => {
@@ -173,12 +132,23 @@ export default function HRGeneratePayslipsPage() {
                 const userAttendance = allAttendance.filter(a => a.userId === user.id);
                 const userAdjustments = allAdjustments.filter(a => a.userId === user.id);
 
-                const workDays = calculateUserPeriodSummary(user, payPeriod, hrSettings, userLeaves, userAttendance, userAdjustments, allHolidays);
+                const periodMetrics = computePeriodMetrics({
+                    user,
+                    payType: user.hr!.payType!,
+                    period: payPeriod,
+                    hrSettings,
+                    holidays: allHolidays,
+                    userLeavesApprovedYear: userLeaves,
+                    userAttendance,
+                    userAdjustments,
+                    today: new Date(),
+                });
+
                 const existingSlip = existingPayslips.get(user.id);
                 
                 return {
                     ...user,
-                    calculatedWorkDays: workDays,
+                    periodMetrics,
                     payslipStatus: existingSlip?.status ?? 'ไม่มีสลิป',
                     snapshot: existingSlip?.snapshot ?? null,
                     revisionNo: existingSlip?.revisionNo,
@@ -195,17 +165,22 @@ export default function HRGeneratePayslipsPage() {
         }
     }, [db, hrSettings, currentMonth, period, toast]);
 
-    const handleOpenDrawer = (user: any) => {
+    const handleOpenDrawer = (user: EmployeeRowData) => {
         setEditingPayslip(user);
+        if (!user.periodMetrics) {
+            toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'});
+            return;
+        }
+
         const basePay = (user.hr?.salaryMonthly ?? 0) / 2; // Simple assumption
         const initialSnapshot: PayslipSnapshot = user.snapshot ?? {
             basePay: basePay,
             netPay: basePay, // Will be recalculated by calcTotals
             additions: [],
-            deductions: [],
-            attendanceSummary: { presentDays: user.calculatedWorkDays },
-            leaveSummary: {},
-            calcNotes: '',
+            deductions: user.periodMetrics.autoDeductions,
+            attendanceSummary: user.periodMetrics.attendanceSummary,
+            leaveSummary: user.periodMetrics.leaveSummary,
+            calcNotes: user.periodMetrics.calcNotes,
         };
         const totals = calcTotals(initialSnapshot);
         setDrawerSnapshot({ ...initialSnapshot, netPay: totals.netPay });
@@ -347,7 +322,7 @@ export default function HRGeneratePayslipsPage() {
                                         <TableCell>{user.displayName}</TableCell>
                                         <TableCell>{deptLabel(user.department)}</TableCell>
                                         <TableCell>{payTypeLabel(user.hr.payType)}</TableCell>
-                                        <TableCell>{user.calculatedWorkDays}</TableCell>
+                                        <TableCell>{user.periodMetrics?.attendanceSummary.presentDays ?? '-'}</TableCell>
                                         <TableCell><Badge variant={getStatusBadgeVariant(user.payslipStatus)}>{newPayslipStatusLabel(user.payslipStatus) || user.payslipStatus}</Badge></TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>
@@ -407,3 +382,5 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
+
+    

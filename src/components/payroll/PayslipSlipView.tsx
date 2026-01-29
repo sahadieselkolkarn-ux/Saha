@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo } from "react";
@@ -41,6 +42,13 @@ interface PayslipSlipViewProps {
   onChange?: (nextSnapshot: PayslipSnapshot) => void;
   className?: string;
 }
+
+const SummaryRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="flex justify-between items-center text-sm">
+      <p className="text-muted-foreground">{label}</p>
+      <p className="font-medium">{value}</p>
+    </div>
+  );
 
 // --- Main Component ---
 export function PayslipSlipView({ userName, periodLabel, snapshot, mode, onChange, className }: PayslipSlipViewProps) {
@@ -129,6 +137,29 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, onChang
             </CardContent>
         </Card>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+                <CardHeader><CardTitle className="text-base">สรุปการลงเวลา</CardTitle></CardHeader>
+                <CardContent className="space-y-1">
+                    <SummaryRow label="วันทำงาน" value={snapshot.attendanceSummary?.presentDays ?? '-'} />
+                    <SummaryRow label="วันมาสาย" value={snapshot.attendanceSummary?.lateDays ?? '-'} />
+                    <SummaryRow label="จำนวนนาทีที่สาย" value={snapshot.attendanceSummary?.lateMinutes ?? '-'} />
+                    <SummaryRow label="หน่วยที่ขาด" value={snapshot.attendanceSummary?.absentUnits ?? '-'} />
+                    <SummaryRow label="วันลา" value={snapshot.attendanceSummary?.leaveDays ?? '-'} />
+                </CardContent>
+            </Card>
+             <Card>
+                <CardHeader><CardTitle className="text-base">สรุปการลา</CardTitle></CardHeader>
+                <CardContent className="space-y-1">
+                    <SummaryRow label="ลาป่วย" value={`${snapshot.leaveSummary?.sickDays ?? '-'} วัน`} />
+                    <SummaryRow label="ลากิจ" value={`${snapshot.leaveSummary?.businessDays ?? '-'} วัน`} />
+                    <SummaryRow label="ลาพักร้อน" value={`${snapshot.leaveSummary?.vacationDays ?? '-'} วัน`} />
+                    <SummaryRow label="ลาเกินสิทธิ์" value={`${snapshot.leaveSummary?.overLimitDays ?? '-'} วัน`} />
+                </CardContent>
+            </Card>
+        </div>
+
+
         {isEdit ? (
             <>
                 <Card>
@@ -175,3 +206,5 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, onChang
     </div>
   );
 }
+
+    

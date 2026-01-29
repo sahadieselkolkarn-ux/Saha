@@ -1,3 +1,4 @@
+
 import type { PayslipSnapshot } from '@/lib/types';
 
 const formatCurrency = (value: number | undefined) => {
@@ -54,6 +55,14 @@ export function formatPayslipAsText(data: SlipData): string {
     text += `ยอดสุทธิ: ${formatCurrency(totals.netPay)}\n`;
     text += `--------------------------------\n\n`;
 
+    if (snapshot.attendanceSummary) {
+        text += `สรุปการทำงาน:\n`;
+        text += ` - วันทำงาน: ${snapshot.attendanceSummary.presentDays ?? 0}\n`;
+        text += ` - มาสาย: ${snapshot.attendanceSummary.lateDays ?? 0} วัน (${snapshot.attendanceSummary.lateMinutes ?? 0} นาที)\n`;
+        text += ` - ขาด: ${snapshot.attendanceSummary.absentUnits ?? 0} หน่วย\n`;
+        text += ` - ลา: ${snapshot.attendanceSummary.leaveDays ?? 0} วัน\n\n`;
+    }
+
     if (snapshot.calcNotes) {
         text += `หมายเหตุ HR:\n${snapshot.calcNotes}\n`;
     }
@@ -64,3 +73,5 @@ export function formatPayslipAsText(data: SlipData): string {
 export function formatPayslipAsJson(snapshot: PayslipSnapshot): string {
     return JSON.stringify(snapshot, null, 2);
 }
+
+    
