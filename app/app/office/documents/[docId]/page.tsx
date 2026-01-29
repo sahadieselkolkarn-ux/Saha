@@ -30,6 +30,16 @@ function DocumentView({ document }: { document: Document }) {
     
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
 
+    const isTaxDoc =
+        document.docType === 'TAX_INVOICE' ||
+        document.docType === 'CREDIT_NOTE' ||
+        document.docType === 'WITHHOLDING_TAX' ||
+        (document.docType === 'RECEIPT' && !!document.customerSnapshot.useTax);
+
+    const displayCustomerName = isTaxDoc
+        ? document.customerSnapshot.taxName || document.customerSnapshot.name
+        : document.customerSnapshot.name;
+
     return (
         <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none print:bg-white">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -61,7 +71,7 @@ function DocumentView({ document }: { document: Document }) {
                     <CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm space-y-1">
-                    <p className="font-semibold">{document.customerSnapshot.name}</p>
+                    <p className="font-semibold">{displayCustomerName}</p>
                     <p className="text-muted-foreground whitespace-pre-wrap">{document.customerSnapshot.taxAddress || 'N/A'}</p>
                     <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
                     {!isDeliveryNote && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
