@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Drawer, DrawerContent, DrawerClose } from "@/components/ui/drawer";
+import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Copy, CopyCheck, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -53,7 +53,7 @@ export function PayslipSlipDrawer({
   };
 
   const DrawerHeader = () => (
-    <div className="sticky top-0 z-10 bg-background border-b p-4 flex items-center justify-between">
+    <div className="sticky top-0 z-10 bg-background border-b p-4 flex items-center justify-between shrink-0">
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">{title}</h2>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
@@ -77,19 +77,17 @@ export function PayslipSlipDrawer({
   );
 
   const DrawerFooter = () => (
-    <>
-      {footerActions && (
-        <div className="sticky bottom-0 z-10 border-t bg-background p-4 flex flex-row justify-end gap-2">
-          {footerActions}
-        </div>
-      )}
-    </>
+    footerActions ? (
+      <div className="border-t bg-background p-4 flex justify-end gap-2 shrink-0">
+        {footerActions}
+      </div>
+    ) : null
   );
 
   if (isDesktop) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl p-0 flex flex-col h-auto max-h-[90dvh]">
+        <DialogContent className="max-w-2xl p-0 flex flex-col h-[90dvh]">
           <DrawerHeader />
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="p-6">
@@ -104,7 +102,7 @@ export function PayslipSlipDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="h-[95dvh] flex flex-col">
+      <DrawerContent className="h-[100dvh] flex flex-col">
         <DrawerHeader />
         <ScrollArea className="flex-1 overflow-y-auto">
           <div className="p-4">
