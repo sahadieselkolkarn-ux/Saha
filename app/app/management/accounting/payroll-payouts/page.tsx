@@ -1,42 +1,38 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
-  collectionGroup,
+  doc,
+  collection,
   query,
   where,
-  onSnapshot,
-  doc,
-  writeBatch,
-  serverTimestamp,
-  collection,
+  orderBy,
+  getDocs,
+  Timestamp,
   runTransaction,
   increment,
-  orderBy,
-  type FirestoreError,
 } from "firebase/firestore";
-import { format } from "date-fns";
-import * as z from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import type { WithId } from "@/firebase/firestore/use-collection";
-import type { Payslip, AccountingAccount } from "@/lib/types";
-
+import { addMonths, subMonths, format } from "date-fns";
+import * as z from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Loader2, ChevronLeft, ChevronRight, HandCoins } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, HandCoins, AlertCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { PayslipNew, AccountingAccount } from "@/lib/types";
+import { WithId } from "@/firebase/firestore/use-collection";
+import { newPayslipStatusLabel } from "@/lib/ui-labels";
 
 // --- Helper Functions & Schemas ---
 const formatCurrency = (value: number) => {
@@ -63,7 +59,7 @@ function PayDialog({
   onConfirm,
   isSubmitting,
 }: {
-  payslip: WithId<Payslip>;
+  payslip: WithId<PayslipNew>;
   accounts: WithId<AccountingAccount>[];
   onClose: () => void;
   onConfirm: (data: PaymentFormData) => Promise<void>;
@@ -85,7 +81,7 @@ function PayDialog({
         <DialogHeader>
           <DialogTitle>บันทึกการจ่ายเงินเดือน</DialogTitle>
           <DialogDescription>
-            พนักงาน: {payslip.userName} | งวด: {payslip.payrollBatchId}
+            พนักงาน: {payslip.userName} | งวด: {payslip.batchId}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -113,126 +109,126 @@ function PayDialog({
   );
 }
 
-
 // --- Main Page Component ---
 export default function PayrollPayoutsPage() {
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
 
-  const [payslips, setPayslips] = useState<WithId<Payslip>[]>([]);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [period, setPeriod] = useState<1 | 2>(new Date().getDate() <= 15 ? 1 : 2);
+  const [payslips, setPayslips] = useState<WithId<PayslipNew>[]>([]);
   const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<FirestoreError | null>(null);
-
-  const [payingPayslip, setPayingPayslip] = useState<WithId<Payslip> | null>(null);
+  
+  const [payingPayslip, setPayingPayslip] = useState<WithId<PayslipNew> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
   useEffect(() => {
     if (!db || !hasPermission) {
-        setLoading(false);
-        return;
-    };
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
-
+    const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
     const payslipsQuery = query(
-      collectionGroup(db, "payslips"),
+      collection(db, "payrollBatches", payrollBatchId, "payslips"),
       where("status", "==", "READY_TO_PAY")
     );
     
     const accountsQuery = query(
-        collection(db, "accountingAccounts"),
-        where("isActive", "==", true)
+      collection(db, "accountingAccounts"),
+      where("isActive", "==", true),
+      orderBy("name", "asc")
     );
 
     const unsubPayslips = onSnapshot(payslipsQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, ref: doc.ref } as WithId<Payslip> & { ref: any }));
+      const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as WithId<PayslipNew>));
       setPayslips(data);
       setLoading(false);
     }, (err) => {
-      setError(err);
+      setPayslips([]);
       setLoading(false);
-      toast({ variant: 'destructive', title: 'ไม่สามารถโหลดสลิปเงินเดือน', description: err.message });
+      if(err.code === 'not-found') {
+        // This is expected if the batch doesn't exist, not an error.
+      } else {
+        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดสลิปเงินเดือน', description: err.message });
+      }
     });
 
     const unsubAccounts = onSnapshot(accountsQuery, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>));
-        data.sort((a,b) => String(a.name || "").localeCompare(String(b.name || ""), 'th'));
-        setAccounts(data);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>));
+      setAccounts(data);
     }, (err) => {
-        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดบัญชี', description: err.message });
+      toast({ variant: 'destructive', title: 'ไม่สามารถโหลดบัญชี', description: err.message });
     });
     
     return () => {
-        unsubPayslips();
-        unsubAccounts();
+      unsubPayslips();
+      unsubAccounts();
     }
-
-  }, [db, hasPermission, toast]);
+  }, [db, hasPermission, toast, currentMonth, period]);
 
   const handleConfirmPayment = async (formData: PaymentFormData) => {
     if (!db || !profile || !payingPayslip) return;
     setIsSubmitting(true);
 
     try {
-        const payslipRef = payingPayslip.ref;
-        const payrollBatchRef = payslipRef.parent.parent; // This should be the payrollBatch doc
+      const payrollBatchId = payingPayslip.batchId;
+      const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', payingPayslip.id);
+      const payrollBatchRef = doc(db, 'payrollBatches', payrollBatchId);
 
-        if (!payrollBatchRef) {
-            throw new Error("Could not find parent payroll run.");
-        }
-
-        await runTransaction(db, async (transaction) => {
-            const entryRef = doc(collection(db, 'accountingEntries'));
-            
-            // 1. Create accounting entry
-            transaction.set(entryRef, {
-                entryType: 'CASH_OUT',
-                entryDate: formData.paidDate,
-                amount: payingPayslip.snapshot?.netPay ?? 0,
-                accountId: formData.accountId,
-                paymentMethod: formData.paymentMethod,
-                description: `จ่ายเงินเดือน: ${payslip.userName} งวด ${payslip.payrollBatchId}`,
-                sourceDocType: 'PAYSLIP',
-                sourceDocId: payingPayslip.id,
-                sourceDocNo: `PAYSLIP-${payslip.payrollBatchId}-${payslip.userId.slice(0, 5)}`,
-                categoryMain: 'ค่าแรง/เงินเดือน',
-                categorySub: 'เงินเดือน',
-                referenceNo: formData.referenceNo,
-                createdAt: serverTimestamp(),
-            });
-
-            // 2. Update payslip
-            transaction.update(payslipRef, {
-                status: 'PAID',
-                paidAt: serverTimestamp(),
-                paidByUid: profile.uid,
-                paidByName: profile.displayName,
-                paymentMethod: formData.paymentMethod,
-                paidAccountId: formData.accountId,
-                accountingEntryId: entryRef.id,
-            });
-
-            // 3. Update payroll batch summary
-            transaction.update(payrollBatchRef, {
-                'statusSummary.readyCount': increment(-1),
-                'statusSummary.paidCount': increment(1),
-            });
+      await runTransaction(db, async (transaction) => {
+        const entryRef = doc(collection(db, 'accountingEntries'));
+        
+        // 1. Create accounting entry
+        transaction.set(entryRef, {
+          entryType: 'CASH_OUT',
+          entryDate: formData.paidDate,
+          amount: payingPayslip.snapshot?.netPay ?? 0,
+          accountId: formData.accountId,
+          paymentMethod: formData.paymentMethod,
+          description: `จ่ายเงินเดือน: ${payingPayslip.userName} งวด ${payingPayslip.batchId}`,
+          sourceDocType: 'PAYSLIP',
+          sourceDocId: payingPayslip.id,
+          sourceDocNo: `PAYSLIP-${payingPayslip.batchId}-${payingPayslip.userId.slice(0, 5)}`,
+          categoryMain: 'ค่าแรง/เงินเดือน',
+          categorySub: 'เงินเดือน',
+          referenceNo: formData.referenceNo,
+          createdAt: serverTimestamp(),
         });
 
-        toast({ title: 'บันทึกการจ่ายเงินเดือนสำเร็จ' });
-        setPayingPayslip(null); // Close dialog
+        // 2. Update payslip
+        transaction.update(payslipRef, {
+          status: 'PAID',
+          paidAt: serverTimestamp(),
+          paidByUid: profile.uid,
+          paidByName: profile.displayName,
+          paymentMethod: formData.paymentMethod,
+          accountId: formData.accountId,
+          accountingEntryId: entryRef.id,
+        });
+
+        // 3. Update payroll batch summary
+        transaction.update(payrollBatchRef, {
+          'statusSummary.readyCount': increment(-1),
+          'statusSummary.paidCount': increment(1),
+        });
+      });
+
+      toast({ title: 'บันทึกการจ่ายเงินเดือนสำเร็จ' });
+      setPayingPayslip(null);
 
     } catch (e: any) {
-        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
+      toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
-  
+
   if (!hasPermission) {
     return (
       <Card>
@@ -249,54 +245,65 @@ export default function PayrollPayoutsPage() {
       <PageHeader title="จ่ายเงินเดือน" description="ตรวจสอบและยืนยันการจ่ายเงินเดือนที่พนักงานอนุมัติแล้ว" />
       <Card>
         <CardHeader>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <CardTitle>รายการที่พร้อมจ่าย</CardTitle>
-            <CardDescription>แสดงสลิปเงินเดือนที่พนักงานยืนยันแล้ว และพร้อมสำหรับฝ่ายบัญชีดำเนินการจ่ายเงิน</CardDescription>
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft /></Button>
+              <span className="font-semibold text-lg text-center w-32">{format(currentMonth, 'MMMM yyyy')}</span>
+              <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight /></Button>
+              <Select value={period.toString()} onValueChange={(v) => setPeriod(Number(v) as 1 | 2)}>
+                <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">งวดที่ 1</SelectItem>
+                  <SelectItem value="2">งวดที่ 2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-            {loading ? (
-                <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>
-            ) : error ? (
-                <div className="text-destructive text-center"><AlertCircle className="mx-auto" /> {error.message}</div>
-            ) : payslips.length === 0 ? (
-                <div className="text-center text-muted-foreground p-8">ไม่มีรายการที่พร้อมจ่ายในขณะนี้</div>
-            ) : (
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>พนักงาน</TableHead>
-                            <TableHead>งวด</TableHead>
-                            <TableHead>สถานะ</TableHead>
-                            <TableHead className="text-right">ยอดสุทธิ</TableHead>
-                            <TableHead className="text-right">จัดการ</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {payslips.map(p => (
-                            <TableRow key={p.id}>
-                                <TableCell>{p.userName}</TableCell>
-                                <TableCell>{p.payrollBatchId}</TableCell>
-                                <TableCell><Badge variant="outline">พร้อมจ่าย</Badge></TableCell>
-                                <TableCell className="text-right font-bold">{formatCurrency(p.snapshot?.netPay ?? 0)}</TableCell>
-                                <TableCell className="text-right">
-                                    <Button size="sm" onClick={() => setPayingPayslip(p)}>
-                                        <HandCoins className="mr-2"/> บันทึกการจ่าย
-                                    </Button>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            )}
+          {loading ? (
+            <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>
+          ) : payslips.length === 0 ? (
+            <div className="text-center text-muted-foreground p-8">ไม่มีรายการที่พร้อมจ่ายในงวดนี้</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>พนักงาน</TableHead>
+                  <TableHead>งวด</TableHead>
+                  <TableHead>สถานะ</TableHead>
+                  <TableHead className="text-right">ยอดสุทธิ</TableHead>
+                  <TableHead className="text-right">จัดการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payslips.map(p => (
+                  <TableRow key={p.id}>
+                    <TableCell>{p.userName}</TableCell>
+                    <TableCell>{p.batchId}</TableCell>
+                    <TableCell><Badge variant="outline">{newPayslipStatusLabel(p.status)}</Badge></TableCell>
+                    <TableCell className="text-right font-bold">{formatCurrency(p.snapshot?.netPay ?? 0)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" onClick={() => setPayingPayslip(p)} disabled={p.snapshot.netPay <= 0}>
+                        <HandCoins className="mr-2"/> บันทึกการจ่าย
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
       
       {payingPayslip && (
         <PayDialog
-            payslip={payingPayslip}
-            accounts={accounts}
-            onClose={() => setPayingPayslip(null)}
-            onConfirm={handleConfirmPayment}
-            isSubmitting={isSubmitting}
+          payslip={payingPayslip}
+          accounts={accounts}
+          onClose={() => setPayingPayslip(null)}
+          onConfirm={handleConfirmPayment}
+          isSubmitting={isSubmitting}
         />
       )}
     </>
