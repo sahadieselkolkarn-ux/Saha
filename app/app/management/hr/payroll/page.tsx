@@ -154,8 +154,8 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(holidaysQuery),
                 getDocs(leavesQuery),
                 getDocs(attendanceQuery),
-                getDocs(adjustmentsSnap),
-                getDocs(payslipsSnap),
+                getDocs(adjustmentsQuery),
+                getDocs(payslipsQuery),
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
