@@ -284,7 +284,13 @@ export default function ManagementHRAttendanceSummaryPage() {
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             
-            const usersToProcess = allUsersData;
+            const usersToProcess = allUsersData.filter(u => {
+              const payType = u.hr?.payType;
+              if (!payType) return false;
+              if (payType === 'NOPAY') return false;
+              if (payType === 'MONTHLY_NOSCAN') return false;
+              return true; // MONTHLY, DAILY
+            });
             
             const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
             if (!hrSettingsData) throw new Error("HR Settings not found. Please configure them in the HR settings page.");
