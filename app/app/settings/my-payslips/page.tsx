@@ -13,10 +13,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, CheckCircle, MessageSquareWarning } from "lucide-react";
+import { Loader2, CheckCircle, MessageSquareWarning, Printer } from "lucide-react";
 import type { PayslipNew } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { newPayslipStatusLabel } from "@/lib/ui-labels";
+import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
+import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
 
 // Helper for currency formatting
 const formatCurrency = (value: number | undefined) => {
@@ -102,6 +104,7 @@ export default function MyPayslipsPage() {
   
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [revisionPayslip, setRevisionPayslip] = useState<WithId<PayslipNew> & { refPath: string } | null>(null);
+  const [viewPayslip, setViewPayslip] = useState<(WithId<PayslipNew> & { refPath: string }) | null>(null);
 
   useEffect(() => {
     if (!db || !profile?.uid) {
@@ -171,6 +174,7 @@ export default function MyPayslipsPage() {
       toast({ title: 'ยืนยันสลิปเรียบร้อย' });
       // Manually update local state for immediate feedback
       setPayslips(prev => prev.map(p => p.id === payslip.id ? {...p, status: 'READY_TO_PAY'} : p));
+      setViewPayslip(prev => prev ? {...prev, status: 'READY_TO_PAY'} : null);
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'ทำรายการไม่สำเร็จ', description: error.message });
     } finally {
@@ -190,12 +194,17 @@ export default function MyPayslipsPage() {
       toast({ title: 'ส่งคำร้องแก้ไขเรียบร้อย' });
        // Manually update local state
       setPayslips(prev => prev.map(p => p.id === revisionPayslip.id ? {...p, status: 'REVISION_REQUESTED'} : p));
+      setViewPayslip(null);
       setRevisionPayslip(null);
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'ทำรายการไม่สำเร็จ', description: error.message });
     } finally {
       setActioningId(null);
     }
+  };
+
+  const handleView = (payslip: WithId<PayslipNew> & { refPath: string }) => {
+    setViewPayslip(payslip);
   };
 
   const getPaymentStatus = (status: string) => {
@@ -242,28 +251,9 @@ export default function MyPayslipsPage() {
                     </TableCell>
                     <TableCell>{getPaymentStatus(p.status)}</TableCell>
                     <TableCell className="text-right">
-                      {p.status === 'SENT_TO_EMPLOYEE' && (
-                        <div className="flex gap-2 justify-end">
-                           <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => handleAccept(p)}
-                            disabled={actioningId !== null}
-                          >
-                            {actioningId === p.id ? <Loader2 className="mr-2 animate-spin" /> : <CheckCircle />}
-                            ยอมรับ
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => setRevisionPayslip(p)}
-                            disabled={actioningId !== null}
-                          >
-                            <MessageSquareWarning />
-                            ร้องขอแก้ไข
-                          </Button>
-                        </div>
-                      )}
+                       <Button size="sm" variant="outline" onClick={() => handleView(p)}>
+                          ดู
+                        </Button>
                     </TableCell>
                   </TableRow>
                 ))
@@ -287,6 +277,54 @@ export default function MyPayslipsPage() {
           onSubmit={handleRequestRevision}
           isSubmitting={actioningId === revisionPayslip.id}
         />
+      )}
+
+      {viewPayslip && (
+        <PayslipSlipDrawer
+          open={!!viewPayslip}
+          onOpenChange={(open) => !open && setViewPayslip(null)}
+          title="ดูสลิปเงินเดือน"
+          description={`งวด: ${viewPayslip.batchId}`}
+          footerActions={
+            <div className="flex gap-2 justify-end w-full">
+              <Button
+                variant="outline"
+                onClick={() => window.open(`/app/settings/my-payslips/print/${viewPayslip.batchId}?autoprint=1`, '_blank')}
+              >
+                <Printer/>
+                พิมพ์
+              </Button>
+
+              <Button
+                onClick={() => handleAccept(viewPayslip)}
+                disabled={actioningId !== null || viewPayslip.status !== 'SENT_TO_EMPLOYEE'}
+              >
+                <CheckCircle/>
+                ยอมรับ
+              </Button>
+
+              <Button
+                variant="destructive"
+                onClick={() => {
+                    setViewPayslip(null);
+                    setRevisionPayslip(viewPayslip);
+                }}
+                disabled={actioningId !== null || viewPayslip.status !== 'SENT_TO_EMPLOYEE'}
+              >
+                <MessageSquareWarning/>
+                ร้องขอแก้ไข
+              </Button>
+            </div>
+          }
+        >
+          <PayslipSlipView
+            userName={viewPayslip.userName}
+            periodLabel={viewPayslip.batchId}
+            snapshot={viewPayslip.snapshot}
+            mode="read"
+            payType={undefined}
+          />
+        </PayslipSlipDrawer>
       )}
     </>
   );
