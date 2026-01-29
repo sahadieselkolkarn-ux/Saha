@@ -2,10 +2,11 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, format } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
+  format as dfFormat,
   isWithinInterval,
   isSaturday,
   isSunday,
@@ -111,7 +112,7 @@ export default function ManagementHRAttendanceSummaryPage() {
       const endDate = user.hr?.endDate ? parseISO(user.hr.endDate) : null;
 
       const dailySummaries: AttendanceDailySummary[] = daysInMonth.map(day => {
-        const dayStr = format(day, 'yyyy-MM-dd');
+        const dayStr = dfFormat(day, 'yyyy-MM-dd');
         let daily: AttendanceDailySummary = { date: day, status: 'NO_DATA' };
         
         if (isAfter(day, today)) {
@@ -158,7 +159,7 @@ export default function ManagementHRAttendanceSummaryPage() {
 
         const attendanceForDay = userAttendance.filter(a => {
             if (!a.timestamp || !(a.timestamp instanceof Timestamp)) return false;
-            return format(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr;
+            return dfFormat(a.timestamp.toDate(), 'yyyy-MM-dd') === dayStr;
         });
         
         const rawIns = attendanceForDay.filter(a => a.type === 'IN' && a.timestamp && (a.timestamp instanceof Timestamp)).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
@@ -230,11 +231,11 @@ export default function ManagementHRAttendanceSummaryPage() {
         try {
             const dateRange = { from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) };
             const year = currentMonth.getFullYear();
-            const startStr = format(dateRange.from, 'yyyy-MM-dd');
+            const startStr = dfFormat(dateRange.from, 'yyyy-MM-dd');
             
             const nextMonthDate = addMonths(currentMonth, 1);
             const nextMonthStart = startOfMonth(nextMonthDate);
-            const nextStr = format(nextMonthStart, 'yyyy-MM-dd');
+            const nextStr = dfFormat(nextMonthStart, 'yyyy-MM-dd');
             
             const usersQuery = query(collection(db, 'users'), orderBy('displayName','asc'));
             const settingsDocRef = doc(db, 'settings', 'hr');
@@ -493,7 +494,7 @@ export default function ManagementHRAttendanceSummaryPage() {
             <div className="flex items-center gap-2 self-end sm:self-center">
               <Button variant="outline" onClick={handleToday}><CalendarDays className="mr-2 h-4 w-4" />Today</Button>
               <Button variant="outline" size="icon" onClick={handlePrevMonth}><ChevronLeft className="h-4 w-4" /></Button>
-              <span className="font-semibold text-lg text-center w-36">{format(currentMonth, 'MMMM yyyy')}</span>
+              <span className="font-semibold text-lg text-center w-36">{dfFormat(currentMonth, 'MMMM yyyy')}</span>
               <Button variant="outline" size="icon" onClick={handleNextMonth}><ChevronRight className="h-4 w-4" /></Button>
             </div>
           </div>
