@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -10,7 +11,7 @@ service cloud.firestore {
     }
     
     function isSystemAdmin() {
-      return signedIn() && (request.auth.uid == "oh3jF10Am4PPGelNzFhjWX6GE5E2");
+      return request.auth.uid == "oh3jF10Am4PPGelNzFhjWX6GE5E2";
     }
 
     function userExists() {
@@ -178,7 +179,34 @@ service cloud.firestore {
         allow update: if isMgmt() || (request.auth.uid == resource.data.userId && request.resource.data.status == 'CANCELLED');
     }
     match /hrAttendanceAdjustments/{id} { allow read, write: if isMgmt(); }
-    match /payrollRuns/{runId}/{document=**} { allow read, write: if isMgmt(); }
+
+    match /payrollBatches/{batchId} {
+      allow read, write: if isMgmt();
+
+      match /payslips/{userId} {
+        // employee can read their own payslip
+        allow read: if (signedIn() && request.auth.uid == userId) || isMgmt();
+        
+        // HR/Management can create/delete payslips
+        allow create, delete: if isMgmt();
+
+        allow update: if (
+            // Employee can only accept or request revision on a payslip sent to them
+            signedIn()
+            && request.auth.uid == userId
+            && resource.data.status == 'SENT_TO_EMPLOYEE'
+            && request.resource.data.status in ['READY_TO_PAY', 'REVISION_REQUESTED']
+            // employee cannot change critical data
+            && request.resource.data.snapshot == resource.data.snapshot
+            && request.resource.data.userId == resource.data.userId
+            && request.resource.data.batchId == resource.data.batchId
+            && request.resource.data.revisionNo == resource.data.revisionNo
+          ) || (
+            // Management can update payslips
+            isMgmt()
+          );
+      }
+    }
 
     // Deprecated collections - lock them down
     match /userProfiles/{uid} { allow read, write: if false; }
