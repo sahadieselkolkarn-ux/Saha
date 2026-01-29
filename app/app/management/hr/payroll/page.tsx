@@ -153,7 +153,7 @@ export default function HRGeneratePayslipsPage() {
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY' && u.hr.payType !== 'MONTHLY_NOSCAN');
+            const activeUsers = allUsers.filter(u => u?.hr?.payType);
 
             const allHolidays = new Map(
               holidaysSnap.docs.map(d => {
@@ -356,7 +356,7 @@ export default function HRGeneratePayslipsPage() {
                                     <TableRow key={user.id}>
                                         <TableCell>{user.displayName}</TableCell>
                                         <TableCell>{deptLabel(user.department)}</TableCell>
-                                        <TableCell>{payTypeLabel(user.hr.payType)}</TableCell>
+                                        <TableCell>{payTypeLabel(user.hr?.payType)}</TableCell>
                                         <TableCell>{user.periodMetrics?.attendanceSummary.payableUnits ?? '-'}</TableCell>
                                         <TableCell><Badge variant={getStatusBadgeVariant(user.payslipStatus)}>{newPayslipStatusLabel(user.payslipStatus) || user.payslipStatus}</Badge></TableCell>
                                         <TableCell className="text-right">
@@ -365,7 +365,7 @@ export default function HRGeneratePayslipsPage() {
                                                 <Button variant="ghost" size="icon" disabled={isActing !== null} aria-label="เมนูการจัดการ"><MoreVertical className="h-4 w-4" /></Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => void handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID'}>
+                                                    <DropdownMenuItem onClick={() => void handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID' || user.hr?.payType === 'NOPAY'}>
                                                         <FilePlus className="mr-2 h-4 w-4" /> สร้าง/แก้ไขสลิป
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
@@ -409,3 +409,4 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
+
