@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DEPARTMENTS, USER_ROLES, USER_STATUSES } from "@/lib/constants";
+import { DEPARTMENTS, USER_ROLES, USER_STATUSES, PAY_TYPES } from "@/lib/constants";
 import type { UserProfile, SSOHospital, PayType } from "@/lib/types";
 import { payTypeLabel, deptLabel } from "@/lib/ui-labels";
 import {
@@ -469,7 +469,18 @@ export default function ManagementHREmployeesPage() {
                                   </FormItem>
                                 )}
                               />
-                            <FormField name="hr.payType" control={form.control} render={({ field }) => (<FormItem><FormLabel>ประเภทการจ่ายเงิน</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl><SelectContent>{Object.entries(payTypeLabel).map(([key, label])=><SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                            <FormField name="hr.payType" control={form.control} render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>ประเภทการจ่ายเงิน</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                                  <FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {PAY_TYPES.map(p => <SelectItem key={p} value={p}>{payTypeLabel(p)}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )} />
                              <FormField
                                 name="hr.ssoHospital"
                                 control={form.control}
