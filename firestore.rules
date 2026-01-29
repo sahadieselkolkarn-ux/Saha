@@ -190,20 +190,25 @@ service cloud.firestore {
         // HR/Management can create/delete payslips
         allow create, delete: if isMgmt();
 
-        allow update: if (
-            // Employee can only accept or request revision on a payslip sent to them
-            signedIn()
-            && request.auth.uid == userId
-            && resource.data.status == 'SENT_TO_EMPLOYEE'
-            && request.resource.data.status in ['READY_TO_PAY', 'REVISION_REQUESTED']
-            // employee cannot change critical data
-            && request.resource.data.snapshot == resource.data.snapshot
-            && request.resource.data.userId == resource.data.userId
-            && request.resource.data.batchId == resource.data.batchId
-            && request.resource.data.revisionNo == resource.data.revisionNo
-          ) || (
-            // Management can update payslips
-            isMgmt()
+        allow update: if 
+          // Case 1: Employee accepts or requests revision.
+          (
+            request.auth.uid == userId &&
+            resource.data.status == 'SENT_TO_EMPLOYEE' &&
+            request.resource.data.status in ['READY_TO_PAY', 'REVISION_REQUESTED'] &&
+            request.resource.data.snapshot == resource.data.snapshot // Cannot change snapshot
+          ) ||
+          // Case 2: Management/HR edits a draft or a revision request.
+          (
+            isMgmt() &&
+            resource.data.status in ['DRAFT', 'REVISION_REQUESTED']
+          ) ||
+          // Case 3: Accounting marks as paid.
+          (
+            isAccountingAllowed() &&
+            resource.data.status == 'READY_TO_PAY' &&
+            request.resource.data.status == 'PAID' &&
+            request.resource.data.snapshot == resource.data.snapshot // Cannot change snapshot
           );
       }
     }
