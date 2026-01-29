@@ -60,8 +60,8 @@ service cloud.firestore {
     // User Profiles
     match /users/{uid} {
       allow read: if signedIn();
-      // Allow updates if user is an admin OR if the user is editing their own profile.
-      allow create, update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      // Allow updates if user is admin/mgmt OR if the user is editing their own profile.
+      allow create, update: if isMgmt() || (signedIn() && request.auth.uid == uid);
       allow delete: if isAdmin();
     }
 

@@ -374,11 +374,10 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                         </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="py-1 pl-6 space-y-1">
-                        {profile?.role === 'OFFICER' ? (
+                        {profile?.role === 'OFFICER' && (
                             <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
-                        ) : (
-                            <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
                         )}
+                        <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
                     </CollapsibleContent>
                 </Collapsible>
             )}
