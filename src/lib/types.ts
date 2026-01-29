@@ -1,4 +1,5 @@
 
+
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew } from './constants';
 
@@ -616,3 +617,5 @@ export interface PurchaseClaim {
   approvedByName?: string;
   rejectReason?: string;
 }
+
+    

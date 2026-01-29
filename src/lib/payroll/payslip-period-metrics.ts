@@ -81,8 +81,7 @@ export function computePeriodMetrics(params: {
   const [workStartHour, workStartMinute] = (hrSettings.workStart || '08:00').split(':').map(Number);
   const graceMinutes = hrSettings.graceMinutes || 0;
   const [absentCutoffHour, absentCutoffMinute] = (hrSettings.absentCutoffTime || '09:00').split(':').map(Number);
-  const [afternoonCutoffHour, afternoonCutoffMinute] = (hrSettings.afternoonCutoffTime || '12:00').split(':').map(Number);
-
+  
   const userStartDate = user.hr?.startDate ? parseISO(user.hr.startDate) : null;
   const userEndDate = user.hr?.endDate ? parseISO(user.hr.endDate) : null;
 
@@ -129,7 +128,7 @@ export function computePeriodMetrics(params: {
         } else {
             const absentCutoff = set(day, { hours: absentCutoffHour, minutes: absentCutoffMinute });
             if (isAfter(firstIn, absentCutoff)) {
-                attendanceSummary.absentUnits += 0.5;
+                attendanceSummary.absentUnits += 0.5; // Morning absent
                 dayPayableUnit -= 0.5;
             } else {
                 const lateThreshold = set(day, { hours: workStartHour, minutes: workStartMinute + graceMinutes });
@@ -140,7 +139,7 @@ export function computePeriodMetrics(params: {
                 }
             }
             if (!lastOut && isBefore(day, today)) {
-                 attendanceSummary.warnings.push(`วันที่ ${dayStr} ไม่มีสแกนออก (OUT) กรุณาแก้ด้วย ADD_RECORD ก่อนสรุป`);
+                 attendanceSummary.warnings.push(`วันที่ ${dayStr} ไม่มีสแกนออก (OUT) กรุณาแก้ไข`);
             }
         }
         tempPayableUnits += dayPayableUnit;
@@ -223,3 +222,5 @@ export function computePeriodMetrics(params: {
 
   return { attendanceSummary, leaveSummary, calcNotes: calcNotes.trim(), autoDeductions };
 }
+
+    

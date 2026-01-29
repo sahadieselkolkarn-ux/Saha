@@ -71,6 +71,7 @@ const hrSettingsSchema = z.object({
   sso: z.object({
     employeePercent: z.coerce.number().min(0).max(100).optional(),
     employerPercent: z.coerce.number().min(0).max(100).optional(),
+    monthlyMinBase: z.coerce.number().min(0).optional(),
     monthlyCap: z.coerce.number().min(0).optional(),
   }).optional(),
   withholding: z.object({
@@ -195,7 +196,8 @@ export function HRSettingsForm() {
       sso: {
         employeePercent: 0,
         employerPercent: 0,
-        monthlyCap: 0,
+        monthlyMinBase: 1650,
+        monthlyCap: 15000,
       },
       withholding: {
         enabled: false,
@@ -400,9 +402,10 @@ export function HRSettingsForm() {
 
             <Card>
                 <CardHeader><CardTitle>ประกันสังคม (SSO)</CardTitle></CardHeader>
-                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div><p className="text-sm font-medium text-muted-foreground">ลูกจ้าง (%)</p><p>{settings?.sso?.employeePercent ?? '-'}</p></div>
                     <div><p className="text-sm font-medium text-muted-foreground">นายจ้าง (%)</p><p>{settings?.sso?.employerPercent ?? '-'}</p></div>
+                    <div><p className="text-sm font-medium text-muted-foreground">ฐานเงินเดือนขั้นต่ำ (บาท)</p><p>{settings?.sso?.monthlyMinBase?.toLocaleString() ?? '-'}</p></div>
                     <div><p className="text-sm font-medium text-muted-foreground">เพดานฐานเงินเดือน (บาท)</p><p>{settings?.sso?.monthlyCap?.toLocaleString() ?? '-'}</p></div>
                  </CardContent>
             </Card>
@@ -541,9 +544,10 @@ export function HRSettingsForm() {
               การตั้งค่าการคำนวณประกันสังคม
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <CardContent className="grid grid-cols-1 md:grid-cols-4 gap-6">
              <FormField control={form.control} name="sso.employeePercent" render={({ field }) => (<FormItem><FormLabel>ลูกจ้าง (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? 0} /></FormControl></FormItem>)} />
              <FormField control={form.control} name="sso.employerPercent" render={({ field }) => (<FormItem><FormLabel>นายจ้าง (%)</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value ?? 0} /></FormControl></FormItem>)} />
+             <FormField control={form.control} name="sso.monthlyMinBase" render={({ field }) => (<FormItem><FormLabel>ฐานเงินเดือนขั้นต่ำ (บาท)</FormLabel><FormControl><Input type="number" {...field} value={field.value ?? 0} /></FormControl></FormItem>)} />
              <FormField
                 control={form.control}
                 name="sso.monthlyCap"
@@ -588,3 +592,5 @@ export function HRSettingsForm() {
     </Form>
   );
 }
+
+    
