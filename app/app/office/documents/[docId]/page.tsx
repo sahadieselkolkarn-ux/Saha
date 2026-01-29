@@ -3,6 +3,7 @@
 
 import { useMemo, Suspense, useEffect, useRef } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
+import Image from "next/image";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -30,7 +31,7 @@ function DocumentView({ document }: { document: Document }) {
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
 
     return (
-        <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none">
+        <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none print:bg-white">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <div className="lg:col-span-2 space-y-2">
                     {isDeliveryNote ? (
@@ -55,7 +56,7 @@ function DocumentView({ document }: { document: Document }) {
                 </div>
             </div>
 
-            <Card className="mb-8 print-customer">
+            <Card className="mb-8 print:bg-white print:shadow-none print:border-none">
                 <CardHeader>
                     <CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle>
                 </CardHeader>
@@ -99,12 +100,12 @@ function DocumentView({ document }: { document: Document }) {
                     <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                     <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                     {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
-                    <Separator className="separator" />
+                    <Separator className="my-2" />
                     <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                 </div>
             </div>
             
-             <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm signature-area">
+             <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm">
                 <div className="space-y-16">
                     <p>.................................................</p>
                     <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
@@ -189,7 +190,7 @@ function DocumentPageContent() {
     if (isPrintMode) {
         return (
             <div>
-                 <div className="print-hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
+                 <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
                     <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
                     <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
                     <Button asChild variant="outline">
