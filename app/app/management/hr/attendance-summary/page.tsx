@@ -231,95 +231,95 @@ export default function ManagementHRAttendanceSummaryPage() {
       };
     });
   }, []);
+  
+  const fetchData = useCallback(async () => {
+      if (!db) return;
+
+      setIsLoading(true);
+      setError(null);
+      setIndexCreationUrl(null);
+
+      try {
+          const dateRange = { from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) };
+          const year = currentMonth.getFullYear();
+          const startStr = dfFormat(dateRange.from, 'yyyy-MM-dd');
+          
+          const nextMonthDate = addMonths(currentMonth, 1);
+          const nextMonthStart = startOfMonth(nextMonthDate);
+          const nextStr = dfFormat(nextMonthStart, 'yyyy-MM-dd');
+          
+          const usersQuery = query(collection(db, 'users'), orderBy('displayName','asc'));
+          const settingsDocRef = doc(db, 'settings', 'hr');
+          const holidaysQuery = query(collection(db, 'hrHolidays'), orderBy('date', 'asc'));
+          const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
+          const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
+          const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
+
+          let usersSnapshot = null;
+          try {
+              usersSnapshot = await getDocs(usersQuery);
+          } catch(e) {
+              console.warn("Could not fetch user list:", e);
+              toast({ variant: 'destructive', title: "Could not load user list", description: "An error occurred fetching the user list."});
+          }
+
+          const [
+              settingsDocSnap,
+              holidaysSnapshot,
+              leavesSnapshot,
+              attendanceSnapshot,
+              adjustmentsSnapshot
+          ] = await Promise.all([
+              getDoc(settingsDocRef),
+              getDocs(holidaysQuery),
+              getDocs(leavesQuery),
+              getDocs(attendanceQuery),
+              getDocs(adjustmentsQuery),
+          ]);
+
+          const allUsersData = usersSnapshot?.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>)) || [];
+          setAllUsers(allUsersData);
+          
+          const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
+          const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
+          
+          const usersToProcess = allUsersData.filter(u => {
+            const payType = u.hr?.payType;
+            if (!payType) return false;
+            if (payType === 'NOPAY') return false;
+            if (payType === 'MONTHLY_NOSCAN') return false;
+            return true; // MONTHLY, DAILY
+          });
+          
+          const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
+          if (!hrSettingsData) throw new Error("HR Settings not found. Please configure them in the HR settings page.");
+
+          const allHolidaysData = holidaysSnapshot.docs.map(d => {
+              const raw = d.data().date;
+              const key = typeof raw === 'string' ? raw.slice(0, 10) : (raw?.toDate ? dfFormat(raw.toDate(), "yyyy-MM-dd") : "");
+              return { id: d.id, name: d.data().name, date: key };
+          }).filter(h => !!h.date);
+          
+          const monthAdjustmentsData: WithId<AttendanceAdjustment>[] = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
+          
+          const calculatedData = calculateSummary(usersToProcess, hrSettingsData, allHolidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
+          setSummaryData(calculatedData);
+
+      } catch (err: any) {
+          console.error("Error fetching attendance summary data:", err);
+          if (err.message?.includes('requires an index')) {
+              const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+              if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+          }
+          setError(err);
+      } finally {
+          setIsLoading(false);
+      }
+  }, [db, currentMonth, toast, calculateSummary]);
 
   useEffect(() => {
-    const fetchData = async () => {
-        if (!db) return;
-
-        setIsLoading(true);
-        setError(null);
-        setIndexCreationUrl(null);
-
-        try {
-            const dateRange = { from: startOfMonth(currentMonth), to: endOfMonth(currentMonth) };
-            const year = currentMonth.getFullYear();
-            const startStr = dfFormat(dateRange.from, 'yyyy-MM-dd');
-            
-            const nextMonthDate = addMonths(currentMonth, 1);
-            const nextMonthStart = startOfMonth(nextMonthDate);
-            const nextStr = dfFormat(nextMonthStart, 'yyyy-MM-dd');
-            
-            const usersQuery = query(collection(db, 'users'), orderBy('displayName','asc'));
-            const settingsDocRef = doc(db, 'settings', 'hr');
-            const holidaysQuery = query(collection(db, 'hrHolidays'), orderBy('date', 'asc'));
-            const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
-            const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
-            const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
-
-            let usersSnapshot = null;
-            try {
-                usersSnapshot = await getDocs(usersQuery);
-            } catch(e) {
-                console.warn("Could not fetch user list:", e);
-                toast({ variant: 'destructive', title: "Could not load user list", description: "An error occurred fetching the user list."});
-            }
-
-            const [
-                settingsDocSnap,
-                holidaysSnapshot,
-                leavesSnapshot,
-                attendanceSnapshot,
-                adjustmentsSnapshot
-            ] = await Promise.all([
-                getDoc(settingsDocRef),
-                getDocs(holidaysQuery),
-                getDocs(leavesQuery),
-                getDocs(attendanceQuery),
-                getDocs(adjustmentsQuery),
-            ]);
-
-            const allUsersData = usersSnapshot?.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>)) || [];
-            setAllUsers(allUsersData);
-            
-            const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
-            const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
-            
-            const usersToProcess = allUsersData.filter(u => {
-              const payType = u.hr?.payType;
-              if (!payType) return false;
-              if (payType === 'NOPAY') return false;
-              if (payType === 'MONTHLY_NOSCAN') return false;
-              return true; // MONTHLY, DAILY
-            });
-            
-            const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
-            if (!hrSettingsData) throw new Error("HR Settings not found. Please configure them in the HR settings page.");
-
-            const allHolidaysData = holidaysSnapshot.docs.map(d => {
-                const raw = d.data().date;
-                const key = typeof raw === 'string' ? raw.slice(0, 10) : (raw?.toDate ? dfFormat(raw.toDate(), "yyyy-MM-dd") : "");
-                return { id: d.id, name: d.data().name, date: key };
-            }).filter(h => !!h.date);
-            
-            const monthAdjustmentsData: WithId<AttendanceAdjustment>[] = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
-            
-            const calculatedData = calculateSummary(usersToProcess, hrSettingsData, allHolidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
-            setSummaryData(calculatedData);
-
-        } catch (err: any) {
-            console.error("Error fetching attendance summary data:", err);
-            if (err.message?.includes('requires an index')) {
-                const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-                if (urlMatch) setIndexCreationUrl(urlMatch[0]);
-            }
-            setError(err);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     fetchData();
-  }, [db, currentMonth, toast, calculateSummary]);
+  }, [fetchData]);
   
   const filteredSummaryData = useMemo(() => {
     if (!searchQuery) return summaryData;
@@ -536,6 +536,7 @@ export default function ManagementHRAttendanceSummaryPage() {
           <AttendanceAdjustmentDialog
             isOpen={!!adjustingDayInfo}
             onOpenChange={(isOpen) => !isOpen && setAdjustingDayInfo(null)}
+            onSaved={fetchData}
             dayInfo={adjustingDayInfo.day}
             user={adjustingDayInfo.user}
           />

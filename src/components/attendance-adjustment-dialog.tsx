@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect } from "react";
@@ -5,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format, set, parse } from "date-fns";
-import { Timestamp, addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { Timestamp, doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -35,6 +36,7 @@ interface AttendanceAdjustmentDialogProps {
   onOpenChange: (open: boolean) => void;
   dayInfo: AttendanceDailySummary;
   user: WithId<UserProfile>;
+  onSaved?: () => void;
 }
 
 const adjustmentSchema = z.object({
@@ -47,7 +49,7 @@ const adjustmentSchema = z.object({
   path: ["notes"],
 });
 
-export function AttendanceAdjustmentDialog({ isOpen, onOpenChange, dayInfo, user }: AttendanceAdjustmentDialogProps) {
+export function AttendanceAdjustmentDialog({ isOpen, onOpenChange, dayInfo, user, onSaved }: AttendanceAdjustmentDialogProps) {
   const { db } = useFirebase();
   const { profile: adminProfile } = useAuth();
   const { toast } = useToast();
@@ -103,11 +105,13 @@ export function AttendanceAdjustmentDialog({ isOpen, onOpenChange, dayInfo, user
 
 
     try {
-        // Note: For simplicity, this adds a new adjustment. A real-world app
-        // might want to update an existing adjustment for the same day.
-        await addDoc(collection(db, "hrAttendanceAdjustments"), {
+        const dateStr = format(dayInfo.date, 'yyyy-MM-dd');
+        const adjId = `${user.id}_${dateStr}`;
+        const adjRef = doc(db, "hrAttendanceAdjustments", adjId);
+
+        await setDoc(adjRef, {
             userId: user.id,
-            date: format(dayInfo.date, 'yyyy-MM-dd'),
+            date: dateStr,
             type,
             adjustedIn: adjustedIn,
             adjustedOut: adjustedOut,
@@ -115,8 +119,9 @@ export function AttendanceAdjustmentDialog({ isOpen, onOpenChange, dayInfo, user
             updatedBy: adminProfile.displayName,
             updatedById: adminProfile.uid,
             updatedAt: serverTimestamp(),
-        });
+        }, { merge: true });
         toast({ title: "Adjustment Saved", description: `Attendance for ${user.displayName} on ${format(dayInfo.date, 'dd MMM')} has been updated.` });
+        if (onSaved) onSaved();
         onOpenChange(false);
     } catch (error: any) {
         toast({ variant: 'destructive', title: "Save Failed", description: error.message });
