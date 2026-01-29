@@ -32,7 +32,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit, CalendarDays, ExternalLink, Search, ChevronDown } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
@@ -79,9 +78,22 @@ export default function ManagementHRAttendanceSummaryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<any>(null);
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
+  const [openUserIds, setOpenUserIds] = useState<Set<string>>(new Set());
 
   // State for Adjustment Dialog
   const [adjustingDayInfo, setAdjustingDayInfo] = useState<{ user: WithId<UserProfile>, day: AttendanceDailySummary } | null>(null);
+
+  const toggleOpen = (userId: string) => {
+    setOpenUserIds(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
 
   const calculateSummary = useCallback((
     users: WithId<UserProfile>[],
@@ -239,7 +251,7 @@ export default function ManagementHRAttendanceSummaryPage() {
             
             const usersQuery = query(collection(db, 'users'), orderBy('displayName','asc'));
             const settingsDocRef = doc(db, 'settings', 'hr');
-            const holidaysQuery = query(collection(db, 'hrHolidays'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
+            const holidaysQuery = query(collection(db, 'hrHolidays'), orderBy('date', 'asc'));
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year));
             const attendanceQuery = query(collection(db, 'attendance'), where('timestamp', '>=', dateRange.from), where('timestamp', '<', nextMonthStart), orderBy('timestamp', 'asc'));
             const adjustmentsQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', startStr), where('date', '<', nextStr), orderBy('date', 'asc'));
@@ -272,16 +284,20 @@ export default function ManagementHRAttendanceSummaryPage() {
             const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
             const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
             
-            // Only use users from the 'users' collection as the source of truth.
             const usersToProcess = allUsersData;
             
             const hrSettingsData: HRSettings | undefined = settingsDocSnap.exists() ? settingsDocSnap.data() as HRSettings : undefined;
             if (!hrSettingsData) throw new Error("HR Settings not found. Please configure them in the HR settings page.");
 
-            const holidaysData: WithId<HRHolidayType>[] = holidaysSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<HRHolidayType>));
+            const allHolidaysData = holidaysSnapshot.docs.map(d => {
+                const raw = d.data().date;
+                const key = typeof raw === 'string' ? raw.slice(0, 10) : (raw?.toDate ? dfFormat(raw.toDate(), "yyyy-MM-dd") : "");
+                return { id: d.id, name: d.data().name, date: key };
+            }).filter(h => !!h.date);
+            
             const monthAdjustmentsData: WithId<AttendanceAdjustment>[] = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
             
-            const calculatedData = calculateSummary(usersToProcess, hrSettingsData, holidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
+            const calculatedData = calculateSummary(usersToProcess, hrSettingsData, allHolidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
             setSummaryData(calculatedData);
 
         } catch (err: any) {
@@ -367,109 +383,116 @@ export default function ManagementHRAttendanceSummaryPage() {
     }
 
     return (
-      <Accordion type="multiple" className="w-full">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[250px]">Employee</TableHead>
-              <TableHead>Late</TableHead>
-              <TableHead>Absent</TableHead>
-              <TableHead>Leave</TableHead>
-              <TableHead>Total Late (min)</TableHead>
-              <TableHead>Notes</TableHead>
-              <TableHead className="w-12" />
+              <TableHead className="text-right">Late</TableHead>
+              <TableHead className="text-right">Absent</TableHead>
+              <TableHead className="text-right">Leave</TableHead>
+              <TableHead className="text-right">Total Late (min)</TableHead>
+              <TableHead className="text-right">Notes</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredSummaryData.map(summary => (
-                <AccordionItem value={summary.userId} key={summary.userId} asChild>
-                    <>
-                        <AccordionTrigger asChild>
-                            <TableRow className="hover:bg-muted/50 cursor-pointer [&[data-state=open]>td:last-child>svg]:rotate-180">
-                                <TableCell className="font-medium">{summary.userName}</TableCell>
-                                <TableCell>{summary.totalLate}</TableCell>
-                                <TableCell>{summary.totalAbsent}</TableCell>
-                                <TableCell>{summary.totalLeave}</TableCell>
-                                <TableCell>{summary.totalLateMinutes}</TableCell>
-                                <TableCell>
-                                    {summary.status === 'SUSPENDED' ? (
-                                        <Badge variant="destructive">Suspended</Badge>
-                                    ) : summary.reviewNeeded ? (
-                                        <Badge variant="destructive">Review Needed</Badge>
-                                    ) : null}
-                                </TableCell>
-                                <TableCell>
-                                    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
-                                </TableCell>
-                            </TableRow>
-                        </AccordionTrigger>
-                        <AccordionContent asChild>
-                            <tr>
-                                <td colSpan={7}>
-                                    <div className="p-4 bg-muted/30 max-h-96 overflow-y-auto">
-                                        <h4 className="font-semibold mb-2">Daily Details for {summary.userName}</h4>
-                                        <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                            <TableHead>Date</TableHead>
-                                            <TableHead>Status</TableHead>
-                                            <TableHead>IN</TableHead>
-                                            <TableHead>OUT</TableHead>
-                                            <TableHead>Work Hours</TableHead>
-                                            <TableHead>Late (min)</TableHead>
-                                            <TableHead className="text-right">Actions</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {summary.dailySummaries.map(day => (
-                                            <TableRow key={day.date.toISOString()} className={cn("bg-background", (day.status === 'FUTURE' || day.status === 'NOT_STARTED' || day.status === 'ENDED' || day.status === 'SUSPENDED') && 'text-muted-foreground/70')}>
-                                                <TableCell>{safeFormat(day.date, 'dd/MM')}</TableCell>
-                                                <TableCell>{getStatusBadge(day.status, day.leaveType)}</TableCell>
-                                                <TableCell>{safeFormat(day.rawIn, 'HH:mm')}</TableCell>
-                                                <TableCell>{safeFormat(day.rawOut, 'HH:mm')}</TableCell>
-                                                <TableCell>{day.workHours || '-'}</TableCell>
-                                                <TableCell>{day.lateMinutes || '-'}</TableCell>
-                                                <TableCell className="text-right">
-                                                {day.status !== 'HOLIDAY' && day.status !== 'WEEKEND' && day.status !== 'NOT_STARTED' && day.status !== 'ENDED' && day.status !== 'SUSPENDED' && day.status !== 'FUTURE' && (
-                                                    <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger asChild>
-                                                        <Button 
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => {
-                                                                const userForDialog = allUsers.find(u=>u.id===summary.userId);
-                                                                if (userForDialog) {
-                                                                    setAdjustingDayInfo({ user: userForDialog, day })
-                                                                } else {
-                                                                    toast({variant: 'destructive', title: 'Could not open dialog', description: 'User data not fully loaded.'});
-                                                                }
-                                                            }}
-                                                        >
-                                                            <Edit className="h-4 w-4"/>
-                                                        </Button>
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>
-                                                        <p>Adjust Attendance</p>
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                    </TooltipProvider>
-                                                )}
-                                                </TableCell>
-                                            </TableRow>
-                                            ))}
-                                        </TableBody>
-                                        </Table>
-                                    </div>
-                                </td>
-                            </tr>
-                        </AccordionContent>
-                    </>
-                </AccordionItem>
-            ))}
+            {filteredSummaryData.map((summary, idx) => {
+              const isOpen = openUserIds.has(summary.userId);
+              return (
+                <React.Fragment key={summary.userId}>
+                  <TableRow
+                    className={cn(
+                      "cursor-pointer hover:bg-muted/50",
+                      isOpen && "bg-muted/50"
+                    )}
+                    onClick={() => toggleOpen(summary.userId)}
+                  >
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform duration-200", isOpen && "rotate-180")} />
+                        {summary.userName}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">{summary.totalLate}</TableCell>
+                    <TableCell className="text-right">{summary.totalAbsent}</TableCell>
+                    <TableCell className="text-right">{summary.totalLeave}</TableCell>
+                    <TableCell className="text-right">{summary.totalLateMinutes}</TableCell>
+                    <TableCell className="text-right">
+                      {summary.status === 'SUSPENDED' ? (
+                        <Badge variant="destructive">Suspended</Badge>
+                      ) : summary.reviewNeeded ? (
+                        <Badge variant="destructive">Review Needed</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+
+                  {isOpen && (
+                    <TableRow key={`${summary.userId}-details`}>
+                      <TableCell colSpan={6} className="p-0">
+                        <div className="p-4 bg-muted/30 max-h-96 overflow-y-auto">
+                          <h4 className="font-semibold mb-2">Daily Details for {summary.userName}</h4>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>IN</TableHead>
+                                <TableHead>OUT</TableHead>
+                                <TableHead>Work Hours</TableHead>
+                                <TableHead>Late (min)</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {summary.dailySummaries.map(day => (
+                                <TableRow key={day.date.toISOString()} className={cn("bg-background", (day.status === 'FUTURE' || day.status === 'NOT_STARTED' || day.status === 'ENDED' || day.status === 'SUSPENDED') && 'text-muted-foreground/70')}>
+                                  <TableCell>{dfFormat(day.date, 'dd/MM')}</TableCell>
+                                  <TableCell>{getStatusBadge(day.status, day.leaveType)}</TableCell>
+                                  <TableCell>{safeFormat(day.rawIn, 'HH:mm')}</TableCell>
+                                  <TableCell>{safeFormat(day.rawOut, 'HH:mm')}</TableCell>
+                                  <TableCell>{day.workHours || '-'}</TableCell>
+                                  <TableCell>{day.lateMinutes || '-'}</TableCell>
+                                  <TableCell className="text-right">
+                                    {day.status !== 'HOLIDAY' && day.status !== 'WEEKEND' && day.status !== 'NOT_STARTED' && day.status !== 'ENDED' && day.status !== 'SUSPENDED' && day.status !== 'FUTURE' && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="outline"
+                                              size="icon"
+                                              onClick={() => {
+                                                const userForDialog = allUsers.find(u => u.id === summary.userId);
+                                                if (userForDialog) {
+                                                  setAdjustingDayInfo({ user: userForDialog, day });
+                                                } else {
+                                                  toast({ variant: 'destructive', title: 'Could not open dialog', description: 'User data not fully loaded.' });
+                                                }
+                                              }}
+                                            >
+                                              <Edit className="h-4 w-4" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Adjust Attendance</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </TableBody>
         </Table>
-      </Accordion>
     );
   }
 
@@ -483,7 +506,7 @@ export default function ManagementHRAttendanceSummaryPage() {
               <CardTitle>Attendance Summary</CardTitle>
               <div className="relative mt-2">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
+                <Input
                   placeholder="Search employee..."
                   className="pl-8 w-full sm:w-[250px]"
                   value={searchQuery}
@@ -504,7 +527,7 @@ export default function ManagementHRAttendanceSummaryPage() {
         </CardContent>
       </Card>
       {adjustingDayInfo && (
-          <AttendanceAdjustmentDialog 
+          <AttendanceAdjustmentDialog
             isOpen={!!adjustingDayInfo}
             onOpenChange={(isOpen) => !isOpen && setAdjustingDayInfo(null)}
             dayInfo={adjustingDayInfo.day}
