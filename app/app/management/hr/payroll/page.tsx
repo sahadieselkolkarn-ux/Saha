@@ -1,9 +1,8 @@
 
-
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { doc, collection, query, where, orderBy, getDocs, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -188,7 +187,7 @@ export default function HRGeneratePayslipsPage() {
         const { periodMetrics, snapshot: existingSnapshot, hr } = user;
 
         if (!hr?.payType || hr.payType === 'NOPAY') return;
-        if (!periodMetrics) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); return; }
+        if (!periodMetrics) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); setEditingPayslip(null); return; }
         
         let basePay = 0;
         if (hr.payType === 'DAILY') {
@@ -338,7 +337,7 @@ export default function HRGeneratePayslipsPage() {
                                                 <Button variant="ghost" size="icon" disabled={isActing !== null} aria-label="เมนูการจัดการ"><MoreVertical className="h-4 w-4" /></Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID'}>
+                                                    <DropdownMenuItem onClick={() => void handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID'}>
                                                         <FilePlus className="mr-2 h-4 w-4" /> สร้าง/แก้ไขสลิป
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
