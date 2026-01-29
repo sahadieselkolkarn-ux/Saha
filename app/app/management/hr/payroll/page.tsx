@@ -153,7 +153,7 @@ export default function HRGeneratePayslipsPage() {
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            const activeUsers = allUsers.filter(u => u?.hr?.payType);
+            const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
 
             const allHolidays = new Map(
               holidaysSnap.docs.map(d => {
@@ -362,7 +362,7 @@ export default function HRGeneratePayslipsPage() {
                                         <TableCell className="text-right">
                                             <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" disabled={isActing !== null} aria-label="เมนูการจัดการ"><MoreVertical className="h-4 w-4" /></Button>
+                                                <Button variant="ghost" size="icon" disabled={isActing !== null || user.hr?.payType === 'NOPAY'} aria-label="เมนูการจัดการ"><MoreVertical className="h-4 w-4" /></Button>
                                                 </DropdownMenuTrigger>
                                                 <DropdownMenuContent align="end">
                                                     <DropdownMenuItem onClick={() => void handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID' || user.hr?.payType === 'NOPAY'}>
