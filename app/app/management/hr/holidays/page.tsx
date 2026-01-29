@@ -9,6 +9,7 @@ import { collection, query, orderBy, addDoc, serverTimestamp, deleteDoc, doc } f
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useCollection } from "@/firebase/firestore/use-collection";
+import { useAuth } from "@/context/auth-context";
 import { cn } from "@/lib/utils";
 import { format, isBefore, startOfToday, parseISO } from 'date-fns';
 
@@ -18,11 +19,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Loader2, Trash2, CalendarPlus } from "lucide-react";
+import { Loader2, Trash2, CalendarPlus, ShieldAlert } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from "@/components/ui/calendar";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { HRHoliday as HRHolidayType } from "@/lib/types";
 
 const holidaySchema = z.object({
@@ -35,6 +37,8 @@ const holidaySchema = z.object({
 export default function ManagementHRHolidaysPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === "ADMIN";
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   
   const form = useForm<z.infer<typeof holidaySchema>>({
@@ -91,6 +95,15 @@ export default function ManagementHRHolidaysPage() {
                 <CardDescription>Select a date and enter a name to add a new holiday.</CardDescription>
             </CardHeader>
             <CardContent>
+                {isAdmin && (
+                    <Alert variant="destructive" className="mb-4">
+                        <ShieldAlert className="h-4 w-4" />
+                        <AlertTitle>Admin Backfill Mode</AlertTitle>
+                        <AlertDescription>
+                            You can add/delete holidays in the past.
+                        </AlertDescription>
+                    </Alert>
+                )}
                 <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                     <FormField
@@ -124,7 +137,7 @@ export default function ManagementHRHolidaysPage() {
                                   }
                                   setIsCalendarOpen(false);
                                 }}
-                                disabled={(date) => isBefore(date, today)}
+                                disabled={(date) => !isAdmin && isBefore(date, today)}
                                 initialFocus
                             />
                             </PopoverContent>
@@ -181,12 +194,13 @@ export default function ManagementHRHolidaysPage() {
                     holidays.map((holiday) => {
                         const holidayDate = parseISO(holiday.date);
                         const isPast = isBefore(holidayDate, today);
+                        const canDelete = isAdmin || !isPast;
                         return (
                         <TableRow key={holiday.id} className={cn(isPast && "text-muted-foreground")}>
                             <TableCell className="font-medium">{format(holidayDate, 'dd MMM yyyy')}</TableCell>
                             <TableCell>{holiday.name}</TableCell>
                             <TableCell className="text-right">
-                            {isPast ? (
+                            {!canDelete ? (
                                 <TooltipProvider delayDuration={100}>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
@@ -197,7 +211,7 @@ export default function ManagementHRHolidaysPage() {
                                             </span>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                            <p>ไม่สามารถลบวันหยุดที่ผ่านมาแล้ว</p>
+                                            <p>ไม่สามารถลบวันหยุดที่ผ่านมาแล้ว (เฉพาะ Admin)</p>
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>
