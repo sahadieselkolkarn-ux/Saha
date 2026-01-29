@@ -308,6 +308,7 @@ export interface PayslipNew {
     hrNote?: string | null;
     employeeNote?: string | null;
     sentAt?: Timestamp;
+    lockedAt?: Timestamp;
     employeeAcceptedAt?: Timestamp;
     paidAt?: Timestamp;
     paidByUid?: string;

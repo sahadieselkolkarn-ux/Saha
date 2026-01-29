@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -125,7 +126,12 @@ export default function MyPayslipsPage() {
         ...doc.data()
       } as PayslipWithRef));
 
-      data.sort((a, b) => (b.sentAt?.toDate()?.getTime() || 0) - (a.sentAt?.toDate()?.getTime() || 0));
+      // Client-side sort
+      data.sort((a, b) => {
+        const dateA = a.sentAt?.toDate()?.getTime() || a.updatedAt?.toDate()?.getTime() || 0;
+        const dateB = b.sentAt?.toDate()?.getTime() || b.updatedAt?.toDate()?.getTime() || 0;
+        return dateB - dateA;
+      });
       
       setPayslips(data);
       setLoading(false);
@@ -136,6 +142,7 @@ export default function MyPayslipsPage() {
     });
 
     return () => unsubscribe();
+
   }, [db, profile, toast]);
 
   const handleAccept = async () => {
