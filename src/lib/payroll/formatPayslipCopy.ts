@@ -70,10 +70,16 @@ export function formatPayslipAsText(data: SlipData): string {
         text += ` - ลาป่วย: ${snapshot.leaveSummary.sickDays ?? 0} วัน\n`;
         text += ` - ลากิจ: ${snapshot.leaveSummary.businessDays ?? 0} วัน\n`;
         text += ` - ลาพักร้อน: ${snapshot.leaveSummary.vacationDays ?? 0} วัน\n`;
+        if (snapshot.leaveSummary.overLimitDays && snapshot.leaveSummary.overLimitDays > 0) {
+            text += ` - ลาเกินสิทธิ์: ${snapshot.leaveSummary.overLimitDays} วัน\n`;
+        }
     }
 
     if (snapshot.calcNotes) {
-        text += `หมายเหตุ HR:\n${snapshot.calcNotes}\n`;
+        text += `\nหมายเหตุ HR:\n${snapshot.calcNotes}\n`;
+    }
+     if (snapshot.attendanceSummary?.warnings && snapshot.attendanceSummary.warnings.length > 0) {
+        text += `\n**คำเตือน**:\n${snapshot.attendanceSummary.warnings.join('\n')}\n`;
     }
 
     return text;
@@ -82,5 +88,3 @@ export function formatPayslipAsText(data: SlipData): string {
 export function formatPayslipAsJson(snapshot: PayslipSnapshot): string {
     return JSON.stringify(snapshot, null, 2);
 }
-
-    

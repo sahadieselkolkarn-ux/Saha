@@ -224,5 +224,3 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
     </div>
   );
 }
-
-    

@@ -187,15 +187,20 @@ export default function HRGeneratePayslipsPage() {
             basePay = (hr?.salaryMonthly ?? 0) / 2;
         }
 
-        const initialSnapshot: PayslipSnapshot = existingSnapshot ?? {
-            basePay: basePay,
-            netPay: 0, // Will be recalculated by calcTotals
-            additions: [],
-            deductions: periodMetrics.autoDeductions,
+        const initialSnapshot: PayslipSnapshot = {
+            basePay: existingSnapshot?.basePay ?? basePay,
+            netPay: 0,
+            additions: existingSnapshot?.additions ?? [],
+            deductions: existingSnapshot?.deductions ?? [],
             attendanceSummary: periodMetrics.attendanceSummary,
             leaveSummary: periodMetrics.leaveSummary,
             calcNotes: periodMetrics.calcNotes,
         };
+        
+        // Merge auto-deductions
+        const manualDeductions = initialSnapshot.deductions.filter(d => !d.name.startsWith('[AUTO]'));
+        initialSnapshot.deductions = [...manualDeductions, ...periodMetrics.autoDeductions];
+
         const totals = calcTotals(initialSnapshot);
         setDrawerSnapshot({ ...initialSnapshot, netPay: totals.netPay });
     };
@@ -397,5 +402,3 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
-
-    
