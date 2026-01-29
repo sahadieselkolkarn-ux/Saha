@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -316,21 +317,33 @@ export default function MyPayslipsPage() {
     </html>`;
   }
 
-  const handlePrintInDrawer = () => {
-    if (!viewPayslip || !printFrameRef.current) return;
-    const html = buildPayslipPrintHtml(viewPayslip);
-    const frame = printFrameRef.current;
-    const doc = frame.contentDocument;
-    if (!doc) return;
+  const handlePrintInDrawer = (p: WithId<PayslipNew>) => {
+    try {
+      const frame = printFrameRef.current;
+      if (!frame) {
+        toast({ variant: "destructive", title: "พิมพ์ไม่สำเร็จ", description: "ไม่พบ print frame" });
+        return;
+      }
   
-    doc.open();
-    doc.write(html);
-    doc.close();
+      const html = buildPayslipPrintHtml(p);
   
-    setTimeout(() => {
-      frame.contentWindow?.focus();
-      frame.contentWindow?.print();
-    }, 300);
+      // Use srcdoc to trigger load event reliably
+      frame.onload = () => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+          toast({ title: "กำลังเปิดหน้าพิมพ์..." });
+        } catch (e) {
+          console.error(e);
+          toast({ variant: "destructive", title: "พิมพ์ไม่สำเร็จ", description: "เรียกคำสั่งพิมพ์ไม่ได้" });
+        }
+      };
+  
+      frame.srcdoc = html;
+    } catch (e) {
+      console.error(e);
+      toast({ variant: "destructive", title: "พิมพ์ไม่สำเร็จ", description: "เกิดข้อผิดพลาดในการสร้างเอกสารพิมพ์" });
+    }
   };
 
 
@@ -416,7 +429,7 @@ export default function MyPayslipsPage() {
             <div className="flex gap-2 justify-end w-full">
               <Button
                 variant="outline"
-                onClick={handlePrintInDrawer}
+                onClick={() => viewPayslip && handlePrintInDrawer(viewPayslip)}
               >
                 <Printer/>
                 พิมพ์
@@ -456,8 +469,19 @@ export default function MyPayslipsPage() {
        <iframe
         ref={printFrameRef}
         title="payslip-print-frame"
-        className="hidden"
+        style={{
+            position: "fixed",
+            right: "0",
+            bottom: "0",
+            width: "0",
+            height: "0",
+            border: "0",
+            opacity: 0,
+            pointerEvents: "none",
+        }}
       />
     </>
   );
 }
+
+    
