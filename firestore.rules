@@ -168,17 +168,30 @@ service cloud.firestore {
       allow update: if signedIn();
       allow delete: if false;
     }
-    match /hrHolidays/{id} { allow read, write: if isMgmt(); }
+    
+    // HR Collections
+    match /hrHolidays/{id} {
+      allow read: if signedIn();
+      allow create, update, delete: if isAdmin();
+    }
+    match /hrAttendanceAdjustments/{id} {
+      allow read: if isMgmt();
+      allow create, update, delete: if isAdmin();
+    }
     match /ssoHospitals/{hospitalId} {
       allow read: if signedIn();
       allow write: if isMgmt();
     }
     match /hrLeaves/{id} {
         allow read: if isMgmt() || request.auth.uid == resource.data.userId;
-        allow create: if signedIn();
-        allow update: if isMgmt() || (request.auth.uid == resource.data.userId && request.resource.data.status == 'CANCELLED');
+        allow create: if signedIn() && (
+          request.resource.data.userId == request.auth.uid
+          || isAdmin()
+        );
+        allow update: if isAdmin()
+          || isMgmt()
+          || (request.auth.uid == resource.data.userId && request.resource.data.status == 'CANCELLED');
     }
-    match /hrAttendanceAdjustments/{id} { allow read, write: if isMgmt(); }
 
     match /payrollBatches/{batchId} {
       allow read, write: if isMgmt();

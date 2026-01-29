@@ -196,6 +196,7 @@ export interface HRSettings {
       VACATION?: LeaveTypePolicy;
     };
   };
+  backfillMode?: boolean;
 }
 
 export interface HRHoliday {

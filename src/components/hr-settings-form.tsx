@@ -37,6 +37,7 @@ import { Loader2, Save, Edit, X } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Separator } from "./ui/separator";
+import { Switch } from "./ui/switch";
 
 const leaveTypePolicySchema = z.object({
   annualEntitlement: z.coerce.number().min(0).optional(),
@@ -87,6 +88,7 @@ const hrSettingsSchema = z.object({
       VACATION: leaveTypePolicySchema.optional(),
     }).optional()
   }).optional(),
+  backfillMode: z.boolean().optional(),
 });
 
 const LeavePolicyFields = ({ type, form }: { type: 'SICK' | 'BUSINESS' | 'VACATION', form: any }) => {
@@ -211,7 +213,8 @@ export function HRSettingsForm() {
           BUSINESS: { annualEntitlement: 7, overLimitHandling: { mode: 'DEDUCT_SALARY', salaryDeductionBaseDays: 26 } },
           VACATION: { annualEntitlement: 6, overLimitHandling: { mode: 'DISALLOW', salaryDeductionBaseDays: 26 } },
         }
-      }
+      },
+      backfillMode: false,
     },
   });
 
@@ -259,7 +262,8 @@ export function HRSettingsForm() {
               },
             },
           }
-        }
+        },
+        backfillMode: settings.backfillMode ?? false,
       });
     }
   }, [settings, form]);
@@ -420,6 +424,17 @@ export function HRSettingsForm() {
                     <InfoRow label="หมายเหตุ" value={<span className="whitespace-pre-wrap">{settings?.withholding?.note}</span>} />
                 </CardContent>
             </Card>
+            
+            {isUserAdmin && (
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Admin Controls</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                      <InfoRow label="โหมดแก้ไขย้อนหลัง (Backfill Mode)" value={settings?.backfillMode ? "เปิด" : "ปิด"} />
+                  </CardContent>
+              </Card>
+            )}
         </div>
     );
   }
@@ -580,6 +595,34 @@ export function HRSettingsForm() {
             <FormField control={form.control} name="withholding.note" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
           </CardContent>
         </Card>
+
+        {isUserAdmin && (
+            <Card>
+                <CardHeader><CardTitle>Admin Controls</CardTitle></CardHeader>
+                <CardContent>
+                    <FormField
+                        control={form.control}
+                        name="backfillMode"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                <div className="space-y-0.5">
+                                    <FormLabel>โหมดแก้ไขย้อนหลัง (Backfill Mode)</FormLabel>
+                                    <FormDescription>
+                                        อนุญาตให้แอดมินแก้ไขข้อมูล HR ในอดีตได้ (เช่น วันหยุด, การลงเวลา)
+                                    </FormDescription>
+                                </div>
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+                </CardContent>
+            </Card>
+        )}
         
         <div className="flex justify-end gap-4 sticky bottom-0 bg-background/80 backdrop-blur-sm py-4 -mb-8">
             <Button type="button" variant="ghost" onClick={() => setIsEditing(false)} disabled={form.formState.isSubmitting}><X className="mr-2 h-4 w-4" /> ยกเลิก</Button>
