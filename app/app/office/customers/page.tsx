@@ -261,7 +261,7 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent
-          className="sm:max-w-[600px] p-0 flex flex-col max-h-[90dvh]"
+          className="sm:max-w-[600px] p-0 flex flex-col h-[90dvh] overflow-hidden"
           onInteractOutside={(e) => {
             if (isSubmitting) e.preventDefault();
           }}
@@ -274,9 +274,9 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
             <DialogDescription>Update the details below.</DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col min-h-0">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
               <ScrollArea className="flex-1 min-h-0 px-6">
-                <div className="space-y-4 pb-6 pt-4">
+                <div className="space-y-4 pt-4 pb-6">
                   <FormField name="name" control={form.control} render={({ field }) => (
                     <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
@@ -540,5 +540,3 @@ export default function CustomersPage() {
         </>
     );
 }
-
-    
