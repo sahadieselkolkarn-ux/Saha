@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
-import { collectionGroup, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, getDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -103,42 +104,59 @@ export default function MyPayslipsPage() {
   const [revisionPayslip, setRevisionPayslip] = useState<WithId<PayslipNew> & { refPath: string } | null>(null);
 
   useEffect(() => {
-    if (!db || !profile) {
+    if (!db || !profile?.uid) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
-    const payslipsQuery = query(
-      collectionGroup(db, 'payslips'),
-      where('userId', '==', profile.uid)
-    );
+    let cancelled = false;
 
-    const unsubscribe = onSnapshot(payslipsQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        refPath: doc.ref.path, 
-        ...doc.data()
-      } as WithId<PayslipNew> & { refPath: string }));
+    async function loadPayslips() {
+      try {
+        setLoading(true);
 
-      // Client-side sort
-      data.sort((a, b) => {
-        const dateA = a.sentAt?.toDate()?.getTime() || a.updatedAt?.toDate()?.getTime() || 0;
-        const dateB = b.sentAt?.toDate()?.getTime() || b.updatedAt?.toDate()?.getTime() || 0;
-        return dateB - dateA;
-      });
-      
-      setPayslips(data);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching payslips:", error);
-      toast({ variant: 'destructive', title: 'ไม่สามารถโหลดข้อมูลได้', description: error.message });
-      setLoading(false);
-    });
+        // 1) get payroll batch ids
+        const batchesSnap = await getDocs(collection(db, "payrollBatches"));
+        const batchIds = batchesSnap.docs.map(d => d.id);
 
-    return () => unsubscribe();
+        // sort latest first by id pattern "YYYY-MM-{period}"
+        batchIds.sort((a,b) => b.localeCompare(a));
 
-  }, [db, profile, toast]);
+        // 2) read payslip doc for each batchId using profile.uid as doc id
+        const results: (WithId<PayslipNew> & { refPath: string })[] = [];
+
+        await Promise.all(batchIds.map(async (batchId) => {
+          const slipRef = doc(db, "payrollBatches", batchId, "payslips", profile.uid);
+          const slipSnap = await getDoc(slipRef);
+          if (slipSnap.exists()) {
+            results.push({
+              id: slipSnap.id,
+              refPath: slipRef.path,
+              ...(slipSnap.data() as PayslipNew),
+            } as any);
+          }
+        }));
+
+        // 3) sort by sentAt/updatedAt desc (same logic as before)
+        results.sort((a, b) => {
+          const dateA = a.sentAt?.toDate()?.getTime() || a.updatedAt?.toDate()?.getTime() || 0;
+          const dateB = b.sentAt?.toDate()?.getTime() || b.updatedAt?.toDate()?.getTime() || 0;
+          return dateB - dateA;
+        });
+
+        if (!cancelled) setPayslips(results);
+      } catch (error: any) {
+        console.error("Error fetching payslips:", error);
+        toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลได้", description: error.message });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadPayslips();
+    return () => { cancelled = true; };
+  }, [db, profile?.uid, toast]);
+
 
   const handleAccept = async (payslip: WithId<PayslipNew> & { refPath: string }) => {
     if (!db) return;
@@ -151,6 +169,8 @@ export default function MyPayslipsPage() {
         employeeNote: null,
       });
       toast({ title: 'ยืนยันสลิปเรียบร้อย' });
+      // Manually update local state for immediate feedback
+      setPayslips(prev => prev.map(p => p.id === payslip.id ? {...p, status: 'READY_TO_PAY'} : p));
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'ทำรายการไม่สำเร็จ', description: error.message });
     } finally {
@@ -168,6 +188,8 @@ export default function MyPayslipsPage() {
         employeeNote: reason,
       });
       toast({ title: 'ส่งคำร้องแก้ไขเรียบร้อย' });
+       // Manually update local state
+      setPayslips(prev => prev.map(p => p.id === revisionPayslip.id ? {...p, status: 'REVISION_REQUESTED'} : p));
       setRevisionPayslip(null);
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'ทำรายการไม่สำเร็จ', description: error.message });
