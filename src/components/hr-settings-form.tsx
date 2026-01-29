@@ -592,5 +592,3 @@ export function HRSettingsForm() {
     </Form>
   );
 }
-
-    

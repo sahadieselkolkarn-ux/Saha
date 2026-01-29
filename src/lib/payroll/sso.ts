@@ -57,5 +57,3 @@ export function splitSsoHalf(ssoMonthly: number): { p1: number; p2: number } {
   const p2 = round2(ssoMonthly - p1);
   return { p1, p2 };
 }
-
-    

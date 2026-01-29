@@ -617,5 +617,3 @@ export interface PurchaseClaim {
   approvedByName?: string;
   rejectReason?: string;
 }
-
-    
