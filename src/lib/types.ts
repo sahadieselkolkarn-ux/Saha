@@ -1,5 +1,4 @@
 
-
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew } from './constants';
 
@@ -179,6 +178,7 @@ export interface HRSettings {
   sso?: {
     employeePercent?: number;
     employerPercent?: number;
+    monthlyMinBase?: number;
     monthlyCap?: number;
     effectiveFrom?: Timestamp;
   };
@@ -251,8 +251,6 @@ export interface PayrollBatch {
   year: number;
   month: number;
   periodNo: 1 | 2;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
   createdAt: Timestamp;
   createdByUid: string;
   createdByName: string;
@@ -262,7 +260,18 @@ export interface PayrollBatch {
     requestedCount: number;
     readyCount: number;
     paidCount: number;
-  }
+  };
+  ssoDecision?: {
+    employeePercent: number;
+    monthlyMinBase: number;
+    monthlyCap: number;
+    decidedAt: Timestamp;
+    decidedByUid: string;
+    decidedByName: string;
+    source: 'AUTO_LOCK' | 'HR_OVERRIDE';
+    note?: string;
+  };
+  ssoDecisionHash?: string;
 }
 
 export interface PayslipDeduction {

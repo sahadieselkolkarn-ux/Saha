@@ -221,22 +221,5 @@ export function computePeriodMetrics(params: {
       }
   }
 
-  // SSO Deduction
-  if ((payType === 'MONTHLY' || payType === 'MONTHLY_NOSCAN') && period.end.getDate() > 20) { // Only run for 2nd period
-    const salary = user.hr?.salaryMonthly ?? 0;
-    const ssoSettings = hrSettings.sso;
-    if (salary > 0 && ssoSettings?.employeePercent && ssoSettings?.employeePercent > 0) {
-        const baseCap = ssoSettings.monthlyCap ?? salary;
-        const ssoBase = Math.min(salary, baseCap);
-        const ssoAmount = ssoBase * (ssoSettings.employeePercent / 100);
-        autoDeductions.push({
-            name: "[AUTO] ประกันสังคม",
-            amount: Math.round(ssoAmount * 100) / 100, // round to 2dp
-            notes: `คำนวณจากฐาน ${ssoBase.toLocaleString()} @ ${ssoSettings.employeePercent}%`
-        });
-    }
-  }
-
-
   return { attendanceSummary, leaveSummary, calcNotes: calcNotes.trim(), autoDeductions };
 }
