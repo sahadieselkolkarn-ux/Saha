@@ -153,7 +153,7 @@ export default function HRGeneratePayslipsPage() {
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
+            const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY' && u.hr.payType !== 'MONTHLY_NOSCAN');
 
             const allHolidays = new Map(
               holidaysSnap.docs.map(d => {
@@ -174,14 +174,14 @@ export default function HRGeneratePayslipsPage() {
             const existingPayslips = new Map(payslipsSnap.docs.map(d => [d.id, d.data() as PayslipNew]));
 
             const data = activeUsers.map(user => {
-                const userLeavesYear = allLeavesYear.filter(l => l.userId === user.id);
+                const userLeaves = allLeavesYear.filter(l => l.userId === user.id);
                 const userAttendanceThisPeriod = allAttendancePeriod.filter(a => a.userId === user.id);
                 const userAdjustmentsThisPeriod = allAdjustmentsPeriod.filter(a => a.userId === user.id);
                 const userAttendanceYtd = allAttendanceYtd.filter(a => a.userId === user.id);
                 const userAdjustmentsYtd = allAdjustmentsYtd.filter(a => a.userId === user.id);
 
-                const periodMetrics = computePeriodMetrics({ user, payType: user.hr!.payType!, period: payPeriod, hrSettings, holidays: allHolidays, userLeavesApprovedYear, userAttendance: userAttendanceThisPeriod, userAdjustments: userAdjustmentsThisPeriod, today: new Date() });
-                const periodMetricsYtd = computePeriodMetrics({ user, payType: user.hr!.payType!, period: {start: ytdStart, end: payPeriod.end }, hrSettings, holidays: allHolidays, userLeavesApprovedYear, userAttendance: userAttendanceYtd, userAdjustments: userAdjustmentsYtd, today: new Date() });
+                const periodMetrics = computePeriodMetrics({ user, payType: user.hr!.payType!, period: payPeriod, hrSettings, holidays: allHolidays, userLeavesApprovedYear: userLeaves, userAttendance: userAttendanceThisPeriod, userAdjustments: userAdjustmentsThisPeriod, today: new Date() });
+                const periodMetricsYtd = computePeriodMetrics({ user, payType: user.hr!.payType!, period: {start: ytdStart, end: payPeriod.end }, hrSettings, holidays: allHolidays, userLeavesApprovedYear: userLeaves, userAttendance: userAttendanceYtd, userAdjustments: userAdjustmentsYtd, today: new Date() });
                 const existingSlip = existingPayslips.get(user.id);
                 
                 return { ...user, periodMetrics, periodMetricsYtd, payslipStatus: existingSlip?.status ?? 'ไม่มีสลิป', snapshot: existingSlip?.snapshot ?? null, revisionNo: existingSlip?.revisionNo };
@@ -409,4 +409,3 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
-
