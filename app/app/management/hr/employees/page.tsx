@@ -127,7 +127,33 @@ export default function ManagementHREmployeesPage() {
 
   const form = useForm<z.infer<typeof userProfileSchema>>({
     resolver: zodResolver(userProfileSchema),
-    defaultValues: {},
+    defaultValues: {
+      displayName: '',
+      phone: '',
+      role: 'WORKER',
+      status: 'PENDING',
+      personal: {
+        idCardNo: '',
+        address: '',
+        bank: {
+          bankName: '',
+          accountName: '',
+          accountNo: '',
+        },
+        emergencyContact: {
+          name: '',
+          relationship: '',
+          phone: '',
+        },
+      },
+      hr: {
+        payType: 'MONTHLY',
+        startDate: '',
+        endDate: '',
+        ssoHospital: '',
+        note: '',
+      },
+    },
   });
 
   useEffect(() => {
@@ -371,8 +397,8 @@ export default function ManagementHREmployeesPage() {
                     <Card>
                         <CardHeader><CardTitle>ข้อมูลบัญชี</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
-                            <FormField name="displayName" control={form.control} render={({ field }) => (<FormItem><FormLabel>ชื่อ</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                            <FormField name="phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>เบอร์โทร</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="displayName" control={form.control} render={({ field }) => (<FormItem><FormLabel>ชื่อ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="phone" control={form.control} render={({ field }) => (<FormItem><FormLabel>เบอร์โทร</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <FormField name="department" control={form.control} render={({ field }) => (<FormItem><FormLabel>แผนก</FormLabel><Select onValueChange={field.onChange} value={field.value ?? ''}><FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl><SelectContent>{DEPARTMENTS.map(d=><SelectItem key={d} value={d}>{deptLabel(d)}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                                 <FormField name="role" control={form.control} render={({ field }) => (<FormItem><FormLabel>ตำแหน่ง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl><SelectContent>{USER_ROLES.map(r=><SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
@@ -504,5 +530,3 @@ export default function ManagementHREmployeesPage() {
     </>
   );
 }
-
-    

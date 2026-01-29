@@ -126,14 +126,14 @@ export default function EditVendorPage() {
                 <FormField control={form.control} name="shortName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>ชื่อย่อ (ไม่ซ้ำ)</FormLabel>
-                    <FormControl><Input {...field} className="uppercase" /></FormControl>
+                    <FormControl><Input {...field} value={field.value ?? ''} className="uppercase" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="companyName" render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>ชื่อร้าน/บริษัท</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
+                    <FormControl><Input {...field} value={field.value ?? ''} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -147,23 +147,23 @@ export default function EditVendorPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="address" render={({ field }) => (
-                <FormItem><FormLabel>ที่อยู่</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>ที่อยู่</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
               )} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="phone" render={({ field }) => (
-                  <FormItem><FormLabel>เบอร์โทรศัพท์ร้าน</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>เบอร์โทรศัพท์ร้าน</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="email" render={({ field }) => (
-                  <FormItem><FormLabel>อีเมล</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>อีเมล</FormLabel><FormControl><Input type="email" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
               <Separator />
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="contactName" render={({ field }) => (
-                  <FormItem><FormLabel>ผู้ติดต่อ</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>ผู้ติดต่อ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="contactPhone" render={({ field }) => (
-                  <FormItem><FormLabel>เบอร์โทรผู้ติดต่อ</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>เบอร์โทรผู้ติดต่อ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
             </CardContent>
@@ -175,10 +175,10 @@ export default function EditVendorPage() {
             </CardHeader>
             <CardContent className="space-y-4">
                 <FormField control={form.control} name="taxId" render={({ field }) => (
-                  <FormItem><FormLabel>เลขผู้เสียภาษี</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>เลขผู้เสียภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="notes" render={({ field }) => (
-                  <FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                 )} />
             </CardContent>
           </Card>

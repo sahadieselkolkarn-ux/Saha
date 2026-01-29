@@ -74,7 +74,29 @@ export default function SettingsPage() {
     
     const form = useForm<z.infer<typeof profileSchema>>({
         resolver: zodResolver(profileSchema),
-        defaultValues: {},
+        defaultValues: {
+            displayName: '',
+            phone: '',
+            personal: {
+                idCardNo: '',
+                address: '',
+                bank: {
+                    bankName: '',
+                    accountName: '',
+                    accountNo: '',
+                },
+                emergencyContact: {
+                    name: '',
+                    relationship: '',
+                    phone: '',
+                }
+            },
+            hr: {
+                payType: 'MONTHLY',
+                ssoHospital: '',
+                note: ''
+            }
+        },
       });
 
     useEffect(() => {
@@ -189,8 +211,8 @@ export default function SettingsPage() {
                             <Card>
                                 <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
-                                    <FormField control={form.control} name="displayName" render={({ field }) => (<FormItem><FormLabel>Display Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
-                                    <FormField control={form.control} name="phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="displayName" render={({ field }) => (<FormItem><FormLabel>Display Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                    <FormField control={form.control} name="phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                                 </CardContent>
                             </Card>
                             <Card>
