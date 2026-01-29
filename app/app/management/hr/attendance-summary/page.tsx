@@ -2,12 +2,24 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, format } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
-  format, startOfMonth, endOfMonth, eachDayOfInterval, isWithinInterval,
-  isSaturday, isSunday, subMonths, addMonths, parseISO, differenceInMinutes, setHours, setMinutes, isBefore, isAfter, startOfToday
+  isWithinInterval,
+  isSaturday,
+  isSunday,
+  subMonths,
+  addMonths,
+  parseISO,
+  differenceInMinutes,
+  set,
+  isBefore,
+  isAfter,
+  startOfToday,
+  eachDayOfInterval,
+  startOfMonth,
+  endOfMonth,
 } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 
@@ -20,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit, CalendarDays, ExternalLink, Search } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit, CalendarDays, ExternalLink, Search, ChevronDown } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
 import { Input } from "@/components/ui/input";
@@ -150,7 +162,7 @@ export default function ManagementHRAttendanceSummaryPage() {
         });
         
         const rawIns = attendanceForDay.filter(a => a.type === 'IN' && a.timestamp && (a.timestamp instanceof Timestamp)).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
-        const rawOuts = attendanceForDay.filter(a => a.type === 'OUT' && a.timestamp && (a.timestamp instanceof Timestamp)).map(a => a.timestamp.toDate()).sort((a,b) => a.getTime() - b.getTime());
+        const rawOuts = attendanceForDay.filter(a => a.type === 'OUT' && a.timestamp && (a.timestamp instanceof Timestamp)).map(a => a.timestamp.toDate()).sort((a,b) => b.getTime() - a.getTime());
 
         let firstIn = rawIns[0] ?? null;
         let lastOut = rawOuts[rawOuts.length-1] ?? null;
@@ -174,7 +186,7 @@ export default function ManagementHRAttendanceSummaryPage() {
           return daily;
         }
 
-        const workStartTimeWithGrace = setMinutes(setHours(day, workStartHour), workStartMinute + graceMinutes);
+        const workStartTimeWithGrace = set(day, { hours: workStartHour, minutes: workStartMinute + graceMinutes });
         let lateMins = differenceInMinutes(firstIn, workStartTimeWithGrace);
         if (lateMins < 0) lateMins = 0;
 
@@ -358,102 +370,104 @@ export default function ManagementHRAttendanceSummaryPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[200px]">Employee</TableHead>
-              <TableHead>Start Date</TableHead>
-              <TableHead>End Date</TableHead>
-              <TableHead>Present</TableHead>
+              <TableHead className="w-[250px]">Employee</TableHead>
               <TableHead>Late</TableHead>
               <TableHead>Absent</TableHead>
               <TableHead>Leave</TableHead>
               <TableHead>Total Late (min)</TableHead>
               <TableHead>Notes</TableHead>
+              <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
+          <TableBody>
+            {filteredSummaryData.map(summary => (
+                <AccordionItem value={summary.userId} key={summary.userId} asChild>
+                    <>
+                        <AccordionTrigger asChild>
+                            <TableRow className="hover:bg-muted/50 cursor-pointer [&[data-state=open]>td:last-child>svg]:rotate-180">
+                                <TableCell className="font-medium">{summary.userName}</TableCell>
+                                <TableCell>{summary.totalLate}</TableCell>
+                                <TableCell>{summary.totalAbsent}</TableCell>
+                                <TableCell>{summary.totalLeave}</TableCell>
+                                <TableCell>{summary.totalLateMinutes}</TableCell>
+                                <TableCell>
+                                    {summary.status === 'SUSPENDED' ? (
+                                        <Badge variant="destructive">Suspended</Badge>
+                                    ) : summary.reviewNeeded ? (
+                                        <Badge variant="destructive">Review Needed</Badge>
+                                    ) : null}
+                                </TableCell>
+                                <TableCell>
+                                    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+                                </TableCell>
+                            </TableRow>
+                        </AccordionTrigger>
+                        <AccordionContent asChild>
+                            <tr>
+                                <td colSpan={7}>
+                                    <div className="p-4 bg-muted/30 max-h-96 overflow-y-auto">
+                                        <h4 className="font-semibold mb-2">Daily Details for {summary.userName}</h4>
+                                        <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                            <TableHead>Date</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead>IN</TableHead>
+                                            <TableHead>OUT</TableHead>
+                                            <TableHead>Work Hours</TableHead>
+                                            <TableHead>Late (min)</TableHead>
+                                            <TableHead className="text-right">Actions</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {summary.dailySummaries.map(day => (
+                                            <TableRow key={day.date.toISOString()} className={cn("bg-background", (day.status === 'FUTURE' || day.status === 'NOT_STARTED' || day.status === 'ENDED' || day.status === 'SUSPENDED') && 'text-muted-foreground/70')}>
+                                                <TableCell>{safeFormat(day.date, 'dd/MM')}</TableCell>
+                                                <TableCell>{getStatusBadge(day.status, day.leaveType)}</TableCell>
+                                                <TableCell>{safeFormat(day.rawIn, 'HH:mm')}</TableCell>
+                                                <TableCell>{safeFormat(day.rawOut, 'HH:mm')}</TableCell>
+                                                <TableCell>{day.workHours || '-'}</TableCell>
+                                                <TableCell>{day.lateMinutes || '-'}</TableCell>
+                                                <TableCell className="text-right">
+                                                {day.status !== 'HOLIDAY' && day.status !== 'WEEKEND' && day.status !== 'NOT_STARTED' && day.status !== 'ENDED' && day.status !== 'SUSPENDED' && day.status !== 'FUTURE' && (
+                                                    <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                        <Button 
+                                                            variant="outline"
+                                                            size="icon"
+                                                            onClick={() => {
+                                                                const userForDialog = allUsers.find(u=>u.id===summary.userId);
+                                                                if (userForDialog) {
+                                                                    setAdjustingDayInfo({ user: userForDialog, day })
+                                                                } else {
+                                                                    toast({variant: 'destructive', title: 'Could not open dialog', description: 'User data not fully loaded.'});
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Edit className="h-4 w-4"/>
+                                                        </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                        <p>Adjust Attendance</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
+                                                </TableCell>
+                                            </TableRow>
+                                            ))}
+                                        </TableBody>
+                                        </Table>
+                                    </div>
+                                </td>
+                            </tr>
+                        </AccordionContent>
+                    </>
+                </AccordionItem>
+            ))}
+          </TableBody>
         </Table>
-        {filteredSummaryData.map(summary => (
-          <AccordionItem value={summary.userId} key={summary.userId}>
-            <AccordionTrigger className="hover:no-underline hover:bg-muted/50 px-4">
-              <Table className="w-full">
-                <TableBody>
-                  <TableRow className="border-none hover:bg-transparent">
-                    <TableCell className="w-[200px] font-medium">{summary.userName}</TableCell>
-                    <TableCell>{summary.startDate ? safeFormat(parseISO(summary.startDate), 'dd/MM/yy') : '-'}</TableCell>
-                    <TableCell>{summary.endDate ? safeFormat(parseISO(summary.endDate), 'dd/MM/yy') : 'Present'}</TableCell>
-                    <TableCell>{summary.totalPresent}</TableCell>
-                    <TableCell>{summary.totalLate}</TableCell>
-                    <TableCell>{summary.totalAbsent}</TableCell>
-                    <TableCell>{summary.totalLeave}</TableCell>
-                    <TableCell>{summary.totalLateMinutes}</TableCell>
-                    <TableCell>
-                      {summary.status === 'SUSPENDED' ? (
-                          <Badge variant="destructive">Suspended</Badge>
-                      ) : summary.reviewNeeded ? (
-                          <Badge variant="destructive">Review Needed</Badge>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="p-4 bg-muted/30 max-h-96 overflow-y-auto">
-                <h4 className="font-semibold mb-2">Daily Details for {summary.userName}</h4>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>IN</TableHead>
-                      <TableHead>OUT</TableHead>
-                      <TableHead>Work Hours</TableHead>
-                      <TableHead>Late (min)</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summary.dailySummaries.map(day => (
-                      <TableRow key={day.date.toISOString()} className={cn("bg-background", (day.status === 'FUTURE' || day.status === 'NOT_STARTED' || day.status === 'ENDED' || day.status === 'SUSPENDED') && 'text-muted-foreground/70')}>
-                        <TableCell>{safeFormat(day.date, 'dd/MM')}</TableCell>
-                        <TableCell>{getStatusBadge(day.status, day.leaveType)}</TableCell>
-                        <TableCell>{safeFormat(day.rawIn, 'HH:mm')}</TableCell>
-                        <TableCell>{safeFormat(day.rawOut, 'HH:mm')}</TableCell>
-                        <TableCell>{day.workHours || '-'}</TableCell>
-                        <TableCell>{day.lateMinutes || '-'}</TableCell>
-                        <TableCell className="text-right">
-                          {day.status !== 'HOLIDAY' && day.status !== 'WEEKEND' && day.status !== 'NOT_STARTED' && day.status !== 'ENDED' && day.status !== 'SUSPENDED' && day.status !== 'FUTURE' && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button 
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => {
-                                        const userForDialog = allUsers.find(u=>u.id===summary.userId);
-                                        if (userForDialog) {
-                                            setAdjustingDayInfo({ user: userForDialog, day })
-                                        } else {
-                                            toast({variant: 'destructive', title: 'Could not open dialog', description: 'User data not fully loaded.'});
-                                        }
-                                    }}
-                                  >
-                                    <Edit className="h-4 w-4"/>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Adjust Attendance</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        ))}
       </Accordion>
     );
   }
