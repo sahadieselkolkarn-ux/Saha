@@ -170,8 +170,8 @@ export default function HRGeneratePayslipsPage() {
                 const userAttendanceYtd = allAttendanceYtd.filter(a => a.userId === user.id);
                 const userAdjustmentsYtd = allAdjustmentsYtd.filter(a => a.userId === user.id);
 
-                const periodMetrics = computePeriodMetrics({ user, payType: user.hr!.payType!, period: payPeriod, hrSettings, holidays: allHolidays, userLeavesApprovedYear, userAttendance: userAttendanceThisPeriod, userAdjustments: userAdjustmentsThisPeriod, today: new Date() });
-                const periodMetricsYtd = computePeriodMetrics({ user, payType: user.hr!.payType!, period: {start: ytdStart, end: payPeriod.end }, hrSettings, holidays: allHolidays, userLeavesApprovedYear, userAttendance: userAttendanceYtd, userAdjustments: userAdjustmentsYtd, today: new Date() });
+                const periodMetrics = computePeriodMetrics({ user, payType: user.hr!.payType!, period: payPeriod, hrSettings, holidays: allHolidays, userLeavesApprovedYear: userLeavesYear, userAttendance: userAttendanceThisPeriod, userAdjustments: userAdjustmentsThisPeriod, today: new Date() });
+                const periodMetricsYtd = computePeriodMetrics({ user, payType: user.hr!.payType!, period: {start: ytdStart, end: payPeriod.end }, hrSettings, holidays: allHolidays, userLeavesApprovedYear: userLeavesYear, userAttendance: userAttendanceYtd, userAdjustments: userAdjustmentsYtd, today: new Date() });
                 const existingSlip = existingPayslips.get(user.id);
                 
                 return { ...user, periodMetrics, periodMetricsYtd, payslipStatus: existingSlip?.status ?? 'ไม่มีสลิป', snapshot: existingSlip?.snapshot ?? null, revisionNo: existingSlip?.revisionNo };
@@ -399,3 +399,4 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
+
