@@ -310,20 +310,20 @@ export interface PayslipSnapshot {
         overLimitDays?: number;
     };
     attendanceSummaryYtd?: {
-        presentDays?: number;
-        lateDays?: number;
-        absentUnits?: number;
-        leaveDays?: number;
-        lateMinutes?: number;
-        scheduledWorkDays?: number;
-        payableUnits?: number;
-        warnings?: string[];
+      presentDays?: number;
+      lateDays?: number;
+      absentUnits?: number;
+      leaveDays?: number;
+      lateMinutes?: number;
+      payableUnits?: number;
+      scheduledWorkDays?: number;
+      warnings?: string[];
     };
     leaveSummaryYtd?: {
-        sickDays?: number;
-        businessDays?: number;
-        vacationDays?: number;
-        overLimitDays?: number;
+      sickDays?: number;
+      businessDays?: number;
+      vacationDays?: number;
+      overLimitDays?: number;
     };
     calcNotes?: string;
 }
@@ -633,4 +633,15 @@ export interface PurchaseClaim {
   approvedByUid?: string;
   approvedByName?: string;
   rejectReason?: string;
+}
+
+export interface BillingRun {
+  id: string; // YYYY-MM
+  monthId: string; // YYYY-MM
+  deferredInvoices?: Record<string, boolean>;
+  separateInvoiceGroups?: Record<string, string>;
+  createdBillingNotes?: Record<string, { main?: string; separate?: Record<string, string> }>;
+  updatedAt?: Timestamp;
+  updatedByUid?: string;
+  updatedByName?: string;
 }

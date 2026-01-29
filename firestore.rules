@@ -44,6 +44,14 @@ service cloud.firestore {
     function isAccountingAllowed() {
       return isSystemAdmin() || isMgmt();
     }
+    
+    function hrSettings() {
+      return get(/databases/$(database)/documents/settings/hr).data;
+    }
+    
+    function backfillMode() {
+      return signedIn() && (hrSettings().backfillMode == true);
+    }
 
     // ===================================
     // Default Security Rules
@@ -159,6 +167,10 @@ service cloud.firestore {
       allow read, update: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
+    match /billingRuns/{monthId} {
+        allow read, write: if isAccountingAllowed();
+    }
+
 
     // --- HR & Attendance (MVP) ---
     match /attendance/{id} { allow read, write: if signedIn(); }

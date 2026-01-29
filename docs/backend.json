@@ -742,6 +742,9 @@
               }
             }
           }
+        },
+        "backfillMode": {
+          "type": "boolean"
         }
       }
     },
@@ -1274,6 +1277,62 @@
       "required": [
         "id", "status", "createdAt", "createdByUid", "createdByName", "purchaseDocId", "purchaseDocNo", "vendorNameSnapshot", "invoiceNo", "paymentMode", "amountTotal"
       ]
+    },
+    "BillingRun": {
+      "title": "Billing Run",
+      "description": "Stores user overrides and generated document info for a monthly billing batch.",
+      "type": "object",
+      "properties": {
+        "monthId": {
+          "type": "string",
+          "description": "The YYYY-MM identifier for the run."
+        },
+        "deferredInvoices": {
+          "type": "object",
+          "description": "A map of invoice IDs that are deferred to the next billing cycle.",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "separateInvoiceGroups": {
+          "type": "object",
+          "description": "A map of invoice IDs to a group key for separate billing.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "createdBillingNotes": {
+          "type": "object",
+          "description": "A map of customer IDs to the generated billing note IDs.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "main": {
+                "type": "string"
+              },
+              "separate": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string"
+        },
+        "updatedByName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "monthId"
+      ]
     }
   },
   "auth": {
@@ -1425,6 +1484,12 @@
         "$ref": "#/backend/entities/PurchaseClaim"
       },
       "description": "Stores claims for purchase approvals."
+    },
+    "/billingRuns/{monthId}": {
+      "schema": {
+        "$ref": "#/backend/entities/BillingRun"
+      },
+      "description": "Stores overrides for monthly billing runs."
     }
   }
 }
