@@ -4,7 +4,13 @@ const path = require('path');
 
 const projectRoot = process.cwd();
 const errors = [];
-const ALLOW_ROOT_WRAPPERS = new Set(["app/layout.tsx", "app/page.tsx"]);
+
+// New Policy: Allow legacy routes only for redirect handling.
+const ALLOW_LEGACY_APP_SEGMENT = new Set([
+  "app/app/[...path]/page.tsx",
+  "app/app/page.tsx",
+  "app/app/layout.tsx"
+]);
 
 function logError(message) {
   console.error(`❌ ${message}`);
@@ -44,22 +50,20 @@ for (const filePath of allPageFiles) {
   const content = fs.readFileSync(filePath, 'utf8');
   const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
 
-  // Rule 1: If a file is NOT an allowed root wrapper, it MUST be in app/app
-  if (!ALLOW_ROOT_WRAPPERS.has(relativePath) && !relativePath.startsWith('app/app/')) {
-    logError(`Routing Error: Route file "${relativePath}" must be inside "app/app/". The only allowed files in root "app/" are layout.tsx and page.tsx.`);
+  // Rule 1 (New): Disallow files in app/app unless they are part of the legacy redirect handlers.
+  if (relativePath.startsWith('app/app/') && !ALLOW_LEGACY_APP_SEGMENT.has(relativePath)) {
+    logError(`Legacy Route Error: Route file "${relativePath}" must be moved to the root "app/" directory. The "app/app/" segment is for legacy redirects only.`);
   }
 
-  // Rule 2: Check for self-export loops, skipping simple wrappers.
-  if (!ALLOW_ROOT_WRAPPERS.has(relativePath)) {
-    const selfExportRegex = /export\s*{\s*default\s*}\s*from\s*["']@\/(.*?)["']/;
-    const match = content.match(selfExportRegex);
-    if (match) {
-        const importPath = match[1].replace(/\..*$/, '');
-        const currentFilePath = relativePath.replace(/^src\//, '').replace(/\..*$/, '');
-        if (importPath === currentFilePath) {
-            logError(`Self Re-export Error: File "${relativePath}" is re-exporting itself from alias "@/${importPath}". This creates an infinite loop.`);
-        }
-    }
+  // Rule 2: Check for self-export loops
+  const selfExportRegex = /export\s*{\s*default\s*}\s*from\s*["']@\/(.*?)["']/;
+  const match = content.match(selfExportRegex);
+  if (match) {
+      const importPath = match[1].replace(/\..*$/, '');
+      const currentFilePath = relativePath.replace(/^src\//, '').replace(/\..*$/, '');
+      if (importPath === currentFilePath) {
+          logError(`Self Re-export Error: File "${relativePath}" is re-exporting itself from alias "@/${importPath}". This creates an infinite loop.`);
+      }
   }
 }
 
