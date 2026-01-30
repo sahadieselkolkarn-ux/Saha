@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { FixStuckUI } from "@/components/fix-stuck-ui";
@@ -12,13 +12,28 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const { user, loading, profile } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const isPrintMode = searchParams.get("print") === "1";
 
+  const isPublicRoute =
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/pending" ||
+    pathname === "/healthz";
+
   useEffect(() => {
-    if (loading) return;
-    if (!user) router.replace("/login");
-    else if (profile?.status && profile.status !== "ACTIVE") router.replace("/pending");
-  }, [user, profile, loading, router]);
+    if (loading || isPublicRoute) return;
+
+    if (!user) {
+      router.replace("/login");
+    } else if (profile?.status && profile.status !== "ACTIVE") {
+      router.replace("/pending");
+    }
+  }, [user, profile, loading, router, isPublicRoute, pathname]);
+
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
 
   if (loading || !user || !profile) {
     return (
@@ -27,7 +42,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-
+  
   if (profile.status !== "ACTIVE") {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
