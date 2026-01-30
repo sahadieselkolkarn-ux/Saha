@@ -1,4 +1,3 @@
-
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -12,19 +11,37 @@ export default function PostLoginRouter() {
   useEffect(() => {
     if (loading) return;
     if (!user) { router.replace("/login"); return; }
-    if (!profile) return;
+    if (!profile) return; // Still loading or missing profile
 
     if (profile.status && profile.status !== "ACTIVE") { router.replace("/pending"); return; }
 
     const dept = profile.department;
     const role = profile.role;
 
-    if (role === "ADMIN" || dept === "MANAGEMENT") router.replace("/management/dashboard");
-    else if (dept === "OFFICE") router.replace("/office/customers");
-    else if (dept === "COMMONRAIL") router.replace("/commonrail/jobs/all");
-    else if (dept === "MECHANIC") router.replace("/mechanic/jobs/all");
-    else if (dept === "CAR_SERVICE") router.replace("/car-service/jobs/all");
-    else router.replace("/pending");
+    if (role === "ADMIN" || dept === "MANAGEMENT") {
+        router.replace("/management/dashboard");
+        return;
+    }
+    
+    switch(dept) {
+        case "OFFICE":
+            router.replace("/office/intake");
+            break;
+        case "CAR_SERVICE":
+            router.replace("/car-service/jobs/all");
+            break;
+        case "COMMONRAIL":
+            router.replace("/commonrail/jobs/all");
+            break;
+        case "MECHANIC":
+            router.replace("/mechanic/jobs/all");
+            break;
+        case "OUTSOURCE":
+            router.replace("/outsource/tracking/pending");
+            break;
+        default:
+            router.replace("/pending");
+    }
   }, [loading, user, profile, router]);
 
   return (

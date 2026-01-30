@@ -1,3 +1,5 @@
+import { RequireDepartment } from "@/components/require-department";
+
 export default function CommonrailLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return <RequireDepartment allow={['COMMONRAIL']}>{children}</RequireDepartment>;
 }
