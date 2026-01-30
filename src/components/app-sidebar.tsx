@@ -58,16 +58,16 @@ export function AppSidebar() {
                         <DropdownMenuLabel>{profile.displayName}</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
-                            <Link href="/app/settings"><Settings className="mr-2 h-4 w-4"/> โปรไฟล์และการตั้งค่า</Link>
+                            <Link href="/settings"><Settings className="mr-2 h-4 w-4"/> โปรไฟล์และการตั้งค่า</Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
-                            <Link href="/app/settings/my-leaves"><FileText className="mr-2 h-4 w-4"/> ใบลาของฉัน</Link>
+                            <Link href="/settings/my-leaves"><FileText className="mr-2 h-4 w-4"/> ใบลาของฉัน</Link>
                         </DropdownMenuItem>
                          <DropdownMenuItem asChild>
-                            <Link href="/app/settings/holidays"><CalendarDays className="mr-2 h-4 w-4"/> ปฏิทินวันหยุด</Link>
+                            <Link href="/settings/holidays"><CalendarDays className="mr-2 h-4 w-4"/> ปฏิทินวันหยุด</Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem asChild>
-                            <Link href="/app/settings/my-payslips"><Receipt className="mr-2 h-4 w-4"/> ใบเงินเดือนของฉัน</Link>
+                            <Link href="/settings/my-payslips"><Receipt className="mr-2 h-4 w-4"/> ใบเงินเดือนของฉัน</Link>
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={signOut}>
