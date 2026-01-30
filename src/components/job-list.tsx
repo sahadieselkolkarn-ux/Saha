@@ -686,7 +686,6 @@ export function JobList({
                 <Button asChild variant="outline" className="w-full">
                   <Link href={`/app/jobs/${job.id}`}>
                     ดูรายละเอียด
-                    <ArrowRight />
                   </Link>
                 </Button>
                 {job.status === 'RECEIVED' && profile?.department === job.department && (
