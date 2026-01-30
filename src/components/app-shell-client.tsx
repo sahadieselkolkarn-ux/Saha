@@ -22,47 +22,41 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  const isPrintMode = searchParams.get("print") === "1";
-
-  // ✅ Public routes: allow rendering without auth + without sidebar wrapper
   const isPublicRoute =
     pathname === "/login" ||
     pathname === "/pending" ||
     pathname === "/signup" ||
     pathname === "/healthz";
 
-  // ✅ Public pages render directly (no auth gating, no sidebar)
-  if (isPublicRoute) {
-    return <>{children}</>;
-  }
-
-  // ✅ Redirect logic for protected routes only
   useEffect(() => {
-    if (loading) return;
+    // Don't run auth logic for public routes or while loading
+    if (isPublicRoute || loading) return;
 
     if (!user) {
       router.replace("/login");
       return;
     }
 
-    // wait until profile loaded
+    // Wait until profile is loaded for protected routes before checking status
     if (!profile) return;
 
     if (profile.status && profile.status !== "ACTIVE") {
       router.replace("/pending");
     }
-  }, [loading, user, profile, router]);
+  }, [loading, user, profile, router, pathname, isPublicRoute]);
 
-  // ✅ Show spinner while bootstrapping auth/profile for protected pages
-  if (loading || !user || !profile) {
+  // Public pages render directly without the app shell.
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
+  
+  // For protected routes, show a spinner while we determine auth/profile state.
+  // This prevents rendering the app shell for a split second before redirecting.
+  if (loading || !user || !profile || profile.status !== "ACTIVE") {
     return <FullscreenSpinner />;
   }
-
-  if (profile.status !== "ACTIVE") {
-    return <FullscreenSpinner />;
-  }
-
-  // ✅ Print mode: no sidebar/header
+  
+  const isPrintMode = searchParams.get("print") === "1";
   if (isPrintMode) {
     return (
       <>
@@ -72,7 +66,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // ✅ Normal app shell
+  // Render the full app shell for authenticated, active users.
   return (
     <>
       <FixStuckUI />
