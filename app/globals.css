@@ -1,17 +1,16 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
+    --background: 220 50% 98%;
     --foreground: 222.2 84% 4.9%;
-    --card: 210 40% 98%;
+    --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
-    --popover: 210 40% 98%;
+    --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --primary: 173 58% 39%;
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -31,6 +30,7 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
+
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -69,7 +69,7 @@
 }
 
 @media print {
-  .print-hidden, .print\\:hidden {
+  .print-hidden, .print\:hidden {
     display: none !important;
   }
   
@@ -117,9 +117,9 @@
   .printable-document .gap-6 { gap: 1rem !important; }
   .printable-document .gap-8 { gap: 1.5rem !important; }
   
-  .printable-document .print\\:bg-white { background-color: #fff !important; }
-  .printable-document .print\\:shadow-none { box-shadow: none !important; }
-  .printable-document .print\\:border-none { border: none !important; }
+  .printable-document .print\:bg-white { background-color: #fff !important; }
+  .printable-document .print\:shadow-none { box-shadow: none !important; }
+  .printable-document .print\:border-none { border: none !important; }
   
   .printable-document table {
       width: 100%;
