@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
+import { AppShellClient } from "@/components/app-shell-client";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="th">
-      <body>{children}</body>
+      <body>
+        <AppShellClient>{children}</AppShellClient>
+      </body>
     </html>
   );
 }
