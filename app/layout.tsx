@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="th">
        <head>
+        <meta name="viewport" content="minimum-scale=1, initial-scale=1, width=device-width, shrink-to-fit=no, viewport-fit=cover" />
         <meta name="application-name" content="Sahadiesel System" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#2A9D8F" />
+        <link rel="apple-touch-icon" href="/icon-192x192.png"></link>
       </head>
       <body>
         <Providers>
