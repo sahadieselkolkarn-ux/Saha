@@ -23,6 +23,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   const isPublicRoute =
+    pathname === "/" ||
     pathname === "/login" ||
     pathname === "/pending" ||
     pathname === "/signup" ||
