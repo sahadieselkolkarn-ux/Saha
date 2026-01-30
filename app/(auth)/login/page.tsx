@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -54,7 +55,7 @@ export default function LoginPage() {
     try {
       await signIn(values.email, values.password);
       toast({ title: "Login Successful" });
-      router.replace("/management/dashboard");
+      router.replace("/app");
     } catch (error: any) {
       toast({
         variant: "destructive",
