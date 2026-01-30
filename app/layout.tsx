@@ -1,3 +1,4 @@
+import './globals.css';
 import type { ReactNode } from "react";
 import { AppShellClient } from "@/components/app-shell-client";
 import { Providers } from "@/components/providers";
