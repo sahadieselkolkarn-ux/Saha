@@ -335,7 +335,7 @@ export default function ManagementDashboardPage() {
       </Card>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>Total Jobs</CardTitle>
@@ -370,7 +370,7 @@ export default function ManagementDashboardPage() {
       </div>
 
       {/* Charts */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Jobs Volume (Last 6 months)</CardTitle>
@@ -381,7 +381,7 @@ export default function ManagementDashboardPage() {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="value" fill="#8884d8" />
+                <Bar dataKey="value" fill="hsl(var(--primary))" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -394,10 +394,10 @@ export default function ManagementDashboardPage() {
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartsData.backlogData}>
-                <XAxis dataKey="name" />
+                <XAxis dataKey="name" hide />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="value" fill="#82ca9d" />
+                <Bar dataKey="value" fill="hsl(var(--primary))" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -433,8 +433,8 @@ export default function ManagementDashboardPage() {
                 <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
                 <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
                 <Legend />
-                <Line type="monotone" dataKey="cashIn" name="Cash In" stroke="#82ca9d" />
-                <Line type="monotone" dataKey="cashOut" name="Cash Out" stroke="#ff7300" />
+                <Line type="monotone" dataKey="cashIn" name="Cash In" stroke="hsl(var(--chart-2))" />
+                <Line type="monotone" dataKey="cashOut" name="Cash Out" stroke="hsl(var(--chart-5))" />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
