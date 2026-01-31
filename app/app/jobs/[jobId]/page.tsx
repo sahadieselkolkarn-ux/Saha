@@ -784,7 +784,17 @@ const handlePartsReady = async () => {
                {job.status === 'CLOSED' && job.salesDocNo && (
                 <div><h4 className="font-semibold text-base">เอกสารขายที่ใช้ปิดงาน</h4><p>{job.salesDocType}: {job.salesDocNo}</p></div>
               )}
-              <div><h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4><p className="whitespace-pre-wrap">{job.description}</p></div>
+              <div>
+                <div className="flex items-center gap-4">
+                    <h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4>
+                    {isOfficeOrAdminOrMgmt && (
+                        <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}>
+                            <Edit className="h-3 w-3 mr-1"/> แก้ไข
+                        </Button>
+                    )}
+                </div>
+                <p className="whitespace-pre-wrap pt-1">{job.description}</p>
+              </div>
               
               {job && <JobVehicleDetails job={job} />}
 
@@ -794,9 +804,9 @@ const handlePartsReady = async () => {
                           เปลี่ยนแปลงแผนก
                       </Button>
                   )}
-                  {isOfficeOrAdminOrMgmt && (
-                      <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" disabled={isViewOnly}>
-                          เพิ่มเติมรายละเอียด
+                  {isUserAdmin && job.assigneeUid && (
+                      <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}>
+                          <UserCheck className="mr-2 h-4 w-4" /> เปลี่ยนพนักงานซ่อม
                       </Button>
                   )}
               </div>
@@ -868,16 +878,14 @@ const handlePartsReady = async () => {
 
           {isOfficeOrAdminOrMgmt && (
             <Card>
-              <CardHeader>
+              <CardHeader className="flex items-center gap-4">
                   <CardTitle>บันทึกข้อความ</CardTitle>
+                   <Button onClick={handleOpenEditOfficeNoteDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}>
+                        <Edit className="h-3 w-3 mr-1"/> แก้ไข
+                    </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="whitespace-pre-wrap text-sm">{job.officeNote || 'ยังไม่มีบันทึก'}</p>
-                <div className="flex gap-2 pt-4 border-t">
-                    <Button onClick={handleOpenEditOfficeNoteDialog} variant="outline" size="sm" disabled={isViewOnly}>
-                        เพิ่มเติมข้อความ
-                    </Button>
-                </div>
               </CardContent>
             </Card>
           )}
