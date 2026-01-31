@@ -17,7 +17,6 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { DEPARTMENTS } from "@/lib/constants"
 import type { Department } from "@/lib/constants"
 import { useAuth } from "@/context/auth-context"
 import { useFirebase } from "@/firebase"
@@ -343,20 +342,22 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const { profile, loading } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
-    const departmentsToShow = useMemo(() => {
-        if (!profile) return [];
+    const { departmentsToShow, isManagementUser } = useMemo(() => {
+        if (!profile) return { departmentsToShow: [], isManagementUser: false };
 
-        const isManagementUser = profile.department === 'MANAGEMENT' || profile.role === 'ADMIN' || profile.role === 'MANAGER';
+        const isMgmtUser =
+          profile.department === "MANAGEMENT" ||
+          profile.role === "ADMIN" ||
+          profile.role === "MANAGER";
         
-        if (isManagementUser) {
-            return ["MANAGEMENT", "OFFICE"];
+        let depts: Department[] = [];
+        if (isMgmtUser) {
+            depts = ["MANAGEMENT", "OFFICE"];
+        } else if (profile.department) {
+            depts = [profile.department];
         }
 
-        if (profile.department) {
-            return [profile.department];
-        }
-
-        return [];
+        return { departmentsToShow: depts, isManagementUser: isMgmtUser };
     }, [profile]);
 
     if (loading) {
@@ -366,8 +367,6 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             </div>
         )
     }
-
-    const isManagementUser = profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT' || profile?.role === 'MANAGER';
 
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
