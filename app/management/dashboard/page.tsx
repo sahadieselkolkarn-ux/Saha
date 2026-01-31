@@ -234,7 +234,8 @@ export default function ManagementDashboardPage() {
 
   // --- Render Logic ---
   if (!profile) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
-  if (profile.role !== "ADMIN" && profile.department !== "MANAGEMENT") {
+  
+  if (profile.role !== "ADMIN" && profile.role !== "MANAGER" && profile.department !== "MANAGEMENT") {
     return (
       <Card>
         <CardHeader>

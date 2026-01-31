@@ -19,7 +19,7 @@ export default function PostLoginRouter() {
     const role = profile.role;
 
     if (role === "ADMIN" || dept === "MANAGEMENT") {
-        router.replace("/app/management/dashboard");
+        router.replace("/management/dashboard");
         return;
     }
     
