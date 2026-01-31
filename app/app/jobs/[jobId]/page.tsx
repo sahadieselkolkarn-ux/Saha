@@ -886,15 +886,6 @@ const handlePartsReady = async () => {
               <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={isViewOnly} />
-                <div className="flex items-center justify-center w-full">
-                    <label htmlFor="activity-dropzone-file" className={`flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg ${ isViewOnly ? "bg-muted/50 cursor-not-allowed" : "cursor-pointer bg-muted hover:bg-secondary"}`}>
-                        <div className="flex flex-col items-center justify-center">
-                        <Camera className="w-8 h-8 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground">เพิ่มรูปภาพในกิจกรรม</p>
-                        </div>
-                        <Input id="activity-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={isViewOnly} />
-                    </label>
-                </div>
                 {(photoPreviews.length > 0) && (
                   <div className="grid grid-cols-4 gap-2">
                     {photoPreviews.map((src, i) => (
@@ -909,6 +900,22 @@ const handlePartsReady = async () => {
                     <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || isViewOnly}>
                       {isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />}
                       อัปเดท
+                    </Button>
+                    <Button asChild variant="outline" disabled={isViewOnly || isSubmittingNote || isAddingPhotos}>
+                        <label className="cursor-pointer flex items-center">
+                            <Camera className="mr-2 h-4 w-4" />
+                            เพิ่มรูปกิจกรรม
+                            <Input
+                                id="activity-photo-upload"
+                                type="file"
+                                className="hidden"
+                                multiple
+                                accept="image/*"
+                                capture="environment"
+                                onChange={handlePhotoChange}
+                                disabled={isViewOnly || isSubmittingNote || isAddingPhotos}
+                            />
+                        </label>
                     </Button>
                     {job.status === 'IN_PROGRESS' && (
                         <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline">
