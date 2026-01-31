@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -349,7 +348,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         if (!profile) return [];
 
         if (isManagementUser) {
-            return DEPARTMENTS;
+            return ["MANAGEMENT", "OFFICE"];
         }
 
         const visible = new Set<Department>();
@@ -391,5 +390,3 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         </nav>
     );
 }
-
-    
