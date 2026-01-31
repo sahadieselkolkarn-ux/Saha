@@ -363,25 +363,29 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
 
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
-             <Collapsible defaultOpen={isAttendanceOpen}>
-                <CollapsibleTrigger asChild>
-                    <Button variant={isAttendanceOpen ? "secondary" : "ghost"} className="w-full justify-between">
-                        <span className="flex items-center gap-2">
-                            <QrCode className="h-4 w-4" />
-                            QR ลงเวลา
-                        </span>
-                        <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                    </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="py-1 pl-6 space-y-1">
-                    {profile?.role === 'OFFICER' && (
-                        <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
-                    )}
-                    <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
-                </CollapsibleContent>
-            </Collapsible>
-            
-            <div className="my-2 border-t"></div>
+             {!isManagementUser && (
+                <>
+                    <Collapsible defaultOpen={isAttendanceOpen}>
+                        <CollapsibleTrigger asChild>
+                            <Button variant={isAttendanceOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                                <span className="flex items-center gap-2">
+                                    <QrCode className="h-4 w-4" />
+                                    QR ลงเวลา
+                                </span>
+                                <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                            </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="py-1 pl-6 space-y-1">
+                            {profile?.role === 'OFFICER' && (
+                                <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
+                            )}
+                            <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
+                        </CollapsibleContent>
+                    </Collapsible>
+                    
+                    <div className="my-2 border-t"></div>
+                </>
+             )}
 
             {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
         </nav>
