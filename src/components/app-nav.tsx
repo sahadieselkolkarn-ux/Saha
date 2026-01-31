@@ -213,11 +213,11 @@ const CarServiceByWorkerNav = ({ onLinkClick }: { onLinkClick?: () => void }) =>
 };
 
 
-const DepartmentMenu = ({ department, onLinkClick, isManagementUser }: { department: Department, onLinkClick?: () => void, isManagementUser: boolean }) => {
+const DepartmentMenu = ({ department, onLinkClick }: { department: Department, onLinkClick?: () => void }) => {
     const pathname = usePathname();
     const { profile } = useAuth();
     
-    // Layer 2 Guard
+    const isManagementUser = profile?.role === "ADMIN" || profile?.role === "MANAGER" || profile?.department === "MANAGEMENT";
     if (isManagementUser && !["MANAGEMENT", "OFFICE"].includes(department)) {
         return null;
     }
@@ -348,18 +348,18 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const { profile, loading } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
-    const { departmentsToShow, isManagementUser } = useMemo(() => {
+    const departmentsToShow = useMemo(() => {
         if (!profile) {
-            return { departmentsToShow: [], isManagementUser: false };
+            return [];
         }
 
-        const isMgmtUser = profile.role === "ADMIN" || profile.role === "MANAGER" || profile.department === "MANAGEMENT";
+        const isManagementUser = profile.role === "ADMIN" || profile.role === "MANAGER" || profile.department === "MANAGEMENT";
 
-        const depts: Department[] = isMgmtUser
-            ? ["MANAGEMENT", "OFFICE"]
-            : profile.department ? [profile.department] : [];
+        if (isManagementUser) {
+            return ["MANAGEMENT", "OFFICE"] as Department[];
+        }
         
-        return { departmentsToShow: depts, isManagementUser: isMgmtUser };
+        return profile.department ? [profile.department] : [];
     }, [profile]);
 
     if (loading) {
@@ -369,6 +369,8 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             </div>
         )
     }
+
+    const isManagementUser = profile?.role === "ADMIN" || profile?.role === "MANAGER" || profile?.department === "MANAGEMENT";
 
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
@@ -396,7 +398,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                 </>
              )}
 
-            {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} isManagementUser={isManagementUser} />)}
+            {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
         </nav>
     );
 }
