@@ -2,13 +2,13 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, limit, doc, deleteDoc, writeBatch, deleteField, serverTimestamp, getDocs } from "firebase/firestore";
+import { collection, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, limit, doc, deleteDoc, writeBatch, deleteField, serverTimestamp, getDocs, startAfter, type QueryDocumentSnapshot } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -102,7 +102,10 @@ export function JobTableList({
   
   const [indexState, setIndexState] = useState<'ok' | 'missing' | 'building'>('ok');
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
-  const [retry, setRetry] = useState(0);
+  
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageStartCursors, setPageStartCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
+  const [isLastPage, setIsLastPage] = useState(false);
 
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [jobToDelete, setJobToDelete] = useState<string | null>(null);
@@ -112,37 +115,45 @@ export function JobTableList({
   const [isReverting, setIsReverting] = useState(false);
 
   const isUserAdmin = profile?.role === 'ADMIN';
-
-  useEffect(() => {
+  
+  const fetchData = useCallback(async () => {
     if (!db) return;
 
     setLoading(true);
     setError(null);
     setIndexState('ok');
     setIndexCreationUrl(null);
-    
-    const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
-    const constraints: QueryConstraint[] = [];
-    
-    if (source === 'active') {
-        if (department) constraints.push(where('department', '==', department));
-        if (status) constraints.push(where('status', '==', status));
-        constraints.push(orderBy(orderByField, orderByDirection));
-        if (limitProp) constraints.push(limit(limitProp));
-    }
-    // For archives, we fetch everything and filter/sort client-side to avoid complex indexing.
-    
-    const q = query(collection(db, collectionName), ...constraints);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    try {
+      const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
+      const qConstraints: QueryConstraint[] = [];
+
+      if (source === 'active') {
+        if (department) qConstraints.push(where('department', '==', department));
+        if (status) qConstraints.push(where('status', '==', status));
+        qConstraints.push(orderBy(orderByField, orderByDirection));
+      }
+
+      const cursor = pageStartCursors[currentPage];
+      if (cursor) {
+        qConstraints.push(startAfter(cursor));
+      }
+
+      if (limitProp) {
+        qConstraints.push(limit(limitProp));
+      }
+
+      const finalQuery = query(collection(db, collectionName), ...qConstraints);
+      const snapshot = await getDocs(finalQuery);
+
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
-      
+
       if (source === 'archive') {
-          // Client-side filtering for archives
-          if (department) jobsData = jobsData.filter(job => job.department === department);
-          if (status) jobsData = jobsData.filter(job => job.status === status);
+        if (department) jobsData = jobsData.filter(job => job.department === department);
+        if (status) jobsData = jobsData.filter(job => job.status === status);
+        if(orderByField === 'closedDate') {
           jobsData.sort((a,b) => (b.closedDate || '').localeCompare(a.closedDate || ''));
-          if (limitProp) jobsData = jobsData.slice(0, limitProp);
+        }
       }
       
       if (excludeStatus) {
@@ -151,16 +162,35 @@ export function JobTableList({
       }
       
       setJobs(jobsData);
+      
+      const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+      if (lastVisibleDoc && currentPage >= pageStartCursors.length - 1) {
+          const newCursors = [...pageStartCursors];
+          newCursors[currentPage + 1] = lastVisibleDoc;
+          setPageStartCursors(newCursors);
+      }
+      
+      setIsLastPage(snapshot.docs.length < (limitProp || 10));
+
+    } catch (err: any) {
+      setError(err);
+      if (err.message?.includes('requires an index')) {
+          const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+          if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+          if (err.message.includes('currently building')) {
+              setIndexState('building');
+          } else {
+              setIndexState('missing');
+          }
+      }
+    } finally {
       setLoading(false);
-    }, (err) => {
-        console.error(err);
-        setError(err);
-        setLoading(false);
-    });
+    }
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, JSON.stringify(excludeStatus), currentPage, pageStartCursors]);
 
-    return () => unsubscribe();
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, JSON.stringify(excludeStatus), retry]);
-
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   
   const filteredJobs = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -176,25 +206,18 @@ export function JobTableList({
     );
   }, [jobs, searchTerm]);
 
-
-  useEffect(() => {
-    if (error?.message?.includes('requires an index')) {
-      const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
-      if (urlMatch) {
-        setIndexCreationUrl(urlMatch[0]);
-      }
-      if (error.message.includes('currently building')) {
-        setIndexState('building');
-        const timer = setTimeout(() => setRetry(r => r + 1), 10000); // Poll every 10 seconds
-        return () => clearTimeout(timer);
-      } else {
-        setIndexState('missing');
-      }
-    } else {
-      setIndexState('ok');
-      setIndexCreationUrl(null);
+  const handleNextPage = () => {
+    if (!isLastPage) {
+        setCurrentPage(p => p + 1);
     }
-  }, [error]);
+  };
+
+  const handlePrevPage = () => {
+      if (currentPage > 0) {
+          setPageStartCursors(prev => prev.slice(0, currentPage));
+          setCurrentPage(p => p - 1);
+      }
+  };
 
   const handleDeleteRequest = (jobId: string) => {
     setJobToDelete(jobId);
@@ -366,50 +389,12 @@ export function JobTableList({
                               </TableCell>
                               <TableCell className="hidden md:table-cell">{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
                               <TableCell className="sticky right-0 bg-background text-right whitespace-nowrap">
-                                {isUserAdmin ? (
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" className="h-10 w-10 p-0 md:h-8 md:w-8">
-                                        <span className="sr-only">Open menu</span>
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" sideOffset={8}>
-                                      <DropdownMenuItem asChild>
-                                        <Link href={`/app/jobs/${job.id}`}>
-                                          <Eye className="mr-2 h-4 w-4" />
-                                          ดูรายละเอียด
-                                        </Link>
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem asChild>
-                                        <Link href={`/app/jobs/${job.id}?edit=true`}>
-                                          <Edit className="mr-2 h-4 w-4" />
-                                          Edit (Admin)
-                                        </Link>
-                                      </DropdownMenuItem>
-                                      {job.status === 'CLOSED' && (
-                                        <DropdownMenuItem onSelect={() => handleRevertRequest(job)}>
-                                          <Undo2 className="mr-2 h-4 w-4" />
-                                          ย้อนกลับไปรอลูกค้ารับสินค้า
-                                        </DropdownMenuItem>
-                                      )}
-                                      <DropdownMenuItem
-                                        className="text-destructive focus:text-destructive"
-                                        onSelect={() => handleDeleteRequest(job.id)}
-                                      >
-                                        <Trash2 className="mr-2 h-4 w-4" />
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                ) : (
-                                  <Button asChild variant="outline" size="sm">
-                                    <Link href={`/app/jobs/${job.id}`}>
-                                      <Eye className="mr-2 h-4 w-4" />
-                                      ดูรายละเอียด
-                                    </Link>
-                                  </Button>
-                                )}
+                                <Button asChild variant="outline" size="sm">
+                                  <Link href={`/app/jobs/${job.id}`}>
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    ดูรายละเอียด
+                                  </Link>
+                                </Button>
                               </TableCell>
                           </TableRow>
                       ))}
@@ -417,6 +402,23 @@ export function JobTableList({
                 </Table>
               </div>
           </CardContent>
+          {(filteredJobs.length > 0 && limitProp) && (
+            <CardFooter>
+                <div className="flex w-full justify-between items-center">
+                    <span className="text-sm text-muted-foreground">
+                        Page {currentPage + 1}
+                    </span>
+                    <div className="flex gap-2">
+                        <Button variant="outline" onClick={handlePrevPage} disabled={currentPage === 0 || loading}>
+                            Previous
+                        </Button>
+                        <Button variant="outline" onClick={handleNextPage} disabled={isLastPage || loading}>
+                            Next
+                        </Button>
+                    </div>
+                </div>
+            </CardFooter>
+          )}
       </Card>
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>

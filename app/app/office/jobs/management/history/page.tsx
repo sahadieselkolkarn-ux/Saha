@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -24,7 +25,9 @@ export default function OfficeJobManagementHistoryPage() {
       <JobTableList 
         searchTerm={searchTerm}
         status="CLOSED"
-        limit={20}
+        limit={10}
+        orderByField="closedDate"
+        orderByDirection="desc"
         emptyTitle="ไม่มีประวัติงานซ่อม"
         emptyDescription="ยังไม่มีการเปิดงานที่ถูกปิดในระบบ"
       />
