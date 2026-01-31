@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -217,7 +216,8 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
     const pathname = usePathname();
     const { profile } = useAuth();
     
-    const isManagementUser = profile?.role === "ADMIN" || profile?.role === "MANAGER" || profile?.department === "MANAGEMENT";
+    // LAYER 2 GUARD CLAUSE
+    const isManagementUser = profile?.department === "MANAGEMENT" || ["ADMIN","MANAGER"].includes(profile?.role || '');
     if (isManagementUser && !["MANAGEMENT", "OFFICE"].includes(department)) {
         return null;
     }
@@ -346,14 +346,13 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
 export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const pathname = usePathname();
     const { profile, loading } = useAuth();
-    const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
-
+    
+    // LAYER 1 GUARD CLAUSE
     const departmentsToShow = useMemo(() => {
         if (!profile) {
             return [];
         }
-
-        const isManagementUser = profile.role === "ADMIN" || profile.role === "MANAGER" || profile.department === "MANAGEMENT";
+        const isManagementUser = profile.department === "MANAGEMENT" || ["ADMIN","MANAGER"].includes(profile.role);
 
         if (isManagementUser) {
             return ["MANAGEMENT", "OFFICE"] as Department[];
@@ -370,15 +369,15 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         )
     }
 
-    const isManagementUser = profile?.role === "ADMIN" || profile?.role === "MANAGER" || profile?.department === "MANAGEMENT";
+    const isManagementUser = profile?.department === "MANAGEMENT" || ["ADMIN","MANAGER"].includes(profile?.role || '');
 
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
              {!isManagementUser && (
                 <>
-                    <Collapsible defaultOpen={isAttendanceOpen}>
+                    <Collapsible defaultOpen={pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance')}>
                         <CollapsibleTrigger asChild>
-                            <Button variant={isAttendanceOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                            <Button variant={pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance') ? "secondary" : "ghost"} className="w-full justify-between">
                                 <span className="flex items-center gap-2">
                                     <QrCode className="h-4 w-4" />
                                     QR ลงเวลา
