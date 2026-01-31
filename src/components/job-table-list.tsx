@@ -335,37 +335,46 @@ export function JobTableList({
     <>
       <Card>
           <CardContent className="pt-6">
-              <Table>
+              <div className="w-full overflow-x-auto">
+                <Table className="min-w-[900px]">
                   <TableHeader>
                       <TableRow>
-                          <TableHead className="w-[200px]">Customer</TableHead>
-                          <TableHead>Department</TableHead>
-                          <TableHead>Description</TableHead>
+                          <TableHead className="w-[250px]">Customer</TableHead>
+                          <TableHead className="hidden md:table-cell">Department</TableHead>
+                          <TableHead className="hidden md:table-cell">Description</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead>Last Updated</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead className="hidden md:table-cell">Last Updated</TableHead>
+                          <TableHead className="sticky right-0 bg-background text-right">Actions</TableHead>
                       </TableRow>
                   </TableHeader>
                   <TableBody>
                       {filteredJobs.map(job => (
                           <TableRow key={job.id}>
-                              <TableCell className="font-medium">{job.customerSnapshot.name}</TableCell>
-                              <TableCell>{deptLabel(job.department)}</TableCell>
-                              <TableCell className="max-w-xs truncate">{job.description}</TableCell>
+                              <TableCell className="font-medium">
+                                {job.customerSnapshot.name}
+                                <div className="md:hidden text-xs text-muted-foreground mt-1">
+                                    {deptLabel(job.department)} • {safeFormat(job.lastActivityAt, 'dd/MM/yy')}
+                                </div>
+                                <div className="md:hidden text-xs text-muted-foreground line-clamp-2">
+                                    {job.description}
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">{deptLabel(job.department)}</TableCell>
+                              <TableCell className="max-w-xs truncate hidden md:table-cell">{job.description}</TableCell>
                               <TableCell>
                                   <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
                               </TableCell>
-                              <TableCell>{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="hidden md:table-cell">{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
+                              <TableCell className="sticky right-0 bg-background text-right whitespace-nowrap">
                                 {isUserAdmin ? (
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <Button variant="ghost" className="h-10 w-10 p-0 md:h-8 md:w-8">
                                         <span className="sr-only">Open menu</span>
                                         <MoreHorizontal className="h-4 w-4" />
                                       </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
+                                    <DropdownMenuContent align="end" sideOffset={8}>
                                       <DropdownMenuItem asChild>
                                         <Link href={`/app/jobs/${job.id}`}>
                                           <Eye className="mr-2 h-4 w-4" />
@@ -405,7 +414,8 @@ export function JobTableList({
                           </TableRow>
                       ))}
                   </TableBody>
-              </Table>
+                </Table>
+              </div>
           </CardContent>
       </Card>
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
