@@ -218,7 +218,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
     const { profile } = useAuth();
 
     // Layer 2 Guard: Prevent rendering disallowed departments for management users.
-    const isManagementUser = profile?.department === "MANAGEMENT" || profile?.role === "ADMIN" || profile?.role === "MANAGER";
+    const isManagementUser = profile?.role === "ADMIN" || profile?.role === "MANAGER" || profile?.department === "MANAGEMENT";
     if (isManagementUser && !["MANAGEMENT", "OFFICE"].includes(department)) {
         return null;
     }
@@ -351,13 +351,12 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
     const { departmentsToShow, isManagementUser } = useMemo(() => {
-        if (!profile) return { departmentsToShow: [], isManagementUser: false };
+        if (!profile) {
+            return { departmentsToShow: [], isManagementUser: false };
+        }
 
-        const isMgmtUser =
-          profile.department === "MANAGEMENT" ||
-          profile.role === "ADMIN" ||
-          profile.role === "MANAGER";
-        
+        const isMgmtUser = profile.role === "ADMIN" || profile.role === "MANAGER" || profile.department === "MANAGEMENT";
+
         const depts: Department[] = isMgmtUser
             ? ["MANAGEMENT", "OFFICE"]
             : profile.department ? [profile.department] : [];
