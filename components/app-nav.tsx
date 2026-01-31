@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -25,7 +24,7 @@ import type { UserProfile } from "@/lib/types"
 
 
 const departmentNames: Record<Department, string> = {
-    MANAGEMENT: "ฝ่ายบริการ",
+    MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
     COMMONRAIL: "แผนกปั๊มหัวฉีดคอมมอนเรล",
@@ -61,18 +60,9 @@ const OfficeJobManagementSubMenu = ({ onLinkClick }: { onLinkClick?: () => void 
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
-                <p className="px-2 py-1 text-xs font-semibold text-muted-foreground/80">ตามแผนก</p>
-                <SubNavLink href="/app/office/jobs/management/car-service" label="งานซ่อมหน้าร้าน" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/commonrail" label="งานแผนกคอมมอนเรล" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/mechanic" label="งานแผนกแมคคานิค" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/outsource" label="งานส่งออกร้านนอก" onClick={onLinkClick} />
-                <p className="px-2 pt-2 pb-1 text-xs font-semibold text-muted-foreground/80">ตามสถานะงาน</p>
-                <SubNavLink href="/app/office/jobs/management/quotation" label="งานเสนอราคา" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/waiting-approve" label="รอลูกค้าอนุมัติ" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/pending-parts" label="กำลังจัดอะไหล่" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/done" label="งานเสร็จรอทำบิล" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/pickup" label="รอลูกค้ารับสินค้า" onClick={onLinkClick} />
-                <SubNavLink href="/app/office/jobs/management/history" label="ประวัติงานซ่อม/ค้นหา" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/by-department" label="งานตามแผนก" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/by-status" label="งานตามสถานะ" onClick={onLinkClick} />
+                <SubNavLink href="/app/office/jobs/management/history" label="ประวัติงานซ่อม" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
@@ -352,10 +342,12 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const { profile } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
+    const isManagementUser = profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT';
+
     const departmentsToShow = useMemo(() => {
         if (!profile) return [];
 
-        if (profile.role === 'ADMIN' || profile.role === 'MANAGER') {
+        if (isManagementUser) {
             return DEPARTMENTS;
         }
 
@@ -366,29 +358,33 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         }
 
         return DEPARTMENTS.filter(d => visible.has(d));
-    }, [profile]);
+    }, [profile, isManagementUser]);
 
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
-            <Collapsible defaultOpen={isAttendanceOpen}>
-                <CollapsibleTrigger asChild>
-                    <Button variant={isAttendanceOpen ? "secondary" : "ghost"} className="w-full justify-between">
-                        <span className="flex items-center gap-2">
-                            <QrCode className="h-4 w-4" />
-                            QR ลงเวลา
-                        </span>
-                        <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                    </Button>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="py-1 pl-6 space-y-1">
-                    {profile?.role === 'OFFICER' && (
-                        <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
-                    )}
-                    <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
-                </CollapsibleContent>
-            </Collapsible>
-            
-            <div className="my-2 border-t"></div>
+             {!isManagementUser && (
+                <>
+                    <Collapsible defaultOpen={isAttendanceOpen}>
+                        <CollapsibleTrigger asChild>
+                            <Button variant={isAttendanceOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                                <span className="flex items-center gap-2">
+                                    <QrCode className="h-4 w-4" />
+                                    QR ลงเวลา
+                                </span>
+                                <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                            </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="py-1 pl-6 space-y-1">
+                            {profile?.role === 'OFFICER' && (
+                                <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
+                            )}
+                            <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
+                        </CollapsibleContent>
+                    </Collapsible>
+                    
+                    <div className="my-2 border-t"></div>
+                </>
+             )}
 
             {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
         </nav>
