@@ -213,16 +213,14 @@ const CarServiceByWorkerNav = ({ onLinkClick }: { onLinkClick?: () => void }) =>
 };
 
 
-const DepartmentMenu = ({ department, onLinkClick }: { department: Department, onLinkClick?: () => void }) => {
+const DepartmentMenu = ({ department, onLinkClick, isManagementUser }: { department: Department, onLinkClick?: () => void, isManagementUser: boolean }) => {
     const pathname = usePathname();
     const { profile } = useAuth();
-
-    // Layer 2 Guard: Prevent rendering disallowed departments for management users.
-    const isManagementUser = profile?.role === "ADMIN" || profile?.role === "MANAGER" || profile?.department === "MANAGEMENT";
+    
+    // Layer 2 Guard
     if (isManagementUser && !["MANAGEMENT", "OFFICE"].includes(department)) {
         return null;
     }
-    // End Guard
 
     const departmentPath = `/app/${department.toLowerCase().replace('_', '-')}`
     const isOpen = pathname.startsWith(departmentPath)
@@ -398,7 +396,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                 </>
              )}
 
-            {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
+            {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} isManagementUser={isManagementUser} />)}
         </nav>
     );
 }
