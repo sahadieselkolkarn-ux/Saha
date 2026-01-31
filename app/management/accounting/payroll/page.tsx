@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function DeprecatedPayrollPage() {
-  redirect('/management/hr/payroll');
+  redirect('/app/management/hr/payroll');
 }
