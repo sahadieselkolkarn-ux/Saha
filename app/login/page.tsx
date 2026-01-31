@@ -1,4 +1,8 @@
-// This file is intentionally left blank to resolve a routing conflict.
-// The canonical page is located at /app/(auth)/login/page.tsx.
-// By not exporting a default component, Next.js will not treat this as a page.
-export {};
+// This page has been deprecated to resolve a routing conflict.
+// The canonical page is now located at /app/(auth)/login/page.tsx.
+import { redirect } from "next/navigation";
+
+export default function DeprecatedLoginPage() {
+  redirect('/login');
+  return null;
+}
