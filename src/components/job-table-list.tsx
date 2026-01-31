@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2, Undo2 } from "lucide-react";
+import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2, Undo2, Eye } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
@@ -357,38 +357,50 @@ export function JobTableList({
                               </TableCell>
                               <TableCell>{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
                               <TableCell className="text-right">
+                                {isUserAdmin ? (
                                   <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" className="h-8 w-8 p-0">
-                                              <span className="sr-only">Open menu</span>
-                                              <MoreHorizontal className="h-4 w-4" />
-                                          </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                          <DropdownMenuItem asChild>
-                                              <Link href={`/app/jobs/${job.id}`}>Details</Link>
-                                          </DropdownMenuItem>
-                                          {isUserAdmin && (
-                                              <>
-                                                  <DropdownMenuItem asChild>
-                                                      <Link href={`/app/jobs/${job.id}?edit=true`}><Edit className="mr-2 h-4 w-4" />Edit</Link>
-                                                  </DropdownMenuItem>
-                                                  {job.status === 'CLOSED' && (
-                                                      <DropdownMenuItem onSelect={() => handleRevertRequest(job)}>
-                                                          <Undo2 className="mr-2 h-4 w-4" />
-                                                          ย้อนกลับไปรอลูกค้ารับ
-                                                      </DropdownMenuItem>
-                                                  )}
-                                                  <DropdownMenuItem
-                                                      className="text-destructive focus:text-destructive"
-                                                      onSelect={() => handleDeleteRequest(job.id)}
-                                                  >
-                                                      <Trash2 className="mr-2 h-4 w-4" />Delete
-                                                  </DropdownMenuItem>
-                                              </>
-                                          )}
-                                      </DropdownMenuContent>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" className="h-8 w-8 p-0">
+                                        <span className="sr-only">Open menu</span>
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem asChild>
+                                        <Link href={`/app/jobs/${job.id}`}>
+                                          <Eye className="mr-2 h-4 w-4" />
+                                          ดูรายละเอียด
+                                        </Link>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem asChild>
+                                        <Link href={`/app/jobs/${job.id}?edit=true`}>
+                                          <Edit className="mr-2 h-4 w-4" />
+                                          Edit (Admin)
+                                        </Link>
+                                      </DropdownMenuItem>
+                                      {job.status === 'CLOSED' && (
+                                        <DropdownMenuItem onSelect={() => handleRevertRequest(job)}>
+                                          <Undo2 className="mr-2 h-4 w-4" />
+                                          ย้อนกลับไปรอลูกค้ารับสินค้า
+                                        </DropdownMenuItem>
+                                      )}
+                                      <DropdownMenuItem
+                                        className="text-destructive focus:text-destructive"
+                                        onSelect={() => handleDeleteRequest(job.id)}
+                                      >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
                                   </DropdownMenu>
+                                ) : (
+                                  <Button asChild variant="outline" size="sm">
+                                    <Link href={`/app/jobs/${job.id}`}>
+                                      <Eye className="mr-2 h-4 w-4" />
+                                      ดูรายละเอียด
+                                    </Link>
+                                  </Button>
+                                )}
                               </TableCell>
                           </TableRow>
                       ))}
