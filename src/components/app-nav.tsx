@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -244,7 +245,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
             <CollapsibleContent className="py-1 pl-6 space-y-1">
                 {department === 'MANAGEMENT' && (
                     <>
-                        <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
+                        <SubNavLink href="/app" label="แดชบอร์ด" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         {canSeeAccounting && (
                            <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
@@ -339,7 +340,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
 
 export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const pathname = usePathname();
-    const { profile } = useAuth();
+    const { profile, loading } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
     const isManagementUser = profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT';
@@ -359,6 +360,14 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
 
         return DEPARTMENTS.filter(d => visible.has(d));
     }, [profile, isManagementUser]);
+
+    if (loading) {
+        return (
+            <div className="p-4 flex justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+        )
+    }
 
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
