@@ -30,11 +30,23 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     pathname === "/healthz";
 
   useEffect(() => {
-    // PWA service worker registration
     if ('serviceWorker' in navigator) {
+      if (process.env.NODE_ENV !== "production") {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const registration of registrations) {
+            registration.unregister();
+            console.log('Development mode: SW unregistered to prevent caching issues.');
+          }
+        });
+        return;
+      }
+
+      // In production, register the service worker
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').then(registration => {
           console.log('SW registered: ', registration);
+          // Check for updates on load to fetch the latest version
+          registration.update();
         }).catch(registrationError => {
           console.log('SW registration failed: ', registrationError);
         });
