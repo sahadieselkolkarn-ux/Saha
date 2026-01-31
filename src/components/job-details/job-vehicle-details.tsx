@@ -1,8 +1,6 @@
-
 "use client";
 
 import type { Job } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface DetailRowProps {
   label: string;
@@ -24,38 +22,40 @@ export function JobVehicleDetails({ job }: { job: Job }) {
   const hasCommonrailDetails = job.department === 'COMMONRAIL' && job.commonrailDetails && (job.commonrailDetails.brand || job.commonrailDetails.partNumber || job.commonrailDetails.registrationNumber);
   const hasMechanicDetails = job.department === 'MECHANIC' && job.mechanicDetails && (job.mechanicDetails.brand || job.mechanicDetails.partNumber || job.mechanicDetails.registrationNumber);
 
-  if (!hasCarDetails && !hasCommonrailDetails && !hasMechanicDetails) {
+  const hasAnyDetails = hasCarDetails || hasCommonrailDetails || hasMechanicDetails;
+
+  if (!hasAnyDetails) {
     return null;
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>รายละเอียดเฉพาะแผนก</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        {hasCarDetails && (
-          <>
-            <DetailRow label="ยี่ห้อรถ" value={job.carServiceDetails?.brand} />
-            <DetailRow label="รุ่นรถ" value={job.carServiceDetails?.model} />
-            <DetailRow label="ทะเบียนรถ" value={job.carServiceDetails?.licensePlate} />
-          </>
-        )}
-        {hasCommonrailDetails && (
-          <>
-            <DetailRow label="ยี่ห้อ" value={job.commonrailDetails?.brand} />
-            <DetailRow label="เลขอะไหล่" value={job.commonrailDetails?.partNumber} />
-            <DetailRow label="เลขทะเบียน" value={job.commonrailDetails?.registrationNumber} />
-          </>
-        )}
-        {hasMechanicDetails && (
-           <>
-            <DetailRow label="ยี่ห้อ" value={job.mechanicDetails?.brand} />
-            <DetailRow label="เลขอะไหล่" value={job.mechanicDetails?.partNumber} />
-            <DetailRow label="เลขทะเบียน" value={job.mechanicDetails?.registrationNumber} />
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <div className="pt-4">
+      <div className="border-t pt-4">
+        <h4 className="font-semibold text-base mb-2">รายละเอียดรถ/ชิ้นส่วน</h4>
+        <div className="space-y-1">
+          {hasCarDetails && (
+            <>
+              <DetailRow label="ยี่ห้อรถ" value={job.carServiceDetails?.brand} />
+              <DetailRow label="รุ่นรถ" value={job.carServiceDetails?.model} />
+              <DetailRow label="ทะเบียนรถ" value={job.carServiceDetails?.licensePlate} />
+            </>
+          )}
+          {hasCommonrailDetails && (
+            <>
+              <DetailRow label="ยี่ห้อ" value={job.commonrailDetails?.brand} />
+              <DetailRow label="เลขอะไหล่" value={job.commonrailDetails?.partNumber} />
+              <DetailRow label="เลขทะเบียน" value={job.commonrailDetails?.registrationNumber} />
+            </>
+          )}
+          {hasMechanicDetails && (
+            <>
+              <DetailRow label="ยี่ห้อ" value={job.mechanicDetails?.brand} />
+              <DetailRow label="เลขอะไหล่" value={job.mechanicDetails?.partNumber} />
+              <DetailRow label="เลขทะเบียน" value={job.mechanicDetails?.registrationNumber} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

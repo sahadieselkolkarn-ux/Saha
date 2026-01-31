@@ -785,6 +785,9 @@ const handlePartsReady = async () => {
                 <div><h4 className="font-semibold text-base">เอกสารขายที่ใช้ปิดงาน</h4><p>{job.salesDocType}: {job.salesDocNo}</p></div>
               )}
               <div><h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4><p className="whitespace-pre-wrap">{job.description}</p></div>
+              
+              {job && <JobVehicleDetails job={job} />}
+
                <div className="flex gap-2 pt-4 border-t">
                   {isUserAdmin && (
                       <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>
@@ -800,8 +803,6 @@ const handlePartsReady = async () => {
             </CardContent>
           </Card>
           
-          {job && <JobVehicleDetails job={job} />}
-
           {(job.department === 'COMMONRAIL' || job.department === 'MECHANIC') && (
             <Card>
               <CardHeader>
