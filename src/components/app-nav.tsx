@@ -245,7 +245,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
             <CollapsibleContent className="py-1 pl-6 space-y-1">
                 {department === 'MANAGEMENT' && (
                     <>
-                        <SubNavLink href="/app" label="แดชบอร์ด" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
                         <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         {canSeeAccounting && (
                            <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
@@ -343,23 +343,21 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const { profile, loading } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
-    const isManagementUser = profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT';
-
     const departmentsToShow = useMemo(() => {
         if (!profile) return [];
 
+        const isManagementUser = profile.department === 'MANAGEMENT' || profile.role === 'ADMIN' || profile.role === 'MANAGER';
+        
         if (isManagementUser) {
             return ["MANAGEMENT", "OFFICE"];
         }
 
-        const visible = new Set<Department>();
-        
         if (profile.department) {
-            visible.add(profile.department);
+            return [profile.department];
         }
 
-        return DEPARTMENTS.filter(d => visible.has(d));
-    }, [profile, isManagementUser]);
+        return [];
+    }, [profile]);
 
     if (loading) {
         return (
@@ -368,6 +366,8 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             </div>
         )
     }
+
+    const isManagementUser = profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT' || profile?.role === 'MANAGER';
 
     return (
         <nav className="grid items-start px-2 text-sm font-medium">
