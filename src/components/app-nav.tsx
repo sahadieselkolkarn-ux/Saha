@@ -216,8 +216,11 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
     const pathname = usePathname();
     const { profile } = useAuth();
     
-    // LAYER 2 GUARD CLAUSE
-    const isManagementUser = profile?.department === "MANAGEMENT" || ["ADMIN","MANAGER"].includes(profile?.role || '');
+    const isManagementUser = useMemo(() => {
+        if (!profile) return false;
+        return profile.department === "MANAGEMENT" || ["ADMIN", "MANAGER"].includes(profile.role);
+    }, [profile]);
+    
     if (isManagementUser && !["MANAGEMENT", "OFFICE"].includes(department)) {
         return null;
     }
@@ -346,20 +349,23 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
 export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const pathname = usePathname();
     const { profile, loading } = useAuth();
-    
-    // LAYER 1 GUARD CLAUSE
+    const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
+    const debugBuildId = React.useMemo(() => new Date().toISOString(), []);
+
+    const isManagementUser = useMemo(() => {
+        if (!profile) return false;
+        return profile.department === "MANAGEMENT" || ["ADMIN", "MANAGER"].includes(profile.role);
+    }, [profile]);
+
     const departmentsToShow = useMemo(() => {
         if (!profile) {
             return [];
         }
-        const isManagementUser = profile.department === "MANAGEMENT" || ["ADMIN","MANAGER"].includes(profile.role);
-
         if (isManagementUser) {
             return ["MANAGEMENT", "OFFICE"] as Department[];
         }
-        
         return profile.department ? [profile.department] : [];
-    }, [profile]);
+    }, [profile, isManagementUser]);
 
     if (loading) {
         return (
@@ -369,35 +375,47 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         )
     }
 
-    const isManagementUser = profile?.department === "MANAGEMENT" || ["ADMIN","MANAGER"].includes(profile?.role || '');
-
     return (
-        <nav className="grid items-start px-2 text-sm font-medium">
-             {!isManagementUser && (
-                <>
-                    <Collapsible defaultOpen={pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance')}>
-                        <CollapsibleTrigger asChild>
-                            <Button variant={pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance') ? "secondary" : "ghost"} className="w-full justify-between">
-                                <span className="flex items-center gap-2">
-                                    <QrCode className="h-4 w-4" />
-                                    QR ลงเวลา
-                                </span>
-                                <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                            </Button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="py-1 pl-6 space-y-1">
-                            {profile?.role === 'OFFICER' && (
-                                <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
-                            )}
-                            <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
-                        </CollapsibleContent>
-                    </Collapsible>
-                    
-                    <div className="my-2 border-t"></div>
-                </>
-             )}
+        <>
+            <div className="mb-2 rounded border border-red-300 bg-red-50 p-2 text-[11px] text-red-900">
+                <div><b>NAV_DEBUG</b> build: {debugBuildId}</div>
+                <div>loading: {String(loading)}</div>
+                <div>role: {profile?.role ?? "-"}</div>
+                <div>dept: {profile?.department ?? "-"}</div>
+                <div>isManagementUser: {String(isManagementUser)}</div>
+                <div>departmentsToShow: {JSON.stringify(departmentsToShow)}</div>
+            </div>
+            <nav 
+                data-nav-source="src/components/app-nav.tsx"
+                data-nav-build={debugBuildId}
+                className="grid items-start px-2 text-sm font-medium"
+            >
+                {!isManagementUser && (
+                    <>
+                        <Collapsible defaultOpen={isAttendanceOpen}>
+                            <CollapsibleTrigger asChild>
+                                <Button variant={isAttendanceOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                                    <span className="flex items-center gap-2">
+                                        <QrCode className="h-4 w-4" />
+                                        QR ลงเวลา
+                                    </span>
+                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                </Button>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="py-1 pl-6 space-y-1">
+                                {profile?.role === 'OFFICER' && (
+                                    <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
+                                )}
+                                <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
+                            </CollapsibleContent>
+                        </Collapsible>
+                        
+                        <div className="my-2 border-t"></div>
+                    </>
+                )}
 
-            {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
-        </nav>
+                {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
+            </nav>
+        </>
     );
 }
