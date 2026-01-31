@@ -799,6 +799,64 @@ const handlePartsReady = async () => {
             </CardContent>
           </Card>
           
+          {((job.department === 'CAR_SERVICE' && job.carServiceDetails) || (job.department === 'COMMONRAIL' && job.commonrailDetails) || (job.department === 'MECHANIC' && job.mechanicDetails)) && (
+            <Card>
+              <CardHeader>
+                <CardTitle>รายละเอียดเฉพาะแผนก</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {job.department === 'CAR_SERVICE' && job.carServiceDetails && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ยี่ห้อรถ</span>
+                      <span className="font-medium">{job.carServiceDetails.brand || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">รุ่นรถ</span>
+                      <span className="font-medium">{job.carServiceDetails.model || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ทะเบียนรถ</span>
+                      <span className="font-medium">{job.carServiceDetails.licensePlate || '-'}</span>
+                    </div>
+                  </>
+                )}
+                {job.department === 'COMMONRAIL' && job.commonrailDetails && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ยี่ห้อ</span>
+                      <span className="font-medium">{job.commonrailDetails.brand || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">เลขอะไหล่</span>
+                      <span className="font-medium">{job.commonrailDetails.partNumber || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">เลขทะเบียน</span>
+                      <span className="font-medium">{job.commonrailDetails.registrationNumber || '-'}</span>
+                    </div>
+                  </>
+                )}
+                {job.department === 'MECHANIC' && job.mechanicDetails && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">ยี่ห้อ</span>
+                      <span className="font-medium">{job.mechanicDetails.brand || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">เลขอะไหล่</span>
+                      <span className="font-medium">{job.mechanicDetails.partNumber || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">เลขทะเบียน</span>
+                      <span className="font-medium">{job.mechanicDetails.registrationNumber || '-'}</span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {(job.department === 'COMMONRAIL' || job.department === 'MECHANIC') && (
             <Card>
               <CardHeader>
