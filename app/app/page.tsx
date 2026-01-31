@@ -19,25 +19,25 @@ export default function PostLoginRouter() {
     const role = profile.role;
 
     if (role === "ADMIN" || dept === "MANAGEMENT") {
-        router.replace("/management/dashboard");
+        router.replace("/app/management/dashboard");
         return;
     }
     
     switch(dept) {
         case "OFFICE":
-            router.replace("/office/intake");
+            router.replace("/app/office/intake");
             break;
         case "CAR_SERVICE":
-            router.replace("/car-service/jobs/all");
+            router.replace("/app/car-service/jobs/all");
             break;
         case "COMMONRAIL":
-            router.replace("/commonrail/jobs/all");
+            router.replace("/app/commonrail/jobs/all");
             break;
         case "MECHANIC":
-            router.replace("/mechanic/jobs/all");
+            router.replace("/app/mechanic/jobs/all");
             break;
         case "OUTSOURCE":
-            router.replace("/outsource/tracking/pending");
+            router.replace("/app/outsource/tracking/pending");
             break;
         default:
             router.replace("/pending");
