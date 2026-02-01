@@ -10,7 +10,7 @@ import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, col
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useCollection } from "@/firebase/firestore/use-collection";
+import { useCollection } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
 import { archiveCollectionNameByYear } from '@/lib/archive-utils';

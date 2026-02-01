@@ -9,10 +9,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
-import { useFirebase } from "@/firebase";
+import { useFirebase, useCollection, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { useCollection, WithId } from "@/firebase/firestore/use-collection";
 import { cn } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
 import type { AccountingAccount, AccountingEntry, Vendor } from "@/lib/types";

@@ -17,7 +17,7 @@ import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRi
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { AccountingAccount } from "@/lib/types";
-import { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase";
 
 export default function ManagementAccountingAccountsPage() {
   const { db } = useFirebase();

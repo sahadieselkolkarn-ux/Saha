@@ -33,7 +33,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase";
 
 const userProfileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),

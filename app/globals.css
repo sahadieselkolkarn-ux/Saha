@@ -68,6 +68,17 @@
   }
 }
 
+@layer utilities {
+  @keyframes blink {
+    50% {
+      opacity: 0.2;
+    }
+  }
+  .animate-blink {
+    animation: blink 1.5s step-start 0s infinite;
+  }
+}
+
 @media print {
   .print-hidden, .print\:hidden {
     display: none !important;

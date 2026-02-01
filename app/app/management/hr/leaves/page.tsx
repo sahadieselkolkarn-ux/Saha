@@ -2,10 +2,10 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, getDocs, deleteDoc } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO, differenceInCalendarDays, isBefore } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfToday, subMonths } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -33,8 +33,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useDoc } from "@/firebase/firestore/use-doc";
-import { WithId } from "@/firebase/firestore/use-collection";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { leaveStatusLabel, leaveTypeLabel } from "@/lib/ui-labels";

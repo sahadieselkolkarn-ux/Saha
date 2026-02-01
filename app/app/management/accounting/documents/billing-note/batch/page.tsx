@@ -40,11 +40,11 @@ import {
   ChevronDown
 } from 'lucide-react';
 import type { Customer, Document, BillingRun, StoreSettings } from '@/lib/types';
-import { WithId } from '@/firebase/firestore/use-collection';
+import type { WithId } from '@/firebase';
 import { BillingNoteBatchEditDialog } from '@/components/billing-note-batch-edit-dialog';
 import { createDocument } from '@/firebase/documents';
 import { safeFormat } from '@/lib/date-utils';
-import { useDoc } from '@/firebase/firestore/use-doc';
+import { useDoc } from '@/firebase';
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

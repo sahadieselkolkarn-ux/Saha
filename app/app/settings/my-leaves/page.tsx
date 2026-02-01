@@ -7,10 +7,8 @@ import * as z from 'zod';
 import { addDoc, collection, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { format, differenceInCalendarDays, getYear, isBefore, startOfToday, subMonths } from 'date-fns';
 
-import { useFirebase } from '@/firebase';
+import { useFirebase, useCollection, useDoc, type WithId } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
-import { useCollection, WithId } from '@/firebase/firestore/use-collection';
-import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { LEAVE_TYPES, type LeaveType, type LeaveStatus } from '@/lib/constants';

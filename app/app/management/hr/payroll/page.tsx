@@ -2,9 +2,8 @@
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase/firestore/use-doc";
 import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -22,7 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayslipSnapshot } from "@/lib/types";
 import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
-import { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
 import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
 import { formatPayslipAsText, formatPayslipAsJson } from "@/lib/payroll/formatPayslipCopy";
@@ -147,7 +146,7 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(adjustmentsPeriodQuery),
                 getDocs(attendanceYtdSnap),
                 getDocs(adjustmentsYtdSnap),
-                getDocs(payslipsQuery),
+                getDocs(payslipsSnap),
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
