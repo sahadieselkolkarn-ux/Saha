@@ -484,6 +484,18 @@
         "grandTotal": { "type": "number" },
         "notes": { "type": "string" },
         "status": { "type": "string" },
+        "receiptStatus": { "type": "string", "enum": ["ISSUED_NOT_CONFIRMED", "CONFIRMED"] },
+        "confirmedPayment": {
+          "type": "object",
+          "properties": {
+            "accountId": { "type": "string" },
+            "method": { "type": "string" },
+            "receivedDate": { "type": "string", "format": "date" },
+            "netReceivedTotal": { "type": "number" },
+            "withholdingTotal": { "type": "number" },
+            "arPaymentId": { "type": "string" }
+          }
+        },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" },
         "expiryDate": { "type": "string", "format": "date" },
@@ -510,10 +522,6 @@
         "arStatus": {
           "type": "string",
           "enum": ["PENDING", "UNPAID", "PARTIAL", "PAID", "DISPUTED"]
-        },
-        "receiptStatus": {
-          "type": "string",
-          "enum": ["ISSUED_NOT_CONFIRMED", "CONFIRMED"]
         },
         "dispute": {
           "type": "object",
@@ -1140,6 +1148,34 @@
       },
       "required": ["entryType", "entryDate", "amount", "accountId", "createdAt"]
     },
+    "ARPayment": {
+      "title": "AR Payment",
+      "description": "Records a payment received against one or more invoices, linked to a receipt.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "receiptId": { "type": "string" },
+        "customerId": { "type": "string" },
+        "paymentDate": { "type": "string", "format": "date" },
+        "netReceivedTotal": { "type": "number" },
+        "withholdingTotal": { "type": "number" },
+        "allocations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "invoiceId": { "type": "string" },
+              "invoiceDocNo": { "type": "string" },
+              "netCashApplied": { "type": "number" },
+              "withholdingAmount": { "type": "number" },
+              "grossApplied": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "receiptId", "customerId", "paymentDate", "netReceivedTotal", "allocations", "createdAt"]
+    },
     "PaymentClaim": {
       "title": "Payment Claim",
       "description": "An entry for an incoming payment that requires verification from the accounting department.",
@@ -1485,6 +1521,10 @@
       },
       "description": "Stores immutable financial transaction entries."
     },
+     "/arPayments/{paymentId}": {
+      "schema": { "$ref": "#/backend/entities/ARPayment" },
+      "description": "Stores confirmed Accounts Receivable payment records."
+    },
     "/paymentClaims/{claimId}": {
       "schema": {
         "$ref": "#/backend/entities/PaymentClaim"
@@ -1517,4 +1557,3 @@
     }
   }
 }
-

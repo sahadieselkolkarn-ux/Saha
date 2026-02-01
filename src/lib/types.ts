@@ -481,6 +481,14 @@ export interface Document {
     balance: number;
     paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
   };
+  confirmedPayment?: {
+    accountId: string;
+    method: string;
+    receivedDate: string;
+    netReceivedTotal: number;
+    withholdingTotal: number;
+    arPaymentId: string;
+  };
 }
 
 export interface DocumentCounters {
@@ -534,6 +542,23 @@ export interface AccountingEntry {
   vendorShortNameSnapshot?: string;
   vendorNameSnapshot?: string;
   counterpartyNameSnapshot?: string; // For one-off individuals not in vendors
+}
+
+export interface ARPayment {
+  id: string;
+  receiptId: string;
+  customerId: string;
+  paymentDate: string;
+  netReceivedTotal: number;
+  withholdingTotal: number;
+  allocations: {
+    invoiceId: string;
+    invoiceDocNo: string;
+    netCashApplied: number;
+    withholdingAmount: number;
+    grossApplied: number;
+  }[];
+  createdAt: Timestamp;
 }
 
 export interface PaymentClaim {
