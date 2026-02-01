@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -10,7 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -92,6 +93,9 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(0);
+  const PAGE_SIZE = 20;
+
   const form = useForm<z.infer<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
     defaultValues: {
@@ -132,6 +136,14 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
       customer.phone.includes(searchTerm)
     );
   }, [customers, searchTerm]);
+
+  const paginatedCustomers = useMemo(() => {
+    const start = currentPage * PAGE_SIZE;
+    const end = start + PAGE_SIZE;
+    return filteredCustomers.slice(start, end);
+  }, [filteredCustomers, currentPage]);
+
+  const totalPages = Math.ceil(filteredCustomers.length / PAGE_SIZE);
 
   useEffect(() => {
     if (isDialogOpen) {
@@ -212,8 +224,8 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCustomers.length > 0 ? (
-                filteredCustomers.map(customer => (
+              {paginatedCustomers.length > 0 ? (
+                paginatedCustomers.map(customer => (
                     <TableRow key={customer.id}>
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.phone}</TableCell>
@@ -240,11 +252,38 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
             </TableBody>
           </Table>
         </CardContent>
+        {totalPages > 1 && (
+          <CardFooter>
+            <div className="flex w-full justify-between items-center">
+                <span className="text-sm text-muted-foreground">
+                    Page {currentPage + 1} of {totalPages}
+                </span>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => p - 1)}
+                        disabled={currentPage === 0}
+                    >
+                        Previous
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => p + 1)}
+                        disabled={currentPage >= totalPages - 1}
+                    >
+                        Next
+                    </Button>
+                </div>
+            </div>
+          </CardFooter>
+        )}
       </Card>
 
       <div className="grid gap-4 sm:hidden">
-        {filteredCustomers.length > 0 ? (
-          filteredCustomers.map(customer => (
+        {paginatedCustomers.length > 0 ? (
+          paginatedCustomers.map(customer => (
             <CustomerCard key={customer.id} customer={customer} onEdit={openEditDialog} onDelete={handleDeleteRequest} />
           ))
         ) : (
@@ -254,6 +293,31 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
                 <CardDescription>{searchTerm ? "No customers match your search." : "Get started by adding a new customer."}</CardDescription>
             </CardHeader>
         </Card>
+        )}
+         {totalPages > 1 && (
+             <div className="flex w-full justify-between items-center mt-4">
+                <span className="text-sm text-muted-foreground">
+                    Page {currentPage + 1} of {totalPages}
+                </span>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => p - 1)}
+                        disabled={currentPage === 0}
+                    >
+                        Previous
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCurrentPage(p => p + 1)}
+                        disabled={currentPage >= totalPages - 1}
+                    >
+                        Next
+                    </Button>
+                </div>
+            </div>
         )}
       </div>
 
