@@ -473,14 +473,14 @@ export function JobList({
     try {
         const vendorsQuery = query(
             collection(db, "outsourceVendors"),
-            where("isActive", "==", true),
             orderBy("shopName", "asc")
         );
         const querySnapshot = await getDocs(vendorsQuery);
-        const fetchedVendors = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OutsourceVendor));
-        setOutsourceVendors(fetchedVendors);
-    } catch (error) {
-        toast({ variant: 'destructive', title: 'Could not fetch outsource vendors' });
+        const allVendors = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OutsourceVendor));
+        const activeVendors = allVendors.filter(v => v.isActive === true);
+        setOutsourceVendors(activeVendors);
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Could not fetch outsource vendors', description: error.message });
         setOutsourceVendors([]);
     } finally {
         setIsFetchingVendors(false);
