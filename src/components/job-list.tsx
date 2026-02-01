@@ -473,12 +473,11 @@ export function JobList({
     try {
         const vendorsQuery = query(
             collection(db, "outsourceVendors"),
+            where("isActive", "==", true),
             orderBy("shopName", "asc")
         );
         const querySnapshot = await getDocs(vendorsQuery);
-        const allVendors = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OutsourceVendor));
-        const activeVendors = allVendors.filter(v => v.isActive === true);
-        setOutsourceVendors(activeVendors);
+        setOutsourceVendors(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OutsourceVendor)));
     } catch (error: any) {
         toast({ variant: 'destructive', title: 'Could not fetch outsource vendors', description: error.message });
         setOutsourceVendors([]);
@@ -724,7 +723,7 @@ export function JobList({
           <CardHeader>
             <div className="flex justify-between items-start">
               <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-              <Badge variant={getStatusVariant(job.status)} className="flex-shrink-0">{jobStatusLabel(job.status)}</Badge>
+              <Badge variant={getStatusVariant(job.status)} className={cn("flex-shrink-0", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
             </div>
             <CardDescription>
               {deptLabel(job.department)}

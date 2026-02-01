@@ -16,6 +16,7 @@ import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2, Undo2
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -385,7 +386,7 @@ export function JobTableList({
                               <TableCell className="hidden md:table-cell">{deptLabel(job.department)}</TableCell>
                               <TableCell className="max-w-xs truncate hidden md:table-cell">{job.description}</TableCell>
                               <TableCell>
-                                  <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
+                                  <Badge variant={getStatusVariant(job.status)} className={cn(job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
                               </TableCell>
                               <TableCell className="hidden md:table-cell">{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
                               <TableCell className="sticky right-0 bg-background text-right whitespace-nowrap">
