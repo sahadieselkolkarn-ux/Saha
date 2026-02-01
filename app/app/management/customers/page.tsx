@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { Customer } from "@/lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/context/auth-context";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -47,22 +48,21 @@ const customerSchema = z.object({
   path: ["taxName"], 
 });
 
-const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEdit: (customer: Customer) => void, onDelete: (customerId: string) => void }) => (
+const CustomerCard = ({ customer, onEdit, onDelete, isManagerOrAdmin, isAdmin }: { customer: Customer, onEdit: (customer: Customer) => void, onDelete: (customerId: string) => void, isManagerOrAdmin: boolean, isAdmin: boolean }) => (
     <Card>
         <CardHeader>
             <div className="flex justify-between items-start">
                 <CardTitle className="text-lg">{customer.name}</CardTitle>
-                <DropdownMenu>
+                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
                             <MoreHorizontal className="h-4 w-4" />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive">
-                            Delete
-                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onEdit(customer)}><Eye className="mr-2 h-4 w-4"/>ดู</DropdownMenuItem>
+                        {isManagerOrAdmin && <DropdownMenuItem onClick={() => onEdit(customer)}><Edit className="mr-2 h-4 w-4"/>แก้ไข</DropdownMenuItem>}
+                        {isAdmin && <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>ลบ</DropdownMenuItem>}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -83,7 +83,7 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
     </Card>
 );
 
-function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
+function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm: string, isManagerOrAdmin: boolean, isAdmin: boolean }) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -234,12 +234,12 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
                     <TableCell className="max-w-sm truncate">{customer.detail || '-'}</TableCell>
                     <TableCell className="text-right">
                         <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditDialog(customer)}><Eye className="mr-2 h-4 w-4"/>View</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEditDialog(customer)}><Edit className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete</DropdownMenuItem>
-                        </DropdownMenuContent>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openEditDialog(customer)}><Eye className="mr-2 h-4 w-4"/>ดู</DropdownMenuItem>
+                                {isManagerOrAdmin && <DropdownMenuItem onClick={() => openEditDialog(customer)}><Edit className="mr-2 h-4 w-4"/>แก้ไข</DropdownMenuItem>}
+                                {isAdmin && <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>ลบ</DropdownMenuItem>}
+                            </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
                     </TableRow>
@@ -286,7 +286,7 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
       <div className="grid gap-4 sm:hidden">
         {paginatedCustomers.length > 0 ? (
           paginatedCustomers.map(customer => (
-            <CustomerCard key={customer.id} customer={customer} onEdit={openEditDialog} onDelete={handleDeleteRequest} />
+            <CustomerCard key={customer.id} customer={customer} onEdit={openEditDialog} onDelete={handleDeleteRequest} isManagerOrAdmin={isManagerOrAdmin} isAdmin={isAdmin} />
           ))
         ) : (
           <Card className="text-center py-12">
@@ -541,8 +541,12 @@ function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
 
 
 export default function ManagementCustomersPage() {
+    const { profile } = useAuth();
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState("all");
+
+    const isManagerOrAdmin = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER', [profile]);
+    const isAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
 
     const placeholder = useMemo(() => {
         if (activeTab === 'tax') return "Search name, phone, detail, or Tax ID...";
@@ -585,7 +589,7 @@ export default function ManagementCustomersPage() {
                     </div>
                 </div>
                 <TabsContent value="all">
-                    <AllCustomersTab searchTerm={searchTerm} />
+                    <AllCustomersTab searchTerm={searchTerm} isManagerOrAdmin={isManagerOrAdmin} isAdmin={isAdmin} />
                 </TabsContent>
                 <TabsContent value="tax">
                     <TaxCustomersTab searchTerm={searchTerm} />
