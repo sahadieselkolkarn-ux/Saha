@@ -33,6 +33,7 @@ import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/l
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "ต้องกรอกรายละเอียด"),
