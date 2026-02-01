@@ -48,12 +48,12 @@ export default function EditVendorPage() {
 
   const isViewMode = searchParams.get("view") === "1";
   
-  const isManagerOrAdmin = useMemo(() => {
+  const canEditPermission = useMemo(() => {
     if (!profile) return false;
-    return profile.role === 'ADMIN' || profile.role === 'MANAGER';
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE';
   }, [profile]);
 
-  const canEdit = isManagerOrAdmin && !isViewMode;
+  const canEdit = canEditPermission && !isViewMode;
 
   const vendorDocRef = useMemo(() => {
     if (!db || !vendorId) return null;

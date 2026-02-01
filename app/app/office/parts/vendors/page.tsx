@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -34,9 +35,9 @@ export default function VendorsPage() {
     return profile.role === 'ADMIN' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
   }, [profile]);
   
-  const isManagerOrAdmin = useMemo(() => {
+  const canEdit = useMemo(() => {
     if (!profile) return false;
-    return profile.role === 'ADMIN' || profile.role === 'MANAGER';
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE';
   }, [profile]);
 
   const isAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
@@ -157,7 +158,7 @@ export default function VendorsPage() {
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent>
                             <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}?view=1`}><Eye className="mr-2"/> ดู</Link></DropdownMenuItem>
-                            {isManagerOrAdmin && (
+                            {canEdit && (
                                 <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}`}><Edit className="mr-2"/> แก้ไข</Link></DropdownMenuItem>
                             )}
                             {isAdmin && (
