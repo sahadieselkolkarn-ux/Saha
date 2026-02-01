@@ -220,7 +220,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
         if (!profile) return false;
         return profile.department === "MANAGEMENT" || ["ADMIN", "MANAGER"].includes(profile.role);
     }, [profile]);
-    
+
     if (isManagementUser && !["MANAGEMENT", "OFFICE"].includes(department)) {
         return null;
     }
@@ -377,17 +377,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
 
     return (
         <>
-            <div className="mb-2 rounded border border-red-300 bg-red-50 p-2 text-[11px] text-red-900">
-                <div><b>NAV_DEBUG</b> build: {debugBuildId}</div>
-                <div>loading: {String(loading)}</div>
-                <div>role: {profile?.role ?? "-"}</div>
-                <div>dept: {profile?.department ?? "-"}</div>
-                <div>isManagementUser: {String(isManagementUser)}</div>
-                <div>departmentsToShow: {JSON.stringify(departmentsToShow)}</div>
-            </div>
             <nav 
-                data-nav-source="src/components/app-nav.tsx"
-                data-nav-build={debugBuildId}
                 className="grid items-start px-2 text-sm font-medium"
             >
                 {!isManagementUser && (
