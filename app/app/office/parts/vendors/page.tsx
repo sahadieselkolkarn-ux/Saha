@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight } from "lucide-react";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Vendor } from "@/lib/types";
@@ -33,6 +33,11 @@ export default function VendorsPage() {
   const hasPermission = useMemo(() => {
     if (!profile) return false;
     return profile.role === 'ADMIN' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
+  }, [profile]);
+  
+  const isManagerOrAdmin = useMemo(() => {
+    if (!profile) return false;
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER';
   }, [profile]);
 
   useEffect(() => {
@@ -134,7 +139,7 @@ export default function VendorsPage() {
                 <TableRow>
                   <TableHead>ชื่อย่อ</TableHead>
                   <TableHead>ชื่อร้าน/บริษัท</TableHead>
-                  <TableHead>เบอร์โทร</TableHead>
+                  <TableHead>เบอร์โทรผู้ติดต่อ</TableHead>
                   <TableHead>ผู้ติดต่อ</TableHead>
                   <TableHead>สถานะ</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
@@ -146,7 +151,7 @@ export default function VendorsPage() {
                     <TableRow key={vendor.id}>
                       <TableCell className="font-medium">{vendor.shortName}</TableCell>
                       <TableCell>{vendor.companyName}</TableCell>
-                      <TableCell>{vendor.phone || '-'}</TableCell>
+                      <TableCell>{vendor.contactPhone || '-'}</TableCell>
                       <TableCell>{vendor.contactName || '-'}</TableCell>
                       <TableCell>
                         <Badge variant={vendor.isActive ? 'default' : 'secondary'}>{vendor.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}</Badge>
@@ -155,7 +160,10 @@ export default function VendorsPage() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent>
-                            <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}`}><Edit className="mr-2"/> ดู/แก้ไข</Link></DropdownMenuItem>
+                            <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}`}><Eye className="mr-2"/> ดู</Link></DropdownMenuItem>
+                            {isManagerOrAdmin && (
+                                <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}`}><Edit className="mr-2"/> แก้ไข</Link></DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => handleToggleActive(vendor)}>
                               {vendor.isActive ? <ToggleLeft className="mr-2"/> : <ToggleRight className="mr-2"/>}
                               {vendor.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}

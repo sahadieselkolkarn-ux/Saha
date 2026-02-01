@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -139,7 +138,7 @@ export default function VendorsPage() {
                 <TableRow>
                   <TableHead>ชื่อย่อ</TableHead>
                   <TableHead>ชื่อร้าน/บริษัท</TableHead>
-                  <TableHead>เบอร์โทร</TableHead>
+                  <TableHead>เบอร์โทรผู้ติดต่อ</TableHead>
                   <TableHead>ผู้ติดต่อ</TableHead>
                   <TableHead>สถานะ</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
