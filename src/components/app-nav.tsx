@@ -254,7 +254,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'MANAGEMENT' && (
                     <>
                         <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
-                        <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         {canSeeAccounting && (
                            <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
                         )}
@@ -266,7 +265,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                      <>
                         <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" onClick={onLinkClick} />
                         <OfficeJobManagementSubMenu onLinkClick={onLinkClick} />
-                        <SubNavLink href="/app/office/customers" label="รายชื่อลูกค้า" onClick={onLinkClick} />
+                        <SubNavLink href="/app/management/customers" label="การจัดการลูกค้า" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
 
                         <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
