@@ -1,4 +1,5 @@
 
+
 {
   "entities": {
     "UserProfile": {
@@ -498,7 +499,30 @@
         "referencesDocIds": { "type": "array", "items": { "type": "string"} },
         "reason": { "type": "string" },
         "invoiceIds": { "type": "array", "items": { "type": "string"} },
-        "totalAmount": { "type": "number" }
+        "totalAmount": { "type": "number" },
+        "paymentTerms": {
+          "type": "string",
+          "enum": ["CASH", "CREDIT"]
+        },
+        "billingRequired": {
+          "type": "boolean"
+        },
+        "arStatus": {
+          "type": "string",
+          "enum": ["PENDING", "UNPAID", "PARTIAL", "PAID", "DISPUTED"]
+        },
+        "receiptStatus": {
+          "type": "string",
+          "enum": ["ISSUED_NOT_CONFIRMED", "CONFIRMED"]
+        },
+        "dispute": {
+          "type": "object",
+          "properties": {
+            "isDisputed": { "type": "boolean" },
+            "reason": { "type": "string" },
+            "createdAt": { "type": "string", "format": "date-time" }
+          }
+        }
       },
       "required": ["id", "docType", "docNo", "docDate", "customerSnapshot", "storeSnapshot", "items", "grandTotal", "createdAt", "updatedAt"]
     },
@@ -1493,3 +1517,4 @@
     }
   }
 }
+

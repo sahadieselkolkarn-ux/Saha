@@ -1,14 +1,12 @@
+
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, limit, getDocs } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { format } from "date-fns";
+import { useRouter } from 'next/navigation';
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,367 +15,253 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Search, MoreHorizontal, CheckCircle, XCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Search, CheckCircle, Ban, HandCoins } from "lucide-react";
 import { WithId } from "@/firebase/firestore/use-collection";
-import { PaymentClaim, AccountingAccount, Document as DocumentType, AccountingObligation } from "@/lib/types";
+import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
+import { Label } from "@/components/ui/label";
+import { format } from "date-fns";
 
-type ClaimStatus = "PENDING" | "APPROVED" | "REJECTED";
-
-const formatCurrency = (value: number) => {
-  return (value ?? 0).toLocaleString("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-};
-
-const approvalSchema = z.object({
-  receivedDate: z.string().min(1, "กรุณาเลือกวันที่รับเงิน"),
-  paymentMethod: z.enum(["CASH", "TRANSFER"], { required_error: "กรุณาเลือกช่องทาง" }),
-  accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
-  amountReceived: z.coerce.number().min(0.01, "ยอดเงินต้องมากกว่า 0"),
-  withholdingEnabled: z.boolean().default(false),
-  withholdingAmount: z.coerce.number().min(0).optional(),
-  note: z.string().optional(),
-});
-
-function ApproveClaimDialog({ claim, accounts, onClose, onConfirm }: { claim: WithId<PaymentClaim>, accounts: WithId<AccountingAccount>[], onClose: () => void, onConfirm: (data: any) => Promise<void> }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const form = useForm<z.infer<typeof approvalSchema>>({
-    resolver: zodResolver(approvalSchema),
-    defaultValues: {
-      receivedDate: format(new Date(), "yyyy-MM-dd"),
-      paymentMethod: claim.suggestedPaymentMethod === "CASH" || claim.suggestedPaymentMethod === "TRANSFER" ? claim.suggestedPaymentMethod : undefined,
-      accountId: claim.suggestedAccountId,
-      amountReceived: claim.amountDue,
-      withholdingEnabled: false,
-      withholdingAmount: 0,
-      note: "",
-    },
-  });
-
-  const amountReceivedForm = form.watch("amountReceived");
-  const isWhtEnabled = form.watch("withholdingEnabled");
-  const whtAmount = form.watch("withholdingAmount") || 0;
-  const cashReceived = amountReceivedForm - whtAmount;
-  
-  const handleSubmit = async (data: z.infer<typeof approvalSchema>) => {
-    setIsLoading(true);
-    await onConfirm({ ...data, cashReceived });
-    setIsLoading(false);
-  };
-
-  return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>ยืนยันการรับเงิน</DialogTitle>
-          <DialogDescription>สำหรับเอกสารเลขที่: {claim.sourceDocNo}</DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form id="approve-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
-            <FormField control={form.control} name="receivedDate" render={({ field }) => (<FormItem><FormLabel>วันที่รับเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-            <div className="grid grid-cols-2 gap-4">
-              <FormField control={form.control} name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="accountId" render={({ field }) => (<FormItem><FormLabel>บัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
-            </div>
-             <FormField control={form.control} name="amountReceived" render={({ field }) => (<FormItem><FormLabel>ยอดเงินที่รับ (ก่อนหัก ณ ที่จ่าย)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
-            <div className="p-4 border rounded-md space-y-4">
-              <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
-                <FormItem className="flex items-center gap-2 space-y-0"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">มีหัก ณ ที่จ่าย 3%</FormLabel></FormItem>
-              )} />
-              {isWhtEnabled && <FormField control={form.control} name="withholdingAmount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินที่ถูกหัก (WHT)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />}
-            </div>
-            <div className="space-y-2">
-                <div className="flex justify-between font-medium"><p>ยอดตามบิล:</p><p>{formatCurrency(claim.amountDue)}</p></div>
-                {isWhtEnabled && <div className="flex justify-between text-destructive"><p>หัก ณ ที่จ่าย:</p><p>-{formatCurrency(whtAmount)}</p></div>}
-                <div className="flex justify-between font-bold text-lg border-t pt-2"><p>ยอดเงินเข้าจริง:</p><p>{formatCurrency(cashReceived)}</p></div>
-            </div>
-            <FormField control={form.control} name="note" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
-          </form>
-        </Form>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isLoading}>ยกเลิก</Button>
-          <Button type="submit" form="approve-form" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 animate-spin" />}ยืนยัน</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function RejectClaimDialog({ claim, onClose, onConfirm }: { claim: WithId<PaymentClaim>, onClose: () => void, onConfirm: (reason: string) => Promise<void> }) {
-  const [reason, setReason] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
-  
-  const handleSubmit = async () => {
-    if (!reason) {
-      toast({ variant: 'destructive', title: "กรุณากรอกเหตุผล" });
-      return;
-    }
-    setIsLoading(true);
-    await onConfirm(reason);
-    setIsLoading(false);
-  };
-  
-  return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>ตีกลับรายการ</DialogTitle>
-          <DialogDescription>สำหรับเอกสารเลขที่: {claim.sourceDocNo}</DialogDescription>
-        </DialogHeader>
-        <div className="py-4">
-          <Textarea placeholder="กรุณาระบุเหตุผลในการตีกลับ..." value={reason} onChange={e => setReason(e.target.value)} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isLoading}>ยกเลิก</Button>
-          <Button variant="destructive" onClick={handleSubmit} disabled={isLoading || !reason}>{isLoading && <Loader2 className="mr-2 animate-spin" />}ตีกลับ</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
+const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function AccountingInboxPage() {
   const { profile } = useAuth();
   const { db } = useFirebase();
   const { toast } = useToast();
-  
-  const [claims, setClaims] = useState<WithId<PaymentClaim>[]>([]);
+  const router = useRouter();
+
+  const [documents, setDocuments] = useState<WithId<DocumentType>[]>([]);
   const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<ClaimStatus>("PENDING");
+  const [activeTab, setActiveTab] = useState<"receive" | "ar">("receive");
 
-  const [approvingClaim, setApprovingClaim] = useState<WithId<PaymentClaim> | null>(null);
-  const [rejectingClaim, setRejectingClaim] = useState<WithId<PaymentClaim> | null>(null);
+  const [confirmingDoc, setConfirmingDoc] = useState<WithId<DocumentType> | null>(null);
+  const [disputingDoc, setDisputingDoc] = useState<WithId<DocumentType> | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
 
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
   useEffect(() => {
-    if (!db) return;
-    const claimsQuery = query(collection(db, "paymentClaims"), orderBy("createdAt", "desc"));
+    if (!db || !hasPermission) {
+      setLoading(false);
+      return;
+    }
+
+    const docsQuery = query(collection(db, "documents"), where("arStatus", "==", "PENDING"));
     const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
-    
-    const unsubClaims = onSnapshot(claimsQuery, 
-      (snap) => {
-        setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<PaymentClaim>)));
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error loading payment claims:", error);
-        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูล หรือการดึงข้อมูลถูกปฏิเสธ" });
-        setLoading(false);
-      }
-    );
 
+    const unsubDocs = onSnapshot(docsQuery, 
+      (snap) => { setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>))); setLoading(false); },
+      (err) => { toast({ variant: 'destructive', title: "Error loading documents", description: err.message }); setLoading(false); }
+    );
     const unsubAccounts = onSnapshot(accountsQuery, 
-      (snap) => {
-        setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
-      },
-      (error) => {
-        console.error("Error loading accounts:", error);
-        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
-      }
+      (snap) => setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)))
     );
-
-    return () => { unsubClaims(); unsubAccounts(); };
-  }, [db, toast]);
-
-  const filteredClaims = useMemo(() => {
-    let filtered = claims.filter(c => c.status === activeTab);
-    if (searchTerm) {
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter(c => 
-            c.sourceDocNo.toLowerCase().includes(lowerSearch) ||
-            c.customerNameSnapshot?.toLowerCase().includes(lowerSearch) ||
-            c.note?.toLowerCase().includes(lowerSearch)
-        );
-    }
-    return filtered;
-  }, [claims, activeTab, searchTerm]);
-
-  const handleApproveConfirm = async (data: z.infer<typeof approvalSchema>) => {
-    if (!db || !profile || !approvingClaim) return;
-
-    const { receivedDate, paymentMethod, accountId, amountReceived, withholdingEnabled, withholdingAmount, note } = data;
-    const cashReceived = amountReceived - (withholdingAmount ?? 0);
-
-    try {
-        const sourceDocRef = doc(db, "documents", approvingClaim.sourceDocId);
-        const sourceDocSnap = await getDoc(sourceDocRef);
-        if (!sourceDocSnap.exists()) throw new Error("ไม่พบเอกสารอ้างอิง");
-        const sourceDocData = sourceDocSnap.data() as DocumentType;
-
-        const arQuery = query(collection(db, 'accountingObligations'), where('sourceDocId', '==', approvingClaim.sourceDocId), where('status', '!=', 'PAID'), limit(1));
-        const arSnap = await getDocs(arQuery);
-        const arDoc = arSnap.docs[0];
-
-        const batch = writeBatch(db);
-        const claimRef = doc(db, "paymentClaims", approvingClaim.id);
-        
-        batch.update(claimRef, {
-            status: "APPROVED",
-            approvedAt: serverTimestamp(),
-            approvedByUid: profile.uid,
-            approvedByName: profile.displayName,
-            receivedDate,
-            paymentMethod,
-            accountId,
-            amountReceived,
-            withholdingEnabled,
-            withholdingAmount: withholdingAmount ?? 0,
-            cashReceived,
-            note,
-        });
-
-        const entryRef = doc(collection(db, "accountingEntries"));
-        batch.set(entryRef, {
-            entryType: "CASH_IN",
-            entryDate: receivedDate,
-            amount: cashReceived,
-            accountId,
-            paymentMethod,
-            description: `รับเงินจาก ${approvingClaim.customerNameSnapshot || 'ไม่ระบุ'} (เอกสาร: ${approvingClaim.sourceDocNo})`,
-            sourceDocType: approvingClaim.sourceDocType,
-            sourceDocId: approvingClaim.sourceDocId,
-            sourceDocNo: approvingClaim.sourceDocNo,
-            customerNameSnapshot: approvingClaim.customerNameSnapshot,
-            jobId: approvingClaim.jobId,
-            createdAt: serverTimestamp(),
-        });
-        
-        const currentPaid = sourceDocData.paymentSummary?.paidTotal || 0;
-        const newPaidTotal = currentPaid + cashReceived;
-        const newBalance = sourceDocData.grandTotal - newPaidTotal;
-        const newPaymentStatus = newBalance <= 0 ? 'PAID' : 'PARTIAL';
-
-        batch.update(sourceDocRef, {
-            'paymentSummary.paidTotal': newPaidTotal,
-            'paymentSummary.balance': newBalance,
-            'paymentSummary.paymentStatus': newPaymentStatus,
-            status: newPaymentStatus === 'PAID' ? 'PAID' : sourceDocData.status,
-            updatedAt: serverTimestamp()
-        });
-
-        if (arDoc) {
-            const arData = arDoc.data() as AccountingObligation;
-            const newArPaid = arData.amountPaid + cashReceived;
-            const newArBalance = arData.amountTotal - newArPaid;
-            const newArStatus = newArBalance <= 0 ? 'PAID' : 'PARTIAL';
-            batch.update(arDoc.ref, {
-                amountPaid: newArPaid,
-                balance: newArBalance,
-                status: newArStatus,
-                lastPaymentDate: receivedDate,
-                paidOffDate: newArStatus === 'PAID' ? receivedDate : null,
-                updatedAt: serverTimestamp(),
-            });
-        }
-        
-        await batch.commit();
-        toast({ title: "ยืนยันการรับเงินสำเร็จ" });
-        setApprovingClaim(null);
-
-    } catch (e: any) {
-        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
-    }
-};
+    return () => { unsubDocs(); unsubAccounts(); };
+  }, [db, toast, hasPermission]);
   
-  const handleRejectConfirm = async (reason: string) => {
-    if (!db || !profile || !rejectingClaim) return;
-    
+  useEffect(() => {
+    if(accounts.length > 0 && !selectedAccountId) {
+        setSelectedAccountId(accounts[0].id);
+    }
+  }, [accounts, selectedAccountId]);
+
+  const filteredDocs = useMemo(() => {
+    const filteredByTab = documents.filter(doc => {
+      if (activeTab === 'receive') {
+        return doc.docType === 'DELIVERY_NOTE' && doc.paymentTerms === 'CASH';
+      }
+      if (activeTab === 'ar') {
+        return (doc.docType === 'DELIVERY_NOTE' || doc.docType === 'TAX_INVOICE') && doc.paymentTerms === 'CREDIT';
+      }
+      return false;
+    });
+
+    if (!searchTerm) return filteredByTab;
+    const lowerSearch = searchTerm.toLowerCase();
+    return filteredByTab.filter(doc => 
+      doc.docNo.toLowerCase().includes(lowerSearch) ||
+      doc.customerSnapshot?.name?.toLowerCase().includes(lowerSearch)
+    );
+  }, [documents, activeTab, searchTerm]);
+
+  const handleConfirmCashPayment = async () => {
+    if (!db || !profile || !confirmingDoc || !selectedAccountId) return;
+    setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
-      const claimRef = doc(db, "paymentClaims", rejectingClaim.id);
-      const sourceDocRef = doc(db, "documents", rejectingClaim.sourceDocId);
-
-      batch.update(claimRef, {
-        status: "REJECTED",
-        rejectedAt: serverTimestamp(),
-        rejectedByUid: profile.uid,
-        rejectedByName: profile.displayName,
-        rejectReason: reason,
+      
+      const arRef = doc(collection(db, 'accountingObligations'));
+      batch.set(arRef, {
+        type: 'AR', status: 'PAID', sourceDocType: confirmingDoc.docType, sourceDocId: confirmingDoc.id, sourceDocNo: confirmingDoc.docNo,
+        amountTotal: confirmingDoc.grandTotal, amountPaid: confirmingDoc.grandTotal, balance: 0,
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(), paidOffDate: confirmingDoc.docDate,
+        customerNameSnapshot: confirmingDoc.customerSnapshot.name,
       });
 
-      batch.update(sourceDocRef, {
-        status: 'PENDING_REVIEW',
-        reviewRejectReason: reason,
-        reviewRejectedAt: serverTimestamp(),
-        reviewRejectedByName: profile.displayName,
-        updatedAt: serverTimestamp()
+      const entryRef = doc(collection(db, 'accountingEntries'));
+      batch.set(entryRef, {
+        entryType: 'CASH_IN', entryDate: confirmingDoc.docDate, amount: confirmingDoc.grandTotal, accountId: selectedAccountId,
+        paymentMethod: 'CASH', description: `รับเงินสดจาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
+        sourceDocId: confirmingDoc.id, sourceDocNo: confirmingDoc.docNo, sourceDocType: confirmingDoc.docType,
+        customerNameSnapshot: confirmingDoc.customerSnapshot.name, jobId: confirmingDoc.jobId,
+        createdAt: serverTimestamp(),
       });
 
+      batch.update(doc(db, 'documents', confirmingDoc.id), { arStatus: 'PAID' });
+      
       await batch.commit();
-      toast({ title: "ตีกลับรายการสำเร็จ" });
-      setRejectingClaim(null);
+      toast({ title: "ยืนยันการรับเงินสำเร็จ" });
+      setConfirmingDoc(null);
     } catch(e: any) {
       toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
+  const handleCreateAR = async (docToProcess: WithId<DocumentType>) => {
+    if (!db || !profile) return;
+    setIsSubmitting(true);
+    try {
+        const batch = writeBatch(db);
+        const arRef = doc(collection(db, 'accountingObligations'));
+        batch.set(arRef, {
+            type: 'AR', status: 'UNPAID', sourceDocType: docToProcess.docType, sourceDocId: docToProcess.id, sourceDocNo: docToProcess.docNo,
+            amountTotal: docToProcess.grandTotal, amountPaid: 0, balance: docToProcess.grandTotal,
+            createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dueDate: docToProcess.dueDate || null,
+            customerNameSnapshot: docToProcess.customerSnapshot.name,
+        });
+        batch.update(doc(db, 'documents', docToProcess.id), { arStatus: 'UNPAID' });
+        await batch.commit();
+        toast({ title: 'สร้างลูกหนี้สำเร็จ' });
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
+  
+  const handleDispute = async () => {
+    if (!db || !profile || !disputingDoc || !disputeReason) return;
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'documents', disputingDoc.id), {
+        arStatus: 'DISPUTED',
+        dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() }
+      });
+      toast({ title: "บันทึกข้อโต้แย้งสำเร็จ" });
+      setDisputingDoc(null);
+    } catch(e: any) {
+      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
-  if (!hasPermission) {
-    return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายบริหาร/ผู้ดูแลเท่านั้น</CardDescription></CardHeader></Card>;
-  }
+  if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายบริหาร/บัญชีเท่านั้น</CardDescription></CardHeader></Card>;
 
   return (
     <>
-      <PageHeader title="รอตรวจสอบรายรับ" description="ตรวจสอบและยืนยันการรับเงินจากเอกสารต่างๆ" />
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ClaimStatus)}>
+      <PageHeader title="Inbox บัญชี" description="ศูนย์กลางตรวจสอบและจัดการเอกสารทางการเงิน" />
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex justify-between items-center mb-4">
           <TabsList>
-            <TabsTrigger value="PENDING">รอตรวจสอบ</TabsTrigger>
-            <TabsTrigger value="APPROVED">ยืนยันแล้ว</TabsTrigger>
-            <TabsTrigger value="REJECTED">ตีกลับ</TabsTrigger>
+            <TabsTrigger value="receive">รอรับเงิน (เงินสด)</TabsTrigger>
+            <TabsTrigger value="ar">รอตั้งลูกหนี้ (เครดิต)</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="ค้นหาจากเลขที่เอกสาร, ชื่อลูกค้า, หมายเหตุ..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
+            <Input placeholder="ค้นหาจากเลขที่เอกสาร, ชื่อลูกค้า..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
           </div>
         </div>
         <Card>
           <CardContent className="pt-6">
-            <Table>
-              <TableHeader><TableRow><TableHead>วันที่แจ้ง</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสารอ้างอิง</TableHead><TableHead>ยอดตามบิล</TableHead><TableHead>เงินเข้าจริง</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
-              <TableBody>
-                {loading ? <TableRow><TableCell colSpan={7} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                : filteredClaims.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center h-24">ไม่พบรายการ</TableCell></TableRow>
-                : filteredClaims.map(claim => (
-                    <TableRow key={claim.id}>
-                        <TableCell>{safeFormat(claim.createdAt, "dd/MM/yy HH:mm")}</TableCell>
-                        <TableCell>{claim.customerNameSnapshot}</TableCell>
-                        <TableCell>{claim.sourceDocNo}</TableCell>
-                        <TableCell>{formatCurrency(claim.amountDue)}</TableCell>
-                        <TableCell>{claim.status === 'APPROVED' ? formatCurrency(claim.cashReceived ?? 0) : '-'}</TableCell>
-                        <TableCell><Badge variant={claim.status === 'APPROVED' ? 'default' : claim.status === 'REJECTED' ? 'destructive' : 'secondary'}>{claim.status}</Badge></TableCell>
-                        <TableCell className="text-right">
-                            {claim.status === 'PENDING' && (
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                                    <DropdownMenuContent>
-                                        <DropdownMenuItem onSelect={() => setApprovingClaim(claim)}><CheckCircle className="mr-2"/>ยืนยันรับเงิน</DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => setRejectingClaim(claim)} className="text-destructive"><XCircle className="mr-2"/>ตีกลับ</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            )}
-                        </TableCell>
-                    </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <TabsContent value="receive">
+              <Table>
+                <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                  : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่พบรายการ</TableCell></TableRow>
+                  : filteredDocs.map(doc => (
+                      <TableRow key={doc.id}>
+                          <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
+                          <TableCell>{doc.customerNameSnapshot}</TableCell>
+                          <TableCell>{doc.docNo} ({doc.docType})</TableCell>
+                          <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
+                          <TableCell className="text-right">
+                              <Button size="sm" onClick={() => setConfirmingDoc(doc)}><CheckCircle className="mr-2"/>ยืนยันรับเงิน</Button>
+                          </TableCell>
+                      </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TabsContent>
+            <TabsContent value="ar">
+              <Table>
+                <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                  : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่พบรายการ</TableCell></TableRow>
+                  : filteredDocs.map(doc => (
+                      <TableRow key={doc.id}>
+                          <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
+                          <TableCell>{doc.customerNameSnapshot}</TableCell>
+                          <TableCell>{doc.docNo} ({doc.docType})</TableCell>
+                          <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
+                          <TableCell className="text-right space-x-2">
+                              <Button size="sm" variant="secondary" onClick={() => setDisputingDoc(doc)}><Ban className="mr-2"/>ข้อโต้แย้ง</Button>
+                              <Button size="sm" onClick={() => handleCreateAR(doc)} disabled={isSubmitting}><HandCoins className="mr-2"/>สร้างลูกหนี้</Button>
+                          </TableCell>
+                      </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TabsContent>
           </CardContent>
         </Card>
       </Tabs>
-      {approvingClaim && <ApproveClaimDialog claim={approvingClaim} accounts={accounts} onClose={() => setApprovingClaim(null)} onConfirm={handleApproveConfirm} />}
-      {rejectingClaim && <RejectClaimDialog claim={rejectingClaim} onClose={() => setRejectingClaim(null)} onConfirm={handleRejectConfirm} />}
+      <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && setConfirmingDoc(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ยืนยันการรับเงิน (เงินสด)</DialogTitle>
+            <DialogDescription>สำหรับเอกสารเลขที่: {confirmingDoc?.docNo}</DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+              <p>ยอดเงิน: <span className="font-bold">{formatCurrency(confirmingDoc?.grandTotal ?? 0)}</span></p>
+              <div className="space-y-2">
+                <Label htmlFor="account">เข้าบัญชี</Label>
+                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                    <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
+                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
+            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยัน</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!disputingDoc} onOpenChange={(open) => !open && setDisputingDoc(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ตั้งเป็นข้อโต้แย้ง</DialogTitle>
+            <DialogDescription>สำหรับเอกสารเลขที่: {disputingDoc?.docNo}</DialogDescription>
+          </DialogHeader>
+          <div className="py-4"><Textarea placeholder="กรุณาระบุเหตุผล..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} /></div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDisputingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
+            <Button variant="destructive" onClick={handleDispute} disabled={isSubmitting || !disputeReason}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยัน</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -444,6 +444,17 @@ export interface Document {
   reviewRejectReason?: string;
   reviewRejectedAt?: Timestamp;
   reviewRejectedByName?: string;
+
+  // AR Fields
+  paymentTerms?: 'CASH' | 'CREDIT';
+  billingRequired?: boolean;
+  arStatus?: 'PENDING' | 'UNPAID' | 'PARTIAL' | 'PAID' | 'DISPUTED';
+  receiptStatus?: 'ISSUED_NOT_CONFIRMED' | 'CONFIRMED';
+  dispute?: {
+    isDisputed: boolean;
+    reason?: string;
+    createdAt?: Timestamp;
+  };
   
   // Doc-specific fields
   expiryDate?: string; // For Quotation

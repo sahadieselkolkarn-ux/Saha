@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -31,7 +32,7 @@ import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -56,6 +57,8 @@ const taxInvoiceFormSchema = z.object({
   receiverName: z.string().optional(),
   isBackfill: z.boolean().default(false),
   manualDocNo: z.string().optional(),
+  paymentTerms: z.enum(["CASH", "CREDIT"], { required_error: "กรุณาเลือกเงื่อนไขการชำระเงิน" }),
+  billingRequired: z.boolean().default(false),
 }).superRefine((data, ctx) => {
     if (data.isBackfill && !data.manualDocNo) {
         ctx.addIssue({
@@ -88,7 +91,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitAction, setSubmitAction] = useState<'draft' | 'send'>('draft');
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -111,6 +113,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       net: 0,
       vatAmount: 0,
       grandTotal: 0,
+      paymentTerms: 'CASH',
+      billingRequired: false,
     },
   });
 
@@ -198,6 +202,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         net: docToEdit.net || 0,
         vatAmount: docToEdit.vatAmount || 0,
         grandTotal: docToEdit.grandTotal || 0,
+        paymentTerms: docToEdit.paymentTerms || 'CASH',
+        billingRequired: docToEdit.billingRequired || false,
       });
     } else if (job) {
       const defaultItem = { description: job.description, quantity: 1, unitPrice: 0, total: 0 };
@@ -271,8 +277,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     replace(itemsFromQuotation);
   
     form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
+    form.setValue('isVat', quotation.withTax, { shouldDirty: true, shouldValidate: true });
   
-    form.trigger(['items', 'discountAmount']);
+    form.trigger(['items', 'discountAmount', 'isVat']);
   
     toast({
       title: "ดึงข้อมูลสำเร็จ",
@@ -281,7 +288,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   };
   
   const handleSave = async (data: TaxInvoiceFormData) => {
-    const sendForReview = submitAction === 'send';
     const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
@@ -312,20 +318,22 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         balance: data.grandTotal,
         paymentStatus: 'UNPAID' as 'UNPAID' | 'PARTIAL' | 'PAID',
       },
+      paymentTerms: data.paymentTerms,
+      billingRequired: data.billingRequired,
+      arStatus: 'PENDING' as 'PENDING',
     };
 
     try {
         let docId: string;
-        const newStatus = sendForReview ? 'PENDING_REVIEW' : 'DRAFT';
         const options = {
             ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
-            initialStatus: newStatus,
+            initialStatus: 'DRAFT',
         };
         
         if (isEditing && editDocId) {
             docId = editDocId;
             const docRef = doc(db, 'documents', docId);
-            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, status: newStatus, updatedAt: serverTimestamp() }));
+            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, updatedAt: serverTimestamp() }));
         } else {
             const result = await createDocument(
                 db,
@@ -338,23 +346,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             docId = result.docId;
         }
         
-        if (sendForReview) {
-            try {
-                await ensurePaymentClaimForDocument(db, docId, profile);
-                toast({ title: isEditing ? "บันทึกและส่งตรวจสำเร็จ" : "สร้างและส่งตรวจสำเร็จ" });
-            } catch (claimError: any) {
-                console.error("Failed to create payment claim, but document was saved:", claimError);
-                toast({
-                    variant: 'default',
-                    title: "บันทึกเอกสารสำเร็จ (แต่ส่งตรวจอาจไม่สำเร็จ)",
-                    description: "กรุณาตรวจสอบหน้า Inbox หรือกด 'ส่งเข้ารอตรวจสอบ' ที่หน้าเอกสารอีกครั้ง",
-                    duration: 10000,
-                });
-            }
-        } else {
-            toast({ title: isEditing ? "บันทึกฉบับร่างสำเร็จ" : "สร้างฉบับร่างสำเร็จ" });
-        }
-        
+        toast({ title: isEditing ? "บันทึกเอกสารสำเร็จ" : "สร้างเอกสารสำเร็จ" });
         router.push('/app/office/documents/tax-invoice');
 
     } catch (error: any) {
@@ -388,24 +380,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         <form onSubmit={form.handleSubmit(handleSave, onInvalid)} className="space-y-6">
           <div className="flex justify-between items-center">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-             <div className="flex gap-2">
-              {jobId ? (
-                <Button type="submit" onClick={() => setSubmitAction('draft')} disabled={isSubmitting || isLocked}>
-                  {isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
-                  บันทึก
-                </Button>
-              ) : (
-                <>
-                  <Button type="submit" variant="outline" onClick={() => setSubmitAction('draft')} disabled={isSubmitting || isLocked}>
-                    บันทึกฉบับร่าง
-                  </Button>
-                  <Button type="submit" onClick={() => setSubmitAction('send')} disabled={isSubmitting || isLocked}>
-                    {isSubmitting && submitAction === 'send' ? <Loader2 className="animate-spin" /> : <Save />}
-                    บันทึกและส่งตรวจ
-                  </Button>
-                </>
-              )}
-            </div>
+            <Button type="submit" disabled={isSubmitting || isLocked}>
+              {isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
+              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบกำกับภาษี'}
+            </Button>
           </div>
 
           <Card>
@@ -554,9 +532,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
-                  <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
-                  <CardContent>
-                      <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isLocked}/>)} />
+                  <CardHeader><CardTitle>หมายเหตุและเงื่อนไข</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isLocked}/></FormControl></FormItem>)} />
+                       <div className="grid grid-cols-2 gap-4">
+                        <FormField control={form.control} name="paymentTerms" render={({ field }) => (<FormItem><FormLabel>เงื่อนไขชำระเงิน</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CASH" id="cash"/></FormControl><Label htmlFor="cash">เงินสด</Label></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CREDIT" id="credit"/></FormControl><Label htmlFor="credit">เครดิต</Label></FormItem></RadioGroup></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={form.control} name="billingRequired" render={({ field }) => (<FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit mt-auto"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">ต้องออกใบวางบิล</FormLabel></FormItem>)} />
+                    </div>
                   </CardContent>
               </Card>
               <div className="space-y-4">
