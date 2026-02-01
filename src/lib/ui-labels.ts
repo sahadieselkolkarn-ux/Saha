@@ -10,7 +10,7 @@ const DEPARTMENT_LABELS: Record<string, string> = {
 };
 
 const JOB_STATUS_LABELS: Record<string, string> = {
-    RECEIVED: "รับงาน",
+    RECEIVED: "รอช่างรับงาน",
     IN_PROGRESS: "กำลังทำ",
     WAITING_QUOTATION: "รอเสนอราคา",
     WAITING_APPROVE: "รอลูกค้าอนุมัติ",
