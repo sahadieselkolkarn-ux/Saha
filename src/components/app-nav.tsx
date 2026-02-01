@@ -272,8 +272,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                             </CollapsibleContent>
                         </Collapsible>
 
-                        <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
-
                         <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
                             <CollapsibleTrigger asChild>
                                 <Button variant={pathname.startsWith('/app/office/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
@@ -302,6 +300,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                                 <SubNavLink href="/app/office/parts/list" label="รายการอะไหล่/ค้นหา" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
+                        <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
                     </>
                 )}
                 {department === 'CAR_SERVICE' && (
