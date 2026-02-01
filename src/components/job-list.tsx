@@ -738,7 +738,7 @@ export function JobList({
           </CardContent>
           <CardFooter className={cn(
             "mt-auto grid gap-2 p-4",
-            (job.status === 'RECEIVED' && profile?.department === job.department) ? 'grid-cols-3' :
+            (job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin)) ? 'grid-cols-3' :
             (actionPreset === 'waitingApprove' || (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS'))
               ? 'grid-cols-1'
               : (job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
@@ -762,7 +762,7 @@ export function JobList({
                     ดูรายละเอียด
                   </Link>
                 </Button>
-                {job.status === 'RECEIVED' && profile?.department === job.department && (
+                {job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin) && (
                   <>
                   <Button 
                     variant="default" 
