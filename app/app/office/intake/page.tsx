@@ -29,9 +29,9 @@ import { cn } from "@/lib/utils";
 
 
 const intakeSchema = z.object({
-  customerId: z.string().min(1, "Customer is required"),
+  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   department: z.enum(JOB_DEPARTMENTS),
-  description: z.string().min(1, "Description is required"),
+  description: z.string().min(1, "กรุณากรอกรายละเอียดงาน"),
   carServiceDetails: z.object({
     brand: z.string().optional(),
     model: z.string().optional(),
@@ -92,7 +92,7 @@ export default function IntakePage() {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     },
     (error) => {
-        toast({ variant: "destructive", title: "Failed to load customers" });
+        toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
     });
     return () => unsubscribe();
   }, [db, toast]);
@@ -101,12 +101,12 @@ export default function IntakePage() {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       if (photos.length + newFiles.length > 4) {
-        toast({ variant: "destructive", title: "You can only upload up to 4 photos." });
+        toast({ variant: "destructive", title: "คุณสามารถอัปโหลดรูปภาพได้สูงสุด 4 รูปเท่านั้น" });
         return;
       }
       const validFiles = newFiles.filter(file => {
           if (file.size > 5 * 1024 * 1024) { // 5MB limit
-              toast({ variant: "destructive", title: `File ${file.name} is too large.`, description: "Max size is 5MB." });
+              toast({ variant: "destructive", title: `ไฟล์ ${file.name} มีขนาดใหญ่เกินไป`, description: "ขนาดสูงสุดคือ 5MB" });
               return false;
           }
           return true;
@@ -129,7 +129,7 @@ export default function IntakePage() {
 
     const selectedCustomer = customers.find(c => c.id === values.customerId);
     if (!selectedCustomer) {
-        toast({ variant: "destructive", title: "Customer not found." });
+        toast({ variant: "destructive", title: "ไม่พบข้อมูลลูกค้า" });
         return;
     }
     
@@ -138,11 +138,9 @@ export default function IntakePage() {
     try {
         const batch = writeBatch(db);
         
-        // 1. Create a ref for the new job to get an ID
         const jobDocRef = doc(collection(db, "jobs"));
         const jobId = jobDocRef.id;
 
-        // 2. Upload photos
         const photoURLs: string[] = [];
         for (const photo of photos) {
             const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
@@ -151,7 +149,6 @@ export default function IntakePage() {
             photoURLs.push(url);
         }
 
-        // 3. Define job data and set it in the batch
         const jobData = {
             id: jobId,
             customerId: values.customerId,
@@ -177,7 +174,6 @@ export default function IntakePage() {
 
         batch.set(jobDocRef, jobData);
         
-        // 4. Create and set the initial activity log
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.set(activityDocRef, {
             text: `เปิดงานใหม่ในแผนก ${values.department}`,
@@ -187,10 +183,9 @@ export default function IntakePage() {
             photos: [],
         });
 
-        // 5. Commit the batch
         await batch.commit();
 
-        toast({ title: "Job created successfully", description: `Job ID: ${jobId}` });
+        toast({ title: "สร้างงานสำเร็จ", description: `Job ID: ${jobId}` });
         
         form.reset();
         setPhotos([]);
@@ -199,7 +194,7 @@ export default function IntakePage() {
         setCustomerSearch("");
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Failed to create job", description: error.message });
+        toast({ variant: "destructive", title: "สร้างงานไม่สำเร็จ", description: error.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -213,7 +208,7 @@ export default function IntakePage() {
 
   return (
     <>
-      <PageHeader title="Job Intake" description="Create a new job for a customer." />
+      <PageHeader title="เปิดงานใหม่" description="สร้างงานใหม่สำหรับลูกค้า" />
       <Card>
         <CardContent className="pt-6">
           <Form {...form}>
@@ -229,7 +224,7 @@ export default function IntakePage() {
                     : null;
                   return (
                     <FormItem className="flex flex-col">
-                      <FormLabel>Customer</FormLabel>
+                      <FormLabel>ลูกค้า</FormLabel>
                       <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -243,7 +238,7 @@ export default function IntakePage() {
                             >
                               {selectedCustomer
                                 ? `${selectedCustomer.name} (${selectedCustomer.phone})`
-                                : "Search name or phone..."}
+                                : "ค้นหาชื่อ หรือเบอร์โทร..."}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </FormControl>
@@ -252,7 +247,7 @@ export default function IntakePage() {
                           <div className="p-2">
                             <Input
                               autoFocus
-                              placeholder="Search by name or phone..."
+                              placeholder="ค้นหาด้วยชื่อ หรือเบอร์โทร..."
                               value={customerSearch}
                               onChange={(e) => setCustomerSearch(e.target.value)}
                             />
@@ -278,7 +273,7 @@ export default function IntakePage() {
                               ))
                             ) : (
                               <div className="py-6 text-center text-sm text-muted-foreground">
-                                No customer found.
+                                ไม่พบข้อมูลลูกค้า
                               </div>
                             )}
                           </ScrollArea>
@@ -286,7 +281,7 @@ export default function IntakePage() {
                             <Button asChild variant="outline" className="w-full">
                               <Link href="/app/office/customers/new">
                                 <PlusCircle className="mr-2 h-4 w-4" />
-                                New Customer
+                                เพิ่มลูกค้าใหม่
                               </Link>
                             </Button>
                           </div>
@@ -299,9 +294,9 @@ export default function IntakePage() {
               />
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Department</FormLabel>
+                  <FormLabel>แผนก</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="Select a department" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="เลือกแผนก" /></SelectTrigger></FormControl>
                     <SelectContent>{JOB_DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
                   </Select>
                   <FormMessage />
@@ -310,20 +305,20 @@ export default function IntakePage() {
               
               {selectedDepartment === 'CAR_SERVICE' && (
                 <Card>
-                    <CardHeader><CardTitle>Car Details</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>รายละเอียดรถยนต์</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
-                        <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อรถ</FormLabel><FormControl><Input placeholder="e.g., Toyota" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (<FormItem><FormLabel>รุ่นรถ</FormLabel><FormControl><Input placeholder="e.g., Hilux Revo" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="carServiceDetails.licensePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>ทะเบียนรถ</FormLabel><FormControl><Input placeholder="e.g., 1กข 1234" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อรถ</FormLabel><FormControl><Input placeholder="เช่น Toyota" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (<FormItem><FormLabel>รุ่นรถ</FormLabel><FormControl><Input placeholder="เช่น Hilux Revo" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="carServiceDetails.licensePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>ทะเบียนรถ</FormLabel><FormControl><Input placeholder="เช่น 1กข 1234" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </CardContent>
                 </Card>
               )}
 
               {selectedDepartment === 'COMMONRAIL' && (
                  <Card>
-                    <CardHeader><CardTitle>Commonrail Details</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>รายละเอียดคอมมอนเรล</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
-                        <FormField name="commonrailDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="e.g., Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="commonrailDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="commonrailDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่</FormLabel><FormControl><Input placeholder="Part Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="commonrailDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </CardContent>
@@ -332,9 +327,9 @@ export default function IntakePage() {
 
               {selectedDepartment === 'MECHANIC' && (
                  <Card>
-                    <CardHeader><CardTitle>Mechanic Details</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>รายละเอียดแมคคานิค</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
-                        <FormField name="mechanicDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="e.g., Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="mechanicDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="mechanicDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่</FormLabel><FormControl><Input placeholder="Part Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="mechanicDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </CardContent>
@@ -343,20 +338,20 @@ export default function IntakePage() {
 
               <FormField name="description" control={form.control} render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description / Symptoms</FormLabel>
-                  <FormControl><Textarea placeholder="Describe the issue..." rows={5} {...field} /></FormControl>
+                  <FormLabel>รายละเอียด / อาการ</FormLabel>
+                  <FormControl><Textarea placeholder="กรอกรายละเอียดอาการ..." rows={5} {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormItem>
-                <FormLabel>Photos (up to 4, max 5MB each)</FormLabel>
+                <FormLabel>รูปภาพ (สูงสุด 4 รูป, ไม่เกิน 5MB ต่อรูป)</FormLabel>
                 <FormControl>
                   <div className="flex items-center justify-center w-full">
                     <label htmlFor="intake-dropzone-file" className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg ${photos.length >= 4 ? 'cursor-not-allowed bg-muted/50' : 'cursor-pointer bg-muted hover:bg-secondary'}`}>
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <Camera className="w-8 h-8 mb-2 text-muted-foreground" />
-                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">Take Photo</span> or Upload</p>
-                             <p className="text-xs text-muted-foreground">Tap to open camera or file browser</p>
+                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">ถ่ายภาพ</span> หรืออัปโหลด</p>
+                             <p className="text-xs text-muted-foreground">แตะเพื่อเปิดกล้องหรือเลือกไฟล์</p>
                         </div>
                       <Input id="intake-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= 4} />
                     </label>
@@ -377,7 +372,7 @@ export default function IntakePage() {
               </FormItem>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Job
+                สร้างงาน
               </Button>
             </form>
           </Form>
