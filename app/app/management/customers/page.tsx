@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, MoreHorizontal, PlusCircle, Upload, Search } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Upload, Search, Edit, Eye, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -207,8 +207,8 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Uses Tax Invoice</TableHead>
-                <TableHead><span className="sr-only">Actions</span></TableHead>
+                <TableHead>Detail</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -217,13 +217,14 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
                     <TableRow key={customer.id}>
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.phone}</TableCell>
-                    <TableCell>{customer.useTax ? "Yes" : "No"}</TableCell>
-                    <TableCell>
+                    <TableCell className="max-w-sm truncate">{customer.detail || '-'}</TableCell>
+                    <TableCell className="text-right">
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditDialog(customer)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(customer)}><Eye className="mr-2 h-4 w-4"/>View</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(customer)}><Edit className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
