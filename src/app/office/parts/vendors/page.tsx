@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -12,8 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, Eye } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, Eye, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Vendor } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
@@ -28,6 +29,7 @@ export default function VendorsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [vendorToAction, setVendorToAction] = useState<WithId<Vendor> | null>(null);
   const [isToggleActiveAlertOpen, setIsToggleActiveAlertOpen] = useState(false);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
 
   const hasPermission = useMemo(() => {
     if (!profile) return false;
@@ -38,6 +40,8 @@ export default function VendorsPage() {
     if (!profile) return false;
     return profile.role === 'ADMIN' || profile.role === 'MANAGER';
   }, [profile]);
+
+  const isUserAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
 
   useEffect(() => {
     if (!db) {
@@ -72,6 +76,11 @@ export default function VendorsPage() {
     setVendorToAction(vendor);
     setIsToggleActiveAlertOpen(true);
   };
+  
+  const handleDelete = (vendor: WithId<Vendor>) => {
+    setVendorToAction(vendor);
+    setIsDeleteAlertOpen(true);
+  };
 
   const confirmToggleActive = async () => {
     if (!db || !vendorToAction) return;
@@ -87,6 +96,19 @@ export default function VendorsPage() {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     } finally {
       setIsToggleActiveAlertOpen(false);
+      setVendorToAction(null);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!db || !vendorToAction) return;
+    try {
+      await deleteDoc(doc(db, "vendors", vendorToAction.id));
+      toast({ title: "ลบร้านค้าสำเร็จ" });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "การลบล้มเหลว", description: error.message });
+    } finally {
+      setIsDeleteAlertOpen(false);
       setVendorToAction(null);
     }
   };
@@ -167,6 +189,14 @@ export default function VendorsPage() {
                               {vendor.isActive ? <ToggleLeft className="mr-2"/> : <ToggleRight className="mr-2"/>}
                               {vendor.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
                             </DropdownMenuItem>
+                            {isUserAdmin && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => handleDelete(vendor)} className="text-destructive focus:text-destructive">
+                                        <Trash2 className="mr-2"/> ลบ
+                                    </DropdownMenuItem>
+                                </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -192,6 +222,21 @@ export default function VendorsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction onClick={confirmToggleActive}>ยืนยัน</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+            <AlertDialogDescription>
+              คุณต้องการลบ "{vendorToAction?.companyName}" ออกจากระบบใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">ยืนยันการลบ</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
