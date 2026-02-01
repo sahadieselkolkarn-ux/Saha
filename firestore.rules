@@ -90,6 +90,11 @@ service cloud.firestore {
       allow create, update: if signedIn();
       allow delete: if isAdmin();
     }
+    match /outsourceVendors/{id} {
+      allow read: if signedIn();
+      allow create, update: if isOfficeOrMgmt();
+      allow delete: if isAdmin();
+    }
 
     // Jobs & Main Documents (MVP)
     match /jobs/{jobId} {

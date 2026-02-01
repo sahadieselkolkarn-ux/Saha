@@ -1,4 +1,5 @@
 
+
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew } from './constants';
 
@@ -70,6 +71,17 @@ export interface Vendor {
     isActive: boolean;
     createdAt: Timestamp;
     updatedAt: Timestamp;
+}
+
+export interface OutsourceVendor {
+  id: string;
+  shopName: string;
+  contactName?: string;
+  phone?: string;
+  location?: string;
+  isActive: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Job {
