@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -215,15 +216,6 @@ const CarServiceByWorkerNav = ({ onLinkClick }: { onLinkClick?: () => void }) =>
 const DepartmentMenu = ({ department, onLinkClick }: { department: Department, onLinkClick?: () => void }) => {
     const pathname = usePathname();
     const { profile } = useAuth();
-    
-    const isManagementUser = useMemo(() => {
-        if (!profile) return false;
-        return profile.department === "MANAGEMENT" || ["ADMIN", "MANAGER"].includes(profile.role);
-    }, [profile]);
-
-    if (isManagementUser && !["MANAGEMENT", "OFFICE"].includes(department)) {
-        return null;
-    }
 
     const departmentPath = `/app/${department.toLowerCase().replace('_', '-')}`
     const isOpen = pathname.startsWith(departmentPath)
@@ -361,7 +353,11 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             return [];
         }
         if (isManagementUser) {
-            return ["MANAGEMENT", "OFFICE"] as Department[];
+            const depts: Department[] = ["MANAGEMENT", "OFFICE"];
+            if (profile.department && !depts.includes(profile.department)) {
+                depts.push(profile.department);
+            }
+            return depts;
         }
         return profile.department ? [profile.department] : [];
     }, [profile, isManagementUser]);
