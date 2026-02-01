@@ -11,6 +11,7 @@ import {
   Timestamp,
   runTransaction,
   increment,
+  onSnapshot,
 } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -190,7 +191,7 @@ export default function PayrollPayoutsPage() {
           amount: payingPayslip.snapshot?.netPay ?? 0,
           accountId: formData.accountId,
           paymentMethod: formData.paymentMethod,
-          description: `จ่ายเงินเดือน: ${payslip.userName} งวด ${payingPayslip.batchId}`,
+          description: `จ่ายเงินเดือน: ${payingPayslip.userName} งวด ${payingPayslip.batchId}`,
           sourceDocType: 'PAYSLIP',
           sourceDocId: payingPayslip.id,
           sourceDocNo: `PAYSLIP-${payingPayslip.batchId}-${payingPayslip.userId.slice(0, 5)}`,
