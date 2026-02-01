@@ -19,7 +19,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, MoreHorizontal, PlusCircle, Upload, Search, Edit, X } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Upload, Search, Edit, X, Eye, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,9 +60,10 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(customer)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onEdit(customer)}><Eye className="mr-2 h-4 w-4"/>View</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onEdit(customer)}><Edit className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive">
-                            Delete
+                            <Trash2 className="mr-2 h-4 w-4"/>Delete
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -70,14 +71,10 @@ const CustomerCard = ({ customer, onEdit, onDelete }: { customer: Customer, onEd
             <CardDescription>{customer.phone}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm pt-0">
-             <div className="flex justify-between items-center border-t pt-2">
-                <span className="text-muted-foreground">Uses Tax Invoice</span>
-                <span className="font-medium">{customer.useTax ? "Yes" : "No"}</span>
-            </div>
              {customer.detail && (
                 <div className="border-t pt-2">
                     <p className="text-muted-foreground">Details:</p>
-                    <p className="whitespace-pre-wrap">{customer.detail}</p>
+                    <p className="whitespace-pre-wrap line-clamp-3">{customer.detail}</p>
                 </div>
             )}
         </CardContent>
@@ -210,8 +207,8 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead>Uses Tax Invoice</TableHead>
-                <TableHead><span className="sr-only">Actions</span></TableHead>
+                <TableHead>Detail</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -220,13 +217,14 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
                     <TableRow key={customer.id}>
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.phone}</TableCell>
-                    <TableCell>{customer.useTax ? "Yes" : "No"}</TableCell>
-                    <TableCell>
+                    <TableCell className="max-w-sm truncate">{customer.detail || '-'}</TableCell>
+                    <TableCell className="text-right">
                         <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditDialog(customer)}>Edit</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive">Delete</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(customer)}><Eye className="mr-2 h-4 w-4"/>View</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditDialog(customer)}><Edit className="mr-2 h-4 w-4"/>Edit</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>Delete</DropdownMenuItem>
                         </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -540,3 +538,5 @@ export default function CustomersPage() {
         </>
     );
 }
+
+    
