@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/auth-context";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ export default function EditOutsourceVendorPage() {
   const outsourceVendorId = params.outsourceVendorId as string;
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile, user, loading: authLoading } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const vendorDocRef = useMemo(() => {
     if (!db || !outsourceVendorId) return null;
@@ -59,9 +62,24 @@ export default function EditOutsourceVendorPage() {
   }, [vendor, form]);
 
   const onSubmit = async (values: OutsourceVendorFormData) => {
+    setIsSubmitting(true);
     if (!db || !vendorDocRef) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ยังไม่พร้อมเชื่อมต่อฐานข้อมูล" });
+      setIsSubmitting(false);
       return;
+    }
+    
+    if (!user || !profile) {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่" });
+        setIsSubmitting(false);
+        return;
+    }
+
+    const isAllowed = profile.role === "ADMIN" || profile.role === "MANAGER" || profile.department === "OFFICE" || profile.department === "MANAGEMENT";
+    if (!isAllowed) {
+        toast({ variant: "destructive", title: "ไม่มีสิทธิ์", description: "คุณไม่มีสิทธิ์บันทึกข้อมูล Outsource" });
+        setIsSubmitting(false);
+        return;
     }
 
     try {
@@ -72,13 +90,17 @@ export default function EditOutsourceVendorPage() {
 
       await updateDoc(vendorDocRef, dataToUpdate);
       toast({ title: "บันทึกการแก้ไขสำเร็จ" });
-      router.push("/app/office/list-management/outsource");
+      router.replace("/app/office/list-management/outsource");
+      router.refresh();
     } catch (error: any) {
-      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+      console.error(error);
+      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: `${error?.code ?? "unknown"}: ${error?.message ?? "Unknown error"}` });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return <Card><CardContent><Skeleton className="h-96" /></CardContent></Card>;
   }
 
@@ -126,8 +148,8 @@ export default function EditOutsourceVendorPage() {
           </Card>
           
           <div className="flex gap-4">
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" disabled={isSubmitting || authLoading}>
+              {(isSubmitting || authLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Save className="mr-2 h-4 w-4" />
               บันทึกการแก้ไข
             </Button>
