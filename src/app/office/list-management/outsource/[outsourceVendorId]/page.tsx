@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,7 +36,6 @@ export default function EditOutsourceVendorPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
   const { profile, user, loading: authLoading } = useAuth();
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const vendorDocRef = useMemo(() => {
     if (!db || !outsourceVendorId) return null;
@@ -62,23 +61,19 @@ export default function EditOutsourceVendorPage() {
   }, [vendor, form]);
 
   const onSubmit = async (values: OutsourceVendorFormData) => {
-    setIsSubmitting(true);
     if (!db || !vendorDocRef) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ยังไม่พร้อมเชื่อมต่อฐานข้อมูล" });
-      setIsSubmitting(false);
       return;
     }
     
     if (!user || !profile) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่พบข้อมูลผู้ใช้ กรุณาเข้าสู่ระบบใหม่" });
-        setIsSubmitting(false);
         return;
     }
 
     const isAllowed = profile.role === "ADMIN" || profile.role === "MANAGER" || profile.department === "OFFICE" || profile.department === "MANAGEMENT";
     if (!isAllowed) {
         toast({ variant: "destructive", title: "ไม่มีสิทธิ์", description: "คุณไม่มีสิทธิ์บันทึกข้อมูล Outsource" });
-        setIsSubmitting(false);
         return;
     }
 
@@ -95,8 +90,6 @@ export default function EditOutsourceVendorPage() {
     } catch (error: any) {
       console.error(error);
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: `${error?.code ?? "unknown"}: ${error?.message ?? "Unknown error"}` });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -148,8 +141,8 @@ export default function EditOutsourceVendorPage() {
           </Card>
           
           <div className="flex gap-4">
-            <Button type="submit" disabled={isSubmitting || authLoading}>
-              {(isSubmitting || authLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" disabled={form.formState.isSubmitting || authLoading}>
+              {(form.formState.isSubmitting || authLoading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Save className="mr-2 h-4 w-4" />
               บันทึกการแก้ไข
             </Button>
