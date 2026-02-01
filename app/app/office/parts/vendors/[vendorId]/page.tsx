@@ -2,12 +2,13 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, updateDoc, serverTimestamp, getDocs, query, where, collection, documentId } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -39,9 +40,20 @@ type VendorFormData = z.infer<typeof vendorSchema>;
 export default function EditVendorPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const vendorId = params.vendorId as string;
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile } = useAuth();
+
+  const isViewMode = searchParams.get("view") === "1";
+  
+  const isManagerOrAdmin = useMemo(() => {
+    if (!profile) return false;
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER';
+  }, [profile]);
+
+  const canEdit = isManagerOrAdmin && !isViewMode;
 
   const vendorDocRef = useMemo(() => {
     if (!db || !vendorId) return null;
@@ -72,6 +84,10 @@ export default function EditVendorPage() {
   }, [vendor, form]);
 
   const onSubmit = async (values: VendorFormData) => {
+    if (!canEdit) {
+      toast({ variant: "destructive", title: "ไม่มีสิทธิ์", description: "คุณไม่มีสิทธิ์แก้ไขข้อมูลนี้" });
+      return;
+    }
     if (!db || !vendorDocRef) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ยังไม่พร้อมเชื่อมต่อฐานข้อมูล" });
       return;
@@ -113,7 +129,7 @@ export default function EditVendorPage() {
 
   return (
     <>
-      <PageHeader title="แก้ไขข้อมูลร้านค้า" description={`กำลังแก้ไข: ${vendor.companyName}`} />
+      <PageHeader title={canEdit ? "แก้ไขข้อมูลร้านค้า" : "ดูข้อมูลร้านค้า"} description={`ร้านค้า: ${vendor.companyName}`} />
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-4xl">
            <Card>
@@ -126,14 +142,14 @@ export default function EditVendorPage() {
                 <FormField control={form.control} name="shortName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>ชื่อย่อ (ไม่ซ้ำ)</FormLabel>
-                    <FormControl><Input {...field} value={field.value ?? ''} className="uppercase" /></FormControl>
+                    <FormControl><Input {...field} value={field.value ?? ''} className="uppercase" disabled={!canEdit} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="companyName" render={({ field }) => (
                   <FormItem className="md:col-span-2">
                     <FormLabel>ชื่อร้าน/บริษัท</FormLabel>
-                    <FormControl><Input {...field} value={field.value ?? ''} /></FormControl>
+                    <FormControl><Input {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -147,23 +163,23 @@ export default function EditVendorPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="address" render={({ field }) => (
-                <FormItem><FormLabel>ที่อยู่</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>ที่อยู่</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
               )} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="phone" render={({ field }) => (
-                  <FormItem><FormLabel>เบอร์โทรศัพท์ร้าน</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>เบอร์โทรศัพท์ร้าน</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="email" render={({ field }) => (
-                  <FormItem><FormLabel>อีเมล</FormLabel><FormControl><Input type="email" {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>อีเมล</FormLabel><FormControl><Input type="email" {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
               <Separator />
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField control={form.control} name="contactName" render={({ field }) => (
-                  <FormItem><FormLabel>ผู้ติดต่อ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>ผู้ติดต่อ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="contactPhone" render={({ field }) => (
-                  <FormItem><FormLabel>เบอร์โทรผู้ติดต่อ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>เบอร์โทรผู้ติดต่อ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
             </CardContent>
@@ -175,22 +191,24 @@ export default function EditVendorPage() {
             </CardHeader>
             <CardContent className="space-y-4">
                 <FormField control={form.control} name="taxId" render={({ field }) => (
-                  <FormItem><FormLabel>เลขผู้เสียภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>เลขผู้เสียภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="notes" render={({ field }) => (
-                  <FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
                 )} />
             </CardContent>
           </Card>
 
           <div className="flex gap-4">
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <Save className="mr-2 h-4 w-4" />
-              บันทึกการแก้ไข
-            </Button>
+            {canEdit && (
+                <Button type="submit" disabled={form.formState.isSubmitting}>
+                    {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    <Save className="mr-2 h-4 w-4" />
+                    บันทึกการแก้ไข
+                </Button>
+            )}
             <Button type="button" variant="outline" asChild>
-              <Link href="/app/office/parts/vendors"><ArrowLeft className="mr-2 h-4 w-4" /> ยกเลิก</Link>
+              <Link href="/app/office/parts/vendors"><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Link>
             </Button>
           </div>
         </form>
