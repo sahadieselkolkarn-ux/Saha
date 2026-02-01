@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -34,7 +34,6 @@ export default function EditOutsourceVendorPage() {
   const outsourceVendorId = params.outsourceVendorId as string;
   const { db } = useFirebase();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const vendorDocRef = useMemo(() => {
     if (!db || !outsourceVendorId) return null;
@@ -65,7 +64,6 @@ export default function EditOutsourceVendorPage() {
       return;
     }
 
-    setIsSubmitting(true);
     try {
       const dataToUpdate = {
         ...values,
@@ -77,8 +75,6 @@ export default function EditOutsourceVendorPage() {
       router.push("/app/office/list-management/outsource");
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -130,8 +126,8 @@ export default function EditOutsourceVendorPage() {
           </Card>
           
           <div className="flex gap-4">
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Save className="mr-2 h-4 w-4" />
               บันทึกการแก้ไข
             </Button>

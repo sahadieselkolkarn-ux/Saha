@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,7 +28,6 @@ export default function NewOutsourceVendorPage() {
   const router = useRouter();
   const { db } = useFirebase();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<OutsourceVendorFormData>({
     resolver: zodResolver(outsourceVendorSchema),
@@ -47,7 +45,6 @@ export default function NewOutsourceVendorPage() {
       return;
     }
 
-    setIsSubmitting(true);
     try {
       const dataToAdd = {
         ...values,
@@ -61,8 +58,6 @@ export default function NewOutsourceVendorPage() {
       router.push("/app/office/list-management/outsource");
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -108,8 +103,8 @@ export default function NewOutsourceVendorPage() {
           </Card>
           
           <div className="flex gap-4">
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               <Save className="mr-2 h-4 w-4" />
               บันทึก
             </Button>
