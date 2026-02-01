@@ -14,8 +14,8 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck } from "lucide-react";
-import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount } from "@/lib/types";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package } from "lucide-react";
+import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount, OutsourceVendor } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
@@ -141,6 +141,12 @@ export function JobList({
   const [creditDueDate, setCreditDueDate] = useState('');
   const [pickupDate, setPickupDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentNotes, setPaymentNotes] = useState('');
+  
+  const [outsourcingJob, setOutsourcingJob] = useState<Job | null>(null);
+  const [outsourceVendors, setOutsourceVendors] = useState<OutsourceVendor[]>([]);
+  const [isFetchingVendors, setIsFetchingVendors] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
+  const [outsourceNotes, setOutsourceNotes] = useState("");
 
   const jobsQuery = useMemo(() => {
     if (!db) return null;
@@ -457,6 +463,73 @@ export function JobList({
         setIsFetchingWorkers(false);
     }
   };
+  
+  const openOutsourceDialog = async (job: Job) => {
+    if (!db) return;
+    setOutsourcingJob(job);
+    setSelectedVendorId(null);
+    setOutsourceNotes("");
+    setIsFetchingVendors(true);
+    try {
+        const vendorsQuery = query(
+            collection(db, "outsourceVendors"),
+            where("isActive", "==", true),
+            orderBy("shopName", "asc")
+        );
+        const querySnapshot = await getDocs(vendorsQuery);
+        const fetchedVendors = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OutsourceVendor));
+        setOutsourceVendors(fetchedVendors);
+    } catch (error) {
+        toast({ variant: 'destructive', title: 'Could not fetch outsource vendors' });
+        setOutsourceVendors([]);
+    } finally {
+        setIsFetchingVendors(false);
+    }
+  };
+  
+  const handleConfirmOutsource = async () => {
+    if (!db || !profile || !outsourcingJob || !selectedVendorId) {
+        toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน" });
+        return;
+    }
+    
+    const selectedVendor = outsourceVendors.find(v => v.id === selectedVendorId);
+    if (!selectedVendor) {
+        toast({ variant: "destructive", title: "ไม่พบร้าน Outsource" });
+        return;
+    }
+
+    setIsAccepting(outsourcingJob.id); // Re-use this state for loading indicator
+    try {
+        const batch = writeBatch(db);
+        const jobRef = doc(db, 'jobs', outsourcingJob.id);
+        const activityRef = doc(collection(db, 'jobs', outsourcingJob.id, 'activities'));
+
+        batch.update(jobRef, {
+            department: 'OUTSOURCE',
+            assigneeUid: selectedVendor.id,
+            assigneeName: selectedVendor.shopName,
+            lastActivityAt: serverTimestamp(),
+        });
+
+        const activityText = `ส่งงานให้ร้านนอก: ${selectedVendor.shopName}. หมายเหตุ: ${outsourceNotes || 'ไม่มี'}`;
+        batch.set(activityRef, {
+            text: activityText,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+            photos: [],
+        });
+
+        await batch.commit();
+        toast({ title: 'ส่งงานให้ร้านนอกสำเร็จ' });
+        setOutsourcingJob(null);
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'การส่งงานล้มเหลว', description: error.message });
+    } finally {
+        setIsAccepting(null);
+    }
+  };
 
   const handleConfirmAssignment = async () => {
     if (!db || !profile || !assigningJob || !selectedWorkerId) return;
@@ -665,9 +738,10 @@ export function JobList({
           </CardContent>
           <CardFooter className={cn(
             "mt-auto grid gap-2 p-4",
-            actionPreset === 'waitingApprove' || (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS')
+            (job.status === 'RECEIVED' && profile?.department === job.department) ? 'grid-cols-3' :
+            (actionPreset === 'waitingApprove' || (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS'))
               ? 'grid-cols-1'
-              : (job.status === 'RECEIVED' || job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
+              : (job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
           )}>
             {actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS' && isOfficeOrAdmin ? (
                 <Button variant="default" className="w-full" onClick={() => setJobForPartsReady(job)}>
@@ -689,6 +763,7 @@ export function JobList({
                   </Link>
                 </Button>
                 {job.status === 'RECEIVED' && profile?.department === job.department && (
+                  <>
                   <Button 
                     variant="default" 
                     className="w-full"
@@ -698,6 +773,16 @@ export function JobList({
                     {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
                     {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
                   </Button>
+                   <Button
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => openOutsourceDialog(job)}
+                        disabled={isAccepting !== null}
+                    >
+                        <Package className="mr-2 h-4 w-4" />
+                        ส่งต่อนอก
+                    </Button>
+                  </>
                 )}
                 {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
                   <Button asChild variant="default" className="w-full">
@@ -895,6 +980,52 @@ export function JobList({
             </AlertDialogFooter>
         </AlertDialogContent>
     </AlertDialog>
+     <Dialog open={!!outsourcingJob} onOpenChange={(isOpen) => { if (!isOpen) setOutsourcingJob(null) }}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>ส่งงานให้ร้านนอก</DialogTitle>
+                <DialogDescription>
+                    เลือกรายชื่อร้าน Outsource และกรอกหมายเหตุ
+                </DialogDescription>
+            </DialogHeader>
+            {isFetchingVendors ? (
+                <div className="flex justify-center items-center h-24">
+                    <Loader2 className="animate-spin" />
+                </div>
+            ) : outsourceVendors.length > 0 ? (
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="outsource-vendor">เลือกร้าน Outsource</Label>
+                        <Select onValueChange={setSelectedVendorId} value={selectedVendorId || ""}>
+                            <SelectTrigger id="outsource-vendor">
+                                <SelectValue placeholder="เลือกร้าน..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {outsourceVendors.map(vendor => (
+                                    <SelectItem key={vendor.id} value={vendor.id}>
+                                        {vendor.shopName}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="outsource-notes">หมายเหตุ</Label>
+                        <Textarea id="outsource-notes" value={outsourceNotes} onChange={e => setOutsourceNotes(e.target.value)} placeholder="รายละเอียดเพิ่มเติม เช่น วันนัดรับ..." />
+                    </div>
+                </div>
+            ) : (
+                <p className="py-4 text-muted-foreground">ไม่พบรายชื่อร้าน Outsource</p>
+            )}
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setOutsourcingJob(null)}>ยกเลิก</Button>
+                <Button onClick={handleConfirmOutsource} disabled={!selectedVendorId || isAccepting !== null}>
+                    {isAccepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    ยืนยันการส่งต่อ
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
     </>
   );
 }
