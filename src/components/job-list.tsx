@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -506,7 +506,7 @@ export function JobList({
         const activityRef = doc(collection(db, 'jobs', outsourcingJob.id, 'activities'));
 
         batch.update(jobRef, {
-            department: 'OUTSOURCE',
+            status: 'IN_PROGRESS',
             assigneeUid: selectedVendor.id,
             assigneeName: selectedVendor.shopName,
             lastActivityAt: serverTimestamp(),
@@ -738,7 +738,7 @@ export function JobList({
           </CardContent>
           <CardFooter className={cn(
             "mt-auto grid gap-2 p-4",
-            (job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin)) ? 'grid-cols-3' :
+            (job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin)) ? 'grid-cols-2' :
             (actionPreset === 'waitingApprove' || (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS'))
               ? 'grid-cols-1'
               : (job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
@@ -764,24 +764,27 @@ export function JobList({
                 </Button>
                 {job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin) && (
                   <>
-                  <Button 
-                    variant="default" 
-                    className="w-full"
-                    onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
-                    disabled={isAccepting !== null}
-                  >
-                    {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
-                    {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
-                  </Button>
-                   <Button
-                        variant="secondary"
+                  {job.department === 'OUTSOURCE' ? (
+                      <Button
+                          variant="default"
+                          className="w-full"
+                          onClick={() => openOutsourceDialog(job)}
+                          disabled={isAccepting !== null}
+                      >
+                          {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <Package />}
+                          มอบหมายร้านนอก
+                      </Button>
+                  ) : (
+                      <Button 
+                        variant="default" 
                         className="w-full"
-                        onClick={() => openOutsourceDialog(job)}
+                        onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
                         disabled={isAccepting !== null}
-                    >
-                        <Package className="mr-2 h-4 w-4" />
-                        ส่งต่อนอก
-                    </Button>
+                      >
+                        {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
+                        {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
+                      </Button>
+                  )}
                   </>
                 )}
                 {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
