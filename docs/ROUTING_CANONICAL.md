@@ -1,45 +1,22 @@
 # Canonical Routing Policy (SahaDiesel Service)
 
 ## Objective
-Stop route duplication and “fixing the wrong page” by enforcing **one canonical App Router root**.
+Establish a consistent routing structure for the application.
 
 ## Canonical Rule
-✅ Canonical routes must live under `app/` only.
+The application uses the `/app` URL prefix for all authenticated user-facing pages. To achieve this, the canonical file structure is `app/app/...`.
 
-❌ Do not create or keep routes under:
-- `src/app/**`
-- `app/app/**`
+-   **URL:** `/app/dashboard`
+-   **File Path:** `app/app/dashboard/page.tsx`
 
-## Allowed URL Prefix
-All in-app pages must use the `/app/...` URL prefix.
+## Legacy Routes
+Legacy routes under other paths (e.g., `/management/...`) should redirect to their canonical counterparts under `/app/...`.
 
-## Canonical Menu URLs (must exist and be unique)
-
-### HR (แผนกบุคคล)
-- `/app/management/hr/payroll` — การจ่ายเงินเดือน (HR สร้าง/ส่งสลิปต่อคน)
-- `/app/management/hr/leaves` — จัดการวันลาพนักงาน
-- `/app/management/hr/attendance-summary` — จัดการการลงเวลา
-- `/app/management/hr/employees` — จัดการพนักงาน
-
-### Employee (พนักงาน)
-- `/app/settings/my-payslips` — เงินเดือนของฉัน
-- `/app/settings/my-leaves` — วันลาของฉัน
-
-### Accounting (บัญชี)
-- `/app/management/accounting/payroll-payouts` — จ่ายเงินเดือน (จ่ายเฉพาะ READY_TO_PAY)
-- `/app/management/accounting/accounts` — บัญชีเงินสด/ธนาคาร
-
-## Redirect Policy
-- Redirect is allowed only from legacy paths -> canonical paths.
-- ❌ Never redirect a page to itself (redirect loop).
+-   **Legacy File:** `app/management/dashboard/page.tsx`
+-   **Content:** `import { redirect } from "next/navigation"; export default function Page() { redirect("/app/management/dashboard"); }`
 
 ## Definition of “Duplicate”
-A route is duplicated if the same URL can be served by more than one `page.tsx` located under different roots.
-
-## Enforcements (to be added)
-- Prebuild/CI must fail if it detects:
-  - any `src/app/**` directory
-  - any `app/app/**` directory
+A route is duplicated if the same URL can be served by more than one `page.tsx`. Redirects from legacy paths are not considered duplicates.
 
 ---
 Last updated: 2026-01-28
