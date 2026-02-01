@@ -85,8 +85,7 @@ export default function EditOutsourceVendorPage() {
 
       await updateDoc(vendorDocRef, dataToUpdate);
       toast({ title: "บันทึกการแก้ไขสำเร็จ" });
-      router.replace("/app/office/list-management/outsource");
-      router.refresh();
+      router.push("/app/office/list-management/outsource");
     } catch (error: any) {
       console.error(error);
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: `${error?.code ?? "unknown"}: ${error?.message ?? "Unknown error"}` });

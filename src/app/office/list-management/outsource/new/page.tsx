@@ -68,8 +68,7 @@ export default function NewOutsourceVendorPage() {
 
       await addDoc(collection(db, "outsourceVendors"), dataToAdd);
       toast({ title: "เพิ่มรายชื่อ Outsource สำเร็จ" });
-      router.replace("/app/office/list-management/outsource");
-      router.refresh();
+      router.push("/app/office/list-management/outsource");
     } catch (error: any) {
       console.error(error);
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: `${error?.code ?? "unknown"}: ${error?.message ?? "Unknown error"}` });
