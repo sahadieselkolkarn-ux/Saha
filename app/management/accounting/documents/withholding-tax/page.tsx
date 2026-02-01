@@ -1,7 +1,5 @@
-import { PageHeader } from "@/components/page-header";
+import { redirect } from 'next/navigation';
 
-export default function WithholdingTaxPage() {
-  return (
-    <PageHeader title="ใบหัก ภาษี ณ ที่จ่าย" description="สร้างและจัดการใบหัก ณ ที่จ่าย" />
-  );
+export default function Page() {
+  redirect('/app/management/accounting/documents/withholding-tax');
 }
