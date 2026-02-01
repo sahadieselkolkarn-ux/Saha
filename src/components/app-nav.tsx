@@ -403,7 +403,9 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                                 {profile?.role === 'OFFICER' && (
                                     <SubNavLink href="/app/kiosk" label="คอมกลาง (ลงเวลา)" onClick={onLinkClick} />
                                 )}
-                                <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
+                                { !(profile?.role === 'OFFICER' && profile?.department === 'CAR_SERVICE') && (
+                                  <SubNavLink href="/app/attendance/history" label="ประวัติลงเวลา" onClick={onLinkClick} />
+                                )}
                             </CollapsibleContent>
                         </Collapsible>
                         

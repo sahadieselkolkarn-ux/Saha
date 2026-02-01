@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect } from 'react';
@@ -22,6 +23,11 @@ export default function AppHomePage() {
 
     if (role === 'ADMIN' || department === 'MANAGEMENT' || role === 'MANAGER') {
       router.replace('/app/management/dashboard');
+      return;
+    }
+
+    if (role === 'OFFICER' && department === 'CAR_SERVICE') {
+      router.replace('/app/kiosk');
       return;
     }
 
