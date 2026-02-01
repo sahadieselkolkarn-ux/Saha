@@ -1,38 +1,14 @@
 'use client';
 
-import { firebaseConfig } from '@/firebase/config';
-import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
-import { getAuth } from 'firebase/auth';
+// This is the main barrel file for Firebase-related utilities and hooks.
 
-// IMPORTANT: DO NOT MODIFY THIS FUNCTION
-export function initializeFirebase() {
-  // This check prevents Firebase from being initialized on the server.
-  if (typeof window === 'undefined') {
-    return {
-      firebaseApp: null,
-      firestore: null,
-      storage: null,
-      auth: null
-    };
-  }
+// Export the main context provider and hook
+export { FirebaseClientProvider, useFirebase } from './client-provider';
 
-  if (getApps().length) {
-    return getSdks(getApp());
-  }
+// Export individual hooks for easy access
+export { useCollection } from './firestore/use-collection';
+export { useDoc } from './firestore/use-doc';
 
-  const firebaseApp = initializeApp(firebaseConfig);
-  return getSdks(firebaseApp);
-}
-
-export function getSdks(firebaseApp: FirebaseApp) {
-  return {
-    firebaseApp,
-    firestore: getFirestore(firebaseApp),
-    storage: getStorage(firebaseApp),
-    auth: getAuth(firebaseApp),
-  };
-}
-
-export * from './client-provider';
+// Note: The original 'initializeFirebase' function has been moved to 'firebase/init.ts'
+// to break a circular dependency. It is now used internally by FirebaseClientProvider
+// and generally should not be called directly from app components.

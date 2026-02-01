@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, type ReactNode, createContext, useContext } from 'react';
-import { initializeFirebase } from '@/firebase';
+import { initializeFirebase } from '@/firebase/init';
 import type { Firestore } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
 import type { Auth } from 'firebase/auth';
