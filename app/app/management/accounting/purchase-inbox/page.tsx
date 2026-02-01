@@ -89,6 +89,7 @@ function ApproveCashDialog({ claim, accounts, onClose, onConfirm }: { claim: Wit
 function RejectClaimDialog({ claim, onClose, onConfirm }: { claim: WithId<PurchaseClaim>, onClose: () => void, onConfirm: (reason: string) => Promise<void> }) {
   const [reason, setReason] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
   
   const handleSubmit = async () => {
     if (!reason) {
