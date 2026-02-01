@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -133,7 +134,8 @@ function AllCustomersTab({ searchTerm }: { searchTerm: string }) {
     const lowercasedFilter = searchTerm.toLowerCase();
     return customers.filter(customer =>
       customer.name.toLowerCase().includes(lowercasedFilter) ||
-      customer.phone.includes(searchTerm)
+      customer.phone.includes(searchTerm) ||
+      (customer.detail || "").toLowerCase().includes(lowercasedFilter)
     );
   }, [customers, searchTerm]);
 
@@ -424,6 +426,7 @@ function TaxCustomersTab({ searchTerm }: { searchTerm: string }) {
     return customers.filter(customer =>
       customer.name.toLowerCase().includes(lowercasedFilter) ||
       customer.phone.includes(searchTerm) ||
+      (customer.detail || "").toLowerCase().includes(lowercasedFilter) ||
       customer.taxId?.toLowerCase().includes(lowercasedFilter)
     );
   }, [customers, searchTerm]);
@@ -495,7 +498,8 @@ function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
     const lowercasedFilter = searchTerm.toLowerCase();
     return customers.filter(customer =>
       customer.name.toLowerCase().includes(lowercasedFilter) ||
-      customer.phone.includes(searchTerm)
+      customer.phone.includes(searchTerm) ||
+      (customer.detail || "").toLowerCase().includes(lowercasedFilter)
     );
   }, [customers, searchTerm]);
 
@@ -541,8 +545,8 @@ export default function ManagementCustomersPage() {
     const [activeTab, setActiveTab] = useState("all");
 
     const placeholder = useMemo(() => {
-        if (activeTab === 'tax') return "Search name, phone, or Tax ID...";
-        return "Search by name or phone...";
+        if (activeTab === 'tax') return "Search name, phone, detail, or Tax ID...";
+        return "Search by name, phone, or detail...";
     }, [activeTab]);
 
     return (
@@ -593,3 +597,4 @@ export default function ManagementCustomersPage() {
         </>
     );
 }
+
