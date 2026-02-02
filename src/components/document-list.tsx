@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { safeFormat } from '@/lib/date-utils';
@@ -48,7 +48,7 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; varia
 export function DocumentList({ 
   docType,
   limit: limitProp = 10,
-  orderByField = 'docDate',
+  orderByField = 'docNo',
   orderByDirection = 'desc'
 }: DocumentListProps) {
   const { db } = useFirebase();
@@ -231,11 +231,10 @@ export function DocumentList({
                 </TableHeader>
                 <TableBody>
                   {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
-                    const viewPath = `/app/office/documents/${docItem.id}`;
-                    const editPath = docItem.docType === 'QUOTATION'
-                        ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
-                        : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
-
+                    const editPath = docType === 'QUOTATION'
+                      ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
+                      : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
+                    
                     return (
                     <TableRow key={docItem.id}>
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>
@@ -258,7 +257,7 @@ export function DocumentList({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push(viewPath)}>
+                            <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${docItem.id}`)}>
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
@@ -307,14 +306,44 @@ export function DocumentList({
           <CardFooter>
             <div className="flex w-full justify-between items-center">
               <span className="text-sm text-muted-foreground">
-                Page {currentPage + 1} of {totalPages}
+                หน้า {currentPage + 1} จาก {totalPages}
               </span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}>
-                  Previous
+                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(0)}
+                  disabled={currentPage === 0}
+                >
+                  <ChevronsLeft />
+                  หน้าแรก
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage >= totalPages - 1}>
-                  Next
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => p - 1)}
+                  disabled={currentPage === 0}
+                >
+                  <ChevronLeft />
+                  ก่อนหน้า
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => p + 1)}
+                  disabled={currentPage >= totalPages - 1}
+                >
+                  ถัดไป
+                  <ChevronRight />
+                </Button>
+                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(totalPages - 1)}
+                  disabled={currentPage >= totalPages - 1}
+                >
+                  หน้าสุดท้าย
+                  <ChevronsRight />
                 </Button>
               </div>
             </div>
