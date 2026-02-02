@@ -220,8 +220,12 @@ export function DocumentList({ docType }: DocumentListProps) {
                 <TableBody>
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
-                    const editPath = `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
                     
+                    // Specific edit path for QUOTATION, generic for others
+                    const editPath = docItem.docType === 'QUOTATION'
+                        ? `/app/office/documents/quotation/${docItem.id}`
+                        : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
+
                     return (
                     <TableRow key={docItem.id}>
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>

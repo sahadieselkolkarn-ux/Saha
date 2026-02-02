@@ -1,6 +1,19 @@
 
-import { redirect } from 'next/navigation';
+"use client";
 
-export default function Page({ params }: { params: { docId: string } }) {
-  redirect(`/app/office/documents/quotation/new?editDocId=${params.docId}`);
+import { QuotationForm } from '@/components/quotation-form';
+import { PageHeader } from '@/components/page-header';
+
+export default function EditQuotationPage({ params }: { params: { docId: string } }) {
+  const { docId } = params;
+
+  return (
+    <>
+      <PageHeader
+        title="แก้ไขใบเสนอราคา"
+        description="แก้ไขรายละเอียดของเอกสารและบันทึก"
+      />
+      <QuotationForm jobId={null} editDocId={docId} />
+    </>
+  );
 }
