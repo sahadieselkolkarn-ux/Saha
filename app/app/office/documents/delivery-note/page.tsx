@@ -20,6 +20,9 @@ export default function OfficeDeliveryNotePage() {
       </PageHeader>
       <DocumentList
         docType="DELIVERY_NOTE"
+        orderByField="docNo"
+        orderByDirection="desc"
+        limit={10}
       />
     </>
   );

@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, type QueryConstraint, getDocs, startAfter, type QueryDocumentSnapshot, limit } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 
 interface DocumentListProps {
   docType: DocType;
+  limit?: number;
+  orderByField?: string;
+  orderByDirection?: OrderByDirection;
 }
 
 const getDocDisplayStatus = (doc: Document): { key: string; label: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
@@ -42,7 +45,12 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; varia
 };
 
 
-export function DocumentList({ docType }: DocumentListProps) {
+export function DocumentList({ 
+  docType,
+  limit: limitProp,
+  orderByField,
+  orderByDirection = 'desc'
+}: DocumentListProps) {
   const { db } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
@@ -59,44 +67,64 @@ export function DocumentList({ docType }: DocumentListProps) {
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageStartCursors, setPageStartCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
+  const [isLastPage, setIsLastPage] = useState(false);
+
   const isUserAdmin = profile?.role === 'ADMIN';
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!db) return;
+
     setLoading(true);
     setError(null);
 
-    const q = query(
-      collection(db, "documents"),
-      where("docType", "==", docType)
-    );
+    try {
+      const qConstraints: QueryConstraint[] = [where("docType", "==", docType)];
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (orderByField) {
+        qConstraints.push(orderBy(orderByField, orderByDirection));
+      } else {
+        qConstraints.push(orderBy("docDate", "desc"));
+      }
+
+      const cursor = pageStartCursors[currentPage];
+      if (cursor) {
+        qConstraints.push(startAfter(cursor));
+      }
+
+      if (limitProp) {
+        qConstraints.push(limit(limitProp));
+      }
+
+      const finalQuery = query(collection(db, "documents"), ...qConstraints);
+      const snapshot = await getDocs(finalQuery);
+
       let docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
       
-      // Client-side sorting to avoid composite indexes
-      docsData.sort((a, b) => {
-        const dateA = new Date(a.docDate).getTime();
-        const dateB = new Date(b.docDate).getTime();
-        if (dateB !== dateA) return dateB - dateA; // Sort by docDate descending
-        // Fallback to createdAt if docDate is the same
-        return (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0);
-      });
-      
       setDocuments(docsData);
-      setLoading(false);
-      setError(null);
-    }, (err: FirestoreError) => {
-      console.error("Error loading documents:", err);
+
+      const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+      if (lastVisibleDoc && currentPage >= pageStartCursors.length - 1) {
+          const newCursors = [...pageStartCursors];
+          newCursors[currentPage + 1] = lastVisibleDoc;
+          setPageStartCursors(newCursors);
+      }
+      
+      setIsLastPage(snapshot.docs.length < (limitProp || 10));
+    } catch (err: any) {
       setError(err);
-      setLoading(false);
-      if (!err.message.includes('requires an index')) {
+      if (!err.message?.includes('requires an index')) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร", description: err.code });
       }
-    });
+    } finally {
+      setLoading(false);
+    }
+  }, [db, docType, toast, currentPage, limitProp, orderByField, orderByDirection]);
 
-    return () => unsubscribe();
-  }, [db, docType, toast]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
   
   const uniqueStatuses = useMemo(() => {
     const allStatuses = new Set(documents.map(doc => getDocDisplayStatus(doc).key));
@@ -142,6 +170,7 @@ export function DocumentList({ docType }: DocumentListProps) {
         updatedAt: serverTimestamp(),
       });
       toast({ title: "ยกเลิกเอกสารสำเร็จ" });
+      fetchData(); // Refetch data
     } catch (e: any) {
       toast({ variant: "destructive", title: "การยกเลิกล้มเหลว", description: e.message });
     } finally {
@@ -157,6 +186,7 @@ export function DocumentList({ docType }: DocumentListProps) {
     try {
       await deleteDoc(doc(db, "documents", docToAction.id));
       toast({ title: "ลบเอกสารสำเร็จ" });
+      fetchData(); // Refetch data
     } catch (e: any) {
       toast({ variant: "destructive", title: "การลบล้มเหลว", description: e.message });
     } finally {
@@ -165,6 +195,20 @@ export function DocumentList({ docType }: DocumentListProps) {
       setDocToAction(null);
     }
   };
+  
+  const handleNextPage = () => {
+    if (!isLastPage) {
+        setCurrentPage(p => p + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+      if (currentPage > 0) {
+          setPageStartCursors(prev => prev.slice(0, currentPage));
+          setCurrentPage(p => p - 1);
+      }
+  };
+
 
   return (
     <>
@@ -221,7 +265,6 @@ export function DocumentList({ docType }: DocumentListProps) {
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
                     
-                    // Specific edit path for QUOTATION, generic for others
                     const editPath = docItem.docType === 'QUOTATION'
                         ? `/app/office/documents/quotation/${docItem.id}`
                         : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
@@ -293,6 +336,33 @@ export function DocumentList({ docType }: DocumentListProps) {
             </div>
           )}
         </CardContent>
+         {limitProp && filteredDocuments.length > 0 && (
+          <CardFooter>
+            <div className="flex w-full justify-between items-center">
+              <span className="text-sm text-muted-foreground">
+                Page {currentPage + 1}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrevPage}
+                  disabled={currentPage === 0 || loading}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNextPage}
+                  disabled={isLastPage || loading}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </CardFooter>
+        )}
       </Card>
 
       <AlertDialog open={isCancelAlertOpen} onOpenChange={setIsCancelAlertOpen}>
