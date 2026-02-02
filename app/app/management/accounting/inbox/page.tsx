@@ -87,7 +87,7 @@ export default function AccountingInboxPage() {
     const lowerSearch = searchTerm.toLowerCase();
     return filteredByTab.filter(doc => 
       doc.docNo.toLowerCase().includes(lowerSearch) ||
-      doc.customerSnapshot?.name?.toLowerCase().includes(lowerSearch)
+      (doc.customerSnapshot?.name || '').toLowerCase().includes(lowerSearch)
     );
   }, [documents, activeTab, searchTerm]);
 
@@ -192,7 +192,7 @@ export default function AccountingInboxPage() {
                   : filteredDocs.map(doc => (
                       <TableRow key={doc.id}>
                           <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                          <TableCell>{doc.customerSnapshot.name}</TableCell>
+                          <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
                           <TableCell>{doc.docNo} ({doc.docType})</TableCell>
                           <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right">
@@ -212,7 +212,7 @@ export default function AccountingInboxPage() {
                   : filteredDocs.map(doc => (
                       <TableRow key={doc.id}>
                           <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                          <TableCell>{doc.customerSnapshot.name}</TableCell>
+                          <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
                           <TableCell>{doc.docNo} ({doc.docType})</TableCell>
                           <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right space-x-2">
@@ -265,5 +265,7 @@ export default function AccountingInboxPage() {
     </>
   );
 }
+
+    
 
     
