@@ -39,7 +39,7 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; varia
     if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label: "รอตรวจสอบรายรับ", variant: "secondary" };
     if (status === "DRAFT") return { key: "DRAFT", label: "ฉบับร่าง", variant: "outline" };
 
-    return { key: status, label: docStatusLabel(doc.status) || doc.status, variant: "outline" };
+    return { key: status, label: docStatusLabel(doc.status) || status, variant: "outline" };
 };
 
 export function DocumentList({ 
@@ -89,7 +89,7 @@ export function DocumentList({
   }, [db, docType, toast]);
 
   const processedDocuments = useMemo(() => {
-    // ใช้ spread เพื่อเลี่ยงการแก้ไขข้อมูลเดิม
+    // Spread to avoid direct mutation
     let filtered = [...allDocuments];
 
     if (statusFilter !== "ALL") {
@@ -229,7 +229,7 @@ export function DocumentList({
                 <TableBody>
                   {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
                     const editPath = docType === 'QUOTATION'
-                      ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
+                      ? `/app/office/documents/quotation/${docItem.id}`
                       : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
                     
                     return (
