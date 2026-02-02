@@ -42,7 +42,7 @@ service cloud.firestore {
     }
     
     function isAccountingAllowed() {
-      return isSystemAdmin() || isMgmt();
+      return isOfficeOrMgmt();
     }
     
     function hrSettings() {
