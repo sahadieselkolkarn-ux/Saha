@@ -192,7 +192,7 @@ export default function AccountingInboxPage() {
                   : filteredDocs.map(doc => (
                       <TableRow key={doc.id}>
                           <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                          <TableCell>{doc.customerNameSnapshot}</TableCell>
+                          <TableCell>{doc.customerSnapshot.name}</TableCell>
                           <TableCell>{doc.docNo} ({doc.docType})</TableCell>
                           <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right">
@@ -212,7 +212,7 @@ export default function AccountingInboxPage() {
                   : filteredDocs.map(doc => (
                       <TableRow key={doc.id}>
                           <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                          <TableCell>{doc.customerNameSnapshot}</TableCell>
+                          <TableCell>{doc.customerSnapshot.name}</TableCell>
                           <TableCell>{doc.docNo} ({doc.docType})</TableCell>
                           <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right space-x-2">
@@ -265,3 +265,5 @@ export default function AccountingInboxPage() {
     </>
   );
 }
+
+    
