@@ -206,8 +206,7 @@ export default function SettingsPage() {
                 <PageHeader title="Edit Profile" description="Update your personal information." />
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-4xl mx-auto">
-                        <ScrollArea className="max-h-[70vh] p-4">
-                          <div className="space-y-6">
+                        <div className="space-y-6">
                             <Card>
                                 <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
                                 <CardContent className="space-y-4">
@@ -227,11 +226,11 @@ export default function SettingsPage() {
                                         <FormField control={form.control} name="personal.bank.accountNo" render={({ field }) => (<FormItem><FormLabel>Account No.</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
                                     </div>
                                     <p className="font-medium text-sm pt-4">Emergency Contact</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
-                                        <FormField control={form.control} name="personal.emergencyContact.name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                        <FormField control={form.control} name="personal.emergencyContact.relationship" render={({ field }) => (<FormItem><FormLabel>Relationship</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                        <FormField control={form.control} name="personal.emergencyContact.phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
-                                    </div>
+                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md">
+                                          <FormField control={form.control} name="personal.emergencyContact.name" render={({ field }) => (<FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                          <FormField control={form.control} name="personal.emergencyContact.relationship" render={({ field }) => (<FormItem><FormLabel>Relationship</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                          <FormField control={form.control} name="personal.emergencyContact.phone" render={({ field }) => (<FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>)} />
+                                     </div>
                                 </CardContent>
                             </Card>
                             <Card>
@@ -290,7 +289,6 @@ export default function SettingsPage() {
                                 </CardContent>
                             </Card>
                           </div>
-                        </ScrollArea>
                         <div className="flex items-center gap-4 pt-6">
                             <Button type="submit" disabled={form.formState.isSubmitting}>
                                 {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
