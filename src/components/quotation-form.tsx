@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, AlertCircle, ChevronsUpDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -120,7 +120,22 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   useEffect(() => {
     const dataToLoad = docToEdit || job;
     if (dataToLoad) {
-        const customerId = 'customerId' in dataToLoad ? dataToLoad.customerId : dataToLoad.customerSnapshot.id;
+        // STEP 1: Robust customerId finding
+        let customerId = 
+            (dataToLoad as any).customerId || 
+            (dataToLoad as any).customerSnapshot?.id || 
+            (dataToLoad as any).customerSnapshot?.customerId ||
+            "";
+
+        if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone) {
+          const foundCustomer = customers.find(c => c.name === dataToLoad.customerSnapshot.name && c.phone === dataToLoad.customerSnapshot.phone);
+          if (foundCustomer) {
+            customerId = foundCustomer.id;
+            form.setValue("customerId", customerId, { shouldValidate: true });
+          }
+        }
+        
+        // STEP 2: Item fallback
         const items = 'items' in dataToLoad && dataToLoad.items.length > 0
             ? dataToLoad.items.map(item => ({ ...item }))
             : [{ description: 'description' in dataToLoad ? dataToLoad.description : '', quantity: 1, unitPrice: 0, total: 0 }];
@@ -140,7 +155,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             grandTotal: 'grandTotal' in dataToLoad ? dataToLoad.grandTotal : 0,
         });
     }
-  }, [job, docToEdit, form, jobId]);
+  }, [job, docToEdit, form, jobId, customers]);
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers;
@@ -175,16 +190,20 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: QuotationFormData) => {
-    const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
+    let customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
       return;
     }
 
+    // STEP 3: Ensure customerSnapshot has an ID for backward compatibility
+    customerSnapshot = { ...customerSnapshot, id: data.customerId };
+
     const documentData = {
+        customerId: data.customerId, // Ensure customerId is saved
         docDate: data.issueDate,
         jobId: data.jobId,
-        customerSnapshot: { ...customerSnapshot },
+        customerSnapshot: customerSnapshot,
         carSnapshot: (job || docToEdit?.jobId) ? { licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, details: job?.description || docToEdit?.carSnapshot?.details } : {},
         storeSnapshot: { ...storeSettings },
         items: data.items,
@@ -226,6 +245,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
+  // STEP 4: Keep customer selection disabled in edit mode
+  const isCustomerSelectionDisabled = !!jobId || !!editDocId;
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
@@ -264,7 +285,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
-                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={!!jobId || !!editDocId}>
+                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
                                 {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
