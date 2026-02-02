@@ -26,13 +26,6 @@ interface DocumentListProps {
   docType: DocType;
 }
 
-const docTypeToEditPath: Record<string, string> = {
-    QUOTATION: '/app/office/documents/quotation/new',
-    DELIVERY_NOTE: '/app/office/documents/delivery-note/new',
-    TAX_INVOICE: '/app/office/documents/tax-invoice/new',
-    // Add other doc types if they have dedicated edit pages
-};
-
 const getDocDisplayStatus = (doc: Document): { key: string; label: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
     const status = String(doc.status ?? "").toUpperCase();
     const hasRejectionInfo = doc.reviewRejectReason || doc.reviewRejectedAt || doc.reviewRejectedByName;
@@ -229,7 +222,7 @@ export function DocumentList({ docType }: DocumentListProps) {
                   {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
                     const editPath = docItem.docType === 'QUOTATION' 
-                        ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
+                        ? `/app/office/documents/quotation/${docItem.id}`
                         : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
                     
                     return (
