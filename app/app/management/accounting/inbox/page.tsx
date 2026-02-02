@@ -18,7 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins } from "lucide-react";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { WithId } from "@/firebase/firestore/use-collection";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
@@ -196,7 +197,22 @@ export default function AccountingInboxPage() {
                           <TableCell>{doc.docNo} ({doc.docType})</TableCell>
                           <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right">
-                              <Button size="sm" onClick={() => setConfirmingDoc(doc)}><CheckCircle className="mr-2"/>ยืนยันรับเงิน</Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon"><MoreHorizontal /></Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
+                                        <Eye className="mr-2"/> ดูเอกสาร
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                        <Ban className="mr-2"/> ส่งกลับ (เพื่อแก้ไข)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => setConfirmingDoc(doc)}>
+                                        <CheckCircle className="mr-2"/> ยืนยันรับเงิน
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                       </TableRow>
                   ))}
@@ -215,9 +231,23 @@ export default function AccountingInboxPage() {
                           <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
                           <TableCell>{doc.docNo} ({doc.docType})</TableCell>
                           <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
-                          <TableCell className="text-right space-x-2">
-                              <Button size="sm" variant="secondary" onClick={() => setDisputingDoc(doc)}><Ban className="mr-2"/>ข้อโต้แย้ง</Button>
-                              <Button size="sm" onClick={() => handleCreateAR(doc)} disabled={isSubmitting}><HandCoins className="mr-2"/>สร้างลูกหนี้</Button>
+                           <TableCell className="text-right">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon"><MoreHorizontal /></Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
+                                        <Eye className="mr-2"/> ดูเอกสาร
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                        <Ban className="mr-2"/> ส่งกลับ (เพื่อแก้ไข)
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => handleCreateAR(doc)} disabled={isSubmitting}>
+                                        <HandCoins className="mr-2"/> ยืนยัน (ตั้งลูกหนี้)
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                       </TableRow>
                   ))}
@@ -252,7 +282,7 @@ export default function AccountingInboxPage() {
       <Dialog open={!!disputingDoc} onOpenChange={(open) => !open && setDisputingDoc(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>ตั้งเป็นข้อโต้แย้ง</DialogTitle>
+            <DialogTitle>ส่งกลับเพื่อแก้ไข</DialogTitle>
             <DialogDescription>สำหรับเอกสารเลขที่: {disputingDoc?.docNo}</DialogDescription>
           </DialogHeader>
           <div className="py-4"><Textarea placeholder="กรุณาระบุเหตุผล..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} /></div>
