@@ -1,14 +1,13 @@
-
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, type QueryConstraint, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -40,10 +39,8 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; varia
     if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label: "รอตรวจสอบรายรับ", variant: "secondary" };
     if (status === "DRAFT") return { key: "DRAFT", label: "ฉบับร่าง", variant: "outline" };
 
-    // Fallback for any other status
     return { key: status, label: docStatusLabel(doc.status) || doc.status, variant: "outline" };
 };
-
 
 export function DocumentList({ 
   docType,
@@ -92,7 +89,8 @@ export function DocumentList({
   }, [db, docType, toast]);
 
   const processedDocuments = useMemo(() => {
-    let filtered = allDocuments;
+    // ใช้ spread เพื่อเลี่ยงการแก้ไขข้อมูลเดิม
+    let filtered = [...allDocuments];
 
     if (statusFilter !== "ALL") {
         filtered = filtered.filter(doc => getDocDisplayStatus(doc).key === statusFilter);
@@ -109,7 +107,6 @@ export function DocumentList({
       );
     }
     
-    // Client-side sorting
     filtered.sort((a, b) => {
         const valA = a[orderByField as keyof Document] as any;
         const valB = b[orderByField as keyof Document] as any;
@@ -128,7 +125,7 @@ export function DocumentList({
     return processedDocuments.slice(start, end);
   }, [processedDocuments, currentPage, limitProp]);
 
-  const totalPages = Math.ceil(processedDocuments.length / limitProp);
+  const totalPages = Math.max(1, Math.ceil(processedDocuments.length / limitProp));
   
   useEffect(() => {
     setCurrentPage(0);
@@ -196,7 +193,7 @@ export function DocumentList({
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Filter by status..." />
+                <SelectValue placeholder="กรองตามสถานะ..." />
               </SelectTrigger>
               <SelectContent>
                 {uniqueStatuses.map(status => (
@@ -315,7 +312,7 @@ export function DocumentList({
                   onClick={() => setCurrentPage(0)}
                   disabled={currentPage === 0}
                 >
-                  <ChevronsLeft />
+                  <ChevronsLeft className="h-4 w-4" />
                   หน้าแรก
                 </Button>
                 <Button
@@ -324,7 +321,7 @@ export function DocumentList({
                   onClick={() => setCurrentPage(p => p - 1)}
                   disabled={currentPage === 0}
                 >
-                  <ChevronLeft />
+                  <ChevronLeft className="h-4 w-4" />
                   ก่อนหน้า
                 </Button>
                 <Button
@@ -334,7 +331,7 @@ export function DocumentList({
                   disabled={currentPage >= totalPages - 1}
                 >
                   ถัดไป
-                  <ChevronRight />
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
                  <Button
                   variant="outline"
@@ -343,7 +340,7 @@ export function DocumentList({
                   disabled={currentPage >= totalPages - 1}
                 >
                   หน้าสุดท้าย
-                  <ChevronsRight />
+                  <ChevronsRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>

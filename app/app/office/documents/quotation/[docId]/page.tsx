@@ -1,11 +1,11 @@
-
 "use client";
 
+import React from 'react';
 import { QuotationForm } from '@/components/quotation-form';
 import { PageHeader } from '@/components/page-header';
 
-export default function EditQuotationPage({ params }: { params: { docId: string } }) {
-  const { docId } = params;
+export default function EditQuotationPage({ params }: { params: Promise<{ docId: string }> }) {
+  const { docId } = React.use(params);
 
   return (
     <>
