@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, type QueryConstraint, getDocs, startAfter, type QueryDocumentSnapshot, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, type QueryConstraint, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
@@ -47,8 +47,8 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; varia
 
 export function DocumentList({ 
   docType,
-  limit: limitProp,
-  orderByField,
+  limit: limitProp = 10,
+  orderByField = 'docDate',
   orderByDirection = 'desc'
 }: DocumentListProps) {
   const { db } = useFirebase();
@@ -56,7 +56,7 @@ export function DocumentList({
   const router = useRouter();
   const { profile } = useAuth();
 
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [allDocuments, setAllDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FirestoreError | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -68,87 +68,76 @@ export function DocumentList({
   const [isActionLoading, setIsActionLoading] = useState(false);
   
   const [currentPage, setCurrentPage] = useState(0);
-  const [pageStartCursors, setPageStartCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
-  const [isLastPage, setIsLastPage] = useState(false);
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
-  const fetchData = useCallback(async () => {
-    if (!db) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const qConstraints: QueryConstraint[] = [where("docType", "==", docType)];
-
-      if (orderByField) {
-        qConstraints.push(orderBy(orderByField, orderByDirection));
-      } else {
-        qConstraints.push(orderBy("docDate", "desc"));
-      }
-
-      const cursor = pageStartCursors[currentPage];
-      if (cursor) {
-        qConstraints.push(startAfter(cursor));
-      }
-
-      if (limitProp) {
-        qConstraints.push(limit(limitProp));
-      }
-
-      const finalQuery = query(collection(db, "documents"), ...qConstraints);
-      const snapshot = await getDocs(finalQuery);
-
-      let docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
-      
-      setDocuments(docsData);
-
-      const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-      if (lastVisibleDoc && currentPage >= pageStartCursors.length - 1) {
-          const newCursors = [...pageStartCursors];
-          newCursors[currentPage + 1] = lastVisibleDoc;
-          setPageStartCursors(newCursors);
-      }
-      
-      setIsLastPage(snapshot.docs.length < (limitProp || 10));
-    } catch (err: any) {
-      setError(err);
-      if (!err.message?.includes('requires an index')) {
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร", description: err.code });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [db, docType, toast, currentPage, limitProp, orderByField, orderByDirection]);
-
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-  
-  const uniqueStatuses = useMemo(() => {
-    const allStatuses = new Set(documents.map(doc => getDocDisplayStatus(doc).key));
-    return ["ALL", ...Array.from(allStatuses)];
-  }, [documents]);
+    if (!db) return;
+    setLoading(true);
+    const q = query(collection(db, "documents"), where("docType", "==", docType));
 
-  const filteredDocuments = useMemo(() => {
-    let filtered = documents;
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
+        setAllDocuments(docsData);
+        setLoading(false);
+        setError(null);
+    }, (err: FirestoreError) => {
+        console.error("Error fetching documents: ", err);
+        setError(err);
+        setLoading(false);
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร", description: err.message });
+    });
+
+    return () => unsubscribe();
+  }, [db, docType, toast]);
+
+  const processedDocuments = useMemo(() => {
+    let filtered = allDocuments;
 
     if (statusFilter !== "ALL") {
         filtered = filtered.filter(doc => getDocDisplayStatus(doc).key === statusFilter);
     }
 
-    if (!searchTerm) return filtered;
-    const lowercasedTerm = searchTerm.toLowerCase();
+    if (searchTerm) {
+      const lowercasedTerm = searchTerm.toLowerCase();
+      filtered = filtered.filter(doc =>
+        doc.docNo.toLowerCase().includes(lowercasedTerm) ||
+        doc.customerSnapshot.name?.toLowerCase().includes(lowercasedTerm) ||
+        doc.customerSnapshot.phone?.includes(lowercasedTerm) ||
+        doc.jobId?.toLowerCase().includes(lowercasedTerm) ||
+        doc.carSnapshot?.licensePlate?.toLowerCase().includes(lowercasedTerm)
+      );
+    }
     
-    return filtered.filter(doc =>
-      doc.docNo.toLowerCase().includes(lowercasedTerm) ||
-      doc.customerSnapshot.name?.toLowerCase().includes(lowercasedTerm) ||
-      doc.customerSnapshot.phone?.includes(lowercasedTerm) ||
-      doc.jobId?.toLowerCase().includes(lowercasedTerm) ||
-      doc.carSnapshot?.licensePlate?.toLowerCase().includes(lowercasedTerm)
-    );
-  }, [documents, searchTerm, statusFilter]);
+    // Client-side sorting
+    filtered.sort((a, b) => {
+        const valA = a[orderByField as keyof Document] as any;
+        const valB = b[orderByField as keyof Document] as any;
+
+        if (valA < valB) return orderByDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return orderByDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    return filtered;
+  }, [allDocuments, searchTerm, statusFilter, orderByField, orderByDirection]);
+  
+  const paginatedDocuments = useMemo(() => {
+    const start = currentPage * limitProp;
+    const end = start + limitProp;
+    return processedDocuments.slice(start, end);
+  }, [processedDocuments, currentPage, limitProp]);
+
+  const totalPages = Math.ceil(processedDocuments.length / limitProp);
+  
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchTerm, statusFilter]);
+
+  const uniqueStatuses = useMemo(() => {
+    const allStatuses = new Set(allDocuments.map(doc => getDocDisplayStatus(doc).key));
+    return ["ALL", ...Array.from(allStatuses)];
+  }, [allDocuments]);
 
   const handleCancelRequest = (doc: Document) => {
     setDocToAction(doc);
@@ -165,12 +154,8 @@ export function DocumentList({
     setIsActionLoading(true);
     try {
       const docRef = doc(db, "documents", docToAction.id);
-      await updateDoc(docRef, {
-        status: 'CANCELLED',
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(docRef, { status: 'CANCELLED', updatedAt: serverTimestamp() });
       toast({ title: "ยกเลิกเอกสารสำเร็จ" });
-      fetchData(); // Refetch data
     } catch (e: any) {
       toast({ variant: "destructive", title: "การยกเลิกล้มเหลว", description: e.message });
     } finally {
@@ -186,7 +171,6 @@ export function DocumentList({
     try {
       await deleteDoc(doc(db, "documents", docToAction.id));
       toast({ title: "ลบเอกสารสำเร็จ" });
-      fetchData(); // Refetch data
     } catch (e: any) {
       toast({ variant: "destructive", title: "การลบล้มเหลว", description: e.message });
     } finally {
@@ -195,20 +179,6 @@ export function DocumentList({
       setDocToAction(null);
     }
   };
-  
-  const handleNextPage = () => {
-    if (!isLastPage) {
-        setCurrentPage(p => p + 1);
-    }
-  };
-
-  const handlePrevPage = () => {
-      if (currentPage > 0) {
-          setPageStartCursors(prev => prev.slice(0, currentPage));
-          setCurrentPage(p => p - 1);
-      }
-  };
-
 
   return (
     <>
@@ -244,9 +214,7 @@ export function DocumentList({
             <div className="text-center text-destructive flex flex-col items-center gap-2 h-48 justify-center">
               <AlertCircle />
               <p>เกิดข้อผิดพลาดในการโหลดเอกสาร</p>
-              {error.message.includes('requires an index') ? (
-                <p className="text-muted-foreground text-sm">การเรียงข้อมูลอาจไม่ถูกต้อง กรุณารีเฟรช</p>
-              ) : <p className="text-xs">{error.message}</p>}
+              <p className="text-xs">{error.message}</p>
             </div>
           ) : (
             <div className="border rounded-md">
@@ -262,11 +230,10 @@ export function DocumentList({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredDocuments.length > 0 ? filteredDocuments.map(docItem => {
+                  {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
                     const viewPath = `/app/office/documents/${docItem.id}`;
-                    
                     const editPath = docItem.docType === 'QUOTATION'
-                        ? `/app/office/documents/quotation/${docItem.id}`
+                        ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
                         : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
 
                     return (
@@ -336,27 +303,17 @@ export function DocumentList({
             </div>
           )}
         </CardContent>
-         {limitProp && filteredDocuments.length > 0 && (
+         {totalPages > 1 && (
           <CardFooter>
             <div className="flex w-full justify-between items-center">
               <span className="text-sm text-muted-foreground">
-                Page {currentPage + 1}
+                Page {currentPage + 1} of {totalPages}
               </span>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePrevPage}
-                  disabled={currentPage === 0 || loading}
-                >
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}>
                   Previous
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextPage}
-                  disabled={isLastPage || loading}
-                >
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage >= totalPages - 1}>
                   Next
                 </Button>
               </div>
