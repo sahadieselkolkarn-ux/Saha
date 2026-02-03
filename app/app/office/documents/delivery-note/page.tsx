@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -22,7 +21,6 @@ export default function OfficeDeliveryNotePage() {
         docType="DELIVERY_NOTE"
         orderByField="docNo"
         orderByDirection="desc"
-        limit={10}
       />
     </>
   );

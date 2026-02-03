@@ -6,7 +6,7 @@ import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
@@ -396,7 +396,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Failed to create Delivery Note", description: error.message });
+        toast({ variant: "destructive", title: "ไม่สามารถสร้างใบส่งของได้", description: error.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -413,273 +413,275 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   return (
     <>
-      <PageHeader title={isEditing ? "แก้ไขใบส่งของชั่วคราว" : "สร้างใบส่งของชั่วคราว"} description={isEditing ? "แก้ไขรายละเอียดและส่งตรวจสอบใหม่" : "เปิดใบส่งของใหม่สำหรับลูกค้า"} />
-      {isLocked && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertTitle>เอกสารถูกล็อก</AlertTitle>
-          <AlertDescription>
-            เอกสารนี้ถูกยืนยันรายการขายแล้ว จึงไม่สามารถแก้ไขได้
-          </AlertDescription>
-        </Alert>
-      )}
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSave, onInvalid)} className="space-y-6">
-          <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-            <Button type="submit" disabled={isFormLoading || isLocked}>
-              {isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
-            </Button>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-                <CardHeader><CardTitle className="text-base">1. เลือกข้อมูลลูกค้า</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    {!jobId && !isEditing && (
-                        <div className="space-y-2">
-                            <Label>อ้างอิงจากงานซ่อมที่ทำเสร็จแล้ว (Job DONE)</Label>
-                            <Popover open={isJobPopoverOpen} onOpenChange={setIsJobPopoverOpen}>
-                                <PopoverTrigger asChild>
-                                    <Button variant="outline" className="w-full justify-between font-normal">
-                                        {currentJobId ? `งาน ID: ${currentJobId.substring(0,8)}...` : "เลือกงานซ่อมที่รอทำบิล..."}
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                    <div className="p-2 border-b">
-                                        <div className="relative">
-                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                            <Input placeholder="ค้นหาชื่องาน, ลูกค้า, เบอร์โทร..." value={jobSearch} onChange={e => setJobSearch(e.target.value)} className="pl-8" />
-                                        </div>
-                                    </div>
-                                    <ScrollArea className="h-60">
-                                        {isLoadingJobs ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>Loading...</div> : 
-                                         filteredJobs.length > 0 ? filteredJobs.map(j => (
-                                            <Button variant="ghost" key={j.id} onClick={() => handleSelectJob(j)} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none">
-                                                <div className="text-left">
-                                                    <p className="font-semibold">{j.customerSnapshot.name} ({j.customerSnapshot.phone})</p>
-                                                    <p className="text-xs text-muted-foreground line-clamp-1">{j.description}</p>
-                                                    <p className="text-[10px] text-muted-foreground">ID: {j.id.substring(0,8)}... • {deptLabel(j.department)}</p>
-                                                </div>
-                                            </Button>
-                                        )) : <div className="p-4 text-center text-sm text-muted-foreground">ไม่พบงานที่รอทำบิล</div>}
-                                    </ScrollArea>
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                    )}
-
-                    <FormField
-                        name="customerId"
-                        control={form.control}
-                        render={({ field }) => (
-                            <FormItem>
-                            <FormLabel>ชื่อลูกค้า</FormLabel>
-                            <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                                <PopoverTrigger asChild>
-                                <FormControl>
-                                    <Button variant="outline" role="combobox" className={cn("w-full justify-between", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
-                                    {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                </FormControl>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                    <div className="p-2 border-b">
-                                        <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
-                                    </div>
-                                    <ScrollArea className="h-60">
-                                        {filteredCustomers.map(c => (
-                                            <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
-                                        ))}
-                                    </ScrollArea>
-                                </PopoverContent>
-                            </Popover>
-                            </FormItem>
-                        )}
-                    />
-                    {displayCustomer && (
-                        <div className="text-sm p-3 bg-muted/50 rounded-md">
-                            <p className="font-medium">{displayCustomer.name}</p>
-                            <p className="text-muted-foreground">{displayCustomer.taxAddress || displayCustomer.detail || 'N/A'}</p>
-                            <p className="text-muted-foreground">โทร: {displayCustomer.phone}</p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader><CardTitle className="text-base">2. เงื่อนไขการชำระเงิน</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    <FormField control={form.control} name="paymentTerms" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>รูปแบบการชำระ</FormLabel>
-                            <FormControl>
-                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
-                                    <div className="flex items-center space-x-2">
-                                        <RadioGroupItem value="CASH" id="cash" disabled={isLocked} />
-                                        <Label htmlFor="cash">เงินสด/โอน (Cash)</Label>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
-                                        <RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} />
-                                        <Label htmlFor="credit">เครดิต (Credit)</Label>
-                                    </div>
-                                </RadioGroup>
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )} />
-                    <FormField control={form.control} name="billingRequired" render={({ field }) => (
-                        <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
-                            <div className="space-y-1 leading-none">
-                                <FormLabel>ต้องออกใบวางบิล</FormLabel>
-                                <FormDescription>ติ๊กเลือกเมื่อต้องรวบรวมเพื่อวางบิลภายหลัง</FormDescription>
-                            </div>
-                        </FormItem>
-                    )} />
-                </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-              <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                  <CardTitle className="text-base">3. รายการสินค้า/บริการ</CardTitle>
-                  {currentJobId && quotations.length > 0 && (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
-                          <SelectTrigger className="w-full sm:w-[280px]">
-                              <SelectValue placeholder="เลือกใบเสนอราคา..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                              {quotations.map(q => (
-                                  <SelectItem key={q.id} value={q.id}>
-                                      {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
-                                  </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                        <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
-                      </div>
-                      {quotationUsages > 0 && (
-                        <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
-                          <AlertTriangle className="h-3 w-3" />
-                          ใบเสนอราคานี้เคยถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
-                        </div>
+      <div className="flex flex-col gap-6">
+        {isLocked && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>เอกสารถูกล็อก</AlertTitle>
+            <AlertDescription>
+              เอกสารนี้ถูกยืนยันรายการขายแล้ว จึงไม่สามารถแก้ไขได้
+            </AlertDescription>
+          </Alert>
+        )}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSave, onInvalid)} className="space-y-6">
+            <div className="flex justify-between items-center">
+              <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> ย้อนกลับ</Button>
+              <Button type="submit" disabled={isFormLoading || isLocked}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
+              </Button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                  <CardHeader><CardTitle className="text-base">1. เลือกข้อมูลลูกค้า</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                      {!jobId && !isEditing && (
+                          <div className="space-y-2">
+                              <Label>อ้างอิงจากงานซ่อมที่ทำเสร็จแล้ว (Job DONE)</Label>
+                              <Popover open={isJobPopoverOpen} onOpenChange={setIsJobPopoverOpen}>
+                                  <PopoverTrigger asChild>
+                                      <Button variant="outline" className="w-full justify-between font-normal text-left">
+                                          <span className="truncate">{currentJobId ? `งาน ID: ${currentJobId.substring(0,8)}...` : "เลือกงานซ่อมที่รอทำบิล..."}</span>
+                                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                      </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                      <div className="p-2 border-b">
+                                          <div className="relative">
+                                              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                              <Input placeholder="ค้นหาชื่องาน, ลูกค้า, เบอร์โทร..." value={jobSearch} onChange={e => setJobSearch(e.target.value)} className="pl-8" />
+                                          </div>
+                                      </div>
+                                      <ScrollArea className="h-60">
+                                          {isLoadingJobs ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>กำลังโหลด...</div> : 
+                                           filteredJobs.length > 0 ? filteredJobs.map(j => (
+                                              <Button variant="ghost" key={j.id} onClick={() => handleSelectJob(j)} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none">
+                                                  <div className="text-left">
+                                                      <p className="font-semibold">{j.customerSnapshot.name} ({j.customerSnapshot.phone})</p>
+                                                      <p className="text-xs text-muted-foreground line-clamp-1">{j.description}</p>
+                                                      <p className="text-[10px] text-muted-foreground">ID: {j.id.substring(0,8)}... • {deptLabel(j.department)}</p>
+                                                  </div>
+                                              </Button>
+                                          )) : <div className="p-4 text-center text-sm text-muted-foreground">ไม่พบงานที่รอทำบิล</div>}
+                                      </ScrollArea>
+                                  </PopoverContent>
+                              </Popover>
+                          </div>
                       )}
-                    </div>
-                  )}
-              </CardHeader>
-              <CardContent>
-                  <div className="border rounded-md">
-                      <Table>
-                          <TableHeader><TableRow><TableHead className="w-12">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
-                          <TableBody>
-                              {fields.map((field, index) => (
-                                  <TableRow key={field.id}>
-                                      <TableCell>{index + 1}</TableCell>
-                                      <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" disabled={isLocked} />)}/></TableCell>
-                                      <TableCell>
-                                          <FormField
-                                              control={form.control}
-                                              name={`items.${index}.quantity`}
-                                              render={({ field }) => (
-                                              <Input
-                                                  type="number"
-                                                  inputMode="decimal"
-                                                  placeholder="—"
-                                                  className="text-right"
-                                                  value={(field.value ?? 0) === 0 ? "" : field.value}
-                                                  onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                                  onChange={(e) => {
-                                                      const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
-                                                      field.onChange(newQuantity);
-                                                      const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
-                                                      form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
-                                                  }}
-                                                  disabled={isLocked}
-                                              />
-                                              )}
-                                          />
-                                      </TableCell>
-                                      <TableCell>
-                                          <FormField
-                                              control={form.control}
-                                              name={`items.${index}.unitPrice`}
-                                              render={({ field }) => (
-                                              <Input
-                                                  type="number"
-                                                  inputMode="decimal"
-                                                  placeholder="0.00"
-                                                  className="text-right"
-                                                  value={(field.value ?? 0) === 0 ? "" : field.value}
-                                                  onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                                  onChange={(e) => {
-                                                      const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
-                                                      field.onChange(newPrice);
-                                                      const quantity = form.getValues(`items.${index}.quantity`) || 0;
-                                                      form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
-                                                  }}
-                                                  disabled={isLocked}
-                                              />
-                                              )}
-                                          />
-                                      </TableCell>
-                                      <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
-                                      <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
-                                  </TableRow>
-                              ))}
-                          </TableBody>
-                      </Table>
-                  </div>
-                  <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
-              </CardContent>
-          </Card>
+
+                      <FormField
+                          name="customerId"
+                          control={form.control}
+                          render={({ field }) => (
+                              <FormItem>
+                              <FormLabel>ชื่อลูกค้า</FormLabel>
+                              <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                                  <PopoverTrigger asChild>
+                                  <FormControl>
+                                      <Button variant="outline" role="combobox" className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
+                                      <span className="truncate">{displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}</span>
+                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                      </Button>
+                                  </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                      <div className="p-2 border-b">
+                                          <Input placeholder="ค้นหาชื่อ หรือเบอร์โทร..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                      </div>
+                                      <ScrollArea className="h-60">
+                                          {filteredCustomers.map(c => (
+                                              <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
+                                          ))}
+                                      </ScrollArea>
+                                  </PopoverContent>
+                              </Popover>
+                              </FormItem>
+                          )}
+                      />
+                      {displayCustomer && (
+                          <div className="text-sm p-3 bg-muted/50 rounded-md">
+                              <p className="font-medium">{displayCustomer.name}</p>
+                              <p className="text-muted-foreground whitespace-pre-wrap">{displayCustomer.taxAddress || displayCustomer.detail || 'ไม่มีที่อยู่'}</p>
+                              <p className="text-muted-foreground">โทร: {displayCustomer.phone}</p>
+                          </div>
+                      )}
+                  </CardContent>
+              </Card>
+
+              <Card>
+                  <CardHeader><CardTitle className="text-base">2. เงื่อนไขการชำระเงิน</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                      <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                          <FormItem>
+                              <FormLabel>รูปแบบการชำระ</FormLabel>
+                              <FormControl>
+                                  <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
+                                      <div className="flex items-center space-x-2">
+                                          <RadioGroupItem value="CASH" id="cash" disabled={isLocked} />
+                                          <Label htmlFor="cash" className="cursor-pointer">เงินสด/โอน (Cash)</Label>
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                          <RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} />
+                                          <Label htmlFor="credit" className="cursor-pointer">เครดิต (Credit)</Label>
+                                      </div>
+                                  </RadioGroup>
+                              </FormControl>
+                              <FormMessage />
+                          </FormItem>
+                      )} />
+                      <FormField control={form.control} name="billingRequired" render={({ field }) => (
+                          <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                              <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
+                              <div className="space-y-1 leading-none">
+                                  <FormLabel className="cursor-pointer">ต้องออกใบวางบิล</FormLabel>
+                                  <FormDescription>ติ๊กเลือกเมื่อต้องรวบรวมเพื่อวางบิลภายหลัง</FormDescription>
+                              </div>
+                          </FormItem>
+                      )} />
+                  </CardContent>
+              </Card>
+            </div>
 
             <Card>
-                <CardHeader><CardTitle className="text-base">4. หมายเหตุ และรายละเอียดส่งมอบ</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-                    <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด</FormLabel><FormControl>
-                            <Input
-                                  type="number"
-                                  inputMode="decimal"
-                                  placeholder="0.00"
-                                  className="text-right"
-                                  value={(field.value ?? 0) === 0 ? "" : field.value}
-                                  onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                  onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-                                  disabled={isLocked}
-                              />
-                        </FormControl></FormItem>)} />
+                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <CardTitle className="text-base">3. รายการสินค้า/บริการ</CardTitle>
+                    {currentJobId && quotations.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
+                            <SelectTrigger className="w-full sm:w-[280px]">
+                                <SelectValue placeholder="เลือกใบเสนอราคา..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {quotations.map(q => (
+                                    <SelectItem key={q.id} value={q.id}>
+                                        {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown className="mr-2 h-4 w-4" /> ดึงรายการ</Button>
+                        </div>
+                        {quotationUsages > 0 && (
+                          <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
+                            <AlertTriangle className="h-3 w-3" />
+                            ใบเสนอราคานี้เคยถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
+                          </div>
+                        )}
+                      </div>
+                    )}
+                </CardHeader>
+                <CardContent>
+                    <div className="border rounded-md overflow-x-auto">
+                        <Table>
+                            <TableHeader><TableRow><TableHead className="w-12 text-center">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
+                            <TableBody>
+                                {fields.map((field, index) => (
+                                    <TableRow key={field.id}>
+                                        <TableCell className="text-center">{index + 1}</TableCell>
+                                        <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" disabled={isLocked} />)}/></TableCell>
+                                        <TableCell>
+                                            <FormField
+                                                control={form.control}
+                                                name={`items.${index}.quantity`}
+                                                render={({ field }) => (
+                                                <Input
+                                                    type="number"
+                                                    inputMode="decimal"
+                                                    placeholder="—"
+                                                    className="text-right"
+                                                    value={(field.value ?? 0) === 0 ? "" : field.value}
+                                                    onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                                    onChange={(e) => {
+                                                        const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
+                                                        field.onChange(newQuantity);
+                                                        const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
+                                                        form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
+                                                    }}
+                                                    disabled={isLocked}
+                                                />
+                                                )}
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <FormField
+                                                control={form.control}
+                                                name={`items.${index}.unitPrice`}
+                                                render={({ field }) => (
+                                                <Input
+                                                    type="number"
+                                                    inputMode="decimal"
+                                                    placeholder="0.00"
+                                                    className="text-right"
+                                                    value={(field.value ?? 0) === 0 ? "" : field.value}
+                                                    onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                                    onChange={(e) => {
+                                                        const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
+                                                        field.onChange(newPrice);
+                                                        const quantity = form.getValues(`items.${index}.quantity`) || 0;
+                                                        form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
+                                                    }}
+                                                    disabled={isLocked}
+                                                />
+                                                )}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
+                                        <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-                    </div>
+                    <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
                 </CardContent>
-                <CardFooter className="flex-col items-end gap-2">
-                    <div className="flex justify-between w-full max-w-xs">
-                        <span className="text-muted-foreground">ยอดรวม:</span>
-                        <span className="font-medium">{formatCurrency(form.watch('subtotal'))}</span>
-                    </div>
-                    <div className="flex justify-between w-full max-w-xs">
-                        <span className="text-muted-foreground text-destructive">ส่วนลด:</span>
-                        <span className="font-medium text-destructive">- {formatCurrency(form.watch('discountAmount'))}</span>
-                    </div>
-                    <Separator className="my-2 w-full max-w-xs" />
-                    <div className="flex justify-between w-full max-w-xs text-lg font-bold">
-                        <span>ยอดสุทธิ:</span>
-                        <span>{formatCurrency(form.watch('grandTotal'))}</span>
-                    </div>
-                </CardFooter>
             </Card>
-        </form>
-      </Form>
+
+              <Card>
+                  <CardHeader><CardTitle className="text-base">4. หมายเหตุ และรายละเอียดส่งมอบ</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                      <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
+                          <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด</FormLabel><FormControl>
+                              <Input
+                                    type="number"
+                                    inputMode="decimal"
+                                    placeholder="0.00"
+                                    className="text-right"
+                                    value={(field.value ?? 0) === 0 ? "" : field.value}
+                                    onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                    onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                                    disabled={isLocked}
+                                />
+                          </FormControl></FormItem>)} />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                          <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                      </div>
+                  </CardContent>
+                  <CardFooter className="flex-col items-end gap-2">
+                      <div className="flex justify-between w-full max-w-xs">
+                          <span className="text-muted-foreground">ยอดรวม:</span>
+                          <span className="font-medium">{formatCurrency(form.watch('subtotal'))}</span>
+                      </div>
+                      <div className="flex justify-between w-full max-w-xs">
+                          <span className="text-muted-foreground text-destructive">ส่วนลด:</span>
+                          <span className="font-medium text-destructive">- {formatCurrency(form.watch('discountAmount'))}</span>
+                      </div>
+                      <Separator className="my-2 w-full max-w-xs" />
+                      <div className="flex justify-between w-full max-w-xs text-lg font-bold">
+                          <span>ยอดสุทธิ:</span>
+                          <span>{formatCurrency(form.watch('grandTotal'))}</span>
+                      </div>
+                  </CardFooter>
+              </Card>
+          </form>
+        </Form>
+      </div>
     </>
   )
 }

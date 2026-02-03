@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -6,9 +7,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase";
+import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { safeFormat } from "@/lib/date-utils";

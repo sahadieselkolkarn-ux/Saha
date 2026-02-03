@@ -1,16 +1,15 @@
 
-
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from 'next/link';
 import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where, getDocs, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
-import { useCollection } from "@/firebase";
+import { useCollection } from "@/firebase/firestore/use-collection";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
 import { archiveCollectionNameByYear } from '@/lib/archive-utils';
@@ -59,7 +58,7 @@ const getStatusVariant = (status: Job['status']) => {
   }
 }
 
-export default function JobDetailsPage() {
+function JobDetailsPageContent() {
   const router = useRouter();
   const { jobId } = useParams();
   const searchParams = useSearchParams();
@@ -321,7 +320,7 @@ export default function JobDetailsPage() {
     } catch (error: any) {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
     } finally {
-        setIsSubmittingNote(false);
+        setIsSubmitting(false);
     }
   };
 
@@ -1265,4 +1264,12 @@ const handlePartsReady = async () => {
       </AlertDialog>
     </>
   );
+}
+
+export default function JobDetailsPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
+      <JobDetailsPageContent />
+    </Suspense>
+  )
 }

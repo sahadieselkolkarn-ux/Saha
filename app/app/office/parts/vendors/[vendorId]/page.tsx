@@ -1,12 +1,14 @@
+
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, Suspense } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, updateDoc, serverTimestamp, getDocs, query, where, collection, documentId } from "firebase/firestore";
-import { useFirebase, useDoc } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
+import { useDoc } from "@/firebase/firestore/use-doc";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -56,7 +58,7 @@ const vendorSchema = z.object({
 
 type VendorFormData = z.infer<typeof vendorSchema>;
 
-export default function EditVendorPage() {
+function EditVendorPageContent() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -255,4 +257,12 @@ export default function EditVendorPage() {
       </Form>
     </>
   );
+}
+
+export default function EditVendorPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
+      <EditVendorPageContent />
+    </Suspense>
+  )
 }
