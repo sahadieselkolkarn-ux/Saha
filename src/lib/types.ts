@@ -1,5 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew, VENDOR_TYPES } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -55,7 +55,7 @@ export interface Customer {
   updatedAt: Timestamp;
 }
 
-export type VendorType = 'SUPPLIER' | 'GENERAL' | 'CONTRACTOR';
+export type VendorType = (typeof VENDOR_TYPES)[number];
 
 export interface Vendor {
     id: string;

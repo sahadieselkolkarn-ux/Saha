@@ -1,4 +1,3 @@
-
 const DEPARTMENT_LABELS: Record<string, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
@@ -69,6 +68,17 @@ const NEW_PAYSLIP_STATUS_LABELS: Record<string, string> = {
     READY_TO_PAY: "รอจ่ายเงิน",
     PAID: "จ่ายแล้ว"
 };
+
+const VENDOR_TYPE_LABELS: Record<string, string> = {
+    SUPPLIER: "ผู้จำหน่ายอะไหล่",
+    GENERAL: "ร้านค้าทั่วไป",
+    CONTRACTOR: "ผู้รับเหมา/งานนอก",
+};
+
+export function vendorTypeLabel(type: string | undefined): string {
+    if (!type) return '';
+    return VENDOR_TYPE_LABELS[type] || type;
+}
 
 export function newPayslipStatusLabel(status: string | undefined): string {
     if (!status) return '';

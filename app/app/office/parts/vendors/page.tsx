@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -18,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Vendor } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
+import { vendorTypeLabel } from "@/lib/ui-labels";
 
 export default function VendorsPage() {
   const { db } = useFirebase();
@@ -136,6 +136,7 @@ export default function VendorsPage() {
                 <TableRow>
                   <TableHead>ชื่อย่อ</TableHead>
                   <TableHead>ชื่อร้าน/บริษัท</TableHead>
+                  <TableHead>ประเภท</TableHead>
                   <TableHead>เบอร์โทรผู้ติดต่อ</TableHead>
                   <TableHead>ผู้ติดต่อ</TableHead>
                   <TableHead>สถานะ</TableHead>
@@ -148,6 +149,11 @@ export default function VendorsPage() {
                     <TableRow key={vendor.id}>
                       <TableCell className="font-medium">{vendor.shortName}</TableCell>
                       <TableCell>{vendor.companyName}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="font-normal">
+                            {vendorTypeLabel(vendor.vendorType)}
+                        </Badge>
+                      </TableCell>
                       <TableCell>{vendor.contactPhone || '-'}</TableCell>
                       <TableCell>{vendor.contactName || '-'}</TableCell>
                       <TableCell>
@@ -156,16 +162,16 @@ export default function VendorsPage() {
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}?view=1`}><Eye className="mr-2"/> ดู</Link></DropdownMenuItem>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}?view=1`}><Eye className="mr-2 h-4 w-4"/> ดู</Link></DropdownMenuItem>
                             {canEdit && (
-                                <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}`}><Edit className="mr-2"/> แก้ไข</Link></DropdownMenuItem>
+                                <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}`}><Edit className="mr-2 h-4 w-4"/> แก้ไข</Link></DropdownMenuItem>
                             )}
                             {isAdmin && (
                                 <>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => handleDeleteRequest(vendor)} className="text-destructive focus:text-destructive">
-                                        <Trash2 className="mr-2"/> ลบ
+                                        <Trash2 className="mr-2 h-4 w-4"/> ลบ
                                     </DropdownMenuItem>
                                 </>
                             )}
@@ -175,7 +181,7 @@ export default function VendorsPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={6} className="h-24 text-center">ไม่พบข้อมูลร้านค้า</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="h-24 text-center">ไม่พบข้อมูลร้านค้า</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

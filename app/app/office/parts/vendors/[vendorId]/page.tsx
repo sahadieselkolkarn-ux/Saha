@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -20,11 +19,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VENDOR_TYPES } from "@/lib/constants";
+import { vendorTypeLabel } from "@/lib/ui-labels";
 import type { Vendor } from "@/lib/types";
 
 const vendorSchema = z.object({
   shortName: z.string().min(1, "กรุณากรอกชื่อย่อ").max(10, "ชื่อย่อต้องไม่เกิน 10 ตัวอักษร"),
   companyName: z.string().min(1, "กรุณากรอกชื่อร้าน/บริษัท"),
+  vendorType: z.enum(VENDOR_TYPES),
   address: z.string().optional(),
   phone: z.string().optional(),
   contactName: z.string().optional(),
@@ -63,7 +66,9 @@ export default function EditVendorPage() {
 
   const form = useForm<VendorFormData>({
     resolver: zodResolver(vendorSchema),
-    defaultValues: {},
+    defaultValues: {
+        vendorType: "SUPPLIER",
+    },
   });
 
   useEffect(() => {
@@ -71,6 +76,7 @@ export default function EditVendorPage() {
       form.reset({
         shortName: vendor.shortName,
         companyName: vendor.companyName,
+        vendorType: vendor.vendorType || "SUPPLIER",
         address: vendor.address || "",
         phone: vendor.phone || "",
         contactName: vendor.contactName || "",
@@ -153,6 +159,24 @@ export default function EditVendorPage() {
                   </FormItem>
                 )} />
               </div>
+              <FormField control={form.control} name="vendorType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ประเภทธุรกิจ</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={!canEdit}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="เลือกประเภทธุรกิจ" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {VENDOR_TYPES.map(type => (
+                        <SelectItem key={type} value={type}>{vendorTypeLabel(type)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
             </CardContent>
           </Card>
           

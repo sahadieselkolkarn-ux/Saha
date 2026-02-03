@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -6,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { collection, addDoc, serverTimestamp, getDocs, query, where, writeBatch } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -18,10 +17,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Save, ArrowLeft } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VENDOR_TYPES } from "@/lib/constants";
+import { vendorTypeLabel } from "@/lib/ui-labels";
 
 const vendorSchema = z.object({
   shortName: z.string().min(1, "กรุณากรอกชื่อย่อ").max(10, "ชื่อย่อต้องไม่เกิน 10 ตัวอักษร"),
   companyName: z.string().min(1, "กรุณากรอกชื่อร้าน/บริษัท"),
+  vendorType: z.enum(VENDOR_TYPES),
   address: z.string().optional(),
   phone: z.string().optional(),
   contactName: z.string().optional(),
@@ -43,6 +46,7 @@ export default function NewVendorPage() {
     defaultValues: {
       shortName: "",
       companyName: "",
+      vendorType: "SUPPLIER",
       address: "",
       phone: "",
       contactName: "",
@@ -111,6 +115,24 @@ export default function NewVendorPage() {
                   </FormItem>
                 )} />
               </div>
+              <FormField control={form.control} name="vendorType" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ประเภทธุรกิจ</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="เลือกประเภทธุรกิจ" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {VENDOR_TYPES.map(type => (
+                        <SelectItem key={type} value={type}>{vendorTypeLabel(type)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
             </CardContent>
           </Card>
           
