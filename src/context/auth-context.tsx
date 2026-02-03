@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
@@ -33,15 +34,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!auth || !db) {
-      if (!loading) setLoading(true);
-      // Firebase services not ready yet. AuthProvider will re-render when they are.
-      // We can set an error if it takes too long.
+      // Firebase services not ready yet.
       const timer = setTimeout(() => {
         if(!auth || !db) {
             setAuthError(new Error("Firebase services could not be initialized. Please check your connection and configuration."));
             setLoading(false);
         }
-      }, 5000);
+      }, 10000); // Wait up to 10s for initialization
       return () => clearTimeout(timer);
     }
     setAuthError(null);
@@ -59,25 +58,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!db || !user) {
-        // user is logged out, or db is not ready. Let the other effect handle loading state.
         return;
     };
     
     setLoading(true);
     const profileDocRef = doc(db, "users", user.uid);
     const unsubscribeProfile = onSnapshot(profileDocRef, 
-        (doc) => {
-            if (doc.exists()) {
-                setProfile({ uid: doc.id, ...doc.data() } as UserProfile);
+        (docSnap) => {
+            if (docSnap.exists()) {
+                setProfile({ uid: docSnap.id, ...docSnap.data() } as UserProfile);
             } else {
-                // This case can happen right after signup before profile is created.
-                // Or if a user is deleted from DB but not from Auth.
+                console.warn("User profile not found in Firestore for UID:", user.uid);
                 setProfile(null);
             }
             setLoading(false);
         },
         (error) => {
             console.error("Error fetching user profile:", error);
+            // Don't set error globally here, just stop loading
             setProfile(null);
             setLoading(false);
         }
@@ -93,9 +91,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return signInWithEmailAndPassword(auth, email, pass);
   };
 
-  const signOutUser = () => {
+  const signOutUser = async () => {
     if (!auth) throw new Error("Authentication service is not available.");
-    return signOut(auth);
+    setLoading(true);
+    try {
+        await signOut(auth);
+    } finally {
+        setLoading(false);
+    }
   };
 
   const value = { user, profile, loading, authError, signIn, signOut: signOutUser };

@@ -56,19 +56,34 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Don't run auth logic for public routes or while loading
-    if (isPublicRoute || loading) return;
+    // Don't run auth logic while loading
+    if (loading) return;
 
     if (!user) {
-      router.replace("/login");
+      // If not logged in and trying to access a protected route
+      if (!isPublicRoute) {
+        router.replace("/login");
+      }
       return;
     }
 
-    // Wait until profile is loaded for protected routes before checking status
-    if (!profile) return;
+    // If logged in but on a public route (except /pending), redirect to home
+    if (isPublicRoute && pathname !== "/pending") {
+        if (profile?.status === "ACTIVE") {
+            router.replace("/app");
+        } else if (profile) {
+            router.replace("/pending");
+        }
+        return;
+    }
 
-    if (profile.status && profile.status !== "ACTIVE") {
-      router.replace("/pending");
+    // For protected routes, if profile is missing or not active, go to /pending
+    if (!isPublicRoute) {
+        if (!profile || (profile.status && profile.status !== "ACTIVE")) {
+            if (pathname !== "/pending") {
+                router.replace("/pending");
+            }
+        }
     }
   }, [loading, user, profile, router, pathname, isPublicRoute]);
 
@@ -78,9 +93,19 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   }
   
   // For protected routes, show a spinner while we determine auth/profile state.
-  // This prevents rendering the app shell for a split second before redirecting.
-  if (loading || !user || !profile || profile.status !== "ACTIVE") {
+  // We allow /pending to render through the spinner check if we have a user
+  if (loading || !user || (!profile && pathname !== "/pending")) {
     return <FullscreenSpinner />;
+  }
+  
+  // Special case: if we have a user but no profile doc yet, allow /pending to show the fallback card
+  if (!profile && pathname === "/pending") {
+      return <div className="p-4">{children}</div>;
+  }
+
+  // If status is not active, redirect to pending (already handled by useEffect, but for safety)
+  if (profile && profile.status !== "ACTIVE" && pathname !== "/pending") {
+      return <FullscreenSpinner />;
   }
   
   const isPrintMode = searchParams.get("print") === "1";
