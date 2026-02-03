@@ -56,6 +56,7 @@ export default function MyLeavesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingLeaveData, setPendingLeaveData] = useState<LeaveFormData | null>(null);
   const [isOverLimitConfirmOpen, setIsOverLimitConfirmOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   const employeeLeaveTypes = LEAVE_TYPES.filter(t => t === 'SICK' || t === 'BUSINESS');
 
@@ -209,7 +210,7 @@ export default function MyLeavesPage() {
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
                         <FormLabel>วันที่ลา</FormLabel>
-                        <Popover>
+                        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
@@ -236,15 +237,22 @@ export default function MyLeavesPage() {
                             </FormControl>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              initialFocus
-                              mode="range"
-                              defaultMonth={field.value?.from}
-                              selected={field.value}
-                              onSelect={field.onChange}
-                              disabled={(date) => isBefore(date, subMonths(startOfToday(), 1))}
-                              numberOfMonths={1}
-                            />
+                            <div className="flex flex-col">
+                              <Calendar
+                                initialFocus
+                                mode="range"
+                                defaultMonth={field.value?.from}
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                disabled={(date) => isBefore(date, subMonths(startOfToday(), 1))}
+                                numberOfMonths={1}
+                              />
+                              <div className="p-3 border-t flex justify-end">
+                                <Button size="sm" type="button" onClick={() => setIsCalendarOpen(false)}>
+                                  OK
+                                </Button>
+                              </div>
+                            </div>
                           </PopoverContent>
                         </Popover>
                         <FormMessage />
