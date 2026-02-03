@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase, useDoc } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
+import { useDoc } from "@/firebase/firestore/use-doc";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -26,7 +27,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-export default function QuotationDetailPage() {
+function QuotationDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
     const { db } = useFirebase();
@@ -53,7 +54,7 @@ export default function QuotationDetailPage() {
         } catch (e: any) {
             toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
         } finally {
-            setIsActionLoading(true);
+            setIsActionLoading(false);
         }
     };
 
@@ -153,5 +154,13 @@ export default function QuotationDetailPage() {
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+export default function QuotationDetailPage() {
+    return (
+        <Suspense fallback={<Skeleton className="h-screen w-full" />}>
+            <QuotationDetailPageContent />
+        </Suspense>
     );
 }

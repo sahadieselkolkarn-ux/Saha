@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 
@@ -17,7 +17,7 @@ import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRi
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { AccountingAccount } from "@/lib/types";
-import type { WithId } from "@/firebase";
+import type { WithId } from "@/firebase/firestore/use-collection";
 
 export default function ManagementAccountingAccountsPage() {
   const { db } = useFirebase();
@@ -33,10 +33,7 @@ export default function ManagementAccountingAccountsPage() {
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
   useEffect(() => {
-    if (!db) {
-        // Firebase is not ready yet, keep loading
-        return;
-    }
+    if (!db) return;
     setLoading(true);
     const q = query(collection(db, "accountingAccounts"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {

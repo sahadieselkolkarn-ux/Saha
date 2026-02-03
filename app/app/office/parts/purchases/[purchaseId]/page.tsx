@@ -1,17 +1,16 @@
-
 "use client";
 
 import { useMemo, Suspense, useEffect, useRef } from "react";
 import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import Image from "next/image";
 import { doc } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, ExternalLink, Edit } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, ExternalLink, Edit, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { safeFormat } from "@/lib/date-utils";

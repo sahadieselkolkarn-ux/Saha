@@ -6,7 +6,7 @@ import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle, AlertCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -436,6 +436,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     <>
       {isLocked && (
           <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
               <AlertTitle>เอกสารถูกล็อก</AlertTitle>
               <AlertDescription>
                   เอกสารนี้ถูกยืนยันรายรับแล้ว จึงไม่สามารถแก้ไขได้
@@ -610,7 +611,24 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   <CardContent className="space-y-4">
                        <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isLocked}/></FormControl></FormItem>)} />
                        <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="paymentTerms" render={({ field }) => (<FormItem><FormLabel>เงื่อนไขชำระเงิน</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CASH" id="cash"/></FormControl><Label htmlFor="cash">เงินสด</Label></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CREDIT" id="credit"/></FormControl><Label htmlFor="credit">เครดิต</Label></FormItem></RadioGroup></FormControl><FormMessage /></FormItem>)} />
+                        <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>เงื่อนไขชำระเงิน</FormLabel>
+                                <FormControl>
+                                    <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2">
+                                        <FormItem className="flex items-center space-x-2">
+                                            <FormControl><RadioGroupItem value="CASH" id="cash"/></FormControl>
+                                            <Label htmlFor="cash">เงินสด</Label>
+                                        </FormItem>
+                                        <FormItem className="flex items-center space-x-2">
+                                            <FormControl><RadioGroupItem value="CREDIT" id="credit"/></FormControl>
+                                            <Label htmlFor="credit">เครดิต</Label>
+                                        </FormItem>
+                                    </RadioGroup>
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
                         <FormField control={form.control} name="billingRequired" render={({ field }) => (
                             <FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit mt-auto">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>

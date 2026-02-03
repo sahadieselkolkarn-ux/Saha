@@ -6,7 +6,7 @@ import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, getDocs } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, FileDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, FileDown, AlertTriangle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -38,7 +38,7 @@ const lineItemSchema = z.object({
 
 const quotationFormSchema = z.object({
   jobId: z.string().optional(),
-  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
+  customerId: z.string().min(1, "Customer is required"),
   issueDate: z.string().min(1, "กรุณาเลือกวันที่"),
   expiryDate: z.string().min(1, "กรุณาเลือกวันที่"),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
@@ -157,7 +157,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     }
   }, [job, docToEdit, form, jobId, customers]);
 
-  // Check for quotation usage history if editing or based on existing quotation
   useEffect(() => {
     if (!db || !editDocId) {
       setQuotationUsages(0);
@@ -267,10 +266,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     return <Skeleton className="h-96" />;
   }
   
-  if (jobError) {
-      return <div className="text-center text-destructive"><AlertCircle className="mx-auto mb-2"/>Error loading job: {jobError.message}</div>
-  }
-
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -303,7 +298,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                  <h1 className="text-2xl font-bold text-right">ใบเสนอราคา</h1>
                  {isEditing && <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>}
                  <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
-                 <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
+                 <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormMessage>)} />
             </div>
         </div>
 

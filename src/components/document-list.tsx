@@ -231,11 +231,13 @@ export function DocumentList({
                       ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
                       : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
                     
-                    const viewPath = docType === 'QUOTATION'
-                      ? `/app/office/documents/quotation/${docItem.id}`
-                      : (docType === 'DELIVERY_NOTE' 
-                          ? `/app/office/documents/delivery-note/${docItem.id}`
-                          : `/app/office/documents/${docItem.id}`);
+                    const viewPath = (() => {
+                      if (docType === 'QUOTATION') return `/app/office/documents/quotation/${docItem.id}`;
+                      if (docType === 'DELIVERY_NOTE') return `/app/office/documents/delivery-note/${docItem.id}`;
+                      
+                      // Fallback to edit page for others to avoid 404 if specific detail page doesn't exist
+                      return editPath;
+                    })();
 
                     return (
                     <TableRow key={docItem.id}>

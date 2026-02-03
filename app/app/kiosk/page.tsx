@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
-import { useFirebase } from '@/firebase';
+import { useFirebase } from '@/firebase/client-provider';
 import { useToast } from '@/hooks/use-toast';
 import { generateKioskToken } from '@/firebase/kiosk';
 import { useAuth } from '@/context/auth-context';
@@ -82,8 +81,7 @@ export default function KioskPage() {
   useEffect(() => {
     if (!db || authLoading || !profile) return;
     generateNewToken();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, authLoading, profile]); // Depend on auth state before first run.
+  }, [db, authLoading, profile, generateNewToken]);
 
   // Countdown and auto-refresh timer
   useEffect(() => {
@@ -122,7 +120,7 @@ export default function KioskPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
-            <QrDisplay data={qrData} key={currentToken} />
+            <QrDisplay data={qrData} key={currentToken || 'initial'} />
             <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
               {isLoading && !qrData ? ( // Show only on initial load
                 <div className="flex items-center gap-2">

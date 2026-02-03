@@ -4,7 +4,7 @@ import { Suspense, useCallback, useState, useEffect, useMemo, useRef } from 'rea
 import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, serverTimestamp, Timestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
 
-import { useFirebase } from '@/firebase';
+import { useFirebase } from '@/firebase/client-provider';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { differenceInSeconds } from 'date-fns';
@@ -158,7 +158,6 @@ function ScanPageContent() {
       } else if (department === 'MECHANIC' && role === 'WORKER') {
         router.replace('/app/mechanic/jobs/all');
       } else {
-        // Fallback for Officer, Outsource or unspecified roles to prevent 404
         router.replace('/app/attendance/history');
       }
     }, 3000);

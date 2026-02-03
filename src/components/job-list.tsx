@@ -1,13 +1,11 @@
-
-
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, orderBy, OrderByDirection, QueryConstraint, FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { collection, onSnapshot, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc } from "firebase/firestore";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
@@ -153,12 +151,9 @@ export function JobList({
 
     const constraints: QueryConstraint[] = [];
     
-    // If assigneeUid is present, query only by it to avoid composite index requirement.
-    // Other filtering and sorting will happen on the client-side.
     if (assigneeUid) {
       constraints.push(where('assigneeUid', '==', assigneeUid));
     } else {
-      // Original logic for other list views
       if (department) {
         constraints.push(where('department', '==', department));
       }
@@ -190,9 +185,7 @@ export function JobList({
     const unsubscribe = onSnapshot(jobsQuery, (snapshot) => {
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
       
-      // Client-side filtering logic
       if (assigneeUid) {
-        // This query was only by assigneeUid, so we must apply other filters now.
         if (department) {
             jobsData = jobsData.filter(job => job.department === department);
         }
@@ -201,7 +194,6 @@ export function JobList({
             jobsData = jobsData.filter(job => statuses.includes(job.status));
         }
       } else {
-        // This was the original logic for queries that didn't use assigneeUid
         if (status && Array.isArray(status)) {
           jobsData = jobsData.filter(job => status.includes(job.status));
         }
@@ -212,7 +204,6 @@ export function JobList({
         jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
       }
       
-      // Client-side sorting if we didn't use orderBy in the query
       if (assigneeUid) {
         jobsData.sort((a, b) => {
             const timeA = a[orderByField as keyof Job] as Timestamp | undefined;
@@ -234,7 +225,7 @@ export function JobList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, assigneeUid, department, JSON.stringify(status), JSON.stringify(excludeStatus), orderByField, orderByDirection]);
+  }, [jobsQuery, assigneeUid, department, status, excludeStatus, orderByField, orderByDirection]);
 
   const filteredJobs = useMemo(() => {
     if (!searchTerm) return jobs;
@@ -273,7 +264,6 @@ export function JobList({
     setSelectedDocId('');
     setPaymentMode('PAID');
 
-    // Fetch related documents
     setIsLoadingDocs(true);
     try {
         const docsQuery = query(collection(db, "documents"), where("jobId", "==", job.id));
@@ -294,7 +284,6 @@ export function JobList({
         setIsLoadingDocs(false);
     }
 
-    // Fetch accounting accounts
     setIsLoadingAccounts(true);
     try {
         const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
@@ -341,7 +330,7 @@ export function JobList({
                     note: paymentNotes || 'ส่งมอบงานแล้ว รอตรวจสอบรายรับ',
                 }
             );
-        } else { // UNPAID / CREDIT
+        } else {
             const arRef = doc(collection(db, 'accountingObligations'));
             const arData = {
                 type: 'AR',
@@ -498,7 +487,7 @@ export function JobList({
         return;
     }
 
-    setIsAccepting(outsourcingJob.id); // Re-use this state for loading indicator
+    setIsAccepting(outsourcingJob.id);
     try {
         const batch = writeBatch(db);
         const jobRef = doc(db, 'jobs', outsourcingJob.id);
@@ -664,15 +653,6 @@ export function JobList({
                     </a>
                 </Button>
             </CardContent>
-             <CardFooter className="flex-col items-center gap-2 pt-4">
-                <p className="text-xs text-muted-foreground">Query details:</p>
-                <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded-md max-w-full overflow-x-auto">
-                    {department && `department: ${department}, `}
-                    {status && `status: ${Array.isArray(status) ? `[${status.join(', ')}]` : status}, `}
-                    {assigneeUid && `assigneeUid: ${assigneeUid}, `}
-                    {`orderBy: ${orderByField} ${orderByDirection}`}
-                </p>
-            </CardFooter>
         </Card>
     );
   }
