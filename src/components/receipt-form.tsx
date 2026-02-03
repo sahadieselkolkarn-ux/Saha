@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -40,6 +41,7 @@ type ReceiptFormData = z.infer<typeof receiptFormSchema>;
 
 export function ReceiptForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -50,7 +52,6 @@ export function ReceiptForm() {
   const [isLoading, setIsLoading] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
-  const [createdDocId, setCreatedDocId] = useState<string | null>(null);
 
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
   const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
@@ -66,6 +67,14 @@ export function ReceiptForm() {
 
   const selectedCustomerId = form.watch('customerId');
   const selectedSourceDocId = form.watch('sourceDocId');
+
+  // Handle URL params
+  useEffect(() => {
+    const cId = searchParams.get('customerId');
+    const sId = searchParams.get('sourceDocId');
+    if (cId) form.setValue('customerId', cId);
+    if (sId) form.setValue('sourceDocId', sId);
+  }, [searchParams, form]);
 
   // Fetch customers
   useEffect(() => {
@@ -140,7 +149,7 @@ export function ReceiptForm() {
         subtotal: data.amount,
         discountAmount: 0,
         net: data.amount,
-        withTax: sourceDoc.withTax, // Inherit tax status from source doc
+        withTax: sourceDoc.withTax,
         vatAmount: sourceDoc.withTax ? (data.amount / 1.07) * 0.07 : 0,
         grandTotal: data.amount,
         notes: data.notes,
@@ -152,21 +161,17 @@ export function ReceiptForm() {
 
       const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile);
 
-      const batch = writeBatch(db);
+      // Update source document to link this receipt
       const sourceDocRef = doc(db, 'documents', data.sourceDocId);
-      const newPaidTotal = (sourceDoc.paymentSummary?.paidTotal || 0) + data.amount;
-      const newBalance = sourceDoc.grandTotal - newPaidTotal;
-      
-      batch.update(sourceDocRef, {
-          'paymentSummary.paidTotal': newPaidTotal,
-          'paymentSummary.balance': newBalance,
-          'paymentSummary.paymentStatus': newBalance <= 0.01 ? 'PAID' : 'PARTIAL',
-          status: newBalance <= 0.01 ? 'PAID' : 'PARTIAL'
+      await updateDoc(sourceDocRef, {
+          receiptStatus: 'ISSUED_NOT_CONFIRMED',
+          updatedAt: serverTimestamp()
       });
-      await batch.commit();
 
       toast({ title: "สร้างใบเสร็จสำเร็จ", description: `เลขที่: ${docNo}` });
-      setCreatedDocId(docId);
+      
+      // Redirect to confirm receipt
+      router.push(`/app/management/accounting/documents/receipt/${docId}/confirm`);
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
@@ -182,89 +187,75 @@ export function ReceiptForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {createdDocId ? (
-             <Card>
-                <CardHeader>
-                    <CardTitle>สร้างใบเสร็จสำเร็จ</CardTitle>
-                </CardHeader>
-                <CardContent className="flex gap-4">
-                    <Button type="button" onClick={() => router.push(`/app/office/documents/${createdDocId}`)}>ดูใบเสร็จ</Button>
-                    <Button type="button" variant="outline" onClick={() => { setCreatedDocId(null); form.reset(); }}>สร้างใบใหม่</Button>
-                </CardContent>
-            </Card>
-        ) : (
-        <>
-            <div className="flex justify-end">
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
-                บันทึกใบเสร็จ
-                </Button>
-            </div>
-            <Card>
-                <CardHeader><CardTitle>1. เลือกเอกสารอ้างอิง</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                <FormField name="customerId" render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>ลูกค้า</FormLabel>
-                        <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                        <PopoverTrigger asChild>
-                            <FormControl>
-                            <Button variant="outline" role="combobox" className="w-[300px] justify-between">
-                                {field.value ? customers.find(c => c.id === field.value)?.name : "เลือกลูกค้า..."}
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                            </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[300px] p-0">
-                            <Input placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} className="m-2 w-[calc(100%-1rem)]" />
-                            <ScrollArea className="h-60">
-                            {filteredCustomers.map(c => (
-                                <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start">{c.name}</Button>
-                            ))}
-                            </ScrollArea>
-                        </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                    </FormItem>
-                )} />
-                {selectedCustomerId && (
-                    <FormField name="sourceDocId" render={({ field }) => (
-                    <FormItem>
-                        <FormLabel>เอกสารอ้างอิง (ใบกำกับภาษี/ใบวางบิล/ใบส่งของ)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+        <div className="flex justify-end">
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
+            บันทึกใบเสร็จ
+            </Button>
+        </div>
+        <Card>
+            <CardHeader><CardTitle>1. เลือกเอกสารอ้างอิง</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+            <FormField name="customerId" render={({ field }) => (
+                <FormItem>
+                    <FormLabel>ลูกค้า</FormLabel>
+                    <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                    <PopoverTrigger asChild>
                         <FormControl>
-                            <SelectTrigger className="w-full md:w-[400px]"><SelectValue placeholder="เลือกเอกสาร..." /></SelectTrigger>
+                        <Button variant="outline" role="combobox" className="w-[300px] justify-between">
+                            {field.value ? customers.find(c => c.id === field.value)?.name : "เลือกลูกค้า..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
                         </FormControl>
-                        <SelectContent>
-                            {sourceDocs.map(doc => (
-                            <SelectItem key={doc.id} value={doc.id}>
-                                {doc.docNo} - {safeFormat(new Date(doc.docDate), "dd/MM/yy")} - ยอดค้าง: {(doc.paymentSummary?.balance ?? doc.grandTotal).toLocaleString()}
-                            </SelectItem>
-                            ))}
-                        </SelectContent>
-                        </Select>
-                        <FormMessage />
-                    </FormItem>
-                    )} />
-                )}
-                </CardContent>
-            </Card>
-
-            {selectedSourceDocId && (
-            <Card>
-                <CardHeader><CardTitle>2. รายละเอียดการชำระเงิน</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                <FormField name="paymentDate" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>วันที่ชำระเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <FormField name="amount" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>ยอดที่ชำระ</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <div className="grid grid-cols-2 gap-4">
-                    <FormField name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem><SelectItem value="CREDIT">เครดิต</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                    <FormField name="accountId" render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
-                </div>
-                <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
-                </CardContent>
-            </Card>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0">
+                        <Input placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} className="m-2 w-[calc(100%-1rem)]" />
+                        <ScrollArea className="h-60">
+                        {filteredCustomers.map(c => (
+                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start">{c.name}</Button>
+                        ))}
+                        </ScrollArea>
+                    </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                </FormItem>
+            )} />
+            {selectedCustomerId && (
+                <FormField name="sourceDocId" render={({ field }) => (
+                <FormItem>
+                    <FormLabel>เอกสารอ้างอิง (ใบกำกับภาษี/ใบวางบิล/ใบส่งของ)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                        <SelectTrigger className="w-full md:w-[400px]"><SelectValue placeholder="เลือกเอกสาร..." /></SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                        {sourceDocs.map(doc => (
+                        <SelectItem key={doc.id} value={doc.id}>
+                            {doc.docNo} - {safeFormat(new Date(doc.docDate), "dd/MM/yy")} - ยอดค้าง: {(doc.paymentSummary?.balance ?? doc.grandTotal).toLocaleString()}
+                        </SelectItem>
+                        ))}
+                    </SelectContent>
+                    </Select>
+                    <FormMessage />
+                </FormItem>
+                )} />
             )}
-        </>
+            </CardContent>
+        </Card>
+
+        {selectedSourceDocId && (
+        <Card>
+            <CardHeader><CardTitle>2. รายละเอียดการชำระเงิน</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+            <FormField name="paymentDate" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>วันที่ชำระเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField name="amount" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>ยอดที่ชำระ</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <div className="grid grid-cols-2 gap-4">
+                <FormField name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem><SelectItem value="CREDIT">เครดิต</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                <FormField name="accountId" render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+            </div>
+            <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
+            </CardContent>
+        </Card>
         )}
       </form>
     </Form>

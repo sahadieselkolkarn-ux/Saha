@@ -1,14 +1,15 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase';
 import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import * as z from "zod";
 import { format, parseISO } from 'date-fns';
 
 import { PageHeader } from "@/components/page-header";
@@ -23,12 +24,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown } from 'lucide-react';
+import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import type { WithId } from '@/firebase/firestore/use-collection';
-import type { AccountingObligation, AccountingAccount, UserProfile, Vendor } from '@/lib/types';
+import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType } from '@/lib/types';
 import { safeFormat } from '@/lib/date-utils';
 
 const formatCurrency = (value: number) => {
@@ -174,8 +176,25 @@ function ReceivePaymentDialog({
               <FormField name="accountId" control={form.control} render={({ field }) => (<FormItem><FormLabel>บัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage/></FormItem>)} />
             </div>
             <div className="p-4 border rounded-md space-y-4">
-              <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (<FormItem className="flex items-center gap-2 space-y-0"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">มีหัก ณ ที่จ่าย</FormLabel></FormItem>)} />
-              {watchedWhtEnabled && <FormField control={form.control} name="withholdingAmount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินที่ถูกหัก (WHT)</FormLabel><FormControl><Input type="number" {...field} value={field.value || 0} /></FormControl><FormMessage/></FormItem>)} />}
+              <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
+                <FormItem className="flex items-center gap-2 space-y-0">
+                  <FormControl>
+                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                  <FormLabel className="font-normal">มีหัก ณ ที่จ่าย</FormLabel>
+                </FormItem>
+              )} />
+              {watchedWhtEnabled && (
+                <FormField control={form.control} name="withholdingAmount" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ยอดเงินที่ถูกหัก (WHT)</FormLabel>
+                    <FormControl>
+                      <Input type="number" {...field} value={field.value || 0} />
+                    </FormControl>
+                    <FormMessage/>
+                  </FormItem>
+                )} />
+              )}
             </div>
             <div className="text-right space-y-1">
                 <p>ยอดรับชำระ: {formatCurrency(watchedAmount)}</p>
@@ -289,7 +308,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             </div>
             <div className="grid grid-cols-2 gap-4">
               <FormField name="paymentMethod" control={form.control} render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage/></FormItem>)} />
-              <FormField name="accountId" control={form.control} render={({ field }) => (<FormItem><FormLabel>บัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage/></FormItem>)} />
+              <FormField name="accountId" control={form.control} render={({ field }) => (<FormItem><FormLabel>บัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage/></FormItem>)} />
             </div>
             <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
           </form>
@@ -350,7 +369,7 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                 vendorShortNameSnapshot: selectedVendor.shortName,
                 vendorNameSnapshot: selectedVendor.companyName,
                 invoiceNo: data.invoiceNo,
-                sourceDocNo: data.invoiceNo, // For consistency in search
+                sourceDocNo: data.invoiceNo,
                 docDate: data.docDate,
                 dueDate: data.dueDate || null,
                 amountTotal: data.amountTotal,
@@ -421,12 +440,14 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
 function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 'AP', searchTerm: string, accounts: WithId<AccountingAccount>[], vendors: WithId<Vendor>[] }) {
     const { db } = useFirebase();
     const { toast } = useToast();
+    const router = useRouter();
     
     const [obligations, setObligations] = useState<WithId<AccountingObligation>[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<FirestoreError | null>(null);
-    const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
     const [retry, setRetry] = useState(0);
+
+    const [docStatuses, setDocStatuses] = useState<Record<string, string>>({});
 
     const [payingAR, setPayingAR] = useState<WithId<AccountingObligation> | null>(null);
     const [payingAP, setPayingAP] = useState<WithId<AccountingObligation> | null>(null);
@@ -445,12 +466,9 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         
         setLoading(true);
         setError(null);
-        setIndexCreationUrl(null);
 
         const unsubscribe = onSnapshot(obligationsQuery, (snap) => {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingObligation>));
-            
-            // Client-side filtering and sorting
             let filtered = data.filter(ob => ob.status === 'UNPAID' || ob.status === 'PARTIAL');
 
             filtered.sort((a, b) => {
@@ -461,25 +479,35 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
 
             setObligations(filtered);
             setLoading(false);
-            setError(null);
-            setIndexCreationUrl(null);
         }, (err: FirestoreError) => {
             console.error(`Error loading ${type} obligations:`, err);
             setError(err);
             setLoading(false);
-            if (err.message?.includes('requires an index')) {
-                const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-                if (urlMatch) setIndexCreationUrl(urlMatch[0]);
-                toast({ variant: 'default', title: 'Info', description: "ระบบถูกปรับให้ไม่ต้องสร้าง index แล้ว กรุณารีเฟรช" });
-            } else if (err.message?.includes('permission-denied')) {
-                toast({ variant: 'destructive', title: 'ไม่มีสิทธิ์เข้าถึง', description: `คุณไม่มีสิทธิ์เข้าถึงข้อมูล${type === 'AR' ? 'ลูกหนี้' : 'เจ้าหนี้'}` });
-            } else {
-                toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: err.message });
-            }
         });
 
         return () => unsubscribe();
-    }, [obligationsQuery, toast, type]);
+    }, [obligationsQuery, type]);
+
+    // Fetch receiptStatus for AR items
+    useEffect(() => {
+        if (type !== 'AR' || obligations.length === 0 || !db) return;
+
+        const arSourceDocIds = Array.from(new Set(obligations.map(ob => ob.sourceDocId).filter(Boolean)));
+        
+        // Listen to these documents
+        const unsubscribes = arSourceDocIds.map(docId => {
+            return onSnapshot(doc(db, 'documents', docId!), (docSnap) => {
+                if (docSnap.exists()) {
+                    setDocStatuses(prev => ({
+                        ...prev,
+                        [docId!]: docSnap.data().receiptStatus || 'NONE'
+                    }));
+                }
+            });
+        });
+
+        return () => unsubscribes.forEach(unsub => unsub());
+    }, [obligations, type, db]);
 
     const filteredObligations = useMemo(() => {
         if (!searchTerm) return obligations;
@@ -495,21 +523,6 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
 
     if (loading) {
         return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
-    }
-    if (indexCreationUrl) {
-         return (
-            <div className="text-center p-8 bg-muted/50 rounded-lg">
-                <AlertCircle className="mx-auto h-10 w-10 text-destructive" />
-                <h3 className="mt-4 font-semibold text-lg">Index Required</h3>
-                <p className="mt-2 text-sm text-muted-foreground">The database needs a special index to perform this query. Please click the link below to create it, then wait a few minutes and refresh the page.</p>
-                <Button asChild className="mt-4">
-                    <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-2 h-4 w-4" /> Create Index
-                    </a>
-                </Button>
-                <Button variant="outline" className="mt-4 ml-2" onClick={() => setRetry(r => r + 1)}>Retry</Button>
-            </div>
-        );
     }
     if (error) {
         return <div className="text-center p-8 text-destructive"><AlertCircle className="mx-auto mb-2" />{error.message}</div>;
@@ -529,27 +542,54 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
               </TableRow>
           </TableHeader>
           <TableBody>
-              {filteredObligations.length > 0 ? filteredObligations.map(ob => (
-                  <TableRow key={ob.id}>
-                      <TableCell>{ob.dueDate ? safeFormat(parseISO(ob.dueDate), 'dd/MM/yy') : '-'}</TableCell>
-                      <TableCell>{type === 'AR' ? ob.sourceDocNo : (ob.invoiceNo || ob.sourceDocNo)}</TableCell>
-                      <TableCell>{type === 'AR' ? ob.customerNameSnapshot : (ob.vendorShortNameSnapshot || ob.vendorNameSnapshot)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(ob.amountTotal)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(ob.amountPaid)}</TableCell>
-                      <TableCell className="text-right font-bold">{formatCurrency(ob.balance)}</TableCell>
-                      <TableCell className="text-right">
-                          {type === 'AR' ? (
-                            <Button size="sm" variant="outline" onClick={() => setPayingAR(ob)}>
-                                <HandCoins className="mr-2 h-4 w-4" /> รับชำระ
-                            </Button>
-                          ) : (
-                             <Button size="sm" variant="outline" onClick={() => setPayingAP(ob)}>
-                                <HandCoins className="mr-2 h-4 w-4" /> จ่ายบิล
-                            </Button>
-                          )}
-                      </TableCell>
-                  </TableRow>
-              )) : (
+              {filteredObligations.length > 0 ? filteredObligations.map(ob => {
+                  const receiptStatus = docStatuses[ob.sourceDocId || ''];
+                  const isReceiptIssued = receiptStatus === 'ISSUED_NOT_CONFIRMED' || receiptStatus === 'CONFIRMED';
+                  
+                  return (
+                    <TableRow key={ob.id}>
+                        <TableCell>{ob.dueDate ? safeFormat(parseISO(ob.dueDate), 'dd/MM/yy') : '-'}</TableCell>
+                        <TableCell>{type === 'AR' ? ob.sourceDocNo : (ob.invoiceNo || ob.sourceDocNo)}</TableCell>
+                        <TableCell>{type === 'AR' ? ob.customerNameSnapshot : (ob.vendorShortNameSnapshot || ob.vendorNameSnapshot)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(ob.amountTotal)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(ob.amountPaid)}</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(ob.balance)}</TableCell>
+                        <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                                {type === 'AR' && ob.sourceDocType === 'TAX_INVOICE' && (
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <span>
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant={isReceiptIssued ? "secondary" : "default"} 
+                                                        disabled={isReceiptIssued}
+                                                        onClick={() => router.push(`/app/management/accounting/documents/receipt?customerId=${ob.customerId}&sourceDocId=${ob.sourceDocId}`)}
+                                                    >
+                                                        <Receipt className="mr-2 h-4 w-4" />
+                                                        ออกใบเสร็จ
+                                                    </Button>
+                                                </span>
+                                            </TooltipTrigger>
+                                            {isReceiptIssued && <TooltipContent>ออกใบเสร็จไปแล้ว ({receiptStatus})</TooltipContent>}
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                )}
+                                {type === 'AR' ? (
+                                    <Button size="sm" variant="outline" onClick={() => setPayingAR(ob)}>
+                                        <HandCoins className="mr-2 h-4 w-4" /> รับชำระ
+                                    </Button>
+                                ) : (
+                                    <Button size="sm" variant="outline" onClick={() => setPayingAP(ob)}>
+                                        <HandCoins className="mr-2 h-4 w-4" /> จ่ายบิล
+                                    </Button>
+                                )}
+                            </div>
+                        </TableCell>
+                    </TableRow>
+                  );
+              }) : (
                   <TableRow><TableCell colSpan={7} className="h-24 text-center">{type === 'AR' ? 'ไม่พบรายการลูกหนี้คงค้าง' : 'ไม่พบรายการเจ้าหนี้คงค้าง'}</TableCell></TableRow>
               )}
           </TableBody>
@@ -587,9 +627,6 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
             setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
         }, (err) => {
           console.error("Error loading accounts:", err);
-          if (err.message.includes('permission-denied')) {
-            toast({ variant: 'destructive', title: "Could not load accounts", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
-          }
         });
         
         const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true));
@@ -599,13 +636,10 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
             setVendors(data);
         }, (err) => {
           console.error("Error loading vendors:", err);
-          if (err.message.includes('permission-denied')) {
-            toast({ variant: 'destructive', title: "Could not load vendors", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลร้านค้า หรือการดึงข้อมูลถูกปฏิเสธ" });
-          }
         });
 
         return () => { unsubAccounts(); unsubVendors(); };
-    }, [db, toast]);
+    }, [db]);
 
 
     return (

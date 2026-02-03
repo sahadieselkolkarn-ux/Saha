@@ -20,11 +20,12 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Save, ArrowLeft, AlertCircle, Calculator } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Document as DocumentType, AccountingAccount, AccountingObligation } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { safeFormat } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 
 const allocationSchema = z.object({
   invoiceId: z.string(),
@@ -52,7 +53,7 @@ const confirmReceiptSchema = z.object({
     path: ["netReceivedTotal"],
   }
 ).refine(
-    (data) => data.allocations.every(alloc => alloc.grossApplied <= alloc.grossRemaining + 0.01), // Allow for small float precision errors
+    (data) => data.allocations.every(alloc => alloc.grossApplied <= alloc.grossRemaining + 0.01), 
     {
         message: "ยอดที่จัดสรร (Gross Applied) เกินยอดค้างชำระของ Invoice",
         path: ["allocations"],
@@ -139,7 +140,7 @@ function ConfirmReceiptPageContent() {
         form.reset({
             accountId: accountsSnap.docs[0]?.id || "",
             paymentMethod: receiptData.paymentMethod as any || 'CASH',
-            paymentDate: receiptData.paymentDate || format(new Date(), 'yyyy-MM-dd'),
+            paymentDate: receiptData.paymentDate || format(new Date(), "yyyy-MM-dd"),
             netReceivedTotal: receiptData.grandTotal,
             allocations: fetchedInvoices.map(inv => {
                 const ob = fetchedObligations[inv.id];
@@ -164,7 +165,6 @@ function ConfirmReceiptPageContent() {
     fetchData();
   }, [db, receiptId, form]);
   
-  // Auto-allocate logic
   const handleAutoAllocate = useCallback(() => {
     const netTotal = form.getValues('netReceivedTotal');
     let remainingToAllocate = netTotal;
@@ -183,7 +183,6 @@ function ConfirmReceiptPageContent() {
       return { ...alloc, netCashApplied: amountToApply, withholdingAmount: 0, withholdingPercent: 0 };
     });
 
-    // Find original index to update form array correctly
     newAllocations.forEach(newAlloc => {
         const originalIndex = form.getValues('allocations').findIndex(a => a.invoiceId === newAlloc.invoiceId);
         if (originalIndex !== -1) {
@@ -200,7 +199,6 @@ function ConfirmReceiptPageContent() {
     }
   }, [form, invoices, toast, update]);
 
-  // Recalculate grossApplied and WHT when inputs change
   useEffect(() => {
     const subscription = form.watch((value, { name, type }) => {
       if (name && name.startsWith('allocations')) {
@@ -216,7 +214,6 @@ function ConfirmReceiptPageContent() {
           withholdingAmount = withholdingAmount || 0;
 
           if(parts[2] === 'netCashApplied') {
-             // If net cash changes, and we have a percent, re-calc WHT
              if(withholdingPercent > 0) {
                  grossApplied = netCashApplied / (1 - (withholdingPercent / 100));
                  withholdingAmount = grossApplied - netCashApplied;
@@ -265,7 +262,6 @@ function ConfirmReceiptPageContent() {
     try {
         const batch = writeBatch(db);
         
-        // 1. Create arPayment record
         const arPaymentRef = doc(collection(db, 'arPayments'));
         batch.set(arPaymentRef, {
             receiptId,
@@ -283,10 +279,9 @@ function ConfirmReceiptPageContent() {
             createdAt: serverTimestamp(),
         });
         
-        // 2. Create accountingEntry
         const entryRef = doc(collection(db, 'accountingEntries'));
         batch.set(entryRef, {
-            entryType: 'CASH_IN',
+            entryType: 'RECEIPT',
             entryDate: data.paymentDate,
             amount: data.netReceivedTotal,
             accountId: data.accountId,
@@ -297,7 +292,6 @@ function ConfirmReceiptPageContent() {
             createdAt: serverTimestamp(),
         });
         
-        // 3. Update Receipt
         batch.update(doc(db, 'documents', receiptId as string), {
             status: 'CONFIRMED',
             receiptStatus: 'CONFIRMED',
@@ -312,7 +306,6 @@ function ConfirmReceiptPageContent() {
             updatedAt: serverTimestamp(),
         });
         
-        // 4. Update obligations and invoices
         for (const alloc of data.allocations) {
             if (alloc.grossApplied > 0) {
                 const ob = obligations[alloc.invoiceId];
@@ -327,7 +320,9 @@ function ConfirmReceiptPageContent() {
                     });
                 }
                  batch.update(doc(db, 'documents', alloc.invoiceId), {
-                    status: (ob.balance - alloc.grossApplied) <= 0.01 ? 'PAID' : 'PARTIAL'
+                    status: (ob.balance - alloc.grossApplied) <= 0.01 ? 'PAID' : 'PARTIAL',
+                    receiptStatus: 'CONFIRMED',
+                    updatedAt: serverTimestamp(),
                  });
             }
         }
@@ -410,4 +405,3 @@ export default function ConfirmReceiptPage() {
         </Suspense>
     );
 }
-
