@@ -1,11 +1,11 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
 import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, deleteDoc } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
-import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
+import { useFirebase } from "@/firebase/client-provider";
+import { useCollection } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
+import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { getYear, parseISO, differenceInCalendarDays, isBefore } from 'date-fns';

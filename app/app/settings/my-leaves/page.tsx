@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { addDoc, collection, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { format, differenceInCalendarDays, getYear, isBefore, startOfToday, subMonths } from 'date-fns';
 
-import { useFirebase } from '@/firebase';
-import { useCollection, type WithId } from '@/firebase/firestore/use-collection';
+import { useFirebase } from '@/firebase/client-provider';
+import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
+import type { WithId } from '@/firebase/firestore/use-collection';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -81,7 +82,7 @@ export default function MyLeavesPage() {
     );
   }, [db, profile]);
 
-  const { data: myLeaves, isLoading: leavesLoading } = useCollection<WithId<LeaveRequest>>(leavesQuery);
+  const { data: myLeaves, isLoading: leavesLoading } = useCollection<LeaveRequest>(leavesQuery);
 
   const submitToFirestore = async (data: LeaveFormData) => {
     if (!db || !profile || !data.dateRange.from) return;
