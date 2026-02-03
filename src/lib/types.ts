@@ -1,5 +1,3 @@
-
-
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew } from './constants';
 
@@ -57,10 +55,13 @@ export interface Customer {
   updatedAt: Timestamp;
 }
 
+export type VendorType = 'SUPPLIER' | 'GENERAL' | 'CONTRACTOR';
+
 export interface Vendor {
     id: string;
     shortName: string;
     companyName: string;
+    vendorType: VendorType;
     address?: string;
     phone?: string;
     contactName?: string;
@@ -470,6 +471,12 @@ export interface Document {
   invoiceIds?: string[]; // For BillingNote
   totalAmount?: number; // For BillingNote
 
+  // WHT Certificate Specific (Section 50 Bis)
+  whtType?: string; // e.g. "ข้อ 5"
+  whtSection?: string; // e.g. "มาตรา 50 ทวิ"
+  payerSnapshot?: Partial<StoreSettings>;
+  payeeSnapshot?: Partial<Vendor | Customer>;
+
   delivery?: {
     deliveredDate?: string; // YYYY-MM-DD
     deliveredByName?: string;
@@ -542,6 +549,16 @@ export interface AccountingEntry {
   vendorShortNameSnapshot?: string;
   vendorNameSnapshot?: string;
   counterpartyNameSnapshot?: string; // For one-off individuals not in vendors
+
+  // Tax and Bill fields
+  billType?: 'RECEIPT' | 'TAX_INVOICE' | 'OTHER';
+  isVat?: boolean;
+  vatAmount?: number;
+  netAmount?: number; // amount - vatAmount
+  whtEnabled?: boolean;
+  whtPercent?: 1 | 3 | number;
+  whtAmount?: number;
+  whtDocId?: string; // Link to WITHHOLDING_TAX Document
 }
 
 export interface ARPayment {

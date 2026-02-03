@@ -1,5 +1,3 @@
-
-
 export const DEPARTMENTS = ["MANAGEMENT", "OFFICE", "CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"] as const;
 export type Department = (typeof DEPARTMENTS)[number];
 
@@ -23,6 +21,8 @@ export type LeaveType = (typeof LEAVE_TYPES)[number];
 
 export const LEAVE_STATUSES = ["SUBMITTED", "APPROVED", "REJECTED", "CANCELLED"] as const;
 export type LeaveStatus = (typeof LEAVE_STATUSES)[number];
+
+export const VENDOR_TYPES = ["SUPPLIER", "GENERAL", "CONTRACTOR"] as const;
 
 export const PAYROLL_BATCH_STATUSES = ["DRAFT_HR", "SENT_TO_EMPLOYEE", "FINAL"] as const;
 export type PayrollBatchStatus = (typeof PAYROLL_BATCH_STATUSES)[number];
