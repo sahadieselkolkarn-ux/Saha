@@ -31,7 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText, Printer, CheckCircle2 } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
 import { Separator } from "@/components/ui/separator";
@@ -51,7 +51,7 @@ const entrySchema = z.object({
   vendorId: z.string().optional(),
   vendorShortNameSnapshot: z.string().optional(),
   vendorNameSnapshot: z.string().optional(),
-  billType: z.enum(["NO_BILL", "NO_TAX_INVOICE", "TAX_INVOICE"]).optional(),
+  billType: z.enum(["NO_BILL", "NO_TAX_INVOICE", "TAX_INVOICE"]),
   vatRate: z.coerce.number().optional(),
   vatAmount: z.coerce.number().optional(),
   netAmount: z.coerce.number().optional(),
@@ -82,7 +82,7 @@ function VendorCombobox({ allVendors, selectedId, onSelect }: { allVendors: With
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between overflow-hidden">
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between overflow-hidden text-sm">
           <span className="truncate">{selectedValue || "เลือกคู่ค้า..."}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -133,7 +133,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       paymentMethod: "CASH",
       sourceDocNo: "",
       billType: "NO_TAX_INVOICE",
-      vatRate: 0,
+      vatRate: 7,
       vatAmount: 0,
       netAmount: 0,
       withholdingEnabled: false,
@@ -142,6 +142,32 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
     },
   });
   
+  const watchedBillType = form.watch('billType');
+  const watchedNetAmount = form.watch('netAmount') || 0;
+  const watchedVatRate = form.watch('vatRate') || 0;
+  const watchedWhtEnabled = form.watch('withholdingEnabled');
+  const watchedWhtPercent = form.watch('withholdingPercent') || 0;
+  const watchedAmount = form.watch('amount') || 0;
+
+  useEffect(() => {
+    if (entryType !== 'CASH_OUT') return;
+
+    if (watchedBillType === 'TAX_INVOICE') {
+      const vatAmount = Math.round(watchedNetAmount * (watchedVatRate / 100) * 100) / 100;
+      const totalAmount = Math.round((watchedNetAmount + vatAmount) * 100) / 100;
+      const whtAmount = watchedWhtEnabled ? Math.round(watchedNetAmount * (watchedWhtPercent / 100) * 100) / 100 : 0;
+      
+      form.setValue('vatAmount', vatAmount);
+      form.setValue('amount', totalAmount);
+      form.setValue('withholdingAmount', whtAmount);
+    } else {
+      const whtAmount = watchedWhtEnabled ? Math.round(watchedAmount * (watchedWhtPercent / 100) * 100) / 100 : 0;
+      form.setValue('vatAmount', 0);
+      form.setValue('netAmount', watchedAmount);
+      form.setValue('withholdingAmount', whtAmount);
+    }
+  }, [watchedNetAmount, watchedVatRate, watchedWhtEnabled, watchedWhtPercent, watchedBillType, watchedAmount, form, entryType]);
+
   useEffect(() => {
     if (isOpen) {
         setSuccessDocId(null);
@@ -155,7 +181,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
             paymentMethod: "CASH",
             sourceDocNo: "",
             billType: "NO_TAX_INVOICE",
-            vatRate: 0,
+            vatRate: 7,
             vatAmount: 0,
             netAmount: 0,
             withholdingEnabled: false,
@@ -164,23 +190,6 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
         });
     }
   }, [isOpen, form, defaultCategoryMain, accounts]);
-
-  const watchedNetAmount = form.watch('netAmount') || 0;
-  const watchedVatRate = form.watch('vatRate') || 0;
-  const watchedWhtEnabled = form.watch('withholdingEnabled');
-  const watchedWhtPercent = form.watch('withholdingPercent') || 0;
-  const watchedBillType = form.watch('billType');
-  const watchedVendorId = form.watch('vendorId');
-
-  useEffect(() => {
-    if (entryType !== 'CASH_OUT') return;
-    const vatAmount = watchedBillType === 'TAX_INVOICE' ? Math.round(watchedNetAmount * (watchedVatRate / 100) * 100) / 100 : 0;
-    const whtAmount = watchedWhtEnabled ? Math.round(watchedNetAmount * (watchedWhtPercent / 100) * 100) / 100 : 0;
-    const cashPaid = Math.round((watchedNetAmount + vatAmount - whtAmount) * 100) / 100;
-    form.setValue('vatAmount', vatAmount);
-    form.setValue('withholdingAmount', whtAmount);
-    form.setValue('amount', cashPaid);
-  }, [watchedNetAmount, watchedVatRate, watchedWhtEnabled, watchedWhtPercent, watchedBillType, form, entryType]);
 
   const selectedMainCategory = form.watch('categoryMain');
   const subCategories = useMemo(() => {
@@ -211,6 +220,10 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       const batch = writeBatch(db);
       let withholdingTaxDocId = "";
 
+      // Logic for building the final transaction amount (Cash flow)
+      // Since amount is now gross (net + vat), we must deduct WHT manually for the final ledger entry
+      const actualCashAmount = values.amount - (values.withholdingAmount || 0);
+
       if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
           const selectedVendor = allVendors.find(v => v.id === values.vendorId)!;
           const { docId } = await createDocument(db, 'WITHHOLDING_TAX', {
@@ -221,10 +234,10 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
               paidMonth: parseInt(values.entryDate.split('-')[1]),
               paidYear: parseInt(values.entryDate.split('-')[0]),
               incomeTypeCode: 'ITEM5', 
-              paidAmountGross: values.netAmount || values.amount,
+              paidAmountGross: (values.billType === 'TAX_INVOICE') ? values.netAmount! : values.amount,
               withholdingPercent: values.withholdingPercent === 1 ? 1 : 3,
               withholdingAmount: values.withholdingAmount || 0,
-              paidAmountNet: values.amount,
+              paidAmountNet: ((values.billType === 'TAX_INVOICE') ? values.netAmount! : values.amount) - (values.withholdingAmount || 0),
               status: 'ISSUED',
               senderName: profile.displayName,
               receiverName: selectedVendor.companyName
@@ -234,6 +247,8 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
 
       await addDoc(collection(db, "accountingEntries"), {
         ...values,
+        amount: actualCashAmount, // Store the actual cash movement in the ledger
+        grossAmount: values.amount, // Keep gross for record
         entryType,
         withholdingTaxDocId,
         createdAt: serverTimestamp(),
@@ -299,37 +314,144 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                             )} />
                         )}
                     </div>
+                    
                     {entryType === 'CASH_OUT' && (
                         <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-dashed">
                             <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold flex items-center gap-2 text-primary"><AlertCircle className="h-4 w-4" /> รายละเอียดภาษีและบิล</h4>
                                 <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
-                                    <FormItem className="flex flex-row items-center space-x-2 space-y-0"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="text-xs cursor-pointer">หัก ณ ที่จ่าย</FormLabel></FormItem>
+                                    <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        <FormLabel className="text-xs cursor-pointer">หัก ณ ที่จ่าย</FormLabel>
+                                    </FormItem>
                                 )} />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <FormField control={form.control} name="billType" render={({ field }) => (<FormItem><FormLabel>ประเภทหลักฐาน</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="NO_BILL">ไม่มีหลักฐาน</SelectItem><SelectItem value="NO_TAX_INVOICE">บิลเงินสด (ไม่มี VAT)</SelectItem><SelectItem value="TAX_INVOICE">ใบกำกับภาษี</SelectItem></SelectContent></Select></FormItem>)} />
-                                <FormField control={form.control} name="vatRate" render={({ field }) => (<FormItem><FormLabel>VAT (%)</FormLabel><Select onValueChange={field.onChange} value={field.value?.toString()} disabled={watchedBillType !== 'TAX_INVOICE'}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="0">0%</SelectItem><SelectItem value="7">7%</SelectItem></SelectContent></Select></FormItem>)} />
+                                <FormField control={form.control} name="billType" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>ประเภทบิล</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="NO_BILL">ไม่มีบิล (NO_BILL)</SelectItem>
+                                                <SelectItem value="NO_TAX_INVOICE">บิลเงินสด (NO_TAX_INVOICE)</SelectItem>
+                                                <SelectItem value="TAX_INVOICE">ใบกำกับภาษี (TAX_INVOICE)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </FormItem>
+                                )} />
+                                {watchedBillType === 'TAX_INVOICE' && (
+                                    <FormField control={form.control} name="vatRate" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>VAT (%)</FormLabel>
+                                            <Select onValueChange={(v) => field.onChange(Number(v))} value={field.value?.toString()}>
+                                                <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="0">0%</SelectItem>
+                                                    <SelectItem value="7">7%</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </FormItem>
+                                    )} />
+                                )}
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <FormField control={form.control} name="netAmount" render={({ field }) => (<FormItem><FormLabel className="font-semibold">{watchedBillType === 'TAX_INVOICE' ? 'ยอดก่อน VAT' : 'ยอดเงินก่อนหัก'}</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl></FormItem>)} />
-                                <FormItem><FormLabel>VAT</FormLabel><FormControl><Input type="number" value={form.watch('vatAmount')} disabled className="bg-muted font-mono" /></FormControl></FormItem>
-                            </div>
+                            {watchedBillType === 'TAX_INVOICE' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <FormField control={form.control} name="netAmount" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="font-semibold">ยอดก่อน VAT (Net)</FormLabel>
+                                            <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                                        </FormItem>
+                                    )} />
+                                    <FormItem>
+                                        <FormLabel>จำนวน VAT</FormLabel>
+                                        <FormControl><Input type="number" value={form.watch('vatAmount')} disabled className="bg-muted font-mono" /></FormControl>
+                                    </FormItem>
+                                </div>
+                            )}
                             {watchedWhtEnabled && (
-                                <div className="grid grid-cols-2 gap-4 border-t pt-4">
-                                    <FormField control={form.control} name="withholdingPercent" render={({ field }) => (<FormItem><FormLabel>หัก (%)</FormLabel><Select onValueChange={field.onChange} value={field.value?.toString()}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="1">1% (ขนส่ง)</SelectItem><SelectItem value="3">3% (บริการ)</SelectItem></SelectContent></Select></FormItem>)} />
-                                    <FormItem><FormLabel>หักไว้ (WHT)</FormLabel><FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted font-mono" /></FormControl></FormItem>
+                                <div className="space-y-3 border-t pt-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <FormField control={form.control} name="withholdingPercent" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>อัตราหัก (%)</FormLabel>
+                                                <Select onValueChange={(v) => field.onChange(Number(v))} value={field.value?.toString()}>
+                                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                                    <SelectContent>
+                                                        <SelectItem value="1">1% (ขนส่ง)</SelectItem>
+                                                        <SelectItem value="3">3% (บริการ)</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </FormItem>
+                                        )} />
+                                        <FormItem>
+                                            <FormLabel>ยอดภาษีที่หัก (WHT)</FormLabel>
+                                            <FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted font-mono" /></FormControl>
+                                        </FormItem>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground italic">
+                                        ฐานหัก ณ ที่จ่าย: {watchedBillType === 'TAX_INVOICE' ? 'ยอดก่อน VAT' : 'ยอดเงินรวม'}
+                                    </p>
                                 </div>
                             )}
                         </div>
                     )}
+
                     <div className="grid grid-cols-2 gap-4 items-end">
-                        <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel className="font-bold text-primary">ยอดจ่ายสุทธิ</FormLabel><FormControl><Input type="number" step="0.01" {...field} className="text-lg font-bold bg-primary/5" readOnly={entryType === 'CASH_OUT'} /></FormControl></FormItem>)} />
-                        <FormField control={form.control} name="accountId" render={({ field }) => (<FormItem><FormLabel>ออกจากบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select></FormItem>)} />
+                        <FormField control={form.control} name="amount" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="font-bold text-primary">จำนวนเงิน (ยอดรวม{watchedBillType === 'TAX_INVOICE' ? 'สุทธิ' : ''})</FormLabel>
+                                <FormControl>
+                                    <Input 
+                                        type="number" 
+                                        step="0.01" 
+                                        {...field} 
+                                        className={cn("text-lg font-bold", watchedBillType === 'TAX_INVOICE' && "bg-muted")} 
+                                        readOnly={watchedBillType === 'TAX_INVOICE'} 
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
+                        <FormField control={form.control} name="accountId" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>จ่ายออกจากบัญชี</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
+                                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
                     </div>
+
+                    {entryType === 'CASH_OUT' && watchedWhtEnabled && (
+                        <div className="flex justify-end pr-2">
+                            <span className="text-sm font-semibold text-destructive">
+                                ยอดจ่ายจริง (หัก WHT แล้ว): {(form.watch('amount') - (form.watch('withholdingAmount') || 0)).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
+                            </span>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="sourceDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล/อ้างอิง</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
-                        <FormItem><FormLabel>คู่ค้า</FormLabel><VendorCombobox allVendors={allVendors} selectedId={watchedVendorId} onSelect={(vendor) => { form.setValue('vendorId', vendor?.id); form.setValue('vendorShortNameSnapshot', vendor?.shortName); form.setValue('vendorNameSnapshot', vendor?.companyName); }} /></FormItem>
+                        <FormField control={form.control} name="sourceDocNo" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>เลขที่บิล/อ้างอิง</FormLabel>
+                                <FormControl><Input {...field} placeholder="เช่น เลขที่บิลร้านค้า" /></FormControl>
+                            </FormItem>
+                        )} />
+                        <FormItem>
+                            <FormLabel>คู่ค้า (Vendor)</FormLabel>
+                            <VendorCombobox 
+                                allVendors={allVendors} 
+                                selectedId={form.watch('vendorId')} 
+                                onSelect={(vendor) => { 
+                                    form.setValue('vendorId', vendor?.id); 
+                                    form.setValue('vendorShortNameSnapshot', vendor?.shortName); 
+                                    form.setValue('vendorNameSnapshot', vendor?.companyName); 
+                                }} 
+                            />
+                        </FormItem>
                     </div>
                 </form>
             </Form>
@@ -356,7 +478,7 @@ function CashbookPageContent() {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: startOfToday(), to: endOfMonth(new Date()) });
   const [searchTerm, setSearchTerm] = useState("");
 
   const accountsQuery = useMemo(() => db ? query(collection(db, "accountingAccounts"), where("isActive", "==", true)) : null, [db]);
@@ -414,12 +536,12 @@ function CashbookPageContent() {
   return (
     <>
       <PageHeader title="รับ–จ่ายเงิน" description="บันทึกรายการเงินเข้า–ออก" />
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
           <TabsList><TabsTrigger value="in">เงินเข้า</TabsTrigger><TabsTrigger value="out">เงินออก</TabsTrigger></TabsList>
           <div className="flex gap-2">
             <Select value={selectedAccountId} onValueChange={setSelectedAccountId}><SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">ทุกบัญชี</SelectItem>{accounts?.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select>
-            <Popover><PopoverTrigger asChild><Button variant="outline"><CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? format(dateRange.from, "PP") : "เลือกวันที่"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0"><Calendar mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/></PopoverContent></Popover>
+            <Popover><PopoverTrigger asChild><Button variant="outline"><CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? format(dateRange.from, "PP") : "เลือกวันที่"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="end"><Calendar mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/></PopoverContent></Popover>
           </div>
         </div>
         <Card>
@@ -453,6 +575,12 @@ function CashbookPageContent() {
     </>
   );
 }
+
+const startOfToday = () => {
+    const d = new Date();
+    d.setHours(0,0,0,0);
+    return d;
+};
 
 export default function CashbookPage() {
     return <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}><CashbookPageContent /></Suspense>;
