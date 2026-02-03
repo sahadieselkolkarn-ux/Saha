@@ -57,38 +57,22 @@
           "type": "object",
           "description": "Personal information of the user.",
           "properties": {
-            "idCardNo": {
-              "type": "string"
-            },
-            "address": {
-              "type": "string"
-            },
+            "idCardNo": { "type": "string" },
+            "address": { "type": "string" },
             "bank": {
               "type": "object",
               "properties": {
-                "bankName": {
-                  "type": "string"
-                },
-                "accountName": {
-                  "type": "string"
-                },
-                "accountNo": {
-                  "type": "string"
-                }
+                "bankName": { "type": "string" },
+                "accountName": { "type": "string" },
+                "accountNo": { "type": "string" }
               }
             },
             "emergencyContact": {
               "type": "object",
               "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "relationship": {
-                  "type": "string"
-                },
-                "phone": {
-                  "type": "string"
-                }
+                "name": { "type": "string" },
+                "relationship": { "type": "string" },
+                "phone": { "type": "string" }
               }
             }
           }
@@ -97,9 +81,7 @@
           "type": "object",
           "description": "HR-related information for the user.",
           "properties": {
-            "salaryMonthly": {
-              "type": "number"
-            },
+            "salaryMonthly": { "type": "number" },
             "payType": {
               "type": "string",
               "enum": [
@@ -119,12 +101,8 @@
               "format": "date",
               "description": "The user's end date of employment."
             },
-            "ssoHospital": {
-              "type": "string"
-            },
-            "note": {
-              "type": "string"
-            }
+            "ssoHospital": { "type": "string" },
+            "note": { "type": "string" }
           }
         },
         "createdAt": {
@@ -136,23 +114,6 @@
           "type": "string",
           "format": "date-time",
           "description": "Timestamp of when the user was last updated."
-        },
-        "lastAttendance": {
-          "type": "object",
-          "description": "The user's last attendance record to avoid complex queries.",
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "IN",
-                "OUT"
-              ]
-            },
-            "timestamp": {
-              "type": "string",
-              "format": "date-time"
-            }
-          }
         }
       },
       "required": [
@@ -169,67 +130,17 @@
       "type": "object",
       "description": "Represents a customer.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the customer."
-        },
-        "name": {
-          "type": "string",
-          "description": "The customer's name."
-        },
-        "phone": {
-          "type": "string",
-          "description": "The customer's phone number."
-        },
-        "detail": {
-          "type": "string",
-          "description": "Additional details about the customer."
-        },
-        "useTax": {
-          "type": "boolean",
-          "description": "Indicates whether the customer uses tax."
-        },
-        "taxName": {
-          "type": "string",
-          "description": "The customer's tax name (if useTax is true)."
-        },
-        "taxAddress": {
-          "type": "string",
-          "description": "The customer's tax address (if useTax is true)."
-        },
-        "taxId": {
-          "type": "string",
-          "description": "The customer's tax ID (if useTax is true)."
-        },
-        "taxBranchType": {
-            "type": "string",
-            "description": "Branch type for tax purposes.",
-            "enum": ["HEAD_OFFICE", "BRANCH"]
-        },
-        "taxBranchNo": {
-            "type": "string",
-            "description": "5-digit branch number if type is 'BRANCH'."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp of when the customer was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp of when the customer was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "phone",
-        "detail",
-        "useTax",
-        "createdAt",
-        "updatedAt"
-      ]
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "detail": { "type": "string" },
+        "useTax": { "type": "boolean" },
+        "taxName": { "type": "string" },
+        "taxAddress": { "type": "string" },
+        "taxId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     },
     "Vendor": {
       "title": "Vendor",
@@ -237,200 +148,91 @@
       "description": "Represents a vendor or supplier.",
       "properties": {
         "id": { "type": "string" },
-        "shortName": { "type": "string", "description": "Unique, short identifier for the vendor (e.g., 'BBL', 'SDK')." },
-        "companyName": { "type": "string", "description": "Full legal name of the vendor company/store." },
+        "shortName": { "type": "string" },
+        "companyName": { "type": "string" },
         "vendorType": { "type": "string", "enum": ["SUPPLIER", "GENERAL", "CONTRACTOR"] },
         "address": { "type": "string" },
         "phone": { "type": "string" },
         "contactName": { "type": "string" },
-        "contactPhone": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
         "taxId": { "type": "string" },
-        "notes": { "type": "string" },
-        "isActive": { "type": "boolean", "default": true },
+        "isActive": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "shortName", "companyName", "vendorType", "isActive", "createdAt", "updatedAt"]
-    },
-    "Job": {
-      "title": "Job",
-      "type": "object",
-      "description": "Represents a job.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the job."
-        },
-        "customerId": {
-          "type": "string",
-          "description": "Reference to Customer. (Relationship: Customer 1:N Job)"
-        },
-        "customerSnapshot": {
-          "type": "object",
-          "description": "Snapshot of customer data (name, phone) at the time the job was created.",
-          "properties": {
-            "name": {
-              "type": "string"
-            },
-            "phone": {
-              "type": "string"
-            },
-            "useTax": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "name",
-            "phone"
-          ]
-        },
-        "department": {
-          "type": "string",
-          "description": "The department responsible for the job (CAR_SERVICE, COMMONRAIL, MECHANIC, OUTSOURCE)."
-        },
-        "status": {
-          "type": "string",
-          "description": "The job's status (RECEIVED, IN_PROGRESS, WAITING_QUOTATION, WAITING_APPROVE, PENDING_PARTS, IN_REPAIR_PROCESS, DONE, WAITING_CUSTOMER_PICKUP, CLOSED).",
-          "enum": [
-            "RECEIVED",
-            "IN_PROGRESS",
-            "WAITING_QUOTATION",
-            "WAITING_APPROVE",
-            "PENDING_PARTS",
-            "IN_REPAIR_PROCESS",
-            "DONE",
-            "WAITING_CUSTOMER_PICKUP",
-            "CLOSED"
-          ]
-        },
-        "description": {
-          "type": "string",
-          "description": "Description of the job (symptoms/details)."
-        },
-        "officeNote": {
-          "type": "string",
-          "description": "Internal notes for the office department."
-        },
-        "photos": {
-          "type": "array",
-          "description": "Array of URLs for photos related to the job.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "technicalReport": {
-          "type": "string",
-          "description": "Technical report or test results, mainly for COMMONRAIL and MECHANIC jobs."
-        },
-        "carServiceDetails": {
-          "type": "object",
-          "description": "Details specific to Car Service jobs.",
-          "properties": {
-            "brand": { "type": "string" },
-            "model": { "type": "string" },
-            "licensePlate": { "type": "string" }
-          }
-        },
-        "commonrailDetails": {
-          "type": "object",
-          "description": "Details specific to Commonrail jobs.",
-          "properties": {
-            "brand": { "type": "string" },
-            "partNumber": { "type": "string" },
-            "registrationNumber": { "type": "string" }
-          }
-        },
-        "mechanicDetails": {
-          "type": "object",
-          "description": "Details specific to Mechanic jobs.",
-          "properties": {
-            "brand": { "type": "string" },
-            "partNumber": { "type": "string" },
-            "registrationNumber": { "type": "string" }
-          }
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp of when the job was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp of when the job was last updated.",
-          "format": "date-time"
-        },
-        "lastActivityAt": {
-          "type": "string",
-          "description": "Timestamp of the last activity related to the job.",
-          "format": "date-time"
-        },
-        "pickupDate": {
-          "type": "string",
-          "format": "date",
-          "description": "Date the customer picked up the item."
-        },
-        "closedDate": {
-          "type": "string",
-          "format": "date",
-          "description": "Date the job was closed."
-        },
-        "salesDocType": {
-          "type": "string",
-          "enum": ["DELIVERY_NOTE", "TAX_INVOICE"],
-          "description": "The type of sales document associated with the closed job."
-        },
-        "salesDocId": {
-          "type": "string",
-          "description": "The ID of the sales document associated with the closed job."
-        },
-        "salesDocNo": {
-          "type": "string",
-          "description": "The document number of the sales document for quick reference."
-        },
-        "paymentStatusAtClose": {
-          "type": "string",
-          "enum": ["PAID", "UNPAID"],
-          "description": "The payment status at the moment the job was closed."
-        }
-      },
-      "required": [
-        "id",
-        "customerId",
-        "customerSnapshot",
-        "department",
-        "status",
-        "description",
-        "photos",
-        "createdAt",
-        "updatedAt",
-        "lastActivityAt"
-      ]
+      }
     },
     "AccountingEntry": {
       "title": "Accounting Entry",
-      "description": "An immutable record of a financial transaction.",
+      "description": "An immutable record of a financial transaction (RECEIPT, CASH_IN, CASH_OUT).",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "entryType": { "type": "string", "enum": ["RECEIPT", "CASH_IN", "CASH_OUT"] },
         "entryDate": { "type": "string", "format": "date" },
-        "amount": { "type": "number" },
-        "accountId": { "type": "string" },
+        "amount": { "type": "number", "description": "ยอดเงินรวมสุทธิ (Net Total)" },
+        "accountId": { "type": "string", "description": "ID ของบัญชีเงินสด/ธนาคาร" },
         "description": { "type": "string" },
         "categoryMain": { "type": "string" },
         "categorySub": { "type": "string" },
         "paymentMethod": { "type": "string", "enum": ["CASH", "TRANSFER", "CREDIT"] },
-        "vendorId": { "type": "string" },
-        "billType": { "type": "string", "enum": ["RECEIPT", "TAX_INVOICE", "OTHER"] },
-        "isVat": { "type": "boolean" },
-        "vatAmount": { "type": "number" },
-        "whtEnabled": { "type": "boolean" },
-        "whtPercent": { "type": "number" },
-        "whtAmount": { "type": "number" },
-        "whtDocId": { "type": "string" },
+        "vendorId": { "type": "string", "description": "ID ของร้านค้า (สำหรับ CASH_OUT)" },
+        "vendorShortNameSnapshot": { "type": "string" },
+        "vendorNameSnapshot": { "type": "string" },
+        "billType": { 
+          "type": "string", 
+          "enum": ["NO_BILL", "NO_TAX_INVOICE", "TAX_INVOICE"],
+          "description": "ประเภทหลักฐานการจ่าย (สำหรับ CASH_OUT)"
+        },
+        "vatRate": { "type": "number", "enum": [0, 7], "description": "อัตรา VAT (สำหรับ CASH_OUT)" },
+        "vatAmount": { "type": "number", "description": "จำนวนภาษีมูลค่าเพิ่ม" },
+        "netAmount": { "type": "number", "description": "ยอดเงินก่อน VAT" },
+        "withholdingEnabled": { "type": "boolean", "description": "มีการหักภาษี ณ ที่จ่ายหรือไม่" },
+        "withholdingPercent": { "type": "number", "enum": [1, 3], "description": "เปอร์เซ็นต์ที่หัก (1% หรือ 3%)" },
+        "withholdingAmount": { "type": "number", "description": "จำนวนเงินที่หักไว้" },
+        "withholdingTaxDocId": { "type": "string", "description": "ID ของใบหัก ณ ที่จ่ายที่เกี่ยวข้อง" },
         "createdAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "WithholdingTaxDoc": {
+      "title": "Withholding Tax Document",
+      "description": "หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "docNo": { "type": "string", "description": "เลขที่เอกสาร" },
+        "docDate": { "type": "string", "format": "date" },
+        "payerSnapshot": { "type": "object", "description": "ข้อมูลผู้จ่ายเงิน (ร้านเรา)" },
+        "payeeSnapshot": { "type": "object", "description": "ข้อมูลผู้รับเงิน (ร้านค้า)" },
+        "paidAmountGross": { "type": "number", "description": "ยอดเงินได้" },
+        "withholdingPercent": { "type": "number" },
+        "withholdingAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["DRAFT", "ISSUED", "CANCELLED"] },
+        "relatedAccountingEntryId": { "type": "string" }
+      }
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/backend/entities/UserProfile" },
+      "description": "User profiles and HR data."
+    },
+    "/customers/{id}": {
+      "schema": { "$ref": "#/backend/entities/Customer" },
+      "description": "Customer information."
+    },
+    "/vendors/{id}": {
+      "schema": { "$ref": "#/backend/entities/Vendor" },
+      "description": "Vendor and Supplier information."
+    },
+    "/accountingEntries/{entryId}": {
+      "schema": { "$ref": "#/backend/entities/AccountingEntry" },
+      "description": "Records of all financial transactions."
+    },
+    "/withholdingTaxDocs/{docId}": {
+      "schema": { "$ref": "#/backend/entities/WithholdingTaxDoc" },
+      "description": "Withholding tax certificates."
     }
   }
 }
