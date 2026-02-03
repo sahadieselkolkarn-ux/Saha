@@ -374,7 +374,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         if (isEditing && editDocId) {
             docId = editDocId;
             const docRef = doc(db, 'documents', docId);
-            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, updatedAt: serverTimestamp() }));
+            // เมื่อมีการแก้ไขใบส่งของชั่วคราว ให้เปลี่ยนสถานะเป็น PENDING_REVIEW เพื่อให้บัญชีตรวจสอบใหม่เสมอ
+            await updateDoc(docRef, sanitizeForFirestore({ 
+                ...documentDataPayload, 
+                status: 'PENDING_REVIEW',
+                updatedAt: serverTimestamp() 
+            }));
         } else {
             const result = await createDocument(
                 db, 
@@ -387,7 +392,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             docId = result.docId;
         }
         
-        toast({ title: isEditing ? "บันทึกเอกสารสำเร็จ" : "สร้างเอกสารสำเร็จ" });
+        toast({ title: isEditing ? "บันทึกเอกสารและส่งตรวจสอบใหม่สำเร็จ" : "สร้างเอกสารสำเร็จ" });
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
@@ -408,6 +413,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   return (
     <>
+      <PageHeader title={isEditing ? "แก้ไขใบส่งของชั่วคราว" : "สร้างใบส่งของชั่วคราว"} description={isEditing ? "แก้ไขรายละเอียดและส่งตรวจสอบใหม่" : "เปิดใบส่งของใหม่สำหรับลูกค้า"} />
       {isLocked && (
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>เอกสารถูกล็อก</AlertTitle>
