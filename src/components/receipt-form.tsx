@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ChevronsUpDown } from "lucide-react";
+import { Loader2, Save, ChevronsUpDown, AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -110,7 +110,17 @@ export function ReceiptForm() {
       where("status", "in", ["UNPAID", "PARTIAL", "DRAFT", "PENDING_REVIEW"])
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setSourceDocs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType)));
+      const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType));
+      
+      // Enforce Billing Policy: Hide TAX_INVOICE if it requires billing
+      const filtered = allDocs.filter(doc => {
+          if (doc.docType === 'TAX_INVOICE' && doc.billingRequired) {
+              return false;
+          }
+          return true;
+      });
+
+      setSourceDocs(filtered);
     });
     return unsubscribe;
   }, [db, selectedCustomerId]);
@@ -162,7 +172,6 @@ export function ReceiptForm() {
       const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile);
 
       // STEP 1: Update source document to link this receipt and mark as issued
-      // We DO NOT update status or paymentSummary here. That happens during Confirm.
       const sourceDocRef = doc(db, 'documents', data.sourceDocId);
       await updateDoc(sourceDocRef, {
           receiptStatus: 'ISSUED_NOT_CONFIRMED',
@@ -222,24 +231,31 @@ export function ReceiptForm() {
                 </FormItem>
             )} />
             {selectedCustomerId && (
-                <FormField name="sourceDocId" render={({ field }) => (
-                <FormItem>
-                    <FormLabel>เอกสารอ้างอิง (ใบกำกับภาษี/ใบวางบิล/ใบส่งของ)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                        <SelectTrigger className="w-full md:w-[400px]"><SelectValue placeholder="เลือกเอกสาร..." /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                        {sourceDocs.map(doc => (
-                        <SelectItem key={doc.id} value={doc.id}>
-                            {doc.docNo} - {safeFormat(new Date(doc.docDate), "dd/MM/yy")} - ยอดค้าง: {(doc.paymentSummary?.balance ?? doc.grandTotal).toLocaleString()}
-                        </SelectItem>
-                        ))}
-                    </SelectContent>
-                    </Select>
-                    <FormMessage />
-                </FormItem>
-                )} />
+                <div className="space-y-4">
+                    <FormField name="sourceDocId" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>เอกสารอ้างอิง (ใบกำกับภาษี/ใบวางบิล/ใบส่งของ)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                            <SelectTrigger className="w-full md:w-[400px]"><SelectValue placeholder="เลือกเอกสาร..." /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                            {sourceDocs.length > 0 ? sourceDocs.map(doc => (
+                            <SelectItem key={doc.id} value={doc.id}>
+                                {doc.docNo} - {safeFormat(new Date(doc.docDate), "dd/MM/yy")} - ยอดค้าง: {(doc.paymentSummary?.balance ?? doc.grandTotal).toLocaleString()}
+                            </SelectItem>
+                            )) : <div className="p-4 text-sm text-muted-foreground text-center">ไม่พบเอกสารที่ออกใบเสร็จได้</div>}
+                        </SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                    )} />
+                    
+                    <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-md text-xs text-muted-foreground">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <p>หมายเหตุ: ใบกำกับภาษีที่ระบุว่า "ต้องวางบิล" จะไม่ปรากฏในรายการนี้ กรุณาเลือกอ้างอิงจาก "ใบวางบิล" แทน</p>
+                    </div>
+                </div>
             )}
             </CardContent>
         </Card>
@@ -251,8 +267,8 @@ export function ReceiptForm() {
             <FormField name="paymentDate" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>วันที่ชำระเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <FormField name="amount" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>ยอดที่ชำระ</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <div className="grid grid-cols-2 gap-4">
-                <FormField name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem><SelectItem value="CREDIT">เครดิต</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-                <FormField name="accountId" render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                <FormField name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem><SelectItem value="CREDIT">เครดิต</SelectItem></Select><FormMessage /></FormItem>)} />
+                <FormField name="accountId" render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</Select><FormMessage /></FormItem>)} />
             </div>
             <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
             </CardContent>
