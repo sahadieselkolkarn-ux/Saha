@@ -561,6 +561,37 @@ export interface AccountingEntry {
   withholdingTaxDocId?: string; // Link to WITHHOLDING_TAX Document
 }
 
+export interface WithholdingTaxDoc {
+  id: string;
+  docNo: string;
+  bookNo?: string;
+  docDate: string; // YYYY-MM-DD
+  payerSnapshot: {
+    name: string;
+    address: string;
+    taxId: string;
+    branch?: string;
+  };
+  payeeSnapshot: {
+    name: string;
+    address: string;
+    taxId: string;
+  };
+  vendorId?: string;
+  pndForm?: 'PND1' | 'PND1K' | 'PND2' | 'PND3' | 'PND53' | 'OTHER';
+  pndSequenceNo?: string;
+  paidMonth: number;
+  paidYear: number;
+  incomeTypeCode: 'ITEM1' | 'ITEM2' | 'ITEM3' | 'ITEM4' | 'ITEM5' | 'ITEM6';
+  incomeTypeOtherText?: string;
+  paidAmountGross: number;
+  withholdingPercent: 1 | 3;
+  withholdingAmount: number;
+  paidAmountNet: number;
+  relatedAccountingEntryId: string;
+  status: 'DRAFT' | 'ISSUED' | 'CANCELLED';
+}
+
 export interface ARPayment {
   id: string;
   receiptId: string;
