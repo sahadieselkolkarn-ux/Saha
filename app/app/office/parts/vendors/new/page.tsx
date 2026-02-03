@@ -32,6 +32,23 @@ const vendorSchema = z.object({
   email: z.string().email({ message: "อีเมลไม่ถูกต้อง" }).optional().or(z.literal('')),
   taxId: z.string().optional(),
   notes: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.vendorType === 'CONTRACTOR') {
+    if (!data.taxId || data.taxId.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "กรุณากรอกเลขประจำตัวผู้เสียภาษีสำหรับผู้รับเหมา",
+        path: ["taxId"],
+      });
+    }
+    if (!data.address || data.address.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "กรุณากรอกที่อยู่สำหรับผู้รับเหมา",
+        path: ["address"],
+      });
+    }
+  }
 });
 
 type VendorFormData = z.infer<typeof vendorSchema>;
