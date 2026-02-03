@@ -9,7 +9,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
-import { useFirebase, useCollection, type WithId } from "@/firebase";
+import { useFirebase, useCollection, type WithId, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -32,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
+import { Separator } from "@/components/ui/separator";
 
 type EntryType = 'CASH_IN' | 'CASH_OUT';
 
@@ -141,7 +142,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       accountId: "",
       paymentMethod: "CASH",
       sourceDocNo: "",
-      billType: "NO_BILL",
+      billType: "NO_TAX_INVOICE",
       vatRate: 0,
       vatAmount: 0,
       netAmount: 0,
@@ -162,7 +163,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
             accountId: accounts[0]?.id || "",
             paymentMethod: "CASH",
             sourceDocNo: "",
-            billType: "NO_BILL",
+            billType: "NO_TAX_INVOICE",
             vatRate: 0,
             vatAmount: 0,
             netAmount: 0,
@@ -177,19 +178,29 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   const watchedVatRate = form.watch('vatRate') || 0;
   const watchedWhtEnabled = form.watch('withholdingEnabled');
   const watchedWhtPercent = form.watch('withholdingPercent') || 0;
+  const watchedBillType = form.watch('billType');
 
   // Auto-calculate VAT and WHT based on net amount
   useEffect(() => {
     if (entryType !== 'CASH_OUT') return;
     
-    const vatAmount = Math.round(watchedNetAmount * (watchedVatRate / 100) * 100) / 100;
-    const whtAmount = watchedWhtEnabled ? Math.round(watchedNetAmount * (watchedWhtPercent / 100) * 100) / 100 : 0;
-    const amount = Math.round((watchedNetAmount + vatAmount - whtAmount) * 100) / 100;
+    const vatAmount = watchedBillType === 'TAX_INVOICE' 
+        ? Math.round(watchedNetAmount * (watchedVatRate / 100) * 100) / 100 
+        : 0;
+    
+    // Base for WHT: "ยอดก่อน VAT (ถ้ามี VAT)"
+    // If billType is TAX_INVOICE, base is netAmount. 
+    // If not, netAmount is effectively the base price anyway in our UI flow.
+    const whtAmount = watchedWhtEnabled 
+        ? Math.round(watchedNetAmount * (watchedWhtPercent / 100) * 100) / 100 
+        : 0;
+        
+    const cashPaid = Math.round((watchedNetAmount + vatAmount - whtAmount) * 100) / 100;
 
     form.setValue('vatAmount', vatAmount);
     form.setValue('withholdingAmount', whtAmount);
-    form.setValue('amount', amount);
-  }, [watchedNetAmount, watchedVatRate, watchedWhtEnabled, watchedWhtPercent, form, entryType]);
+    form.setValue('amount', cashPaid);
+  }, [watchedNetAmount, watchedVatRate, watchedWhtEnabled, watchedWhtPercent, watchedBillType, form, entryType]);
 
   const selectedMainCategory = form.watch('categoryMain');
   const subCategories = useMemo(() => {
@@ -206,6 +217,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       // 1. Create Withholding Tax Document if enabled
       if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
           const selectedVendor = allVendors.find(v => v.id === values.vendorId);
+          // Only create doc if we have enough info for payee
           if (selectedVendor && (selectedVendor.taxId && selectedVendor.address)) {
               const whtData = {
                   docDate: values.entryDate,
@@ -223,7 +235,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                   vendorId: values.vendorId,
                   paidMonth: parseInt(values.entryDate.split('-')[1]),
                   paidYear: parseInt(values.entryDate.split('-')[0]),
-                  incomeTypeCode: 'ITEM5' as const, // Default to ITEM5 as requested
+                  incomeTypeCode: 'ITEM5' as const, 
                   paidAmountGross: values.netAmount || values.amount,
                   withholdingPercent: values.withholdingPercent as 1 | 3,
                   withholdingAmount: values.withholdingAmount || 0,
@@ -285,43 +297,121 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                 )}
             </div>
 
-            <Separator />
-
             {entryType === 'CASH_OUT' ? (
+                <>
+                <Separator className="my-2" />
                 <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-dashed">
-                    <h4 className="text-sm font-semibold flex items-center gap-2"><AlertCircle className="h-4 w-4" /> รายละเอียดภาษีและบิล</h4>
+                    <h4 className="text-sm font-semibold flex items-center gap-2 text-primary"><AlertCircle className="h-4 w-4" /> รายละเอียดภาษีและบิล</h4>
+                    
                     <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="billType" render={({ field }) => (<FormItem><FormLabel>หลักฐานการจ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="NO_BILL">ไม่มีหลักฐาน</SelectItem><SelectItem value="NO_TAX_INVOICE">บิลเงินสด (ไม่มี VAT)</SelectItem><SelectItem value="TAX_INVOICE">ใบกำกับภาษี</SelectItem></SelectContent></Select></FormItem>)} />
-                        <FormField control={form.control} name="vatRate" render={({ field }) => (<FormItem><FormLabel>VAT (%)</FormLabel><Select onValueChange={field.onChange} value={field.value?.toString()}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="0">0% (ไม่มี/ยกเว้น)</SelectItem><SelectItem value="7">7%</SelectItem></SelectContent></Select></FormItem>)} />
+                        <FormField control={form.control} name="billType" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>ประเภทหลักฐาน</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="NO_BILL">ไม่มีหลักฐาน</SelectItem>
+                                        <SelectItem value="NO_TAX_INVOICE">บิลเงินสด (ไม่มี VAT)</SelectItem>
+                                        <SelectItem value="TAX_INVOICE">ใบกำกับภาษี</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </FormItem>
+                        )} />
+                        
+                        <FormField control={form.control} name="vatRate" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>VAT (%)</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value?.toString()} disabled={watchedBillType !== 'TAX_INVOICE'}>
+                                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="0">0% (ยกเว้น)</SelectItem>
+                                        <SelectItem value="7">7%</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </FormItem>
+                        )} />
                     </div>
+
                     <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="netAmount" render={({ field }) => (<FormItem><FormLabel>ยอดก่อนภาษี (Net)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl></FormItem>)} />
-                        <FormItem><FormLabel>จำนวนเงิน VAT</FormLabel><FormControl><Input type="number" value={form.watch('vatAmount')} disabled className="bg-muted" /></FormControl></FormItem>
+                        <FormField control={form.control} name="netAmount" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="font-semibold">{watchedBillType === 'TAX_INVOICE' ? 'ยอดก่อน VAT (Net)' : 'ยอดเงิน (ก่อนหักภาษี)'}</FormLabel>
+                                <FormControl><Input type="number" step="0.01" {...field} placeholder="0.00" /></FormControl>
+                                <FormDescription className="text-[10px]">ใช้เป็นฐานคำนวณ VAT และ หัก ณ ที่จ่าย</FormDescription>
+                            </FormItem>
+                        )} />
+                        
+                        <FormItem>
+                            <FormLabel>จำนวนเงิน VAT</FormLabel>
+                            <FormControl><Input type="number" value={form.watch('vatAmount')} disabled className="bg-muted font-mono" /></FormControl>
+                        </FormItem>
                     </div>
-                    <div className="space-y-3 pt-2 border-t">
+
+                    <div className="space-y-3 pt-2 border-t border-muted">
                         <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
                             <FormItem className="flex flex-row items-center space-x-3 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                <div className="space-y-1 leading-none"><FormLabel>หัก ณ ที่จ่าย (Withholding Tax)</FormLabel></div>
+                                <div className="space-y-1 leading-none"><FormLabel className="cursor-pointer">หัก ณ ที่จ่าย (Withholding Tax)</FormLabel></div>
                             </FormItem>
                         )} />
+                        
                         {watchedWhtEnabled && (
-                            <div className="grid grid-cols-2 gap-4">
-                                <FormField control={form.control} name="withholdingPercent" render={({ field }) => (<FormItem><FormLabel>หัก (%)</FormLabel><Select onValueChange={field.onChange} value={field.value?.toString()}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="1">1% (ค่าขนส่ง/ค่าบริการ)</SelectItem><SelectItem value="3">3% (ค่าบริการ/ค่าแรง)</SelectItem></SelectContent></Select></FormItem>)} />
-                                <FormItem><FormLabel>ยอดที่หักไว้</FormLabel><FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted" /></FormControl></FormItem>
+                            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1">
+                                <FormField control={form.control} name="withholdingPercent" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>หัก (%)</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value?.toString()}>
+                                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="1">1% (ค่าขนส่ง/บริการ)</SelectItem>
+                                                <SelectItem value="3">3% (ค่าแรง/จ้างทำของ)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </FormItem>
+                                )} />
+                                <FormItem>
+                                    <FormLabel>ยอดที่หักไว้</FormLabel>
+                                    <FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted font-mono" /></FormControl>
+                                </FormItem>
                             </div>
                         )}
                     </div>
                 </div>
+                </>
             ) : null}
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel className="font-bold text-primary">ยอดจ่ายสุทธิ (Cash Paid)</FormLabel><FormControl><Input type="number" step="0.01" {...field} className={cn("text-lg font-bold", entryType === 'CASH_OUT' && "bg-muted")} disabled={entryType === 'CASH_OUT'} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="accountId" render={({ field }) => (<FormItem><FormLabel>ออกจากบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+            <div className="grid grid-cols-2 gap-4 items-end">
+              <FormField control={form.control} name="amount" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-bold text-primary">ยอดจ่ายสุทธิ (Cash Paid)</FormLabel>
+                    <FormControl>
+                        <Input 
+                            type="number" 
+                            step="0.01" 
+                            {...field} 
+                            className={cn("text-lg font-bold bg-primary/5", entryType === 'CASH_OUT' && "bg-muted cursor-not-allowed")} 
+                            readOnly={entryType === 'CASH_OUT'}
+                        />
+                    </FormControl>
+                    {entryType === 'CASH_OUT' && <FormDescription className="text-[10px]">เงินที่ต้องควักจ่ายจริง (รวม VAT หัก WHT แล้ว)</FormDescription>}
+                    <FormMessage />
+                  </FormItem>
+              )} />
+              
+              <FormField control={form.control} name="accountId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ออกจากบัญชี</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
+                        <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+              )} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name="sourceDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล/อ้างอิง</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+                <FormField control={form.control} name="sourceDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล/อ้างอิง</FormLabel><FormControl><Input placeholder="เช่น INV-12345" {...field} /></FormControl></FormItem>)} />
                 <FormItem>
                     <FormLabel>จ่ายให้คู่ค้า (ถ้ามี)</FormLabel>
                     <VendorCombobox
@@ -336,7 +426,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
             </div>
           </form>
         </Form>
-        <DialogFooter className="p-6 border-t">
+        <DialogFooter className="p-6 border-t bg-muted/50">
           <Button variant="outline" onClick={() => setIsOpen(false)}>ยกเลิก</Button>
           <Button type="submit" form="entry-form" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
