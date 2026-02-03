@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
@@ -271,7 +270,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                 </div>
                 <div className="flex flex-col gap-2">
                     <Button asChild size="lg" className="w-full">
-                        <Link href={`/app/management/accounting/documents/withholding-tax/${successDocId}/print`} target="_blank">
+                        <Link href={`/app/management/accounting/withholding-tax/${successDocId}/print`} target="_blank">
                             <Printer className="mr-2 h-5 w-5" /> พิมพ์หนังสือรับรอง (50 ทวิ)
                         </Link>
                     </Button>
@@ -441,7 +440,7 @@ function CashbookPageContent() {
                                 <TableCell className="text-right">
                                     {entry.withholdingTaxDocId && (
                                         <Button asChild variant="ghost" size="icon" title="พิมพ์หนังสือรับรอง">
-                                            <Link href={`/app/management/accounting/documents/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
+                                            <Link href={`/app/management/accounting/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
                                         </Button>
                                     )}
                                 </TableCell>
