@@ -7,7 +7,9 @@ import * as z from 'zod';
 import { addDoc, collection, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { format, differenceInCalendarDays, getYear, isBefore, startOfToday, subMonths } from 'date-fns';
 
-import { useFirebase, useCollection, useDoc, type WithId } from '@/firebase';
+import { useFirebase } from '@/firebase';
+import { useCollection, type WithId } from '@/firebase/firestore/use-collection';
+import { useDoc } from '@/firebase/firestore/use-doc';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -367,7 +369,7 @@ export default function MyLeavesPage() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingLeaveData(null)}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmOverLimit} disabled={isSubmitting}>
-              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "ดำเนินการต่อ"}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "ดำเนินการต่อ"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
