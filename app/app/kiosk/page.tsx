@@ -31,8 +31,8 @@ export default function KioskPage() {
       if (isManual) {
         toast({
           variant: "destructive",
-          title: "ยังไม่พร้อม",
-          description: "กำลังตรวจสอบการเข้าสู่ระบบ..."
+          title: "ยังไม่พร้อม / Not Ready",
+          description: "กำลังตรวจสอบการเข้าสู่ระบบ... / Verifying login..."
         });
       }
       return;
@@ -107,12 +107,17 @@ export default function KioskPage() {
 
   return (
     <>
-      <PageHeader title="Kiosk" description="ให้พนักงานสแกน QR Code นี้เพื่อบันทึกเวลา" />
+      <PageHeader 
+        title="Kiosk / หน้าจอลงเวลา" 
+        description="Scan this QR Code to record your working time. / ให้พนักงานสแกน QR Code นี้เพื่อบันทึกเวลาทำงาน" 
+      />
       <div className="flex flex-col items-center justify-center mt-8 gap-6">
         <Card className="w-full max-w-sm text-center">
           <CardHeader>
             <CardTitle className="text-2xl font-headline">Scan to Clock In/Out</CardTitle>
             <CardDescription>
+                Scan QR Code to open the clock-in page on your mobile.
+                <br />
                 สแกน QR Code เพื่อเปิดหน้าลงเวลาบนมือถือ
             </CardDescription>
           </CardHeader>
@@ -132,7 +137,7 @@ export default function KioskPage() {
               )}
               <Button onClick={() => generateNewToken(true)} variant="outline" size="sm" disabled={isLoading}>
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh Code
+                Refresh Code / สร้างโค้ดใหม่
               </Button>
             </div>
           </CardContent>

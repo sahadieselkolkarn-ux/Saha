@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect } from 'react';
@@ -54,18 +55,16 @@ export default function AttendanceHistoryPage() {
           <TableCell colSpan={4} className="text-center p-8">
             <div className="flex flex-col items-center gap-4 bg-muted/50 p-6 rounded-lg">
               <AlertCircle className="h-10 w-10 text-destructive" />
-              <h3 className="font-semibold text-lg text-foreground">ต้องสร้างดัชนี (Index) ก่อน</h3>
+              <h3 className="font-semibold text-lg text-foreground">ต้องสร้างดัชนี (Index) ก่อน / Index Required</h3>
               <p className="text-muted-foreground text-sm max-w-md">
                 ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับข้อมูลประวัติการลงเวลาของคุณ
-                กรุณากดปุ่มด้านล่างเพื่อสร้างใน Firebase Console (อาจใช้เวลา 2-3 นาที) แล้วลองรีเฟรชหน้านี้
-              </p>
-              <p className="text-xs text-muted-foreground pt-2">
-                Index Required: Collection `attendance`, Fields: `userId` (Ascending), `timestamp` (Descending)
+                <br />
+                The database requires an index to sort your attendance history.
               </p>
               <Button asChild className="mt-2">
                 <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  เปิดหน้าสร้าง Index
+                  Create Index / สร้าง Index
                 </a>
               </Button>
             </div>
@@ -86,19 +85,22 @@ export default function AttendanceHistoryPage() {
 
   return (
     <>
-      <PageHeader title="Attendance History" description="View your clock-in and clock-out records." />
+      <PageHeader 
+        title="Attendance History / ประวัติการลงเวลา" 
+        description="View your clock-in and clock-out records. / ดูประวัติการบันทึกเวลาทำงานของคุณ" 
+      />
       <Card>
         <CardHeader>
-          <CardTitle>ประวัติการลงเวลา</CardTitle>
+          <CardTitle>History / ประวัติการลงเวลา</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>วันที่</TableHead>
-                <TableHead>เวลา</TableHead>
-                <TableHead>การกระทำ</TableHead>
-                <TableHead>ชื่อ</TableHead>
+                <TableHead>Date / วันที่</TableHead>
+                <TableHead>Time / เวลา</TableHead>
+                <TableHead>Action / การกระทำ</TableHead>
+                <TableHead>Name / ชื่อ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -126,7 +128,7 @@ export default function AttendanceHistoryPage() {
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                    ไม่พบข้อมูลการลงเวลา
+                    No attendance records found. / ไม่พบข้อมูลการลงเวลา
                   </TableCell>
                 </TableRow>
               )}
