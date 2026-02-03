@@ -550,15 +550,15 @@ export interface AccountingEntry {
   vendorNameSnapshot?: string;
   counterpartyNameSnapshot?: string; // For one-off individuals not in vendors
 
-  // Tax and Bill fields
-  billType?: 'RECEIPT' | 'TAX_INVOICE' | 'OTHER';
-  isVat?: boolean;
+  // Tax and Bill fields (Updated for detailed CASH_OUT support)
+  billType?: 'NO_BILL' | 'NO_TAX_INVOICE' | 'TAX_INVOICE';
+  vatRate?: 0 | 7;
   vatAmount?: number;
   netAmount?: number; // amount - vatAmount
-  whtEnabled?: boolean;
-  whtPercent?: 1 | 3 | number;
-  whtAmount?: number;
-  whtDocId?: string; // Link to WITHHOLDING_TAX Document
+  withholdingEnabled?: boolean;
+  withholdingPercent?: 1 | 3 | number;
+  withholdingAmount?: number;
+  withholdingTaxDocId?: string; // Link to WITHHOLDING_TAX Document
 }
 
 export interface ARPayment {
