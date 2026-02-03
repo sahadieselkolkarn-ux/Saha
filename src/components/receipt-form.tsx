@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -267,8 +266,32 @@ export function ReceiptForm() {
             <FormField name="paymentDate" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>วันที่ชำระเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <FormField name="amount" render={({ field }) => (<FormItem className="w-[300px]"><FormLabel>ยอดที่ชำระ</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <div className="grid grid-cols-2 gap-4">
-                <FormField name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem><SelectItem value="CREDIT">เครดิต</SelectItem></Select><FormMessage /></FormItem>)} />
-                <FormField name="accountId" render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</Select><FormMessage /></FormItem>)} />
+                <FormField name="paymentMethod" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>ช่องทาง</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
+                            <SelectContent>
+                                <SelectItem value="CASH">เงินสด</SelectItem>
+                                <SelectItem value="TRANSFER">โอน</SelectItem>
+                                <SelectItem value="CREDIT">เครดิต</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
+                <FormField name="accountId" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>เข้าบัญชี</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
+                            <SelectContent>
+                                {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
             </div>
             <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} /></FormControl></FormItem>)} />
             </CardContent>
