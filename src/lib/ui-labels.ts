@@ -1,5 +1,4 @@
 
-
 const DEPARTMENT_LABELS: Record<string, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
@@ -39,7 +38,7 @@ const DOC_STATUS_LABELS: Record<string, string> = {
     SUBMITTED: 'ส่งแล้ว',
     APPROVED: 'อนุมัติแล้ว',
     UNPAID: 'ยังไม่จ่าย',
-    PENDING_REVIEW: "รอตรวจสอบรายรับ",
+    PENDING_REVIEW: "รอตรวจสอบรายการขาย",
     REJECTED: "ตีกลับ",
 };
 

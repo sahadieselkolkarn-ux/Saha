@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -89,6 +88,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   
+  // Job reference logic
+  const [jobsReadyToBill, setJobsReadyToBill] = useState<Job[]>([]);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(false);
+  const [isJobPopoverOpen, setIsJobPopoverOpen] = useState(false);
+  const [jobSearch, setJobSearch] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
@@ -129,6 +134,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     });
   };
 
+  const currentJobId = form.watch('jobId');
   const selectedCustomerId = form.watch('customerId');
   
   const customerDocRef = useMemo(() => {
@@ -155,9 +161,21 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         unsubscribe();
     };
   }, [db, toast]);
+
+  // Fetch jobs ready to bill (status === 'DONE')
+  useEffect(() => {
+    if (!db || jobId || isEditing) return;
+    setIsLoadingJobs(true);
+    const q = query(collection(db, "jobs"), where("status", "==", "DONE"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        setJobsReadyToBill(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
+        setIsLoadingJobs(false);
+    });
+    return () => unsubscribe();
+  }, [db, jobId, isEditing]);
   
   useEffect(() => {
-    if (!db || !jobId) {
+    if (!db || !currentJobId) {
         setQuotations([]);
         setSelectedQuotationId('');
         return;
@@ -165,7 +183,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     
     const q = query(
         collection(db, "documents"),
-        where("jobId", "==", jobId)
+        where("jobId", "==", currentJobId)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const allCustomerDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType));
@@ -179,7 +197,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     });
     return () => unsubscribe();
 
-  }, [db, jobId]);
+  }, [db, currentJobId]);
   
   useEffect(() => {
     if (docToEdit) {
@@ -217,6 +235,16 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       return name.includes(q) || phone.includes(q);
     });
   }, [customers, customerSearch]);
+
+  const filteredJobs = useMemo(() => {
+    const q = jobSearch.trim().toLowerCase();
+    if (!q) return jobsReadyToBill;
+    return jobsReadyToBill.filter(j => 
+        j.customerSnapshot.name.toLowerCase().includes(q) ||
+        j.customerSnapshot.phone.includes(q) ||
+        j.description.toLowerCase().includes(q)
+    );
+  }, [jobsReadyToBill, jobSearch]);
   
   const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
@@ -273,6 +301,15 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     });
   };
 
+  const handleSelectJob = (job: Job) => {
+    form.setValue('jobId', job.id);
+    form.setValue('customerId', job.customerId);
+    form.setValue('receiverName', job.customerSnapshot.name);
+    form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
+    setIsJobPopoverOpen(false);
+    toast({ title: "อ้างอิงงานซ่อมแล้ว", description: `เลือกงานของ ${job.customerSnapshot.name}` });
+  };
+
   const handleSave = async (data: DeliveryNoteFormData) => {
     const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
@@ -283,11 +320,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     setIsSubmitting(true);
 
     const documentDataPayload = {
-      customerId: data.customerId, // Ensure customerId is included
+      customerId: data.customerId,
       docDate: data.issueDate,
       jobId: data.jobId,
       customerSnapshot: { ...customerSnapshot },
-      carSnapshot: (job || docToEdit?.jobId) ? { licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, details: job?.description || docToEdit?.carSnapshot?.details } : {},
+      carSnapshot: (data.jobId || docToEdit?.jobId) ? { 
+          licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate || jobsReadyToBill.find(j=>j.id===data.jobId)?.carServiceDetails?.licensePlate, 
+          details: job?.description || docToEdit?.carSnapshot?.details || jobsReadyToBill.find(j=>j.id===data.jobId)?.description
+      } : {},
       storeSnapshot: { ...storeSettings },
       items: data.items,
       subtotal: data.subtotal,
@@ -313,7 +353,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         let docId: string;
         const options = {
             ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
-            initialStatus: 'DRAFT', // Always draft, accounting will change it.
+            initialStatus: 'PENDING_REVIEW', // Default status for Delivery Note now
         };
         
         if (isEditing && editDocId) {
@@ -345,7 +385,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer || isLoadingDocToEdit;
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
-  const isCustomerSelectionDisabled = isLocked || !!jobId || (isEditing && !!docToEdit?.customerId);
+  const isCustomerSelectionDisabled = isLocked || !!currentJobId || (isEditing && !!docToEdit?.customerId);
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
@@ -357,7 +397,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         <Alert variant="destructive" className="mb-4">
           <AlertTitle>เอกสารถูกล็อก</AlertTitle>
           <AlertDescription>
-            เอกสารนี้ถูกยืนยันรายรับแล้ว จึงไม่สามารถแก้ไขได้
+            เอกสารนี้ถูกยืนยันรายการขายแล้ว จึงไม่สามารถแก้ไขได้
           </AlertDescription>
         </Alert>
       )}
@@ -371,50 +411,121 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             </Button>
           </div>
           
-          <Card>
-              <CardHeader><CardTitle className="text-base">1. Select Customer</CardTitle></CardHeader>
-              <CardContent>
-                  <FormField
-                      name="customerId"
-                      control={form.control}
-                      render={({ field }) => (
-                          <FormItem>
-                          <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                              <PopoverTrigger asChild>
-                              <FormControl>
-                                  <Button variant="outline" role="combobox" className="w-full max-w-sm justify-between" disabled={isCustomerSelectionDisabled}>
-                                  {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                  </Button>
-                              </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                  <div className="p-2 border-b">
-                                      <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
-                                  </div>
-                                  <ScrollArea className="h-60">
-                                      {filteredCustomers.map(c => (
-                                          <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
-                                      ))}
-                                  </ScrollArea>
-                              </PopoverContent>
-                          </Popover>
-                          </FormItem>
-                      )}
-                  />
-                  {displayCustomer && (
-                      <>
-                          <p className="text-sm text-muted-foreground mt-2">{displayCustomer.taxAddress || 'N/A'}</p>
-                          <p className="text-sm text-muted-foreground">โทร: {displayCustomer.phone}</p>
-                      </>
-                  )}
-              </CardContent>
-          </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+                <CardHeader><CardTitle className="text-base">1. เลือกข้อมูลลูกค้า</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                    {!jobId && !isEditing && (
+                        <div className="space-y-2">
+                            <Label>อ้างอิงจากงานซ่อมที่ทำเสร็จแล้ว (Job DONE)</Label>
+                            <Popover open={isJobPopoverOpen} onOpenChange={setIsJobPopoverOpen}>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-full justify-between font-normal">
+                                        {currentJobId ? `งาน ID: ${currentJobId.substring(0,8)}...` : "เลือกงานซ่อมที่รอทำบิล..."}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                    <div className="p-2 border-b">
+                                        <div className="relative">
+                                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                            <Input placeholder="ค้นหาชื่องาน, ลูกค้า, เบอร์โทร..." value={jobSearch} onChange={e => setJobSearch(e.target.value)} className="pl-8" />
+                                        </div>
+                                    </div>
+                                    <ScrollArea className="h-60">
+                                        {isLoadingJobs ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>Loading...</div> : 
+                                         filteredJobs.length > 0 ? filteredJobs.map(j => (
+                                            <Button variant="ghost" key={j.id} onClick={() => handleSelectJob(j)} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none">
+                                                <div className="text-left">
+                                                    <p className="font-semibold">{j.customerSnapshot.name} ({j.customerSnapshot.phone})</p>
+                                                    <p className="text-xs text-muted-foreground line-clamp-1">{j.description}</p>
+                                                    <p className="text-[10px] text-muted-foreground">ID: {j.id.substring(0,8)}... • {deptLabel(j.department)}</p>
+                                                </div>
+                                            </Button>
+                                        )) : <div className="p-4 text-center text-sm text-muted-foreground">ไม่พบงานที่รอทำบิล</div>}
+                                    </ScrollArea>
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                    )}
+
+                    <FormField
+                        name="customerId"
+                        control={form.control}
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>ชื่อลูกค้า</FormLabel>
+                            <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                                <PopoverTrigger asChild>
+                                <FormControl>
+                                    <Button variant="outline" role="combobox" className={cn("w-full justify-between", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
+                                    {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </FormControl>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                    <div className="p-2 border-b">
+                                        <Input placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                    </div>
+                                    <ScrollArea className="h-60">
+                                        {filteredCustomers.map(c => (
+                                            <Button variant="ghost" key={c.id} onClick={() => {field.onChange(c.id); setIsCustomerPopoverOpen(false);}} className="w-full justify-start">{c.name}</Button>
+                                        ))}
+                                    </ScrollArea>
+                                </PopoverContent>
+                            </Popover>
+                            </FormItem>
+                        )}
+                    />
+                    {displayCustomer && (
+                        <div className="text-sm p-3 bg-muted/50 rounded-md">
+                            <p className="font-medium">{displayCustomer.name}</p>
+                            <p className="text-muted-foreground">{displayCustomer.taxAddress || displayCustomer.detail || 'N/A'}</p>
+                            <p className="text-muted-foreground">โทร: {displayCustomer.phone}</p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader><CardTitle className="text-base">2. เงื่อนไขการชำระเงิน</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                    <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>รูปแบบการชำระ</FormLabel>
+                            <FormControl>
+                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="CASH" id="cash" disabled={isLocked} />
+                                        <Label htmlFor="cash">เงินสด/โอน (Cash)</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} />
+                                        <Label htmlFor="credit">เครดิต (Credit)</Label>
+                                    </div>
+                                </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
+                    <FormField control={form.control} name="billingRequired" render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
+                            <div className="space-y-1 leading-none">
+                                <FormLabel>ต้องออกใบวางบิล</FormLabel>
+                                <FormDescription>ติ๊กเลือกเมื่อต้องรวบรวมเพื่อวางบิลภายหลัง</FormDescription>
+                            </div>
+                        </FormItem>
+                    )} />
+                </CardContent>
+            </Card>
+          </div>
 
           <Card>
               <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                  <CardTitle className="text-base">2. รายการสินค้า/บริการ</CardTitle>
-                  {jobId && quotations.length > 0 && (
+                  <CardTitle className="text-base">3. รายการสินค้า/บริการ</CardTitle>
+                  {currentJobId && quotations.length > 0 && (
                     <div className="flex items-center gap-2">
                       <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
                         <SelectTrigger className="w-full sm:w-[280px]">
@@ -433,9 +544,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                   )}
               </CardHeader>
               <CardContent>
-                  {jobId && quotations.length === 0 && !isLoading && (
-                      <p className="text-muted-foreground text-sm mb-4">ไม่พบใบเสนอราคาสำหรับงานนี้</p>
-                  )}
                   <div className="border rounded-md">
                       <Table>
                           <TableHeader><TableRow><TableHead className="w-12">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
@@ -502,9 +610,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
           </Card>
 
             <Card>
-                <CardHeader><CardTitle className="text-base">3. หมายเหตุ และรายละเอียด</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base">4. หมายเหตุ และรายละเอียดส่งมอบ</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                    <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                    <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                     <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
                         <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด</FormLabel><FormControl>
@@ -519,10 +627,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                   disabled={isLocked}
                               />
                         </FormControl></FormItem>)} />
-                    </div>
-                     <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="paymentTerms" render={({ field }) => (<FormItem><FormLabel>เงื่อนไขชำระเงิน</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CASH" id="cash"/></FormControl><Label htmlFor="cash">เงินสด</Label></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CREDIT" id="credit"/></FormControl><Label htmlFor="credit">เครดิต</Label></FormItem></RadioGroup></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={form.control} name="billingRequired" render={({ field }) => (<FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit mt-auto"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">ต้องออกใบวางบิล</FormLabel></FormItem>)} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />

@@ -81,8 +81,8 @@ const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
-                <SubNavLink href="/app/management/accounting/inbox" label="รอตรวจสอบรายรับ" onClick={onLinkClick} />
-                <SubNavLink href="/app/management/accounting/purchase-inbox" label="รอตรวจสอบรายจ่าย" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/inbox" label="รอตรวจสอบรายการขาย" onClick={onLinkClick} />
+                <SubNavLink href="/app/management/accounting/purchase-inbox" label="รอตรวจสอบรายการซื้อ" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/cashbook" label="รับ–จ่ายเงิน" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/receivables-payables" label="ลูกหนี้/เจ้าหนี้" onClick={onLinkClick} />
                 <SubNavLink href="/app/management/accounting/accounts" label="บัญชีเงินสด/ธนาคาร" onClick={onLinkClick} />

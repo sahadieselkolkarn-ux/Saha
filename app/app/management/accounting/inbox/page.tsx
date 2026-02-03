@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, updateDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 
@@ -25,6 +25,7 @@ import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
+import { archiveAndCloseJob } from '@/firebase/jobs-archive';
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -76,7 +77,7 @@ export default function AccountingInboxPage() {
   const filteredDocs = useMemo(() => {
     const filteredByTab = documents.filter(doc => {
       if (activeTab === 'receive') {
-        return doc.docType === 'DELIVERY_NOTE' && doc.paymentTerms === 'CASH';
+        return (doc.docType === 'DELIVERY_NOTE' || doc.docType === 'TAX_INVOICE') && doc.paymentTerms === 'CASH';
       }
       if (activeTab === 'ar') {
         return (doc.docType === 'DELIVERY_NOTE' || doc.docType === 'TAX_INVOICE') && doc.paymentTerms === 'CREDIT';
@@ -115,10 +116,26 @@ export default function AccountingInboxPage() {
         createdAt: serverTimestamp(),
       });
 
-      batch.update(doc(db, 'documents', confirmingDoc.id), { arStatus: 'PAID' });
+      batch.update(doc(db, 'documents', confirmingDoc.id), { 
+          arStatus: 'PAID',
+          status: 'APPROVED',
+          updatedAt: serverTimestamp()
+      });
       
       await batch.commit();
-      toast({ title: "ยืนยันการรับเงินสำเร็จ" });
+
+      // Archive Job if exists
+      if (confirmingDoc.jobId) {
+          const salesDocInfo = {
+              salesDocType: confirmingDoc.docType,
+              salesDocId: confirmingDoc.id,
+              salesDocNo: confirmingDoc.docNo,
+              paymentStatusAtClose: 'PAID' as const
+          };
+          await archiveAndCloseJob(db, confirmingDoc.jobId, confirmingDoc.docDate, profile, salesDocInfo);
+      }
+
+      toast({ title: "ยืนยันการรับเงินและปิดงานสำเร็จ" });
       setConfirmingDoc(null);
     } catch(e: any) {
       toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
@@ -139,9 +156,25 @@ export default function AccountingInboxPage() {
             createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dueDate: docToProcess.dueDate || null,
             customerNameSnapshot: docToProcess.customerSnapshot.name,
         });
-        batch.update(doc(db, 'documents', docToProcess.id), { arStatus: 'UNPAID' });
+        batch.update(doc(db, 'documents', docToProcess.id), { 
+            arStatus: 'UNPAID',
+            status: 'APPROVED',
+            updatedAt: serverTimestamp()
+        });
         await batch.commit();
-        toast({ title: 'สร้างลูกหนี้สำเร็จ' });
+
+        // Archive Job if exists
+        if (docToProcess.jobId) {
+            const salesDocInfo = {
+                salesDocType: docToProcess.docType,
+                salesDocId: docToProcess.id,
+                salesDocNo: docToProcess.docNo,
+                paymentStatusAtClose: 'UNPAID' as const
+            };
+            await archiveAndCloseJob(db, docToProcess.jobId, docToProcess.docDate, profile, salesDocInfo);
+        }
+
+        toast({ title: 'สร้างลูกหนี้และปิดงานสำเร็จ' });
     } catch (e: any) {
         toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
     } finally {
@@ -155,9 +188,10 @@ export default function AccountingInboxPage() {
     try {
       await updateDoc(doc(db, 'documents', disputingDoc.id), {
         arStatus: 'DISPUTED',
+        status: 'REJECTED',
         dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() }
       });
-      toast({ title: "บันทึกข้อโต้แย้งสำเร็จ" });
+      toast({ title: "บันทึกข้อโต้แย้งและตีกลับสำเร็จ" });
       setDisputingDoc(null);
     } catch(e: any) {
       toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
@@ -170,11 +204,11 @@ export default function AccountingInboxPage() {
 
   return (
     <>
-      <PageHeader title="Inbox บัญชี" description="ศูนย์กลางตรวจสอบและจัดการเอกสารทางการเงิน" />
+      <PageHeader title="Inbox บัญชี" description="ศูนย์กลางตรวจสอบและยืนยันรายการขาย" />
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex justify-between items-center mb-4">
           <TabsList>
-            <TabsTrigger value="receive">รอรับเงิน (เงินสด)</TabsTrigger>
+            <TabsTrigger value="receive">รอรับเงิน (เงินสด/โอน)</TabsTrigger>
             <TabsTrigger value="ar">รอตั้งลูกหนี้ (เครดิต)</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
@@ -203,13 +237,13 @@ export default function AccountingInboxPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent>
                                     <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
-                                        <Eye className="mr-2"/> ดูเอกสาร
+                                        <Eye className="mr-2 h-4 w-4"/> ดูเอกสาร
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                        <Ban className="mr-2"/> ส่งกลับ (เพื่อแก้ไข)
+                                        <Ban className="mr-2 h-4 w-4"/> ส่งกลับ (เพื่อแก้ไข)
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onSelect={() => setConfirmingDoc(doc)}>
-                                        <CheckCircle className="mr-2"/> ยืนยันรับเงิน
+                                        <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงิน
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -238,13 +272,13 @@ export default function AccountingInboxPage() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent>
                                     <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
-                                        <Eye className="mr-2"/> ดูเอกสาร
+                                        <Eye className="mr-2 h-4 w-4"/> ดูเอกสาร
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                        <Ban className="mr-2"/> ส่งกลับ (เพื่อแก้ไข)
+                                        <Ban className="mr-2 h-4 w-4"/> ส่งกลับ (เพื่อแก้ไข)
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onSelect={() => handleCreateAR(doc)} disabled={isSubmitting}>
-                                        <HandCoins className="mr-2"/> ยืนยัน (ตั้งลูกหนี้)
+                                        <HandCoins className="mr-2 h-4 w-4"/> ยืนยัน (ตั้งลูกหนี้)
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -260,7 +294,7 @@ export default function AccountingInboxPage() {
       <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && setConfirmingDoc(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>ยืนยันการรับเงิน (เงินสด)</DialogTitle>
+            <DialogTitle>ยืนยันการรับเงิน (รายการขาย)</DialogTitle>
             <DialogDescription>สำหรับเอกสารเลขที่: {confirmingDoc?.docNo}</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -295,7 +329,3 @@ export default function AccountingInboxPage() {
     </>
   );
 }
-
-    
-
-    

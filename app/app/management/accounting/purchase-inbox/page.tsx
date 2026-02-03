@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -64,7 +65,7 @@ function ApproveCashDialog({ claim, accounts, onClose, onConfirm }: { claim: Wit
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>ยืนยันการจ่ายเงิน (เงินสด)</DialogTitle>
+          <DialogTitle>ยืนยันการจ่ายเงิน (รายการซื้อ)</DialogTitle>
           <DialogDescription>สำหรับเอกสาร: {claim.purchaseDocNo}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -261,7 +262,7 @@ export default function PurchaseInboxPage() {
   if (!hasPermission) {
     return (
         <>
-            <PageHeader title="รอตรวจสอบรายจ่าย" />
+            <PageHeader title="รอตรวจสอบรายการซื้อ" />
             <Card className="text-center py-12">
                 <CardHeader>
                     <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
@@ -274,7 +275,7 @@ export default function PurchaseInboxPage() {
 
   return (
     <>
-      <PageHeader title="รอตรวจสอบรายจ่าย" description="ตรวจสอบและยืนยันการขออนุมัติจัดซื้อ/จ่ายเงิน" />
+      <PageHeader title="รอตรวจสอบรายการซื้อ" description="ตรวจสอบและยืนยันการขออนุมัติจัดซื้อ/จ่ายเงิน" />
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ClaimStatus)}>
         <div className="flex justify-between items-center mb-4">
           <TabsList>
@@ -307,8 +308,8 @@ export default function PurchaseInboxPage() {
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
                                     <DropdownMenuContent>
-                                        <DropdownMenuItem onSelect={() => setApprovingClaim(claim)}><CheckCircle className="mr-2"/>อนุมัติ</DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => setRejectingClaim(claim)} className="text-destructive"><XCircle className="mr-2"/>ตีกลับ</DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => setApprovingClaim(claim)}><CheckCircle className="mr-2 h-4 w-4"/>อนุมัติ</DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => setRejectingClaim(claim)} className="text-destructive"><XCircle className="mr-2 h-4 w-4"/>ตีกลับ</DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}
