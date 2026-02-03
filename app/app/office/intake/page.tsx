@@ -30,7 +30,7 @@ import { deptLabel } from "@/lib/ui-labels";
 
 const intakeSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
-  department: z.enum(JOB_DEPARTMENTS),
+  department: z.enum(JOB_DEPARTMENTS, { required_error: "กรุณาเลือกแผนก" }),
   description: z.string().min(1, "กรุณากรอกรายละเอียดงาน"),
   carServiceDetails: z.object({
     brand: z.string().optional(),
@@ -92,10 +92,10 @@ export default function IntakePage() {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     },
     (error) => {
-        toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+        console.error("Error fetching customers:", error);
     });
     return () => unsubscribe();
-  }, [db, toast]);
+  }, [db]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -154,7 +154,12 @@ export default function IntakePage() {
             customerId: values.customerId,
             department: values.department,
             description: values.description,
-            customerSnapshot: { name: selectedCustomer.name, phone: selectedCustomer.phone, useTax: selectedCustomer.useTax },
+            customerSnapshot: { 
+              name: selectedCustomer.name, 
+              phone: selectedCustomer.phone, 
+              useTax: selectedCustomer.useTax,
+              id: selectedCustomer.id 
+            },
             status: "RECEIVED",
             photos: photoURLs,
             createdAt: serverTimestamp(),
@@ -185,7 +190,7 @@ export default function IntakePage() {
 
         await batch.commit();
 
-        toast({ title: "สร้างงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
+        toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
         
         form.reset();
         setPhotos([]);
@@ -208,7 +213,7 @@ export default function IntakePage() {
 
   return (
     <>
-      <PageHeader title="เปิดงานใหม่" description="สร้างงานใหม่สำหรับลูกค้าเข้าระบบ" />
+      <PageHeader title="เปิดงานใหม่" description="สร้างใบงานใหม่สำหรับลูกค้าในระบบ" />
       <Card>
         <CardContent className="pt-6">
           <Form {...form}>
@@ -224,7 +229,7 @@ export default function IntakePage() {
                     : null;
                   return (
                     <FormItem className="flex flex-col">
-                      <FormLabel>ลูกค้า</FormLabel>
+                      <FormLabel>ลูกค้า (Customer)</FormLabel>
                       <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -232,13 +237,13 @@ export default function IntakePage() {
                               variant="outline"
                               role="combobox"
                               className={cn(
-                                "w-full justify-between",
+                                "w-full justify-between font-normal",
                                 !field.value && "text-muted-foreground"
                               )}
                             >
                               {selectedCustomer
                                 ? `${selectedCustomer.name} (${selectedCustomer.phone})`
-                                : "ค้นหาชื่อ หรือเบอร์โทร..."}
+                                : "ค้นหาชื่อ หรือเบอร์โทรลูกค้า..."}
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </FormControl>
@@ -247,7 +252,7 @@ export default function IntakePage() {
                           <div className="p-2">
                             <Input
                               autoFocus
-                              placeholder="ค้นหาด้วยชื่อ หรือเบอร์โทร..."
+                              placeholder="พิมพ์ชื่อ หรือเบอร์โทรเพื่อค้นหา..."
                               value={customerSearch}
                               onChange={(e) => setCustomerSearch(e.target.value)}
                             />
@@ -263,17 +268,17 @@ export default function IntakePage() {
                                     setIsCustomerPopoverOpen(false);
                                     setCustomerSearch('');
                                   }}
-                                  className="w-full justify-start h-auto py-2 px-3"
+                                  className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none"
                                 >
                                   <div className="flex flex-col items-start">
-                                    <p>{customer.name}</p>
+                                    <p className="font-medium">{customer.name}</p>
                                     <p className="text-xs text-muted-foreground">{customer.phone}</p>
                                   </div>
                                 </Button>
                               ))
                             ) : (
                               <div className="py-6 text-center text-sm text-muted-foreground">
-                                ไม่พบข้อมูลลูกค้า
+                                ไม่พบข้อมูลลูกค้าที่ค้นหา
                               </div>
                             )}
                           </ScrollArea>
@@ -294,9 +299,9 @@ export default function IntakePage() {
               />
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
-                  <FormLabel>แผนกที่รับผิดชอบ</FormLabel>
+                  <FormLabel>แผนกที่รับผิดชอบ (Department)</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger><SelectValue placeholder="เลือกแผนก" /></SelectTrigger></FormControl>
+                    <FormControl><SelectTrigger><SelectValue placeholder="กรุณาเลือกแผนก..." /></SelectTrigger></FormControl>
                     <SelectContent>
                       {JOB_DEPARTMENTS.map(d => (
                         <SelectItem key={d} value={d}>{deptLabel(d)}</SelectItem>
@@ -308,54 +313,63 @@ export default function IntakePage() {
               )} />
               
               {selectedDepartment === 'CAR_SERVICE' && (
-                <Card>
+                <Card className="bg-muted/30 border-dashed">
                     <CardHeader><CardTitle className="text-base">รายละเอียดรถยนต์</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
-                        <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อรถ</FormLabel><FormControl><Input placeholder="เช่น Toyota" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (<FormItem><FormLabel>รุ่นรถ</FormLabel><FormControl><Input placeholder="เช่น Hilux Revo" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อรถ</FormLabel><FormControl><Input placeholder="เช่น Toyota, Isuzu" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                          <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (<FormItem><FormLabel>รุ่นรถ</FormLabel><FormControl><Input placeholder="เช่น Revo, D-Max" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        </div>
                         <FormField name="carServiceDetails.licensePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>ทะเบียนรถ</FormLabel><FormControl><Input placeholder="เช่น 1กข 1234" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </CardContent>
                 </Card>
               )}
 
-              {selectedDepartment === 'COMMONRAIL' && (
-                 <Card>
-                    <CardHeader><CardTitle className="text-base">รายละเอียดคอมมอนเรล</CardTitle></CardHeader>
+              {(selectedDepartment === 'COMMONRAIL' || selectedDepartment === 'MECHANIC') && (
+                 <Card className="bg-muted/30 border-dashed">
+                    <CardHeader><CardTitle className="text-base">รายละเอียดชิ้นส่วน</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
-                        <FormField name="commonrailDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="commonrailDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่ (Part Number)</FormLabel><FormControl><Input placeholder="กรอกเลขอะไหล่" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="commonrailDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                    </CardContent>
-                </Card>
-              )}
-
-              {selectedDepartment === 'MECHANIC' && (
-                 <Card>
-                    <CardHeader><CardTitle className="text-base">รายละเอียดแมคคานิค</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                        <FormField name="mechanicDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="mechanicDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่ (Part Number)</FormLabel><FormControl><Input placeholder="กรอกเลขอะไหล่" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="mechanicDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <FormField 
+                            name={selectedDepartment === 'COMMONRAIL' ? "commonrailDetails.brand" : "mechanicDetails.brand"} 
+                            control={form.control} 
+                            render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} 
+                          />
+                          <FormField 
+                            name={selectedDepartment === 'COMMONRAIL' ? "commonrailDetails.registrationNumber" : "mechanicDetails.registrationNumber"} 
+                            control={form.control} 
+                            render={({ field }) => (<FormItem><FormLabel>เลขทะเบียนชิ้นส่วน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} 
+                          />
+                        </div>
+                        <FormField 
+                          name={selectedDepartment === 'COMMONRAIL' ? "commonrailDetails.partNumber" : "mechanicDetails.partNumber"} 
+                          control={form.control} 
+                          render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่ (Part Number)</FormLabel><FormControl><Input placeholder="ระบุหมายเลขอะไหล่..." {...field} /></FormControl><FormMessage /></FormItem>)} 
+                        />
                     </CardContent>
                 </Card>
               )}
 
               <FormField name="description" control={form.control} render={({ field }) => (
                 <FormItem>
-                  <FormLabel>รายละเอียด / อาการแจ้งซ่อม</FormLabel>
-                  <FormControl><Textarea placeholder="กรอกรายละเอียดอาการหรือรายการซ่อมที่ต้องการ..." rows={5} {...field} /></FormControl>
+                  <FormLabel>รายละเอียดงาน / อาการแจ้งซ่อม (Description)</FormLabel>
+                  <FormControl><Textarea placeholder="ระบุรายละเอียดอาการเสีย หรือสิ่งที่ลูกค้าต้องการให้ทำ..." rows={5} {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
+
               <FormItem>
                 <FormLabel>รูปภาพประกอบ (สูงสุด 4 รูป, ไม่เกิน 5MB ต่อรูป)</FormLabel>
                 <FormControl>
                   <div className="flex items-center justify-center w-full">
-                    <label htmlFor="intake-dropzone-file" className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg ${photos.length >= 4 ? 'cursor-not-allowed bg-muted/50' : 'cursor-pointer bg-muted hover:bg-secondary'}`}>
+                    <label htmlFor="intake-dropzone-file" className={cn(
+                      "flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg transition-colors",
+                      photos.length >= 4 ? 'cursor-not-allowed bg-muted/50 border-muted' : 'cursor-pointer bg-muted/50 hover:bg-secondary border-muted-foreground/20'
+                    )}>
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <Camera className="w-8 h-8 mb-2 text-muted-foreground" />
-                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">ถ่ายภาพ</span> หรือคลิกเพื่ออัปโหลด</p>
-                             <p className="text-xs text-muted-foreground">แตะเพื่อเปิดกล้องหรือเลือกไฟล์รูปภาพ</p>
+                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">กดที่นี่เพื่อถ่ายภาพ</span> หรือเลือกจากอัลบั้ม</p>
+                             <p className="text-xs text-muted-foreground">รองรับไฟล์รูปภาพเท่านั้น</p>
                         </div>
                       <Input id="intake-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= 4} />
                     </label>
@@ -364,9 +378,9 @@ export default function IntakePage() {
                 {photoPreviews.length > 0 && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                     {photoPreviews.map((src, index) => (
-                      <div key={index} className="relative">
-                        <Image src={src} alt={`Preview ${index + 1}`} width={150} height={150} className="rounded-md object-cover w-full aspect-square" />
-                        <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePhoto(index)}>
+                      <div key={index} className="relative group">
+                        <Image src={src} alt={`Preview ${index + 1}`} width={150} height={150} className="rounded-md border object-cover w-full aspect-square" />
+                        <Button type="button" variant="destructive" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-md" onClick={() => removePhoto(index)}>
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -374,10 +388,17 @@ export default function IntakePage() {
                   </div>
                 )}
               </FormItem>
-              <Button type="submit" className="w-full h-12 text-lg" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
-                สร้างใบงาน
-              </Button>
+
+              <div className="pt-4">
+                <Button type="submit" className="w-full h-12 text-lg font-semibold" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      กำลังบันทึกข้อมูล...
+                    </>
+                  ) : "สร้างใบงาน (Create Job)"}
+                </Button>
+              </div>
             </form>
           </Form>
         </CardContent>
