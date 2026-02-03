@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -7,16 +5,16 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,6 +24,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
@@ -33,6 +41,7 @@ import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/l
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "Description is required."),
@@ -89,8 +98,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
+  const [referencedQuotationId, setReferencedQuotationId] = useState<string | null>(null);
+  const [quotationUsages, setQuotationUsages] = useState<number>(0);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [existingDn, setExistingDn] = useState<DocumentType | null>(null);
+  const [showDnCancelDialog, setShowDnCancelDialog] = useState(false);
+  const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -185,6 +199,18 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
   }, [db, jobId]);
 
+  // Check quotation usages when selected
+  useEffect(() => {
+    if (!db || !selectedQuotationId) {
+      setQuotationUsages(0);
+      return;
+    }
+    const q = query(collection(db, "documents"), where("referencesDocIds", "array-contains", selectedQuotationId));
+    getDocs(q).then(snap => {
+      setQuotationUsages(snap.size);
+    });
+  }, [db, selectedQuotationId]);
+
   useEffect(() => {
     if (docToEdit) {
       form.reset({
@@ -205,6 +231,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         paymentTerms: docToEdit.paymentTerms || 'CASH',
         billingRequired: docToEdit.billingRequired || false,
       });
+      if (docToEdit.referencesDocIds && docToEdit.referencesDocIds.length > 0) {
+          setReferencedQuotationId(docToEdit.referencesDocIds[0]);
+      }
     } else if (job) {
       const defaultItem = { description: job.description, quantity: 1, unitPrice: 0, total: 0 };
       if (job.technicalReport) {
@@ -275,6 +304,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
   
     replace(itemsFromQuotation);
+    setReferencedQuotationId(selectedQuotationId);
   
     form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
     form.setValue('isVat', quotation.withTax, { shouldDirty: true, shouldValidate: true });
@@ -287,8 +317,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     });
   };
   
-  const handleSave = async (data: TaxInvoiceFormData) => {
-    const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
+  const executeSave = async (data: TaxInvoiceFormData) => {
+    const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
       return;
@@ -321,6 +351,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       paymentTerms: data.paymentTerms,
       billingRequired: data.billingRequired,
       arStatus: 'PENDING' as 'PENDING',
+      referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
     };
 
     try {
@@ -356,6 +387,43 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
   };
 
+  const handleSave = async (data: TaxInvoiceFormData) => {
+    // Check for existing active DN if it's a new TI for a job
+    if (!isEditing && data.jobId && db) {
+        const q = query(
+            collection(db, "documents"), 
+            where("jobId", "==", data.jobId), 
+            where("docType", "==", "DELIVERY_NOTE")
+        );
+        const snap = await getDocs(q);
+        const activeDn = snap.docs.find(d => d.data().status !== 'CANCELLED');
+        
+        if (activeDn) {
+            setExistingDn({ id: activeDn.id, ...activeDn.data() } as DocumentType);
+            setPendingData(data);
+            setShowDnCancelDialog(true);
+            return;
+        }
+    }
+    await executeSave(data);
+  };
+
+  const handleConfirmCancelAndSave = async () => {
+    if (!db || !existingDn || !pendingData) return;
+    try {
+        const dnRef = doc(db, 'documents', existingDn.id);
+        await updateDoc(dnRef, {
+            status: 'CANCELLED',
+            updatedAt: serverTimestamp(),
+            notes: (existingDn.notes || "") + "\n[System] ยกเลิกเพื่อออกใบกำกับภาษีแทน",
+        });
+        toast({ title: "ยกเลิกใบส่งของเดิมเรียบร้อย" });
+        setShowDnCancelDialog(false);
+        await executeSave(pendingData);
+    } catch(e: any) {
+        toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: e.message });
+    }
+  };
 
   const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
   const isFormLoading = form.formState.isSubmitting || isLoading;
@@ -480,20 +548,28 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
               <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                   <CardTitle className="text-base">รายการ</CardTitle>
                   {jobId && quotations.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
-                        <SelectTrigger className="w-full sm:w-[280px]">
-                            <SelectValue placeholder="เลือกใบเสนอราคา..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {quotations.map(q => (
-                                <SelectItem key={q.id} value={q.id}>
-                                    {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
+                          <SelectTrigger className="w-full sm:w-[280px]">
+                              <SelectValue placeholder="เลือกใบเสนอราคา..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {quotations.map(q => (
+                                  <SelectItem key={q.id} value={q.id}>
+                                      {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
+                                  </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
+                      </div>
+                      {quotationUsages > 0 && (
+                        <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
+                          <AlertTriangle className="h-3 w-3" />
+                          ใบเสนอราคานี้ถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
+                        </div>
+                      )}
                     </div>
                   )}
               </CardHeader>
@@ -537,7 +613,15 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                        <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isLocked}/></FormControl></FormItem>)} />
                        <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="paymentTerms" render={({ field }) => (<FormItem><FormLabel>เงื่อนไขชำระเงิน</FormLabel><FormControl><RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2"><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CASH" id="cash"/></FormControl><Label htmlFor="cash">เงินสด</Label></FormItem><FormItem className="flex items-center space-x-2"><FormControl><RadioGroupItem value="CREDIT" id="credit"/></FormControl><Label htmlFor="credit">เครดิต</Label></FormItem></RadioGroup></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={form.control} name="billingRequired" render={({ field }) => (<FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit mt-auto"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl><FormLabel className="font-normal">ต้องออกใบวางบิล</FormLabel></FormItem>)} />
+                        <FormField control={form.control} name="billingRequired" render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit mt-auto">
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                <div className="space-y-1 leading-none">
+                                    <FormLabel className="font-normal">ต้องออกใบวางบิล</FormLabel>
+                                    <FormMessage />
+                                </div>
+                            </FormItem>
+                        )} />
                     </div>
                   </CardContent>
               </Card>
@@ -568,6 +652,26 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </div>
         </form>
       </Form>
+
+      <AlertDialog open={showDnCancelDialog} onOpenChange={setShowDnCancelDialog}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>พบใบส่งของชั่วคราวเดิม</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      งานซ่อมนี้มีใบส่งของชั่วคราวเลขที่ <span className="font-bold text-foreground">{existingDn?.docNo}</span> อยู่แล้ว
+                      ต้องการยกเลิกใบส่งของเดิมเพื่อเปลี่ยนมาใช้ใบกำกับภาษีนี้แทนหรือไม่?
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); if(pendingData) executeSave(pendingData); }} disabled={isSubmitting}>
+                      ไม่ยกเลิก (ออกคู่กัน)
+                  </Button>
+                  <AlertDialogAction onClick={handleConfirmCancelAndSave} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
+                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "ยกเลิกใบเดิมและบันทึก"}
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -87,6 +87,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
+  const [referencedQuotationId, setReferencedQuotationId] = useState<string | null>(null);
+  const [quotationUsages, setQuotationUsages] = useState<number>(0);
   
   // Job reference logic
   const [jobsReadyToBill, setJobsReadyToBill] = useState<Job[]>([]);
@@ -198,6 +200,18 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     return () => unsubscribe();
 
   }, [db, currentJobId]);
+
+  // Check quotation usages when selected
+  useEffect(() => {
+    if (!db || !selectedQuotationId) {
+      setQuotationUsages(0);
+      return;
+    }
+    const q = query(collection(db, "documents"), where("referencesDocIds", "array-contains", selectedQuotationId));
+    getDocs(q).then(snap => {
+      setQuotationUsages(snap.size);
+    });
+  }, [db, selectedQuotationId]);
   
   useEffect(() => {
     if (docToEdit) {
@@ -213,7 +227,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         isBackfill: false,
         paymentTerms: docToEdit.paymentTerms || 'CASH',
         billingRequired: docToEdit.billingRequired || false,
-      })
+      });
+      if (docToEdit.referencesDocIds && docToEdit.referencesDocIds.length > 0) {
+          setReferencedQuotationId(docToEdit.referencesDocIds[0]);
+      }
     } else if (job) {
         form.setValue('customerId', job.customerId);
         form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
@@ -290,9 +307,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     }
   
     replace(itemsFromQuotation);
+    setReferencedQuotationId(selectedQuotationId);
   
     form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
-  
     form.trigger(['items', 'discountAmount']);
   
     toast({
@@ -311,7 +328,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   };
 
   const handleSave = async (data: DeliveryNoteFormData) => {
-    const customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
+    const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
       return;
@@ -347,13 +364,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       paymentTerms: data.paymentTerms,
       billingRequired: data.billingRequired,
       arStatus: 'PENDING' as 'PENDING',
+      referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
     };
 
     try {
         let docId: string;
         const options = {
             ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
-            initialStatus: 'PENDING_REVIEW', // Default status for Delivery Note now
+            initialStatus: 'PENDING_REVIEW',
         };
         
         if (isEditing && editDocId) {
@@ -526,20 +544,28 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                   <CardTitle className="text-base">3. รายการสินค้า/บริการ</CardTitle>
                   {currentJobId && quotations.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
-                        <SelectTrigger className="w-full sm:w-[280px]">
-                            <SelectValue placeholder="เลือกใบเสนอราคา..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {quotations.map(q => (
-                                <SelectItem key={q.id} value={q.id}>
-                                    {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                      <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
+                          <SelectTrigger className="w-full sm:w-[280px]">
+                              <SelectValue placeholder="เลือกใบเสนอราคา..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                              {quotations.map(q => (
+                                  <SelectItem key={q.id} value={q.id}>
+                                      {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
+                                  </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
+                      </div>
+                      {quotationUsages > 0 && (
+                        <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
+                          <AlertTriangle className="h-3 w-3" />
+                          ใบเสนอราคานี้ถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
+                        </div>
+                      )}
                     </div>
                   )}
               </CardHeader>
