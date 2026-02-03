@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 
@@ -62,7 +62,7 @@ export default function OfficeCustomersNewPage() {
       const addData = { ...values, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
       await addDoc(collection(db, "customers"), addData);
       toast({ title: "Customer added successfully" });
-      router.push("/app/office/customers");
+      router.push("/app/management/customers");
     } catch (error: any) {
       toast({ variant: "destructive", title: "Creation Failed", description: error.message });
     } finally {
@@ -115,7 +115,7 @@ export default function OfficeCustomersNewPage() {
                             Add Customer
                         </Button>
                         <Button type="button" variant="outline" asChild>
-                            <Link href="/app/office/customers">Cancel</Link>
+                            <Link href="/app/management/customers">Cancel</Link>
                         </Button>
                     </div>
                     </form>

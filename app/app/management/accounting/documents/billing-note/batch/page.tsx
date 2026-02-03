@@ -1,10 +1,10 @@
-
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { useFirebase } from '@/firebase';
+import { useFirebase } from '@/firebase/client-provider';
+import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
 import {
   collection,
@@ -40,11 +40,10 @@ import {
   ChevronDown
 } from 'lucide-react';
 import type { Customer, Document, BillingRun, StoreSettings } from '@/lib/types';
-import type { WithId } from '@/firebase';
+import type { WithId } from '@/firebase/firestore/use-collection';
 import { BillingNoteBatchEditDialog } from '@/components/billing-note-batch-edit-dialog';
 import { createDocument } from '@/firebase/documents';
 import { safeFormat } from '@/lib/date-utils';
-import { useDoc } from '@/firebase';
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -59,7 +58,7 @@ interface GroupedCustomerData {
 }
 
 export default function BatchBillingNotePage() {
-  const { db, auth } = useFirebase();
+  const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
@@ -76,9 +75,10 @@ export default function BatchBillingNotePage() {
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
   const monthId = format(currentMonth, 'yyyy-MM');
-  const billingRunRef = useMemo(() => doc(db, "billingRuns", monthId), [db, monthId]);
+  const billingRunRef = useMemo(() => (db ? doc(db, "billingRuns", monthId) : null), [db, monthId]);
 
   const fetchData = useCallback(async () => {
+    if (!db || !billingRunRef) return;
     setIsLoading(true);
 
     try {
@@ -156,7 +156,7 @@ export default function BatchBillingNotePage() {
   }, [fetchData]);
 
   const handleSaveOverrides = async (customerId: string, deferred: Record<string, boolean>, separate: Record<string, string>) => {
-    if (!profile) return;
+    if (!profile || !billingRunRef) return;
     const newDeferred = { ...billingRun?.deferredInvoices, ...deferred };
     const newSeparate = { ...billingRun?.separateInvoiceGroups, ...separate };
 
@@ -178,7 +178,7 @@ export default function BatchBillingNotePage() {
   };
   
   const createBillingNotesForCustomer = async (customerData: GroupedCustomerData) => {
-    if (!profile || !storeSettings) return { success: false, error: "Profile or store settings missing." };
+    if (!profile || !storeSettings || !db || !billingRunRef) return { success: false, error: "Required data missing." };
     
     const { customer, includedInvoices, separateGroups } = customerData;
     const createdIds: { main?: string; separate: Record<string, string> } = { separate: {} };

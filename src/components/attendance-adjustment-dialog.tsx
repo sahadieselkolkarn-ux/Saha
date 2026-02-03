@@ -1,18 +1,17 @@
-
 "use client";
 
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format, set, parse } from "date-fns";
+import { format, set } from "date-fns";
 import { Timestamp, doc, setDoc, serverTimestamp } from "firebase/firestore";
 
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import type { UserProfile, AttendanceAdjustment } from "@/lib/types";
-import { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase/firestore/use-collection";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,11 +20,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2 } from "lucide-react";
-import { safeFormat } from "@/lib/date-utils";
 
 interface AttendanceDailySummary {
   date: Date;
-  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'LEAVE' | 'HOLIDAY' | 'WEEKEND' | 'NO_DATA';
+  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'LEAVE' | 'HOLIDAY' | 'WEEKEND' | 'NO_DATA' | 'NOT_STARTED' | 'ENDED' | 'SUSPENDED' | 'FUTURE';
   rawIn?: Date | null;
   rawOut?: Date | null;
   adjustment?: WithId<AttendanceAdjustment>;
@@ -78,7 +76,6 @@ export function AttendanceAdjustmentDialog({ isOpen, onOpenChange, dayInfo, user
 
     const { inTime, outTime, notes, forgiveLate } = values;
     
-    // We can only have one type of adjustment per day, so we prioritize.
     let type: 'ADD_RECORD' | 'FORGIVE_LATE' = 'ADD_RECORD';
     if (forgiveLate) {
         type = 'FORGIVE_LATE';

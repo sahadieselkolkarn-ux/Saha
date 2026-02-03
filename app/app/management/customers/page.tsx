@@ -1,10 +1,8 @@
-
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, where } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -601,4 +599,3 @@ export default function ManagementCustomersPage() {
         </>
     );
 }
-

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import { collection, writeBatch, serverTimestamp, doc } from "firebase/firestore";
 
@@ -37,7 +37,7 @@ export default function ImportCustomersPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.type !== 'text/csv') {
+      if (selectedFile.type !== 'text/csv' && !selectedFile.name.endsWith('.csv')) {
         setError("Invalid file type. Please upload a CSV file.");
         setFile(null);
         setParsedData([]);
@@ -96,7 +96,6 @@ export default function ImportCustomersPage() {
         setError("Failed to read the file.");
         setIsProcessing(false);
     };
-    // Default to UTF-8, which is the standard for web and modern applications.
     reader.readAsText(fileToParse);
   };
 

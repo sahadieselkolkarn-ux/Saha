@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -7,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, where } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -86,8 +85,6 @@ export function BillingNoteForm() {
         setInvoices([]);
         return;
     }
-    // Note: In a real app, you'd likely filter by payment status e.g., where("paymentStatus", "!=", "PAID")
-    // Query by customer ID first, then filter by docType on the client to avoid needing a composite index.
     const q = query(
         collection(db, "documents"),
         where("customerSnapshot.id", "==", selectedCustomerId)
@@ -150,7 +147,7 @@ export function BillingNoteForm() {
             storeSnapshot: { ...storeSettings },
             items: itemsForDoc,
             invoiceIds: data.invoiceIds,
-            subtotal: data.totalAmount, // For BillingNote, subtotal, net, and grandTotal are the same
+            subtotal: data.totalAmount, 
             discountAmount: 0,
             net: data.totalAmount,
             withTax: false,

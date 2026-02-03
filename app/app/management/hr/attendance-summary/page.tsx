@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import {
   format as dfFormat,
@@ -25,7 +24,7 @@ import {
 import { safeFormat } from '@/lib/date-utils';
 
 import type { UserProfile, Attendance, LeaveRequest, HRHoliday as HRHolidayType, HRSettings, AttendanceAdjustment, UserStatus } from "@/lib/types";
-import { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase/firestore/use-collection";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -280,8 +279,8 @@ export default function ManagementHRAttendanceSummaryPage() {
           const allUsersData = usersSnapshot?.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>)) || [];
           setAllUsers(allUsersData);
           
-          const monthAttendanceData: WithId<Attendance>[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Attendance>));
-          const yearLeavesData: WithId<LeaveRequest>[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<LeaveRequest>));
+          const monthAttendanceData: Attendance[] = attendanceSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+          const yearLeavesData: LeaveRequest[] = leavesSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
           
           const usersToProcess = allUsersData.filter(u => {
             const payType = u.hr?.payType;
@@ -300,7 +299,7 @@ export default function ManagementHRAttendanceSummaryPage() {
               return { id: d.id, name: d.data().name, date: key };
           }).filter(h => !!h.date);
           
-          const monthAdjustmentsData: WithId<AttendanceAdjustment>[] = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>));
+          const monthAdjustmentsData: WithId<AttendanceAdjustment>[] = adjustmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
           
           const calculatedData = calculateSummary(usersToProcess, hrSettingsData, allHolidaysData, yearLeavesData, monthAttendanceData, monthAdjustmentsData, dateRange);
           setSummaryData(calculatedData);

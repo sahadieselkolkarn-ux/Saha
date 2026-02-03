@@ -1,11 +1,9 @@
-
-
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { collection, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, limit, doc, deleteDoc, writeBatch, deleteField, serverTimestamp, getDocs, startAfter, type QueryDocumentSnapshot } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";

@@ -4,7 +4,8 @@ import { useState, useMemo } from "react";
 import { collection, query, where, orderBy } from "firebase/firestore";
 import { getYear, format, parseISO } from 'date-fns';
 
-import { useFirebase, useCollection, type WithId } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
+import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
 import type { HRHoliday } from "@/lib/types";
 
 import { PageHeader } from "@/components/page-header";

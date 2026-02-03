@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -324,7 +324,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     toast({ title: "อ้างอิงงานซ่อมแล้ว", description: `เลือกงานของ ${job.customerSnapshot.name}` });
   };
 
-  const handleSave = async (data: DeliveryNoteFormData) => {
+  const executeSave = async (data: DeliveryNoteFormData) => {
     const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
@@ -366,6 +366,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
     try {
         let docId: string;
+        // ทุกครั้งที่บันทึกหรือแก้ไข ให้สถานะเริ่มต้นเป็น PENDING_REVIEW เสมอ
         const options = {
             ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
             initialStatus: 'PENDING_REVIEW',
@@ -400,6 +401,25 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     } finally {
         setIsSubmitting(false);
     }
+  };
+
+  const handleSave = async (data: DeliveryNoteFormData) => {
+    // Check for existing DN only on new creation
+    if (!isEditing && data.jobId && db) {
+        const q = query(
+            collection(db, "documents"), 
+            where("jobId", "==", data.jobId), 
+            where("docType", "==", "DELIVERY_NOTE")
+        );
+        const snap = await getDocs(q);
+        const activeDn = snap.docs.find(d => d.data().status !== 'CANCELLED');
+        
+        if (activeDn) {
+            // Logic to prevent duplicate active DNs if necessary, but here we just proceed to executeSave
+            // which handles the status and logic.
+        }
+    }
+    await executeSave(data);
   };
 
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer || isLoadingDocToEdit;
