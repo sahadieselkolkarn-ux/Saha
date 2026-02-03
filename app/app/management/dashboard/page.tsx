@@ -1,10 +1,9 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, query, onSnapshot, orderBy, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
 import { DateRange } from "react-day-picker";
 import { 
   subDays, 
@@ -44,6 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2 } from "lucide-react";
 
 import type { Job, Document, AccountingEntry, JobDepartment, AccountingObligation } from "@/lib/types";
