@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Suspense, useCallback, useState, useEffect, useMemo, useRef } from 'react';
@@ -136,6 +135,44 @@ function ScanPageContent() {
     return () => clearInterval(timer);
   }, [secondsSinceLast]);
 
+  // REDIRECT EFFECT - Fixed Rule of Hooks
+  useEffect(() => {
+    if (!recentClock) return;
+
+    const timer = setTimeout(() => {
+      if (!profile) {
+        router.replace('/login');
+        return;
+      }
+
+      const { role, department } = profile;
+
+      if (role === 'ADMIN') {
+        router.replace('/app/jobs');
+      } else if (role === 'OFFICER') {
+        if (department === 'CAR_SERVICE') {
+          router.replace('/app/car-service/jobs/all');
+        } else {
+          router.replace('/app/kiosk');
+        }
+      } else if (role === 'MANAGER' || role === 'WORKER') {
+        switch (department) {
+          case 'MANAGEMENT': router.replace('/app/management/overview'); break;
+          case 'OFFICE': router.replace('/app/office/intake'); break;
+          case 'CAR_SERVICE': router.replace('/app/car-service/jobs/all'); break;
+          case 'COMMONRAIL': router.replace('/app/commonrail/jobs/all'); break;
+          case 'MECHANIC': router.replace('/app/mechanic/jobs/all'); break;
+          case 'OUTSOURCE': router.replace('/app/outsource/export/new'); break;
+          default: router.replace('/app/jobs'); break;
+        }
+      } else {
+        router.replace('/app/jobs');
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [recentClock, router, profile]);
+
   const handleClockAction = async () => {
     if (!db || !profile || lastAttendance === undefined) return;
     if (profile.status !== 'ACTIVE') {
@@ -202,41 +239,6 @@ function ScanPageContent() {
   // --- RENDER LOGIC ---
 
   if (recentClock) {
-    useEffect(() => {
-      const timer = setTimeout(() => {
-          if (!profile) {
-              router.replace('/login');
-              return;
-          }
-
-          const { role, department } = profile;
-
-          if (role === 'ADMIN') {
-              router.replace('/app/jobs');
-          } else if (role === 'OFFICER') {
-              if (department === 'CAR_SERVICE') {
-                  router.replace('/app/car-service/jobs/all');
-              } else {
-                  router.replace('/app/kiosk');
-              }
-          } else if (role === 'MANAGER' || role === 'WORKER') {
-              switch (department) {
-                  case 'MANAGEMENT': router.replace('/app/management/overview'); break;
-                  case 'OFFICE': router.replace('/app/office/intake'); break;
-                  case 'CAR_SERVICE': router.replace('/app/car-service/jobs/all'); break;
-                  case 'COMMONRAIL': router.replace('/app/commonrail/jobs/all'); break;
-                  case 'MECHANIC': router.replace('/app/mechanic/jobs/all'); break;
-                  case 'OUTSOURCE': router.replace('/app/outsource/export/new'); break;
-                  default: router.replace('/app/jobs'); break;
-              }
-          } else {
-              router.replace('/app/jobs');
-          }
-      }, 3000);
-
-      return () => clearTimeout(timer);
-    }, [router, profile]);
-
     return (
        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-4">
            <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
