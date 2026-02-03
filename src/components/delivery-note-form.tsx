@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -30,6 +29,7 @@ import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
+import { deptLabel } from "@/lib/ui-labels";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
