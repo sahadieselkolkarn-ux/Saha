@@ -1,0 +1,195 @@
+"use client";
+
+import { useMemo, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { doc } from "firebase/firestore";
+import { useFirebase, useDoc } from "@/firebase";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AlertCircle, ArrowLeft, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { Document as DocumentType } from "@/lib/types";
+import { safeFormat } from "@/lib/date-utils";
+
+export default function WhtPrintPage() {
+    const { docId } = useParams();
+    const router = useRouter();
+    const { db } = useFirebase();
+
+    const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
+    const { data: document, isLoading, error } = useDoc<DocumentType>(docRef);
+
+    useEffect(() => {
+        if (document && !isLoading) {
+            // Optional: Auto-trigger print dialog after a short delay
+            // const timer = setTimeout(() => window.print(), 1000);
+            // return () => clearTimeout(timer);
+        }
+    }, [document, isLoading]);
+
+    if (isLoading) return <Skeleton className="h-screen w-full" />;
+    
+    if (error || !document || document.docType !== 'WITHHOLDING_TAX') {
+        return (
+            <div className="p-12 text-center space-y-4">
+                <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
+                <h1 className="text-xl font-bold">ไม่พบเอกสาร</h1>
+                <p className="text-muted-foreground">ไม่พบข้อมูลหนังสือรับรองหัก ณ ที่จ่าย ที่คุณต้องการ</p>
+                <Button onClick={() => router.back()} variant="outline"><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+            </div>
+        );
+    }
+
+    // Helper to split Tax ID into individual digits for form boxes
+    const getTaxIdDigits = (taxId: string | undefined) => {
+        return (taxId || '').replace(/\D/g, '').split('');
+    };
+
+    const taxIdPayer = getTaxIdDigits(document.storeSnapshot?.taxId);
+    const taxIdPayee = getTaxIdDigits(document.customerSnapshot?.taxId);
+
+    return (
+        <div className="min-h-screen bg-muted/20 pb-10">
+            <style jsx global>{`
+                @media print {
+                    @page { 
+                        size: A4; 
+                        margin: 0; 
+                    }
+                    body { 
+                        margin: 0; 
+                        padding: 0; 
+                        background: white;
+                    }
+                    .print-hidden { 
+                        display: none !important; 
+                    }
+                    .document-container {
+                        box-shadow: none !important;
+                        border: none !important;
+                        margin: 0 !important;
+                    }
+                }
+                .wht-form-wrapper {
+                    position: relative;
+                    width: 210mm;
+                    height: 297mm;
+                    margin: 0 auto;
+                    background-color: white;
+                    overflow: hidden;
+                }
+                .wht-form-bg {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-image: url('/forms/wht50twi.png');
+                    background-size: contain;
+                    background-repeat: no-repeat;
+                    z-index: 0;
+                    opacity: 0.9;
+                }
+                .field {
+                    position: absolute;
+                    font-size: 13px;
+                    font-family: 'Sarabun', sans-serif;
+                    z-index: 10;
+                    white-space: nowrap;
+                }
+                .digit-box {
+                    display: flex;
+                    position: absolute;
+                    z-index: 10;
+                }
+                .digit {
+                    width: 5.4mm;
+                    text-align: center;
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+            `}</style>
+
+            {/* Toolbar */}
+            <div className="print-hidden sticky top-0 bg-background/95 backdrop-blur border-b p-4 flex items-center justify-between z-50 mb-6 shadow-sm">
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" size="sm" onClick={() => router.back()}>
+                        <ArrowLeft className="mr-2 h-4 w-4"/> กลับ
+                    </Button>
+                    <div>
+                        <h1 className="font-bold">พิมพ์หนังสือรับรองหัก ณ ที่จ่าย</h1>
+                        <p className="text-xs text-muted-foreground">เลขที่เอกสาร: {document.docNo}</p>
+                    </div>
+                </div>
+                <Button size="sm" onClick={() => window.print()}>
+                    <Printer className="mr-2 h-4 w-4"/> พิมพ์เอกสาร (Ctrl+P)
+                </Button>
+            </div>
+
+            {/* A4 Page Container */}
+            <div className="document-container wht-form-wrapper shadow-2xl border">
+                <div className="wht-form-bg" />
+
+                {/* --- Data Overlays --- */}
+
+                {/* เลขที่เล่ม / เลขที่ */}
+                <div className="field font-bold" style={{ top: '42.5mm', left: '168mm' }}>{document.docNo}</div>
+
+                {/* 1. ผู้มีหน้าที่หักภาษี (Payer) */}
+                <div className="digit-box" style={{ top: '58.5mm', left: '128.5mm', gap: '1.45mm' }}>
+                    {taxIdPayer.map((d, i) => <span key={i} className="digit">{d}</span>)}
+                </div>
+                <div className="field" style={{ top: '65.5mm', left: '32mm' }}>{document.storeSnapshot?.taxName}</div>
+                <div className="field text-xs" style={{ top: '72.5mm', left: '32mm', width: '150mm', whiteSpace: 'normal', lineHeight: 1 }}>
+                    {document.storeSnapshot?.taxAddress}
+                </div>
+
+                {/* 2. ผู้ถูกหักภาษี (Payee) */}
+                <div className="digit-box" style={{ top: '88.5mm', left: '128.5mm', gap: '1.45mm' }}>
+                    {taxIdPayee.map((d, i) => <span key={i} className="digit">{d}</span>)}
+                </div>
+                <div className="field font-semibold" style={{ top: '95.5mm', left: '32mm' }}>{document.customerSnapshot?.taxName || document.customerSnapshot?.name}</div>
+                <div className="field text-xs" style={{ top: '102.5mm', left: '32mm', width: '150mm', whiteSpace: 'normal', lineHeight: 1 }}>
+                    {document.customerSnapshot?.taxAddress || 'N/A'}
+                </div>
+
+                {/* 3. ลำดับที่ในแบบ (Assume PND53 for business) */}
+                <div className="field font-bold" style={{ top: '118.5mm', left: '103.5mm' }}>/</div>
+
+                {/* 4. รายละเอียดเงินได้ (ITEM 5 - Default) */}
+                <div className="field" style={{ top: '192.5mm', left: '32mm' }}>{safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</div>
+                <div className="field text-right font-mono" style={{ top: '192.5mm', left: '142mm', width: '32mm' }}>
+                    {document.paidAmountGross?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+                <div className="field text-right font-mono" style={{ top: '192.5mm', left: '176mm', width: '22mm' }}>
+                    {document.withholdingAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+
+                {/* สรุปยอดรวม */}
+                <div className="field text-right font-bold" style={{ top: '232.5mm', left: '142mm', width: '32mm' }}>
+                    {document.paidAmountGross?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+                <div className="field text-right font-bold" style={{ top: '232.5mm', left: '176mm', width: '22mm' }}>
+                    {document.withholdingAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
+
+                {/* ผู้รับรอง (Signer) */}
+                <div className="field text-center font-semibold" style={{ top: '270.5mm', left: '125mm', width: '60mm' }}>
+                    {document.senderName}
+                    <div className="text-xs font-normal mt-1">{safeFormat(new Date(document.docDate), 'dd MMMM yyyy')}</div>
+                </div>
+            </div>
+
+            {/* Helpful instructions for the user (only on screen) */}
+            <div className="print-hidden max-w-[210mm] mx-auto mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm">
+                <h3 className="font-bold mb-1 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4"/> คำแนะนำการพิมพ์
+                </h3>
+                <ul className="list-disc pl-5 space-y-1">
+                    <li>หากตำแหน่งข้อความไม่ตรงกับแบบฟอร์มกระดาษ ให้ปรับระยะขอบ (Margins) ในหน้าต่างพิมพ์เป็น "None"</li>
+                    <li>ตรวจสอบว่าได้เลือก "Background Graphics" ในการตั้งค่าการพิมพ์เพื่อให้พื้นหลังแสดงผล</li>
+                    <li>มาตราการหักภาษีถูกตั้งค่าเริ่มต้นเป็น <b>มาตรา 50 ทวิ</b> และประเภทเงินได้เป็น <b>ข้อ 5</b></li>
+                </ul>
+            </div>
+        </div>
+    );
+}
