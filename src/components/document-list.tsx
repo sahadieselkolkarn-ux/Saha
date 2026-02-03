@@ -36,7 +36,7 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; varia
 
     if (status === "REJECTED" || !!hasRejectionInfo) return { key: "REJECTED", label: "ตีกลับ", variant: "destructive" };
     
-    if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label: "รอตรวจสอบรายรับ", variant: "secondary" };
+    if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label: "รอตรวจสอบรายการขาย", variant: "secondary" };
     if (status === "DRAFT") return { key: "DRAFT", label: "ฉบับร่าง", variant: "outline" };
 
     return { key: status, label: docStatusLabel(doc.status) || status, variant: "outline" };
@@ -89,7 +89,6 @@ export function DocumentList({
   }, [db, docType, toast]);
 
   const processedDocuments = useMemo(() => {
-    // Spread to avoid direct mutation
     let filtered = [...allDocuments];
 
     if (statusFilter !== "ALL") {
@@ -229,9 +228,13 @@ export function DocumentList({
                 <TableBody>
                   {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
                     const editPath = docType === 'QUOTATION'
-                      ? `/app/office/documents/quotation/${docItem.id}`
+                      ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
                       : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
                     
+                    const viewPath = docType === 'QUOTATION'
+                      ? `/app/office/documents/quotation/${docItem.id}`
+                      : `/app/office/documents/${docItem.id}`;
+
                     return (
                     <TableRow key={docItem.id}>
                       <TableCell className="font-medium">{docItem.docNo}</TableCell>
@@ -254,7 +257,7 @@ export function DocumentList({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${docItem.id}`)}>
+                            <DropdownMenuItem onSelect={() => router.push(viewPath)}>
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
@@ -264,7 +267,7 @@ export function DocumentList({
                                     แก้ไขไม่ได้ (บันทึกรายรับแล้ว)
                                 </DropdownMenuItem>
                             ) : (
-                                <DropdownMenuItem onSelect={() => router.push(editPath)}>
+                                <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'CANCELLED'}>
                                     <Edit className="mr-2 h-4 w-4"/>
                                     แก้ไข
                                 </DropdownMenuItem>

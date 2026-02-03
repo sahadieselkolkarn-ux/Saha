@@ -90,7 +90,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [referencedQuotationId, setReferencedQuotationId] = useState<string | null>(null);
   const [quotationUsages, setQuotationUsages] = useState<number>(0);
   
-  // Job reference logic
   const [jobsReadyToBill, setJobsReadyToBill] = useState<Job[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
   const [isJobPopoverOpen, setIsJobPopoverOpen] = useState(false);
@@ -164,7 +163,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     };
   }, [db, toast]);
 
-  // Fetch jobs ready to bill (status === 'DONE')
   useEffect(() => {
     if (!db || jobId || isEditing) return;
     setIsLoadingJobs(true);
@@ -201,7 +199,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   }, [db, currentJobId]);
 
-  // Check quotation usages when selected
   useEffect(() => {
     if (!db || !selectedQuotationId) {
       setQuotationUsages(0);
@@ -563,7 +560,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                       {quotationUsages > 0 && (
                         <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
                           <AlertTriangle className="h-3 w-3" />
-                          ใบเสนอราคานี้ถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
+                          ใบเสนอราคานี้เคยถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
                         </div>
                       )}
                     </div>

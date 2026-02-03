@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -15,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,10 +22,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { createDocument } from "@/firebase/documents";
-import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 
 const lineItemSchema = z.object({
@@ -103,6 +102,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   }, [db, selectedCustomerId]);
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
 
+  const isCancelled = docToEdit?.status === 'CANCELLED';
+
   useEffect(() => {
     if (!db) return;
     setIsLoadingCustomers(true);
@@ -120,7 +121,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   useEffect(() => {
     const dataToLoad = docToEdit || job;
     if (dataToLoad) {
-        // STEP 1: Robust customerId finding
         let customerId = 
             (dataToLoad as any).customerId || 
             (dataToLoad as any).customerSnapshot?.id || 
@@ -128,23 +128,21 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             "";
 
         if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone) {
-          const foundCustomer = customers.find(c => c.name === dataToLoad.customerSnapshot.name && c.phone === dataToLoad.customerSnapshot.phone);
+          const foundCustomer = customers.find(c => c.name === dataToLoad.customerSnapshot?.name && c.phone === dataToLoad.customerSnapshot?.phone);
           if (foundCustomer) {
             customerId = foundCustomer.id;
-            form.setValue("customerId", customerId, { shouldValidate: true });
           }
         }
         
-        // STEP 2: Item fallback
         const items = 'items' in dataToLoad && dataToLoad.items.length > 0
             ? dataToLoad.items.map(item => ({ ...item }))
-            : [{ description: 'description' in dataToLoad ? dataToLoad.description : '', quantity: 1, unitPrice: 0, total: 0 }];
+            : [{ description: 'description' in dataToLoad ? (dataToLoad as any).description : '', quantity: 1, unitPrice: 0, total: 0 }];
 
         form.reset({
             jobId: 'jobId' in dataToLoad ? dataToLoad.jobId || undefined : jobId || undefined,
             customerId: customerId,
             issueDate: 'docDate' in dataToLoad ? dataToLoad.docDate : new Date().toISOString().split("T")[0],
-            expiryDate: 'expiryDate' in dataToLoad && dataToLoad.expiryDate ? dataToLoad.expiryDate : new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
+            expiryDate: 'expiryDate' in dataToLoad && (dataToLoad as any).expiryDate ? (dataToLoad as any).expiryDate : new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
             items: items,
             notes: 'notes' in dataToLoad ? dataToLoad.notes : '',
             isVat: 'withTax' in dataToLoad ? dataToLoad.withTax : true,
@@ -190,21 +188,25 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const onSubmit = async (data: QuotationFormData) => {
+    if (isCancelled) return;
+
     let customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
       return;
     }
 
-    // STEP 3: Ensure customerSnapshot has an ID for backward compatibility
     customerSnapshot = { ...customerSnapshot, id: data.customerId };
 
     const documentData = {
-        customerId: data.customerId, // Ensure customerId is saved
+        customerId: data.customerId,
         docDate: data.issueDate,
         jobId: data.jobId,
         customerSnapshot: customerSnapshot,
-        carSnapshot: (job || docToEdit?.jobId) ? { licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, details: job?.description || docToEdit?.carSnapshot?.details } : {},
+        carSnapshot: (job || docToEdit?.jobId) ? { 
+          licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, 
+          details: job?.description || docToEdit?.carSnapshot?.details 
+        } : {},
         storeSnapshot: { ...storeSettings },
         items: data.items,
         subtotal: data.subtotal,
@@ -225,8 +227,9 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 updatedAt: serverTimestamp(),
             }));
             toast({ title: "อัปเดตใบเสนอราคาสำเร็จ" });
+            router.push(`/app/office/documents/${editDocId}`);
         } else {
-            await createDocument(
+            const { docId } = await createDocument(
                 db,
                 'QUOTATION',
                 documentData,
@@ -234,9 +237,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 data.jobId ? 'WAITING_APPROVE' : undefined
             );
             toast({ title: "สร้างใบเสนอราคาสำเร็จ" });
+            router.push(`/app/office/documents/${docId}`);
         }
-        router.push('/app/office/documents/quotation');
-
     } catch (error: any) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
@@ -245,8 +247,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
-  // STEP 4: Keep customer selection disabled in edit mode
-  const isCustomerSelectionDisabled = !!jobId || !!editDocId;
+  const isCustomerSelectionDisabled = !!jobId || (isEditing && !!docToEdit?.customerId) || isCancelled;
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
@@ -259,17 +260,26 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {isCancelled && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>เอกสารถูกยกเลิก</AlertTitle>
+            <AlertDescription>ใบเสนอราคานี้ถูกยกเลิกแล้ว ไม่สามารถแก้ไขข้อมูลได้</AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
             <div className="lg:col-span-2 space-y-2">
-                <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Your Company'}</h2>
+                <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Sahadiesel Service'}</h2>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{storeSettings?.taxAddress}</p>
                 <p className="text-sm text-muted-foreground">โทร: {storeSettings?.phone}</p>
                 <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {storeSettings?.taxId}</p>
             </div>
             <div className="space-y-4">
                  <h1 className="text-2xl font-bold text-right">ใบเสนอราคา</h1>
-                 <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                 <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                 {isEditing && <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>}
+                 <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
+                 <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
             </div>
         </div>
 
@@ -304,7 +314,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                 </ScrollArea>
                             </PopoverContent>
                         </Popover>
-                        <FormMessage />
+                        </FormMessage>
                         </FormItem>
                     )}
                 />
@@ -343,7 +353,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                         {fields.map((field, index) => (
                             <TableRow key={field.id}>
                                 <TableCell>{index + 1}</TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" />)}/></TableCell>
+                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" disabled={isCancelled} />)}/></TableCell>
                                 <TableCell>
                                   <FormField
                                     control={form.control}
@@ -362,6 +372,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                           const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
                                           form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
                                         }}
+                                        disabled={isCancelled}
                                       />
                                     )}
                                   />
@@ -384,17 +395,18 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                           const quantity = form.getValues(`items.${index}.quantity`) || 0;
                                           form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
                                         }}
+                                        disabled={isCancelled}
                                       />
                                     )}
                                   />
                                 </TableCell>
                                 <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
-                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
+                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isCancelled}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
-                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
+                {!isCancelled && <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>}
             </CardContent>
         </Card>
 
@@ -402,7 +414,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
              <Card>
                 <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
                 <CardContent>
-                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} />)} />
+                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isCancelled} />)} />
                 </CardContent>
             </Card>
             <div className="space-y-4">
@@ -421,6 +433,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                 value={(field.value ?? 0) === 0 ? "" : field.value}
                                 onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
                                 onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                                disabled={isCancelled}
                                 />
                             )}
                         />
@@ -429,7 +442,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                     <div className="flex justify-between items-center">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
-                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange}/></FormControl>
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isCancelled}/></FormControl>
                                 <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>
@@ -443,7 +456,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
 
         <div className="flex justify-end gap-4">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
-            <Button type="submit" disabled={isFormLoading}>
+            <Button type="submit" disabled={isFormLoading || isCancelled}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
               {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบเสนอราคา'}
             </Button>

@@ -165,7 +165,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "Failed to load customers" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
       setIsLoadingCustomers(false);
     });
 
@@ -199,7 +199,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
   }, [db, jobId]);
 
-  // Check quotation usages when selected
   useEffect(() => {
     if (!db || !selectedQuotationId) {
       setQuotationUsages(0);
@@ -388,7 +387,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   };
 
   const handleSave = async (data: TaxInvoiceFormData) => {
-    // Check for existing active DN if it's a new TI for a job
     if (!isEditing && data.jobId && db) {
         const q = query(
             collection(db, "documents"), 
@@ -567,7 +565,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                       {quotationUsages > 0 && (
                         <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
                           <AlertTriangle className="h-3 w-3" />
-                          ใบเสนอราคานี้ถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
+                          ใบเสนอราคานี้เคยถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
                         </div>
                       )}
                     </div>
