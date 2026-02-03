@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
@@ -6,24 +5,23 @@ import { useRouter, useParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, writeBatch, serverTimestamp, getDocs, addDoc, getDoc } from "firebase/firestore";
-import { useFirebase, useDoc } from "@/firebase";
+import { doc, collection, query, where, writeBatch, serverTimestamp, getDocs, getDoc } from "firebase/firestore";
+import { useFirebase } from "@/firebase/client-provider";
+import { useDoc } from "@/firebase/firestore/use-doc";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ArrowLeft, AlertCircle, Calculator } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Loader2, Save, ArrowLeft, Calculator } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Document as DocumentType, AccountingAccount, AccountingObligation } from "@/lib/types";
-import { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase/firestore/use-collection";
 import { safeFormat } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +59,6 @@ const confirmReceiptSchema = z.object({
 );
 
 type ConfirmReceiptFormData = z.infer<typeof confirmReceiptSchema>;
-type AllocationFormData = z.infer<typeof allocationSchema>;
 
 const formatCurrency = (value: number) => value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -91,7 +88,6 @@ function ConfirmReceiptPageContent() {
   const { fields, update } = useFieldArray({ control: form.control, name: "allocations" });
   const watchedAllocations = useWatch({ control: form.control, name: "allocations" });
 
-  // Fetch initial data
   useEffect(() => {
     if (!db || !receiptId) return;
 
@@ -262,7 +258,6 @@ function ConfirmReceiptPageContent() {
     try {
         const batch = writeBatch(db);
         
-        // 1. Create AR Payment record
         const arPaymentRef = doc(collection(db, 'arPayments'));
         batch.set(arPaymentRef, {
             receiptId,
@@ -280,7 +275,6 @@ function ConfirmReceiptPageContent() {
             createdAt: serverTimestamp(),
         });
         
-        // 2. Create Accounting Entry
         const entryRef = doc(collection(db, 'accountingEntries'));
         batch.set(entryRef, {
             entryType: 'RECEIPT',
@@ -294,7 +288,6 @@ function ConfirmReceiptPageContent() {
             createdAt: serverTimestamp(),
         });
         
-        // 3. Update the RECEIPT document status
         batch.update(doc(db, 'documents', receiptId as string), {
             status: 'CONFIRMED',
             receiptStatus: 'CONFIRMED',
@@ -309,7 +302,6 @@ function ConfirmReceiptPageContent() {
             updatedAt: serverTimestamp(),
         });
         
-        // 4. Update the source invoices (DN/TI/BN)
         for (const alloc of data.allocations) {
             if (alloc.grossApplied > 0) {
                 const ob = obligations[alloc.invoiceId];
@@ -317,7 +309,6 @@ function ConfirmReceiptPageContent() {
                     const newBalance = ob.balance - alloc.grossApplied;
                     const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
                     
-                    // Update the Obligation
                     batch.update(doc(db, 'accountingObligations', ob.id), {
                         amountPaid: ob.amountPaid + alloc.grossApplied,
                         balance: newBalance,
@@ -326,7 +317,6 @@ function ConfirmReceiptPageContent() {
                         paidOffDate: newStatus === 'PAID' ? data.paymentDate : null,
                     });
 
-                    // STEP 3: Sync back to source document (Invoice) - This is the SINGLE point of update for balances
                     batch.update(doc(db, 'documents', alloc.invoiceId), {
                         status: newStatus,
                         arStatus: newStatus,
@@ -371,7 +361,7 @@ function ConfirmReceiptPageContent() {
                     <CardContent className="grid md:grid-cols-3 gap-4">
                         <FormField name="paymentDate" control={form.control} render={({ field }) => (<FormItem><FormLabel>วันที่รับเงิน</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="paymentMethod" control={form.control} render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select></FormItem>)} />
-                        <FormField name="accountId" control={form.control} render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                        <FormField name="accountId" control={form.control} render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                         <div className="md:col-span-3">
                             <FormField name="netReceivedTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดรับสุทธิ (Net)</FormLabel><FormControl><Input type="number" {...field} className="text-lg font-bold" /></FormControl><FormMessage /></FormItem>)} />
                         </div>
@@ -415,7 +405,7 @@ function ConfirmReceiptPageContent() {
 
 export default function ConfirmReceiptPage() {
     return (
-        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}>
+        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
             <ConfirmReceiptPageContent />
         </Suspense>
     );

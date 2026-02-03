@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import { collection, getDocs, getDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -15,12 +14,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CheckCircle, MessageSquareWarning, Printer } from "lucide-react";
 import type { PayslipNew } from "@/lib/types";
-import { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase/firestore/use-collection";
 import { newPayslipStatusLabel } from "@/lib/ui-labels";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
-import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
+import { PayslipSlipView } from "@/components/payroll/PayslipSlipView";
 
-// Helper for currency formatting
 const formatCurrency = (value: number | undefined) => {
   return (value ?? 0).toLocaleString("th-TH", {
     minimumFractionDigits: 2,
@@ -28,7 +26,6 @@ const formatCurrency = (value: number | undefined) => {
   });
 };
 
-// Helper for status badge variant
 const getStatusBadgeVariant = (status?: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
         case 'DRAFT': return 'secondary';
@@ -40,7 +37,6 @@ const getStatusBadgeVariant = (status?: string): "default" | "secondary" | "dest
     }
 };
 
-// Component for the Revision Dialog
 function RevisionDialog({
   payslip,
   isOpen,
@@ -118,19 +114,14 @@ export default function MyPayslipsPage() {
     async function loadPayslips() {
       try {
         setLoading(true);
-
-        // 1) get payroll batch ids
         const batchesSnap = await getDocs(collection(db, "payrollBatches"));
         const batchIds = batchesSnap.docs.map(d => d.id);
-
-        // sort latest first by id pattern "YYYY-MM-{period}"
         batchIds.sort((a,b) => b.localeCompare(a));
 
-        // 2) read payslip doc for each batchId using profile.uid as doc id
         const results: (WithId<PayslipNew> & { refPath: string })[] = [];
 
         await Promise.all(batchIds.map(async (batchId) => {
-          const slipRef = doc(db, "payrollBatches", batchId, "payslips", profile.uid);
+          const slipRef = doc(db, "payrollBatches", batchId, "payslips", profile!.uid);
           const slipSnap = await getDoc(slipRef);
           if (slipSnap.exists()) {
             results.push({
@@ -141,7 +132,6 @@ export default function MyPayslipsPage() {
           }
         }));
 
-        // 3) sort by sentAt/updatedAt desc (same logic as before)
         results.sort((a, b) => {
           const dateA = a.sentAt?.toDate()?.getTime() || a.updatedAt?.toDate()?.getTime() || 0;
           const dateB = b.sentAt?.toDate()?.getTime() || b.updatedAt?.toDate()?.getTime() || 0;
@@ -173,7 +163,6 @@ export default function MyPayslipsPage() {
         employeeNote: null,
       });
       toast({ title: 'ยืนยันสลิปเรียบร้อย' });
-      // Manually update local state for immediate feedback
       setPayslips(prev => prev.map(p => p.id === payslip.id ? {...p, status: 'READY_TO_PAY'} : p));
       setViewPayslip(prev => prev ? {...prev, status: 'READY_TO_PAY'} : null);
     } catch (error: any) {
@@ -193,7 +182,6 @@ export default function MyPayslipsPage() {
         employeeNote: reason,
       });
       toast({ title: 'ส่งคำร้องแก้ไขเรียบร้อย' });
-       // Manually update local state
       setPayslips(prev => prev.map(p => p.id === revisionPayslip.id ? {...p, status: 'REVISION_REQUESTED'} : p));
       setViewPayslip(null);
       setRevisionPayslip(null);
@@ -327,7 +315,6 @@ export default function MyPayslipsPage() {
   
       const html = buildPayslipPrintHtml(p);
   
-      // Use srcdoc to trigger load event reliably
       frame.onload = () => {
         try {
           frame.contentWindow?.focus();
@@ -342,7 +329,7 @@ export default function MyPayslipsPage() {
       frame.srcdoc = html;
     } catch (e) {
       console.error(e);
-      toast({ variant: "destructive", title: "พิมพ์ไม่สำเร็จ", description: "เกิดข้อผิดพลาดในการสร้างเอกสารพิมพ์" });
+      toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการสร้างเอกสารพิมพ์" });
     }
   };
 
@@ -483,5 +470,3 @@ export default function MyPayslipsPage() {
     </>
   );
 }
-
-    

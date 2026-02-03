@@ -1,10 +1,9 @@
-
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
-import { useFirebase } from "@/firebase";
-import { collection, query, onSnapshot, orderBy, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, updateDoc } from "firebase/firestore";
+import { useFirebase } from "@/firebase/client-provider";
+import { collection, query, onSnapshot, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, updateDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 
@@ -20,11 +19,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase/firestore/use-collection";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
-import { format } from "date-fns";
 import { archiveAndCloseJob } from '@/firebase/jobs-archive';
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -124,7 +122,6 @@ export default function AccountingInboxPage() {
       
       await batch.commit();
 
-      // Archive Job if exists
       if (confirmingDoc.jobId) {
           const salesDocInfo = {
               salesDocType: confirmingDoc.docType,
@@ -163,7 +160,6 @@ export default function AccountingInboxPage() {
         });
         await batch.commit();
 
-        // Archive Job if exists
         if (docToProcess.jobId) {
             const salesDocInfo = {
                 salesDocType: docToProcess.docType,

@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, Suspense, useState, useEffect, useCallback } from 'react';
+import { useMemo, Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { useFirebase } from '@/firebase';
+import { useFirebase } from '@/firebase/client-provider';
 import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
@@ -150,7 +150,6 @@ function ReceivePaymentDialog({
                     balance: updatedBalance,
                     paymentStatus: updatedStatus
                 },
-                // Audit and payment tracking fields
                 paymentDate: data.paymentDate,
                 paymentMethod: data.paymentMethod,
                 receivedAccountId: data.accountId,
@@ -507,7 +506,6 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
     const [obligations, setObligations] = useState<WithId<AccountingObligation>[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<FirestoreError | null>(null);
-    const [retry, setRetry] = useState(0);
 
     const [docStatuses, setDocStatuses] = useState<Record<string, string>>({});
 
@@ -521,7 +519,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
             where("type", "==", type),
             limit(500)
         );
-    }, [db, type, retry]);
+    }, [db, type]);
 
     useEffect(() => {
         if (!obligationsQuery) return;
@@ -550,13 +548,11 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         return () => unsubscribe();
     }, [obligationsQuery, type]);
 
-    // Fetch receiptStatus for AR items
     useEffect(() => {
         if (type !== 'AR' || obligations.length === 0 || !db) return;
 
         const arSourceDocIds = Array.from(new Set(obligations.map(ob => ob.sourceDocId).filter(Boolean)));
         
-        // Listen to these documents
         const unsubscribes = arSourceDocIds.map(docId => {
             return onSnapshot(doc(db, 'documents', docId!), (docSnap) => {
                 if (docSnap.exists()) {
@@ -680,15 +676,12 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
     const [vendors, setVendors] = useState<WithId<Vendor>[]>([]);
     const [isAddingCreditor, setIsAddingCreditor] = useState(false);
     const { db } = useFirebase();
-    const { toast } = useToast();
 
     useEffect(() => {
         if (!db) return;
         const accountsQ = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
         const unsubAccounts = onSnapshot(accountsQ, (snap) => {
             setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
-        }, (err) => {
-          console.error("Error loading accounts:", err);
         });
         
         const vendorsQ = query(collection(db, "vendors"), where("isActive", "==", true));
@@ -696,8 +689,6 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>));
             data.sort((a, b) => String(a.shortName || "").localeCompare(String(b.shortName || ""), 'th'));
             setVendors(data);
-        }, (err) => {
-          console.error("Error loading vendors:", err);
         });
 
         return () => { unsubAccounts(); unsubVendors(); };
@@ -739,14 +730,14 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
 }
 
 export default function ReceivablesPayablesPage() {
-    const { profile } = useAuth();
+    const { profile, loading } = useAuth();
     const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
-    if (!profile) {
+    if (loading) {
         return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
     }
 
-    if (!hasPermission) {
+    if (!profile || !hasPermission) {
         return (
             <div className="w-full">
                 <PageHeader title="ลูกหนี้/เจ้าหนี้" />
@@ -761,11 +752,9 @@ export default function ReceivablesPayablesPage() {
     }
 
     return (
-        <>
+        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}>
             <PageHeader title="ลูกหนี้/เจ้าหนี้" description="จัดการและติดตามข้อมูลลูกหนี้และเจ้าหนี้" />
-            <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}>
-                <ReceivablesPayablesContent profile={profile} />
-            </Suspense>
-        </>
+            <ReceivablesPayablesContent profile={profile} />
+        </Suspense>
     );
 }

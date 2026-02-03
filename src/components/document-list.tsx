@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 
@@ -233,7 +233,9 @@ export function DocumentList({
                     
                     const viewPath = docType === 'QUOTATION'
                       ? `/app/office/documents/quotation/${docItem.id}`
-                      : `/app/office/documents/${docItem.id}`;
+                      : (docType === 'DELIVERY_NOTE' 
+                          ? `/app/office/documents/delivery-note/${docItem.id}`
+                          : `/app/office/documents/${docItem.id}`);
 
                     return (
                     <TableRow key={docItem.id}>
