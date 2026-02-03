@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth, endOfMonth, parseISO, isBefore, isAfter } from "date-fns";
-import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch, runTransaction } from "firebase/firestore";
+import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch, runTransaction, increment } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -16,7 +16,7 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
-import type { AccountingAccount, AccountingEntry, Vendor, StoreSettings } from "@/lib/types";
+import type { AccountingAccount, AccountingEntry, Vendor, StoreSettings, Document as DocumentType } from "@/lib/types";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,7 +95,7 @@ const entrySchema = z.object({
 
 type EntryFormData = z.infer<typeof entrySchema>;
 
-function VendorCombobox({ allVendors, selectedId, onSelect }: { allVendors: WithId<Vendor>[], selectedId?: string, onSelect: (vendor: WithId<Vendor> | null) => void }) {
+function VendorCombobox({ allVendors, selectedId, onSelect, disabled }: { allVendors: WithId<Vendor>[], selectedId?: string, onSelect: (vendor: WithId<Vendor> | null) => void, disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   
@@ -115,7 +115,7 @@ function VendorCombobox({ allVendors, selectedId, onSelect }: { allVendors: With
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between overflow-hidden text-sm">
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between overflow-hidden text-sm" disabled={disabled}>
           <span className="truncate">{selectedValue || "เลือกคู่ค้า..."}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -233,14 +233,19 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   const onSubmit = async (values: EntryFormData) => {
     if (!db || !profile) return;
 
+    // Validation for Withholding Tax
     if (entryType === 'CASH_OUT' && values.withholdingEnabled) {
+        if (!values.vendorId) {
+            toast({ variant: 'destructive', title: "กรุณาเลือกร้านค้า", description: "ต้องระบุคู่ค้าเพื่อออกหนังสือรับรองหัก ณ ที่จ่าย" });
+            return;
+        }
         const selectedVendor = allVendors.find(v => v.id === values.vendorId);
         if (!selectedVendor || !selectedVendor.taxId || !selectedVendor.address) {
-            toast({ variant: 'destructive', title: "ข้อมูลคู่ค้าไม่ครบถ้วน", description: "ต้องเลือกร้านค้าที่มีเลขผู้เสียภาษีและที่อยู่เพื่อออกใบหัก ณ ที่จ่าย" });
+            toast({ variant: 'destructive', title: "ข้อมูลคู่ค้าไม่ครบถ้วน", description: "ร้านค้าที่เลือกต้องมีเลขผู้เสียภาษีและที่อยู่เพื่อออกใบหัก ณ ที่จ่าย" });
             return;
         }
         if (!storeSettings || !storeSettings.taxId) {
-            toast({ variant: 'destructive', title: "ข้อมูลร้านค้าไม่ครบถ้วน", description: "กรุณาตั้งค่าข้อมูลภาษีของร้านที่หน้าตั้งค่า HR/Store" });
+            toast({ variant: 'destructive', title: "ข้อมูลร้านค้าไม่ครบถ้วน", description: "กรุณาตั้งค่าข้อมูลภาษีของร้านที่หน้าตั้งค่าระบบก่อน" });
             return;
         }
     }
@@ -249,6 +254,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       await runTransaction(db, async (transaction) => {
         let withholdingTaxDocId = "";
 
+        // CASE: Withholding Tax Enabled -> Transactional creation of WHT Doc + Entry
         if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
             const year = new Date(values.entryDate).getFullYear();
             const counterRef = doc(db, 'documentCounters', String(year));
@@ -259,10 +265,10 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                 transaction.get(docSettingsRef)
             ]);
             
-            const settingsData = settingsSnap.data() as any;
+            const settingsData = settingsSnap.exists() ? settingsSnap.data() as any : {};
             const prefix = settingsData?.withholdingTaxPrefix || 'WHT';
             
-            let currentCounters = counterSnap.exists() ? counterSnap.data() : { year };
+            let currentCounters = counterSnap.exists() ? counterSnap.data() as any : { year };
             const newCount = (currentCounters.withholdingTax || 0) + 1;
             const docNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
             
@@ -272,7 +278,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
             const selectedVendor = allVendors.find(v => v.id === values.vendorId)!;
             const paidAmountGross = values.billType === 'TAX_INVOICE' ? (values.netAmount || 0) : values.amount;
             
-            const whtData = sanitizeForFirestore({
+            const whtData: any = sanitizeForFirestore({
                 id: withholdingTaxDocId,
                 docType: 'WITHHOLDING_TAX',
                 docNo,
@@ -551,7 +557,7 @@ function CashbookPageContent() {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: startOfToday(), to: endOfMonth(new Date()) });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
   const [searchTerm, setSearchTerm] = useState("");
 
   const accountsQuery = useMemo(() => db ? query(collection(db, "accountingAccounts"), where("isActive", "==", true)) : null, [db]);
@@ -648,12 +654,6 @@ function CashbookPageContent() {
     </>
   );
 }
-
-const startOfToday = () => {
-    const d = new Date();
-    d.setHours(0,0,0,0);
-    return d;
-};
 
 export default function CashbookPage() {
     return <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}><CashbookPageContent /></Suspense>;
