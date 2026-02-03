@@ -10,9 +10,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
 import { useFirebase } from "@/firebase";
-import { useCollection } from "@/firebase/firestore/use-collection";
+import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
-import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
