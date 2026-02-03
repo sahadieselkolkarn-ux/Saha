@@ -2,7 +2,9 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, getDocs, deleteDoc } from "firebase/firestore";
-import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
+import { useFirebase } from "@/firebase";
+import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
+import { useDoc } from "@/firebase/firestore/use-doc";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfToday, subMonths } from 'date-fns';
@@ -510,7 +512,7 @@ export default function ManagementHRLeavesPage() {
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setRejectingLeave(null)} disabled={isSubmitting}>ยกเลิก</Button>
                     <Button variant="destructive" onClick={handleReject} disabled={isSubmitting || !rejectReason}>
-                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการปฏิเสธ'}
+                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'ยืนยันการปฏิเสธ'}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -535,5 +537,3 @@ export default function ManagementHRLeavesPage() {
     </>
   );
 }
-
-    
