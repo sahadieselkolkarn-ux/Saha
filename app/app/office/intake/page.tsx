@@ -4,9 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, updateDoc, doc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -20,13 +20,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
 import { Loader2, Camera, X, ChevronsUpDown, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
+import { deptLabel } from "@/lib/ui-labels";
 
 const intakeSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
@@ -176,7 +176,7 @@ export default function IntakePage() {
         
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.set(activityDocRef, {
-            text: `เปิดงานใหม่ในแผนก ${values.department}`,
+            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)}`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
@@ -185,7 +185,7 @@ export default function IntakePage() {
 
         await batch.commit();
 
-        toast({ title: "สร้างงานสำเร็จ", description: `Job ID: ${jobId}` });
+        toast({ title: "สร้างงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
         
         form.reset();
         setPhotos([]);
@@ -208,7 +208,7 @@ export default function IntakePage() {
 
   return (
     <>
-      <PageHeader title="เปิดงานใหม่" description="สร้างงานใหม่สำหรับลูกค้า" />
+      <PageHeader title="เปิดงานใหม่" description="สร้างงานใหม่สำหรับลูกค้าเข้าระบบ" />
       <Card>
         <CardContent className="pt-6">
           <Form {...form}>
@@ -294,10 +294,14 @@ export default function IntakePage() {
               />
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
-                  <FormLabel>แผนก</FormLabel>
+                  <FormLabel>แผนกที่รับผิดชอบ</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl><SelectTrigger><SelectValue placeholder="เลือกแผนก" /></SelectTrigger></FormControl>
-                    <SelectContent>{JOB_DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      {JOB_DEPARTMENTS.map(d => (
+                        <SelectItem key={d} value={d}>{deptLabel(d)}</SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
@@ -305,7 +309,7 @@ export default function IntakePage() {
               
               {selectedDepartment === 'CAR_SERVICE' && (
                 <Card>
-                    <CardHeader><CardTitle>รายละเอียดรถยนต์</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-base">รายละเอียดรถยนต์</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
                         <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อรถ</FormLabel><FormControl><Input placeholder="เช่น Toyota" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (<FormItem><FormLabel>รุ่นรถ</FormLabel><FormControl><Input placeholder="เช่น Hilux Revo" {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -316,10 +320,10 @@ export default function IntakePage() {
 
               {selectedDepartment === 'COMMONRAIL' && (
                  <Card>
-                    <CardHeader><CardTitle>รายละเอียดคอมมอนเรล</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-base">รายละเอียดคอมมอนเรล</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
                         <FormField name="commonrailDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="commonrailDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่</FormLabel><FormControl><Input placeholder="Part Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="commonrailDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่ (Part Number)</FormLabel><FormControl><Input placeholder="กรอกเลขอะไหล่" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="commonrailDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </CardContent>
                 </Card>
@@ -327,10 +331,10 @@ export default function IntakePage() {
 
               {selectedDepartment === 'MECHANIC' && (
                  <Card>
-                    <CardHeader><CardTitle>รายละเอียดแมคคานิค</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-base">รายละเอียดแมคคานิค</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
                         <FormField name="mechanicDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="mechanicDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่</FormLabel><FormControl><Input placeholder="Part Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="mechanicDetails.partNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่ (Part Number)</FormLabel><FormControl><Input placeholder="กรอกเลขอะไหล่" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField name="mechanicDetails.registrationNumber" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขทะเบียน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     </CardContent>
                 </Card>
@@ -338,20 +342,20 @@ export default function IntakePage() {
 
               <FormField name="description" control={form.control} render={({ field }) => (
                 <FormItem>
-                  <FormLabel>รายละเอียด / อาการ</FormLabel>
-                  <FormControl><Textarea placeholder="กรอกรายละเอียดอาการ..." rows={5} {...field} /></FormControl>
+                  <FormLabel>รายละเอียด / อาการแจ้งซ่อม</FormLabel>
+                  <FormControl><Textarea placeholder="กรอกรายละเอียดอาการหรือรายการซ่อมที่ต้องการ..." rows={5} {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormItem>
-                <FormLabel>รูปภาพ (สูงสุด 4 รูป, ไม่เกิน 5MB ต่อรูป)</FormLabel>
+                <FormLabel>รูปภาพประกอบ (สูงสุด 4 รูป, ไม่เกิน 5MB ต่อรูป)</FormLabel>
                 <FormControl>
                   <div className="flex items-center justify-center w-full">
                     <label htmlFor="intake-dropzone-file" className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg ${photos.length >= 4 ? 'cursor-not-allowed bg-muted/50' : 'cursor-pointer bg-muted hover:bg-secondary'}`}>
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <Camera className="w-8 h-8 mb-2 text-muted-foreground" />
-                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">ถ่ายภาพ</span> หรืออัปโหลด</p>
-                             <p className="text-xs text-muted-foreground">แตะเพื่อเปิดกล้องหรือเลือกไฟล์</p>
+                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">ถ่ายภาพ</span> หรือคลิกเพื่ออัปโหลด</p>
+                             <p className="text-xs text-muted-foreground">แตะเพื่อเปิดกล้องหรือเลือกไฟล์รูปภาพ</p>
                         </div>
                       <Input id="intake-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= 4} />
                     </label>
@@ -370,9 +374,9 @@ export default function IntakePage() {
                   </div>
                 )}
               </FormItem>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                สร้างงาน
+              <Button type="submit" className="w-full h-12 text-lg" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
+                สร้างใบงาน
               </Button>
             </form>
           </Form>
