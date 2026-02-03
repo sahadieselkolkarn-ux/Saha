@@ -105,7 +105,7 @@ function ReceivePaymentDialog({
       const obligationRef = doc(db, 'accountingObligations', obligation.id);
       const newAmountPaid = obligation.amountPaid + data.amount;
       const newBalance = obligation.amountTotal - newAmountPaid;
-      const newStatus = newBalance <= 0 ? 'PAID' : 'PARTIAL';
+      const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
       
       batch.update(obligationRef, {
         amountPaid: newAmountPaid,
@@ -132,18 +132,35 @@ function ReceivePaymentDialog({
           createdAt: serverTimestamp(),
       });
 
-      if (newStatus === 'PAID' && obligation.sourceDocId) {
+      if (obligation.sourceDocId) {
         const sourceDocRef = doc(db, 'documents', obligation.sourceDocId);
-        batch.update(sourceDocRef, {
-          status: 'PAID',
-          paymentDate: data.paymentDate,
-          paymentMethod: data.paymentMethod,
-          receivedAccountId: data.accountId,
-          cashReceived: cashReceived,
-          withholdingEnabled: data.withholdingEnabled,
-          withholdingAmount: data.withholdingAmount,
-          updatedAt: serverTimestamp(),
-        });
+        const sourceDocSnap = await getDoc(sourceDocRef);
+        
+        if (sourceDocSnap.exists()) {
+            const sourceDoc = sourceDocSnap.data() as DocumentType;
+            const currentPaidTotal = sourceDoc.paymentSummary?.paidTotal || 0;
+            const updatedPaidTotal = currentPaidTotal + data.amount;
+            const updatedBalance = sourceDoc.grandTotal - updatedPaidTotal;
+            const updatedStatus = updatedBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+
+            batch.update(sourceDocRef, {
+                status: updatedStatus,
+                arStatus: updatedStatus,
+                paymentSummary: {
+                    paidTotal: updatedPaidTotal,
+                    balance: updatedBalance,
+                    paymentStatus: updatedStatus
+                },
+                // Audit and payment tracking fields
+                paymentDate: data.paymentDate,
+                paymentMethod: data.paymentMethod,
+                receivedAccountId: data.accountId,
+                cashReceived: cashReceived,
+                withholdingEnabled: data.withholdingEnabled,
+                withholdingAmount: data.withholdingAmount,
+                updatedAt: serverTimestamp(),
+            });
+        }
       }
 
       await batch.commit();
@@ -256,7 +273,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
       const obligationRef = doc(db, 'accountingObligations', obligation.id);
       const newAmountPaid = obligation.amountPaid + data.amount;
       const newBalance = obligation.amountTotal - newAmountPaid;
-      const newStatus = newBalance <= 0 ? 'PAID' : 'PARTIAL';
+      const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
 
       batch.update(obligationRef, {
         amountPaid: newAmountPaid,
