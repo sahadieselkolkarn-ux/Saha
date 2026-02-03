@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth, endOfMonth, parseISO, isBefore, isAfter } from "date-fns";
-import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch } from "firebase/firestore";
+import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch, runTransaction } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -14,10 +14,9 @@ import { useCollection, type WithId } from "@/firebase/firestore/use-collection"
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
 import type { AccountingAccount, AccountingEntry, Vendor, StoreSettings } from "@/lib/types";
-import { createDocument } from "@/firebase/documents";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,7 +58,6 @@ const entrySchema = z.object({
   withholdingPercent: z.coerce.number().optional(),
   withholdingAmount: z.coerce.number().optional(),
 }).superRefine((data, ctx) => {
-  // Logic specifically for CASH_OUT (implied by presence of billType or WHT toggles)
   if (data.billType === 'TAX_INVOICE') {
     if (data.netAmount === undefined || data.netAmount <= 0) {
       ctx.addIssue({
@@ -236,13 +234,9 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
     if (!db || !profile) return;
 
     if (entryType === 'CASH_OUT' && values.withholdingEnabled) {
-        if (!values.vendorId) {
-            toast({ variant: 'destructive', title: "กรุณาเลือกคู่ค้า", description: "ต้องระบุคู่ค้าเพื่อออกหนังสือหัก ณ ที่จ่าย" });
-            return;
-        }
         const selectedVendor = allVendors.find(v => v.id === values.vendorId);
         if (!selectedVendor || !selectedVendor.taxId || !selectedVendor.address) {
-            toast({ variant: 'destructive', title: "ข้อมูลคู่ค้าไม่ครบถ้วน", description: `กรุณาเพิ่มเลขผู้เสียภาษีและที่อยู่ในหน้าจัดการร้านค้าสำหรับ: ${selectedVendor?.companyName}` });
+            toast({ variant: 'destructive', title: "ข้อมูลคู่ค้าไม่ครบถ้วน", description: "ต้องเลือกร้านค้าที่มีเลขผู้เสียภาษีและที่อยู่เพื่อออกใบหัก ณ ที่จ่าย" });
             return;
         }
         if (!storeSettings || !storeSettings.taxId) {
@@ -252,50 +246,89 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
     }
 
     try {
-      const batch = writeBatch(db);
-      let withholdingTaxDocId = "";
+      await runTransaction(db, async (transaction) => {
+        let withholdingTaxDocId = "";
 
-      // Logic for building the final transaction amount (Cash flow)
-      const actualCashAmount = values.amount - (values.withholdingAmount || 0);
+        if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
+            const year = new Date(values.entryDate).getFullYear();
+            const counterRef = doc(db, 'documentCounters', String(year));
+            const docSettingsRef = doc(db, 'settings', 'documents');
+            
+            const [counterSnap, settingsSnap] = await Promise.all([
+                transaction.get(counterRef),
+                transaction.get(docSettingsRef)
+            ]);
+            
+            const settingsData = settingsSnap.data() as any;
+            const prefix = settingsData?.withholdingTaxPrefix || 'WHT';
+            
+            let currentCounters = counterSnap.exists() ? counterSnap.data() : { year };
+            const newCount = (currentCounters.withholdingTax || 0) + 1;
+            const docNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
+            
+            const whtDocRef = doc(collection(db, 'documents'));
+            withholdingTaxDocId = whtDocRef.id;
+            
+            const selectedVendor = allVendors.find(v => v.id === values.vendorId)!;
+            const paidAmountGross = values.billType === 'TAX_INVOICE' ? (values.netAmount || 0) : values.amount;
+            
+            const whtData = sanitizeForFirestore({
+                id: withholdingTaxDocId,
+                docType: 'WITHHOLDING_TAX',
+                docNo,
+                docDate: values.entryDate,
+                payerSnapshot: { 
+                    name: storeSettings.taxName || "", 
+                    address: storeSettings.taxAddress || "", 
+                    taxId: storeSettings.taxId || "", 
+                    branch: storeSettings.branch || "00000" 
+                },
+                payeeSnapshot: { 
+                    name: selectedVendor.companyName, 
+                    address: selectedVendor.address || "", 
+                    taxId: selectedVendor.taxId || "" 
+                },
+                vendorId: values.vendorId,
+                paidMonth: parseInt(values.entryDate.split('-')[1]),
+                paidYear: parseInt(values.entryDate.split('-')[0]),
+                incomeTypeCode: 'ITEM5', 
+                paidAmountGross,
+                withholdingPercent: values.withholdingPercent || 3,
+                withholdingAmount: values.withholdingAmount || 0,
+                paidAmountNet: paidAmountGross - (values.withholdingAmount || 0),
+                status: 'ISSUED',
+                senderName: profile.displayName,
+                receiverName: selectedVendor.companyName,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+            
+            transaction.set(whtDocRef, whtData);
+            transaction.update(counterRef, { withholdingTax: newCount });
+        }
 
-      if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
-          const selectedVendor = allVendors.find(v => v.id === values.vendorId)!;
-          const { docId } = await createDocument(db, 'WITHHOLDING_TAX', {
-              docDate: values.entryDate,
-              payerSnapshot: { name: storeSettings.taxName || "", address: storeSettings.taxAddress || "", taxId: storeSettings.taxId || "", branch: storeSettings.branch || "00000" },
-              payeeSnapshot: { name: selectedVendor.companyName, address: selectedVendor.address || "", taxId: selectedVendor.taxId || "" },
-              vendorId: values.vendorId,
-              paidMonth: parseInt(values.entryDate.split('-')[1]),
-              paidYear: parseInt(values.entryDate.split('-')[0]),
-              incomeTypeCode: 'ITEM5', 
-              paidAmountGross: (values.billType === 'TAX_INVOICE') ? values.netAmount! : values.amount,
-              withholdingPercent: values.withholdingPercent === 1 ? 1 : 3,
-              withholdingAmount: values.withholdingAmount || 0,
-              paidAmountNet: ((values.billType === 'TAX_INVOICE') ? values.netAmount! : values.amount) - (values.withholdingAmount || 0),
-              status: 'ISSUED',
-              senderName: profile.displayName,
-              receiverName: selectedVendor.companyName
-          } as any, profile);
-          withholdingTaxDocId = docId;
-      }
-
-      await addDoc(collection(db, "accountingEntries"), {
-        ...values,
-        amount: actualCashAmount, 
-        grossAmount: values.amount, 
-        entryType,
-        withholdingTaxDocId,
-        createdAt: serverTimestamp(),
+        const entryRef = doc(collection(db, 'accountingEntries'));
+        const actualCashAmount = values.amount - (values.withholdingAmount || 0);
+        
+        transaction.set(entryRef, sanitizeForFirestore({
+            ...values,
+            amount: actualCashAmount,
+            grossAmount: values.amount,
+            entryType,
+            withholdingTaxDocId,
+            createdAt: serverTimestamp(),
+        }));
+        
+        return withholdingTaxDocId;
+      }).then((docId) => {
+          toast({ title: "บันทึกรายการสำเร็จ" });
+          if (docId) {
+              setSuccessDocId(docId);
+          } else {
+              setIsOpen(false);
+              onSaveSuccess();
+          }
       });
-
-      await batch.commit();
-      toast({ title: "บันทึกรายการสำเร็จ" });
-      if (withholdingTaxDocId) {
-          setSuccessDocId(withholdingTaxDocId);
-      } else {
-          setIsOpen(false);
-          onSaveSuccess();
-      }
     } catch (e: any) {
       toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
     }
