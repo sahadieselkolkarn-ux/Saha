@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, getDocs } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, FileDown } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -27,6 +27,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { createDocument } from "@/firebase/documents";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
+import { safeFormat } from "@/lib/date-utils";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "ต้องกรอกรายละเอียด"),
@@ -68,6 +69,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
+  const [quotationUsages, setQuotationUsages] = useState<number>(0);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -154,6 +156,18 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         });
     }
   }, [job, docToEdit, form, jobId, customers]);
+
+  // Check for quotation usage history if editing or based on existing quotation
+  useEffect(() => {
+    if (!db || !editDocId) {
+      setQuotationUsages(0);
+      return;
+    }
+    const q = query(collection(db, "documents"), where("referencesDocIds", "array-contains", editDocId));
+    getDocs(q).then(snap => {
+      setQuotationUsages(snap.size);
+    });
+  }, [db, editDocId]);
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers;
@@ -268,6 +282,16 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
           </Alert>
         )}
 
+        {quotationUsages > 0 && (
+          <Alert variant="default" className="bg-amber-50 border-amber-200">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800">ข้อมูลประวัติการใช้งาน</AlertTitle>
+            <AlertDescription className="text-amber-700">
+              ใบเสนอราคานี้ถูกนำไปอ้างอิงเพื่อออกเอกสารใบส่งของหรือใบกำกับภาษีแล้ว {quotationUsages} ครั้ง
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
             <div className="lg:col-span-2 space-y-2">
                 <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Sahadiesel Service'}</h2>
@@ -306,23 +330,25 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                     <Input autoFocus placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-fit max-h-60">
-                                    {filteredCustomers.map((c) => (
-                                    <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
-                                        <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
-                                    </Button>
-                                    ))}
+                                    {filteredCustomers.length > 0 ? (
+                                        filteredCustomers.map((c) => (
+                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
+                                                <div className="flex flex-col items-start"><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
+                                            </Button>
+                                        ))
+                                    ) : (<p className="text-center p-4 text-sm text-muted-foreground">No customers found.</p>)}
                                 </ScrollArea>
                             </PopoverContent>
                         </Popover>
-                        </FormMessage>
+                        <FormMessage />
                         </FormItem>
                     )}
                 />
                  {displayCustomer && (
                     <div className="mt-2 text-sm text-muted-foreground">
-                        <p>{displayCustomer.taxAddress || 'N/A'}</p>
+                        <p>{displayCustomer.taxAddress || displayCustomer.detail || 'N/A'}</p>
                         <p>โทร: {displayCustomer.phone}</p>
-                        <p>เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId || 'N/A'}</p>
+                        {displayCustomer.taxId && <p>เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId}</p>}
                     </div>
                  )}
                  {(job || docToEdit?.jobId) && (
