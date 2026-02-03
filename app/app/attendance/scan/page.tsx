@@ -135,7 +135,7 @@ function ScanPageContent() {
     return () => clearInterval(timer);
   }, [secondsSinceLast]);
 
-  // REDIRECT EFFECT - Fixed Rule of Hooks
+  // REDIRECT EFFECT - Updated logic
   useEffect(() => {
     if (!recentClock) return;
 
@@ -147,26 +147,19 @@ function ScanPageContent() {
 
       const { role, department } = profile;
 
-      if (role === 'ADMIN') {
-        router.replace('/app/jobs');
-      } else if (role === 'OFFICER') {
-        if (department === 'CAR_SERVICE') {
-          router.replace('/app/car-service/jobs/all');
-        } else {
-          router.replace('/app/kiosk');
-        }
-      } else if (role === 'MANAGER' || role === 'WORKER') {
-        switch (department) {
-          case 'MANAGEMENT': router.replace('/app/management/overview'); break;
-          case 'OFFICE': router.replace('/app/office/intake'); break;
-          case 'CAR_SERVICE': router.replace('/app/car-service/jobs/all'); break;
-          case 'COMMONRAIL': router.replace('/app/commonrail/jobs/all'); break;
-          case 'MECHANIC': router.replace('/app/mechanic/jobs/all'); break;
-          case 'OUTSOURCE': router.replace('/app/outsource/export/new'); break;
-          default: router.replace('/app/jobs'); break;
-        }
+      if (department === 'MANAGEMENT' || role === 'ADMIN' || role === 'MANAGER') {
+        router.replace('/app/management/dashboard');
+      } else if (department === 'OFFICE') {
+        router.replace('/app/office/intake');
+      } else if (department === 'CAR_SERVICE' && role === 'WORKER') {
+        router.replace('/app/car-service/jobs/all');
+      } else if (department === 'COMMONRAIL' && role === 'WORKER') {
+        router.replace('/app/commonrail/jobs/all');
+      } else if (department === 'MECHANIC' && role === 'WORKER') {
+        router.replace('/app/mechanic/jobs/all');
       } else {
-        router.replace('/app/jobs');
+        // Fallback for Officer, Outsource or unspecified roles to prevent 404
+        router.replace('/app/attendance/history');
       }
     }, 3000);
 
