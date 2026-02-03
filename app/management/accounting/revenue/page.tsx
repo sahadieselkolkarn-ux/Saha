@@ -1,5 +1,1 @@
-import { redirect } from 'next/navigation';
-
-export default function ManagementAccountingRevenuePage() {
-  redirect('/app/management/accounting/cashbook?tab=in');
-}
+// This file is being deleted as it is redundant with /app/management/accounting/cashbook?tab=in

@@ -1,5 +1,1 @@
-import { redirect } from 'next/navigation';
-
-export default function ManagementAccountingExpensesPage() {
-  redirect('/app/management/accounting/cashbook?tab=out');
-}
+// This file is being deleted as it is redundant with /app/management/accounting/cashbook?tab=out

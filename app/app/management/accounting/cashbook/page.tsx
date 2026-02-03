@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { DateRange } from "react-day-picker";
 import { format, startOfMonth, endOfMonth, parseISO, isBefore, isAfter } from "date-fns";
-import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot } from "firebase/firestore";
+import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -14,23 +14,24 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
-import type { AccountingAccount, AccountingEntry, Vendor } from "@/lib/types";
+import type { AccountingAccount, AccountingEntry, Vendor, StoreSettings } from "@/lib/types";
+import { createDocument } from "@/firebase/documents";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
-import { searchVendors } from "@/firebase/vendors";
 
 type EntryType = 'CASH_IN' | 'CASH_OUT';
 
@@ -46,6 +47,14 @@ const entrySchema = z.object({
   vendorId: z.string().optional(),
   vendorShortNameSnapshot: z.string().optional(),
   vendorNameSnapshot: z.string().optional(),
+  // New Fields for CASH_OUT
+  billType: z.enum(["NO_BILL", "NO_TAX_INVOICE", "TAX_INVOICE"]).optional(),
+  vatRate: z.coerce.number().optional(),
+  vatAmount: z.coerce.number().optional(),
+  netAmount: z.coerce.number().optional(),
+  withholdingEnabled: z.boolean().default(false),
+  withholdingPercent: z.coerce.number().optional(),
+  withholdingAmount: z.coerce.number().optional(),
 });
 
 type EntryFormData = z.infer<typeof entrySchema>;
@@ -109,6 +118,7 @@ function VendorCombobox({ allVendors, onSelect }: { allVendors: WithId<Vendor>[]
 
 function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { entryType: EntryType, accounts: WithId<AccountingAccount>[], allVendors: WithId<Vendor>[], onSaveSuccess: () => void }) {
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -116,6 +126,9 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   const mainCategories = Object.keys(categories);
   
   const defaultCategoryMain = entryType === 'CASH_OUT' ? 'ต้นทุนงาน' : 'งานซ่อม';
+
+  const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
+  const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
 
   const form = useForm<EntryFormData>({
     resolver: zodResolver(entrySchema),
@@ -128,6 +141,13 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       accountId: "",
       paymentMethod: "CASH",
       sourceDocNo: "",
+      billType: "NO_BILL",
+      vatRate: 0,
+      vatAmount: 0,
+      netAmount: 0,
+      withholdingEnabled: false,
+      withholdingPercent: 3,
+      withholdingAmount: 0,
     },
   });
   
@@ -142,10 +162,34 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
             accountId: accounts[0]?.id || "",
             paymentMethod: "CASH",
             sourceDocNo: "",
+            billType: "NO_BILL",
+            vatRate: 0,
+            vatAmount: 0,
+            netAmount: 0,
+            withholdingEnabled: false,
+            withholdingPercent: 3,
+            withholdingAmount: 0,
         });
     }
   }, [isOpen, form, defaultCategoryMain, accounts]);
 
+  const watchedNetAmount = form.watch('netAmount') || 0;
+  const watchedVatRate = form.watch('vatRate') || 0;
+  const watchedWhtEnabled = form.watch('withholdingEnabled');
+  const watchedWhtPercent = form.watch('withholdingPercent') || 0;
+
+  // Auto-calculate VAT and WHT based on net amount
+  useEffect(() => {
+    if (entryType !== 'CASH_OUT') return;
+    
+    const vatAmount = Math.round(watchedNetAmount * (watchedVatRate / 100) * 100) / 100;
+    const whtAmount = watchedWhtEnabled ? Math.round(watchedNetAmount * (watchedWhtPercent / 100) * 100) / 100 : 0;
+    const amount = Math.round((watchedNetAmount + vatAmount - whtAmount) * 100) / 100;
+
+    form.setValue('vatAmount', vatAmount);
+    form.setValue('withholdingAmount', whtAmount);
+    form.setValue('amount', amount);
+  }, [watchedNetAmount, watchedVatRate, watchedWhtEnabled, watchedWhtPercent, form, entryType]);
 
   const selectedMainCategory = form.watch('categoryMain');
   const subCategories = useMemo(() => {
@@ -154,13 +198,56 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   }, [selectedMainCategory, categories]);
 
   const onSubmit = async (values: EntryFormData) => {
-    if (!db) return;
+    if (!db || !profile) return;
     try {
-      await addDoc(collection(db, "accountingEntries"), {
+      const batch = writeBatch(db);
+      let withholdingTaxDocId = "";
+
+      // 1. Create Withholding Tax Document if enabled
+      if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
+          const selectedVendor = allVendors.find(v => v.id === values.vendorId);
+          if (selectedVendor && (selectedVendor.taxId && selectedVendor.address)) {
+              const whtData = {
+                  docDate: values.entryDate,
+                  payerSnapshot: {
+                      name: storeSettings.taxName || "",
+                      address: storeSettings.taxAddress || "",
+                      taxId: storeSettings.taxId || "",
+                      branch: storeSettings.branch || "00000"
+                  },
+                  payeeSnapshot: {
+                      name: selectedVendor.companyName,
+                      address: selectedVendor.address,
+                      taxId: selectedVendor.taxId
+                  },
+                  vendorId: values.vendorId,
+                  paidMonth: parseInt(values.entryDate.split('-')[1]),
+                  paidYear: parseInt(values.entryDate.split('-')[0]),
+                  incomeTypeCode: 'ITEM5' as const, // Default to ITEM5 as requested
+                  paidAmountGross: values.netAmount || values.amount,
+                  withholdingPercent: values.withholdingPercent as 1 | 3,
+                  withholdingAmount: values.withholdingAmount || 0,
+                  paidAmountNet: values.amount,
+                  status: 'ISSUED' as const,
+                  senderName: profile.displayName,
+                  receiverName: selectedVendor.companyName
+              };
+
+              const { docId } = await createDocument(db, 'WITHHOLDING_TAX', whtData as any, profile);
+              withholdingTaxDocId = docId;
+          }
+      }
+
+      // 2. Create Accounting Entry
+      const entryRef = doc(collection(db, "accountingEntries"));
+      batch.set(entryRef, {
         ...values,
         entryType,
+        withholdingTaxDocId,
         createdAt: serverTimestamp(),
       });
+
+      await batch.commit();
       toast({ title: "บันทึกรายการสำเร็จ" });
       setIsOpen(false);
       onSaveSuccess();
@@ -177,44 +264,79 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       <DialogTrigger asChild>
         <Button><PlusCircle className="mr-2" /> {dialogTitle}</Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0">
+        <DialogHeader className="p-6 pb-0">
           <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} id="entry-form" className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
+          <form onSubmit={form.handleSubmit(onSubmit)} id="entry-form" className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="entryDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>จำนวนเงิน</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกช่องทาง..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
             </div>
-            <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>รายการ</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>)} />
+
+            <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>รายการ</FormLabel><FormControl><Input placeholder="ระบุรายละเอียดรายการ" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            
             <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="categoryMain" render={({ field }) => (<FormItem><FormLabel>หมวดหลัก</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดหมู่หลัก..." /></SelectTrigger></FormControl><SelectContent>{mainCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                 {subCategories.length > 0 && (
                      <FormField control={form.control} name="categorySub" render={({ field }) => (<FormItem><FormLabel>หมวดย่อย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดย่อย..." /></SelectTrigger></FormControl><SelectContent>{subCategories.map((cat: string) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                 )}
             </div>
+
+            <Separator />
+
+            {entryType === 'CASH_OUT' ? (
+                <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-dashed">
+                    <h4 className="text-sm font-semibold flex items-center gap-2"><AlertCircle className="h-4 w-4" /> รายละเอียดภาษีและบิล</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormField control={form.control} name="billType" render={({ field }) => (<FormItem><FormLabel>หลักฐานการจ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="NO_BILL">ไม่มีหลักฐาน</SelectItem><SelectItem value="NO_TAX_INVOICE">บิลเงินสด (ไม่มี VAT)</SelectItem><SelectItem value="TAX_INVOICE">ใบกำกับภาษี</SelectItem></SelectContent></Select></FormItem>)} />
+                        <FormField control={form.control} name="vatRate" render={({ field }) => (<FormItem><FormLabel>VAT (%)</FormLabel><Select onValueChange={field.onChange} value={field.value?.toString()}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="0">0% (ไม่มี/ยกเว้น)</SelectItem><SelectItem value="7">7%</SelectItem></SelectContent></Select></FormItem>)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <FormField control={form.control} name="netAmount" render={({ field }) => (<FormItem><FormLabel>ยอดก่อนภาษี (Net)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl></FormItem>)} />
+                        <FormItem><FormLabel>จำนวนเงิน VAT</FormLabel><FormControl><Input type="number" value={form.watch('vatAmount')} disabled className="bg-muted" /></FormControl></FormItem>
+                    </div>
+                    <div className="space-y-3 pt-2 border-t">
+                        <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
+                            <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                <div className="space-y-1 leading-none"><FormLabel>หัก ณ ที่จ่าย (Withholding Tax)</FormLabel></div>
+                            </FormItem>
+                        )} />
+                        {watchedWhtEnabled && (
+                            <div className="grid grid-cols-2 gap-4">
+                                <FormField control={form.control} name="withholdingPercent" render={({ field }) => (<FormItem><FormLabel>หัก (%)</FormLabel><Select onValueChange={field.onChange} value={field.value?.toString()}><FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl><SelectContent><SelectItem value="1">1% (ค่าขนส่ง/ค่าบริการ)</SelectItem><SelectItem value="3">3% (ค่าบริการ/ค่าแรง)</SelectItem></SelectContent></Select></FormItem>)} />
+                                <FormItem><FormLabel>ยอดที่หักไว้</FormLabel><FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted" /></FormControl></FormItem>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : null}
+
             <div className="grid grid-cols-2 gap-4">
-              <FormField control={form.control} name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกช่องทาง..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="accountId" render={({ field }) => (<FormItem><FormLabel>บัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel className="font-bold text-primary">ยอดจ่ายสุทธิ (Cash Paid)</FormLabel><FormControl><Input type="number" step="0.01" {...field} className={cn("text-lg font-bold", entryType === 'CASH_OUT' && "bg-muted")} disabled={entryType === 'CASH_OUT'} /></FormControl><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="accountId" render={({ field }) => (<FormItem><FormLabel>ออกจากบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
             </div>
-             <FormField control={form.control} name="sourceDocNo" render={({ field }) => (<FormItem><FormLabel>อ้างอิงเอกสาร</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
-            
-            <FormItem>
-              <FormLabel>คู่ค้า (ถ้ามี)</FormLabel>
-                <VendorCombobox
-                    allVendors={allVendors}
-                    onSelect={(vendor) => {
-                        form.setValue('vendorId', vendor?.id);
-                        form.setValue('vendorShortNameSnapshot', vendor?.shortName);
-                        form.setValue('vendorNameSnapshot', vendor?.companyName);
-                    }}
-                />
-            </FormItem>
+
+            <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="sourceDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล/อ้างอิง</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>)} />
+                <FormItem>
+                    <FormLabel>จ่ายให้คู่ค้า (ถ้ามี)</FormLabel>
+                    <VendorCombobox
+                        allVendors={allVendors}
+                        onSelect={(vendor) => {
+                            form.setValue('vendorId', vendor?.id);
+                            form.setValue('vendorShortNameSnapshot', vendor?.shortName);
+                            form.setValue('vendorNameSnapshot', vendor?.companyName);
+                        }}
+                    />
+                </FormItem>
+            </div>
           </form>
         </Form>
-        <DialogFooter>
+        <DialogFooter className="p-6 border-t">
           <Button variant="outline" onClick={() => setIsOpen(false)}>ยกเลิก</Button>
           <Button type="submit" form="entry-form" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
