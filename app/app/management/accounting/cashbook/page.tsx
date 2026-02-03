@@ -58,6 +58,41 @@ const entrySchema = z.object({
   withholdingEnabled: z.boolean().default(false),
   withholdingPercent: z.coerce.number().optional(),
   withholdingAmount: z.coerce.number().optional(),
+}).superRefine((data, ctx) => {
+  // Logic specifically for CASH_OUT (implied by presence of billType or WHT toggles)
+  if (data.billType === 'TAX_INVOICE') {
+    if (data.netAmount === undefined || data.netAmount <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "กรุณาระบุยอดก่อน VAT",
+        path: ["netAmount"],
+      });
+    }
+    if (data.vatRate === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "กรุณาระบุอัตรา VAT",
+        path: ["vatRate"],
+      });
+    }
+  }
+
+  if (data.withholdingEnabled) {
+    if (!data.withholdingPercent) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "กรุณาระบุอัตราหัก ณ ที่จ่าย",
+        path: ["withholdingPercent"],
+      });
+    }
+    if (data.withholdingAmount === undefined || data.withholdingAmount < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "กรุณาระบุจำนวนภาษีที่หัก",
+        path: ["withholdingAmount"],
+      });
+    }
+  }
 });
 
 type EntryFormData = z.infer<typeof entrySchema>;
@@ -221,7 +256,6 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       let withholdingTaxDocId = "";
 
       // Logic for building the final transaction amount (Cash flow)
-      // Since amount is now gross (net + vat), we must deduct WHT manually for the final ledger entry
       const actualCashAmount = values.amount - (values.withholdingAmount || 0);
 
       if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
@@ -247,8 +281,8 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
 
       await addDoc(collection(db, "accountingEntries"), {
         ...values,
-        amount: actualCashAmount, // Store the actual cash movement in the ledger
-        grossAmount: values.amount, // Keep gross for record
+        amount: actualCashAmount, 
+        grossAmount: values.amount, 
         entryType,
         withholdingTaxDocId,
         createdAt: serverTimestamp(),
@@ -351,6 +385,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                                                     <SelectItem value="7">7%</SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                            <FormMessage />
                                         </FormItem>
                                     )} />
                                 )}
@@ -361,6 +396,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                                         <FormItem>
                                             <FormLabel className="font-semibold">ยอดก่อน VAT (Net)</FormLabel>
                                             <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
+                                            <FormMessage />
                                         </FormItem>
                                     )} />
                                     <FormItem>
@@ -382,12 +418,16 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                                                         <SelectItem value="3">3% (บริการ)</SelectItem>
                                                     </SelectContent>
                                                 </Select>
+                                                <FormMessage />
                                             </FormItem>
                                         )} />
-                                        <FormItem>
-                                            <FormLabel>ยอดภาษีที่หัก (WHT)</FormLabel>
-                                            <FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted font-mono" /></FormControl>
-                                        </FormItem>
+                                        <FormField control={form.control} name="withholdingAmount" render={({ field }) => (
+                                            <FormItem>
+                                                <FormLabel>ยอดภาษีที่หัก (WHT)</FormLabel>
+                                                <FormControl><Input type="number" {...field} disabled className="bg-muted font-mono" /></FormControl>
+                                                <FormMessage />
+                                            </FormItem>
+                                        )} />
                                     </div>
                                     <p className="text-[10px] text-muted-foreground italic">
                                         ฐานหัก ณ ที่จ่าย: {watchedBillType === 'TAX_INVOICE' ? 'ยอดก่อน VAT' : 'ยอดเงินรวม'}
