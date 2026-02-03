@@ -262,6 +262,7 @@ function ConfirmReceiptPageContent() {
     try {
         const batch = writeBatch(db);
         
+        // 1. Create AR Payment record
         const arPaymentRef = doc(collection(db, 'arPayments'));
         batch.set(arPaymentRef, {
             receiptId,
@@ -279,6 +280,7 @@ function ConfirmReceiptPageContent() {
             createdAt: serverTimestamp(),
         });
         
+        // 2. Create Accounting Entry
         const entryRef = doc(collection(db, 'accountingEntries'));
         batch.set(entryRef, {
             entryType: 'RECEIPT',
@@ -292,6 +294,7 @@ function ConfirmReceiptPageContent() {
             createdAt: serverTimestamp(),
         });
         
+        // 3. Update the RECEIPT document status
         batch.update(doc(db, 'documents', receiptId as string), {
             status: 'CONFIRMED',
             receiptStatus: 'CONFIRMED',
@@ -306,24 +309,36 @@ function ConfirmReceiptPageContent() {
             updatedAt: serverTimestamp(),
         });
         
+        // 4. Update the source invoices (DN/TI/BN)
         for (const alloc of data.allocations) {
             if (alloc.grossApplied > 0) {
                 const ob = obligations[alloc.invoiceId];
                 if (ob) {
                     const newBalance = ob.balance - alloc.grossApplied;
+                    const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+                    
+                    // Update the Obligation
                     batch.update(doc(db, 'accountingObligations', ob.id), {
                         amountPaid: ob.amountPaid + alloc.grossApplied,
                         balance: newBalance,
-                        status: newBalance <= 0.01 ? 'PAID' : 'PARTIAL',
+                        status: newStatus,
                         lastPaymentDate: data.paymentDate,
-                        paidOffDate: newBalance <= 0.01 ? data.paymentDate : null,
+                        paidOffDate: newStatus === 'PAID' ? data.paymentDate : null,
+                    });
+
+                    // STEP 3: Sync back to source document (Invoice) - This is the SINGLE point of update for balances
+                    batch.update(doc(db, 'documents', alloc.invoiceId), {
+                        status: newStatus,
+                        arStatus: newStatus,
+                        receiptStatus: 'CONFIRMED',
+                        paymentSummary: {
+                            paidTotal: ob.amountPaid + alloc.grossApplied,
+                            balance: newBalance,
+                            paymentStatus: newStatus
+                        },
+                        updatedAt: serverTimestamp(),
                     });
                 }
-                 batch.update(doc(db, 'documents', alloc.invoiceId), {
-                    status: (ob.balance - alloc.grossApplied) <= 0.01 ? 'PAID' : 'PARTIAL',
-                    receiptStatus: 'CONFIRMED',
-                    updatedAt: serverTimestamp(),
-                 });
             }
         }
         

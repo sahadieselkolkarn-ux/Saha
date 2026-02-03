@@ -161,7 +161,8 @@ export function ReceiptForm() {
 
       const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile);
 
-      // Update source document to link this receipt
+      // STEP 1: Update source document to link this receipt and mark as issued
+      // We DO NOT update status or paymentSummary here. That happens during Confirm.
       const sourceDocRef = doc(db, 'documents', data.sourceDocId);
       await updateDoc(sourceDocRef, {
           receiptStatus: 'ISSUED_NOT_CONFIRMED',
@@ -170,7 +171,7 @@ export function ReceiptForm() {
 
       toast({ title: "สร้างใบเสร็จสำเร็จ", description: `เลขที่: ${docNo}` });
       
-      // Redirect to confirm receipt
+      // STEP 2: Redirect to confirm receipt
       router.push(`/app/management/accounting/documents/receipt/${docId}/confirm`);
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
