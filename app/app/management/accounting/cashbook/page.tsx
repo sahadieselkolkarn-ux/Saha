@@ -30,7 +30,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle } from "lucide-react";
+import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
 import { Separator } from "@/components/ui/separator";
 
@@ -60,10 +60,12 @@ const entrySchema = z.object({
 
 type EntryFormData = z.infer<typeof entrySchema>;
 
-function VendorCombobox({ allVendors, onSelect }: { allVendors: WithId<Vendor>[], onSelect: (vendor: WithId<Vendor> | null) => void }) {
+function VendorCombobox({ allVendors, selectedId, onSelect }: { allVendors: WithId<Vendor>[], selectedId?: string, onSelect: (vendor: WithId<Vendor> | null) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedValue, setSelectedValue] = useState("");
+  
+  const selectedVendor = useMemo(() => allVendors.find(v => v.id === selectedId), [allVendors, selectedId]);
+  const selectedValue = selectedVendor ? `${selectedVendor.shortName} - ${selectedVendor.companyName}` : "";
 
   const filteredVendors = useMemo(() => {
     if (!search) {
@@ -82,8 +84,8 @@ function VendorCombobox({ allVendors, onSelect }: { allVendors: WithId<Vendor>[]
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between">
-          {selectedValue || "เลือกคู่ค้า..."}
+        <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between overflow-hidden">
+          <span className="truncate">{selectedValue || "เลือกคู่ค้า..."}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -93,7 +95,7 @@ function VendorCombobox({ allVendors, onSelect }: { allVendors: WithId<Vendor>[]
           <CommandList>
             <CommandEmpty>ไม่พบร้านค้า</CommandEmpty>
             <CommandGroup>
-              <CommandItem onSelect={() => { onSelect(null); setSelectedValue(""); setOpen(false); }}>
+              <CommandItem onSelect={() => { onSelect(null); setOpen(false); }}>
                 -- ไม่มี --
               </CommandItem>
               {filteredVendors.map((vendor) => (
@@ -102,7 +104,6 @@ function VendorCombobox({ allVendors, onSelect }: { allVendors: WithId<Vendor>[]
                   value={`${vendor.shortName} - ${vendor.companyName}`}
                   onSelect={() => {
                     onSelect(vendor);
-                    setSelectedValue(`${vendor.shortName} - ${vendor.companyName}`);
                     setOpen(false);
                   }}
                 >
@@ -179,6 +180,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   const watchedWhtEnabled = form.watch('withholdingEnabled');
   const watchedWhtPercent = form.watch('withholdingPercent') || 0;
   const watchedBillType = form.watch('billType');
+  const watchedVendorId = form.watch('vendorId');
 
   // Auto-calculate VAT and WHT based on net amount
   useEffect(() => {
@@ -189,8 +191,6 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
         : 0;
     
     // Base for WHT: "ยอดก่อน VAT (ถ้ามี VAT)"
-    // If billType is TAX_INVOICE, base is netAmount. 
-    // If not, netAmount is effectively the base price anyway in our UI flow.
     const whtAmount = watchedWhtEnabled 
         ? Math.round(watchedNetAmount * (watchedWhtPercent / 100) * 100) / 100 
         : 0;
@@ -210,15 +210,35 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
 
   const onSubmit = async (values: EntryFormData) => {
     if (!db || !profile) return;
+
+    // Validation for WHT
+    if (entryType === 'CASH_OUT' && values.withholdingEnabled) {
+        if (!values.vendorId) {
+            toast({ variant: 'destructive', title: "กรุณาเลือกคู่ค้า", description: "ต้องระบุคู่ค้าเพื่อออกหนังสือหัก ณ ที่จ่าย" });
+            return;
+        }
+        const selectedVendor = allVendors.find(v => v.id === values.vendorId);
+        if (!selectedVendor || !selectedVendor.taxId || !selectedVendor.address) {
+            toast({ 
+                variant: 'destructive', 
+                title: "ข้อมูลคู่ค้าไม่ครบถ้วน", 
+                description: `กรุณาเพิ่มเลขผู้เสียภาษีและที่อยู่ในหน้าจัดการร้านค้าสำหรับ: ${selectedVendor?.companyName || 'คู่ค้าที่เลือก'}` 
+            });
+            return;
+        }
+        if (!storeSettings || !storeSettings.taxId || !storeSettings.taxAddress) {
+            toast({ variant: 'destructive', title: "ข้อมูลร้านค้าไม่ครบถ้วน", description: "กรุณาตั้งค่าข้อมูลภาษีของร้านที่หน้าตั้งค่า HR/Store ก่อนออกหนังสือหัก ณ ที่จ่าย" });
+            return;
+        }
+    }
+
     try {
-      const batch = writeBatch(db);
       let withholdingTaxDocId = "";
 
       // 1. Create Withholding Tax Document if enabled
       if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
           const selectedVendor = allVendors.find(v => v.id === values.vendorId);
-          // Only create doc if we have enough info for payee
-          if (selectedVendor && (selectedVendor.taxId && selectedVendor.address)) {
+          if (selectedVendor) {
               const whtData = {
                   docDate: values.entryDate,
                   payerSnapshot: {
@@ -229,15 +249,15 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                   },
                   payeeSnapshot: {
                       name: selectedVendor.companyName,
-                      address: selectedVendor.address,
-                      taxId: selectedVendor.taxId
+                      address: selectedVendor.address || "",
+                      taxId: selectedVendor.taxId || ""
                   },
                   vendorId: values.vendorId,
                   paidMonth: parseInt(values.entryDate.split('-')[1]),
                   paidYear: parseInt(values.entryDate.split('-')[0]),
                   incomeTypeCode: 'ITEM5' as const, 
                   paidAmountGross: values.netAmount || values.amount,
-                  withholdingPercent: values.withholdingPercent as 1 | 3,
+                  withholdingPercent: values.withholdingPercent === 1 ? 1 : 3,
                   withholdingAmount: values.withholdingAmount || 0,
                   paidAmountNet: values.amount,
                   status: 'ISSUED' as const,
@@ -252,14 +272,13 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
 
       // 2. Create Accounting Entry
       const entryRef = doc(collection(db, "accountingEntries"));
-      batch.set(entryRef, {
+      await addDoc(collection(db, "accountingEntries"), {
         ...values,
         entryType,
         withholdingTaxDocId,
         createdAt: serverTimestamp(),
       });
 
-      await batch.commit();
       toast({ title: "บันทึกรายการสำเร็จ" });
       setIsOpen(false);
       onSaveSuccess();
@@ -276,7 +295,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
       <DialogTrigger asChild>
         <Button><PlusCircle className="mr-2" /> {dialogTitle}</Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
         <DialogHeader className="p-6 pb-0">
           <DialogTitle>{dialogTitle}</DialogTitle>
           <DialogDescription>{dialogDescription}</DialogDescription>
@@ -291,9 +310,27 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
             <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>รายการ</FormLabel><FormControl><Input placeholder="ระบุรายละเอียดรายการ" {...field} /></FormControl><FormMessage /></FormItem>)} />
             
             <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name="categoryMain" render={({ field }) => (<FormItem><FormLabel>หมวดหลัก</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดหมู่หลัก..." /></SelectTrigger></FormControl><SelectContent>{mainCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                <FormField control={form.control} name="categoryMain" render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>หมวดหลัก</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดหมู่หลัก..." /></SelectTrigger></FormControl>
+                            <SelectContent>{mainCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <FormMessage />
+                    </FormItem>
+                )} />
                 {subCategories.length > 0 && (
-                     <FormField control={form.control} name="categorySub" render={({ field }) => (<FormItem><FormLabel>หมวดย่อย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดย่อย..." /></SelectTrigger></FormControl><SelectContent>{subCategories.map((cat: string) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+                     <FormField control={form.control} name="categorySub" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>หมวดย่อย</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl><SelectTrigger><SelectValue placeholder="เลือกหมวดย่อย..." /></SelectTrigger></FormControl>
+                                <SelectContent>{subCategories.map((cat: string) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}</SelectContent>
+                            </Select>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
                 )}
             </div>
 
@@ -301,7 +338,17 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                 <>
                 <Separator className="my-2" />
                 <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-dashed">
-                    <h4 className="text-sm font-semibold flex items-center gap-2 text-primary"><AlertCircle className="h-4 w-4" /> รายละเอียดภาษีและบิล</h4>
+                    <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-semibold flex items-center gap-2 text-primary"><AlertCircle className="h-4 w-4" /> รายละเอียดภาษีและบิล</h4>
+                        <div className="flex items-center gap-2">
+                            <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
+                                <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    <FormLabel className="text-xs cursor-pointer">หัก ณ ที่จ่าย</FormLabel>
+                                </FormItem>
+                            )} />
+                        </div>
+                    </div>
                     
                     <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="billType" render={({ field }) => (
@@ -337,7 +384,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                             <FormItem>
                                 <FormLabel className="font-semibold">{watchedBillType === 'TAX_INVOICE' ? 'ยอดก่อน VAT (Net)' : 'ยอดเงิน (ก่อนหักภาษี)'}</FormLabel>
                                 <FormControl><Input type="number" step="0.01" {...field} placeholder="0.00" /></FormControl>
-                                <FormDescription className="text-[10px]">ใช้เป็นฐานคำนวณ VAT และ หัก ณ ที่จ่าย</FormDescription>
+                                <FormDescription className="text-[10px]">ฐานคำนวณ VAT และ หัก ณ ที่จ่าย</FormDescription>
                             </FormItem>
                         )} />
                         
@@ -347,35 +394,26 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                         </FormItem>
                     </div>
 
-                    <div className="space-y-3 pt-2 border-t border-muted">
-                        <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
-                            <FormItem className="flex flex-row items-center space-x-3 space-y-0">
-                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                <div className="space-y-1 leading-none"><FormLabel className="cursor-pointer">หัก ณ ที่จ่าย (Withholding Tax)</FormLabel></div>
-                            </FormItem>
-                        )} />
-                        
-                        {watchedWhtEnabled && (
-                            <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1">
-                                <FormField control={form.control} name="withholdingPercent" render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>หัก (%)</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value?.toString()}>
-                                            <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                                            <SelectContent>
-                                                <SelectItem value="1">1% (ค่าขนส่ง/บริการ)</SelectItem>
-                                                <SelectItem value="3">3% (ค่าแรง/จ้างทำของ)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </FormItem>
-                                )} />
+                    {watchedWhtEnabled && (
+                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1 border-t pt-4">
+                            <FormField control={form.control} name="withholdingPercent" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>ยอดที่หักไว้</FormLabel>
-                                    <FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted font-mono" /></FormControl>
+                                    <FormLabel>หัก (%)</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value?.toString()}>
+                                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="1">1% (ค่าขนส่ง/บริการ)</SelectItem>
+                                            <SelectItem value="3">3% (ค่าแรง/จ้างทำของ)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </FormItem>
-                            </div>
-                        )}
-                    </div>
+                            )} />
+                            <FormItem>
+                                <FormLabel>ยอดที่หักไว้ (WHT)</FormLabel>
+                                <FormControl><Input type="number" value={form.watch('withholdingAmount')} disabled className="bg-muted font-mono" /></FormControl>
+                            </FormItem>
+                        </div>
+                    )}
                 </div>
                 </>
             ) : null}
@@ -393,7 +431,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                             readOnly={entryType === 'CASH_OUT'}
                         />
                     </FormControl>
-                    {entryType === 'CASH_OUT' && <FormDescription className="text-[10px]">เงินที่ต้องควักจ่ายจริง (รวม VAT หัก WHT แล้ว)</FormDescription>}
+                    {entryType === 'CASH_OUT' && <FormDescription className="text-[10px]">เงินที่จ่ายจริง (รวม VAT หัก WHT แล้ว)</FormDescription>}
                     <FormMessage />
                   </FormItem>
               )} />
@@ -413,9 +451,10 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
             <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="sourceDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล/อ้างอิง</FormLabel><FormControl><Input placeholder="เช่น INV-12345" {...field} /></FormControl></FormItem>)} />
                 <FormItem>
-                    <FormLabel>จ่ายให้คู่ค้า (ถ้ามี)</FormLabel>
+                    <FormLabel>จ่ายให้คู่ค้า (จำเป็นหากออก 50 ทวิ)</FormLabel>
                     <VendorCombobox
                         allVendors={allVendors}
+                        selectedId={watchedVendorId}
                         onSelect={(vendor) => {
                             form.setValue('vendorId', vendor?.id);
                             form.setValue('vendorShortNameSnapshot', vendor?.shortName);
@@ -430,7 +469,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
           <Button variant="outline" onClick={() => setIsOpen(false)}>ยกเลิก</Button>
           <Button type="submit" form="entry-form" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            บันทึกรายการ
+            {watchedWhtEnabled ? <><FileText className="mr-2 h-4 w-4" /> บันทึกและออก 50 ทวิ</> : "บันทึกรายการ"}
           </Button>
         </DialogFooter>
       </DialogContent>
