@@ -27,6 +27,8 @@ const documentSettingsSchema = z.object({
   taxInvoicePrefix: z.string().optional(),
   receiptPrefix: z.string().optional(),
   billingNotePrefix: z.string().optional(),
+  creditNotePrefix: z.string().optional(),
+  withholdingTaxPrefix: z.string().optional(),
   purchasePrefix: z.string().optional(),
 });
 
@@ -107,6 +109,10 @@ export function DocumentSettingsForm() {
                 <Separator />
                 <InfoRow label="ใบวางบิล" value={settings?.billingNotePrefix} />
                 <Separator />
+                <InfoRow label="ใบลดหนี้" value={settings?.creditNotePrefix} />
+                <Separator />
+                <InfoRow label="หนังสือหัก ณ ที่จ่าย" value={settings?.withholdingTaxPrefix} />
+                <Separator />
                 <InfoRow label="เอกสารจัดซื้อ" value={settings?.purchasePrefix} />
             </CardContent>
         </Card>
@@ -129,6 +135,8 @@ export function DocumentSettingsForm() {
             <FormField control={form.control} name="taxInvoicePrefix" render={({ field }) => (<FormItem><FormLabel>ใบกำกับภาษี</FormLabel><FormControl><Input placeholder="INV" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
             <FormField control={form.control} name="receiptPrefix" render={({ field }) => (<FormItem><FormLabel>ใบเสร็จรับเงิน</FormLabel><FormControl><Input placeholder="RE" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
             <FormField control={form.control} name="billingNotePrefix" render={({ field }) => (<FormItem><FormLabel>ใบวางบิล</FormLabel><FormControl><Input placeholder="BN" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="creditNotePrefix" render={({ field }) => (<FormItem><FormLabel>ใบลดหนี้</FormLabel><FormControl><Input placeholder="CN" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="withholdingTaxPrefix" render={({ field }) => (<FormItem><FormLabel>หนังสือหัก ณ ที่จ่าย</FormLabel><FormControl><Input placeholder="WHT" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
             <FormField control={form.control} name="purchasePrefix" render={({ field }) => (<FormItem><FormLabel>เอกสารจัดซื้อ</FormLabel><FormControl><Input placeholder="PUR" {...field} value={field.value ?? ''} /></FormControl></FormItem>)} />
           </CardContent>
         </Card>
