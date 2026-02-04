@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon } from "lucide-react";
 import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount, OutsourceVendor } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
@@ -494,13 +494,14 @@ export function JobList({
         const activityRef = doc(collection(db, 'jobs', outsourcingJob.id, 'activities'));
 
         batch.update(jobRef, {
+            department: 'OUTSOURCE',
             status: 'IN_PROGRESS',
             assigneeUid: selectedVendor.id,
             assigneeName: selectedVendor.shopName,
             lastActivityAt: serverTimestamp(),
         });
 
-        const activityText = `ส่งงานให้ร้านนอก: ${selectedVendor.shopName}. หมายเหตุ: ${outsourceNotes || 'ไม่มี'}`;
+        const activityText = `มอบหมายงานนอก/ผู้รับเหมา: ${selectedVendor.shopName}. หมายเหตุ: ${outsourceNotes || 'ไม่มี'}`;
         batch.set(activityRef, {
             text: activityText,
             userName: profile.displayName,
@@ -510,10 +511,10 @@ export function JobList({
         });
 
         await batch.commit();
-        toast({ title: 'ส่งงานให้ร้านนอกสำเร็จ' });
+        toast({ title: 'ส่งมอบหมายงานนอกสำเร็จ' });
         setOutsourcingJob(null);
     } catch (error: any) {
-        toast({ variant: 'destructive', title: 'การส่งงานล้มเหลว', description: error.message });
+        toast({ variant: 'destructive', title: 'การมอบหมายงานนอกล้มเหลว', description: error.message });
     } finally {
         setIsAccepting(null);
     }
@@ -965,9 +966,9 @@ export function JobList({
      <Dialog open={!!outsourcingJob} onOpenChange={(isOpen) => { if (!isOpen) setOutsourcingJob(null) }}>
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>ส่งงานให้ร้านนอก</DialogTitle>
+                <DialogTitle>มอบหมายผู้รับเหมา/งานนอก</DialogTitle>
                 <DialogDescription>
-                    เลือกรายชื่อร้าน Outsource และกรอกหมายเหตุ
+                    เลือกรายชื่อผู้รับเหมา และกรอกหมายเหตุ
                 </DialogDescription>
             </DialogHeader>
             {isFetchingVendors ? (
@@ -977,10 +978,10 @@ export function JobList({
             ) : outsourceVendors.length > 0 ? (
                 <div className="py-4 space-y-4">
                     <div className="space-y-2">
-                        <Label htmlFor="outsource-vendor">เลือกร้าน Outsource</Label>
+                        <Label htmlFor="outsource-vendor">เลือกผู้รับเหมา/ร้านนอก</Label>
                         <Select onValueChange={setSelectedVendorId} value={selectedVendorId || ""}>
                             <SelectTrigger id="outsource-vendor">
-                                <SelectValue placeholder="เลือกร้าน..." />
+                                <SelectValue placeholder="เลือกรายชื่อ..." />
                             </SelectTrigger>
                             <SelectContent>
                                 {outsourceVendors.map(vendor => (
@@ -997,14 +998,33 @@ export function JobList({
                     </div>
                 </div>
             ) : (
-                <p className="py-4 text-muted-foreground">ไม่พบรายชื่อร้าน Outsource</p>
+                <div className="py-6 text-center space-y-4">
+                    <p className="text-sm text-muted-foreground">ไม่พบรายชื่อผู้รับเหมาในระบบ</p>
+                    <Button asChild variant="outline" size="sm">
+                        <Link href="/app/office/list-management/outsource">
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            ไปเพิ่มรายชื่อผู้รับเหมา
+                        </Link>
+                    </Button>
+                </div>
             )}
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setOutsourcingJob(null)}>ยกเลิก</Button>
-                <Button onClick={handleConfirmOutsource} disabled={!selectedVendorId || isAccepting !== null}>
-                    {isAccepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    ยืนยันการส่งต่อ
-                </Button>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+                <div className="flex-1">
+                    {outsourceVendors.length > 0 && (
+                        <Button asChild variant="link" size="sm" className="px-0">
+                            <Link href="/app/office/list-management/outsource" className="flex items-center">
+                                <Settings className="mr-1 h-3 w-3" /> จัดการรายชื่อผู้รับเหมา
+                            </Link>
+                        </Button>
+                    )}
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setOutsourcingJob(null)}>ยกเลิก</Button>
+                    <Button onClick={handleConfirmOutsource} disabled={!selectedVendorId || isAccepting !== null}>
+                        {isAccepting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        ยืนยันการมอบหมาย
+                    </Button>
+                </div>
             </DialogFooter>
         </DialogContent>
     </Dialog>

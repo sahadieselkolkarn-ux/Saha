@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -48,7 +47,7 @@ export default function OutsourceVendorsPage() {
       setVendors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<OutsourceVendor>)));
       setLoading(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูล Outsource ได้", description: error.message });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลผู้รับเหมาได้", description: error.message });
       setLoading(false);
     });
     return () => unsubscribe();
@@ -113,7 +112,7 @@ export default function OutsourceVendorsPage() {
   if (!hasPermission) {
     return (
       <div className="w-full">
-        <PageHeader title="จัดการรายชื่อ Outsource" />
+        <PageHeader title="จัดการรายชื่อผู้รับเหมา/งานนอก" />
         <Card className="text-center py-12">
           <CardHeader>
             <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
@@ -126,11 +125,11 @@ export default function OutsourceVendorsPage() {
 
   return (
     <>
-      <PageHeader title="จัดการรายชื่อ Outsource" description="จัดการข้อมูลร้านค้าและอู่สำหรับส่งต่องาน">
+      <PageHeader title="จัดการรายชื่อผู้รับเหมา/งานนอก" description="จัดการข้อมูลร้านค้าและอู่สำหรับส่งต่องานนอก">
         <Button asChild>
           <Link href="/app/office/list-management/outsource/new">
             <PlusCircle className="mr-2 h-4 w-4" />
-            เพิ่มรายชื่อ
+            เพิ่มรายชื่อผู้รับเหมา
           </Link>
         </Button>
       </PageHeader>
@@ -188,7 +187,7 @@ export default function OutsourceVendorsPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={6} className="h-24 text-center">ไม่พบข้อมูล Outsource</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="h-24 text-center">ไม่พบข้อมูลผู้รับเหมา/งานนอก</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

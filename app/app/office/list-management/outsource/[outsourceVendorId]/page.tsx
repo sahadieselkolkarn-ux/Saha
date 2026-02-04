@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -84,16 +83,16 @@ export default function EditOutsourceVendorPage() {
   }
 
   if (error || !vendor) {
-    return <PageHeader title="ไม่พบรายชื่อ Outsource" description="ไม่พบข้อมูลที่ต้องการแก้ไข" />;
+    return <PageHeader title="ไม่พบรายชื่อผู้รับเหมา" description="ไม่พบข้อมูลที่ต้องการแก้ไข" />;
   }
 
   return (
     <>
-      <PageHeader title="แก้ไขข้อมูล Outsource" description={`กำลังแก้ไข: ${vendor.shopName}`} />
+      <PageHeader title="แก้ไขข้อมูลผู้รับเหมา/งานนอก" description={`กำลังแก้ไข: ${vendor.shopName}`} />
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
           <Card>
-            <CardHeader><CardTitle>ข้อมูล Outsource</CardTitle></CardHeader>
+            <CardHeader><CardTitle>ข้อมูลผู้รับเหมา/งานนอก</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="shopName" render={({ field }) => (
                 <FormItem>

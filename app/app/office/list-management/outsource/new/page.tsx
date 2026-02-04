@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -56,7 +55,7 @@ export default function NewOutsourceVendorPage() {
       };
 
       await addDoc(collection(db, "outsourceVendors"), dataToAdd);
-      toast({ title: "เพิ่มรายชื่อ Outsource สำเร็จ" });
+      toast({ title: "เพิ่มรายชื่อผู้รับเหมาสำเร็จ" });
       router.push("/app/office/list-management/outsource");
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
@@ -65,12 +64,12 @@ export default function NewOutsourceVendorPage() {
 
   return (
     <>
-      <PageHeader title="เพิ่มรายชื่อ Outsource" description="กรอกข้อมูลร้านค้าหรืออู่สำหรับส่งต่องาน" />
+      <PageHeader title="เพิ่มรายชื่อผู้รับเหมา/งานนอก" description="กรอกข้อมูลร้านค้าหรืออู่สำหรับส่งต่องานนอก" />
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl">
           <Card>
             <CardHeader>
-              <CardTitle>ข้อมูล Outsource</CardTitle>
+              <CardTitle>ข้อมูลผู้รับเหมา/งานนอก</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField control={form.control} name="shopName" render={({ field }) => (

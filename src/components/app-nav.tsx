@@ -1,4 +1,3 @@
-
 "use client"
 
 import Link from "next/link"
@@ -268,7 +267,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                             <CollapsibleContent className="py-1 pl-4 space-y-1">
                                 <SubNavLink href="/app/management/customers" label="จัดการรายชื่อลูกค้า" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/parts/vendors" label="จัดการรายชื่อร้านค้า" onClick={onLinkClick} />
-                                <SubNavLink href="/app/office/list-management/outsource" label="จัดการรายชื่อ Outsource" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
 
