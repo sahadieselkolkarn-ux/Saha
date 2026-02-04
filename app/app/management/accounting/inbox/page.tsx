@@ -68,7 +68,8 @@ export default function AccountingInboxPage() {
   
   useEffect(() => {
     if(accounts.length > 0 && !selectedAccountId) {
-        setSelectedAccountId(accounts[0].id);
+        const defaultAccount = accounts.find(a => a.type === 'CASH') || accounts[0];
+        setSelectedAccountId(defaultAccount.id);
     }
   }, [accounts, selectedAccountId]);
 
@@ -99,24 +100,44 @@ export default function AccountingInboxPage() {
       
       const arRef = doc(collection(db, 'accountingObligations'));
       batch.set(arRef, {
-        type: 'AR', status: 'PAID', sourceDocType: confirmingDoc.docType, sourceDocId: confirmingDoc.id, sourceDocNo: confirmingDoc.docNo,
-        amountTotal: confirmingDoc.grandTotal, amountPaid: confirmingDoc.grandTotal, balance: 0,
-        createdAt: serverTimestamp(), updatedAt: serverTimestamp(), paidOffDate: confirmingDoc.docDate,
+        type: 'AR', 
+        status: 'PAID', 
+        sourceDocType: confirmingDoc.docType, 
+        sourceDocId: confirmingDoc.id, 
+        sourceDocNo: confirmingDoc.docNo,
+        amountTotal: confirmingDoc.grandTotal, 
+        amountPaid: confirmingDoc.grandTotal, 
+        balance: 0,
+        createdAt: serverTimestamp(), 
+        updatedAt: serverTimestamp(), 
+        paidOffDate: confirmingDoc.docDate,
         customerNameSnapshot: confirmingDoc.customerSnapshot.name,
       });
 
-      const entryRef = doc(collection(db, 'accountingEntries'));
+      const entryRef = doc(collection(db, "accountingEntries"));
       batch.set(entryRef, {
-        entryType: 'CASH_IN', entryDate: confirmingDoc.docDate, amount: confirmingDoc.grandTotal, accountId: selectedAccountId,
-        paymentMethod: 'CASH', description: `รับเงินสดจาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
-        sourceDocId: confirmingDoc.id, sourceDocNo: confirmingDoc.docNo, sourceDocType: confirmingDoc.docType,
-        customerNameSnapshot: confirmingDoc.customerSnapshot.name, jobId: confirmingDoc.jobId,
+        entryType: 'CASH_IN', 
+        entryDate: confirmingDoc.docDate, 
+        amount: confirmingDoc.grandTotal, 
+        accountId: selectedAccountId,
+        paymentMethod: 'CASH', 
+        description: `รับเงินสดจาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
+        sourceDocId: confirmingDoc.id, 
+        sourceDocNo: confirmingDoc.docNo, 
+        sourceDocType: confirmingDoc.docType,
+        customerNameSnapshot: confirmingDoc.customerSnapshot.name, 
+        jobId: confirmingDoc.jobId,
         createdAt: serverTimestamp(),
       });
 
       batch.update(doc(db, 'documents', confirmingDoc.id), { 
           arStatus: 'PAID',
-          status: 'APPROVED',
+          status: 'PAID',
+          paymentSummary: {
+              paidTotal: confirmingDoc.grandTotal,
+              balance: 0,
+              paymentStatus: 'PAID'
+          },
           updatedAt: serverTimestamp()
       });
       
@@ -148,9 +169,17 @@ export default function AccountingInboxPage() {
         const batch = writeBatch(db);
         const arRef = doc(collection(db, 'accountingObligations'));
         batch.set(arRef, {
-            type: 'AR', status: 'UNPAID', sourceDocType: docToProcess.docType, sourceDocId: docToProcess.id, sourceDocNo: docToProcess.docNo,
-            amountTotal: docToProcess.grandTotal, amountPaid: 0, balance: docToProcess.grandTotal,
-            createdAt: serverTimestamp(), updatedAt: serverTimestamp(), dueDate: docToProcess.dueDate || null,
+            type: 'AR', 
+            status: 'UNPAID', 
+            sourceDocType: docToProcess.docType, 
+            sourceDocId: docToProcess.id, 
+            sourceDocNo: docToProcess.docNo,
+            amountTotal: docToProcess.grandTotal, 
+            amountPaid: 0, 
+            balance: docToProcess.grandTotal,
+            createdAt: serverTimestamp(), 
+            updatedAt: serverTimestamp(), 
+            dueDate: docToProcess.dueDate || null,
             customerNameSnapshot: docToProcess.customerSnapshot.name,
         });
         batch.update(doc(db, 'documents', docToProcess.id), { 
@@ -170,7 +199,7 @@ export default function AccountingInboxPage() {
             await archiveAndCloseJob(db, docToProcess.jobId, docToProcess.docDate, profile, salesDocInfo);
         }
 
-        toast({ title: 'สร้างลูกหนี้และปิดงานสำเร็จ' });
+        toast({ title: 'ยืนยันรายการขายเครดิตและปิดงานสำเร็จ' });
     } catch (e: any) {
         toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
     } finally {
@@ -185,6 +214,9 @@ export default function AccountingInboxPage() {
       await updateDoc(doc(db, 'documents', disputingDoc.id), {
         arStatus: 'DISPUTED',
         status: 'REJECTED',
+        reviewRejectReason: disputeReason,
+        reviewRejectedAt: serverTimestamp(),
+        reviewRejectedByName: profile.displayName,
         dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() }
       });
       toast({ title: "บันทึกข้อโต้แย้งและตีกลับสำเร็จ" });
@@ -196,88 +228,98 @@ export default function AccountingInboxPage() {
     }
   };
 
-  if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายบริหาร/บัญชีเท่านั้น</CardDescription></CardHeader></Card>;
+  if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายบริหารเท่านั้น</CardDescription></CardHeader></Card>;
 
   return (
     <>
-      <PageHeader title="Inbox บัญชี" description="ศูนย์กลางตรวจสอบและยืนยันรายการขาย" />
+      <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="พี่ถินตรวจสอบความถูกต้องของบิลก่อนลงบัญชีและปิดงาน" />
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <TabsList>
-            <TabsTrigger value="receive">รอรับเงิน (เงินสด/โอน)</TabsTrigger>
-            <TabsTrigger value="ar">รอตั้งลูกหนี้ (เครดิต)</TabsTrigger>
+            <TabsTrigger value="receive">รอรับเงิน (Cash)</TabsTrigger>
+            <TabsTrigger value="ar">รอตั้งลูกหนี้ (Credit)</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="ค้นหาจากเลขที่เอกสาร, ชื่อลูกค้า..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
+            <Input placeholder="ค้นหาเลขที่เอกสาร, ชื่อลูกค้า..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
           </div>
         </div>
         <Card>
           <CardContent className="pt-6">
-            <TabsContent value="receive">
+            <TabsContent value="receive" className="mt-0">
               <Table>
                 <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                  : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่พบรายการ</TableCell></TableRow>
+                  : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตรวจสอบ</TableCell></TableRow>
                   : filteredDocs.map(doc => (
                       <TableRow key={doc.id}>
                           <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
                           <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
-                          <TableCell>{doc.docNo} ({doc.docType})</TableCell>
-                          <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
+                          <TableCell>
+                            <div className="font-medium">{doc.docNo}</div>
+                            <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
+                          </TableCell>
+                          <TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon"><MoreHorizontal /></Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                    <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
-                                        <Eye className="mr-2 h-4 w-4"/> ดูเอกสาร
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                        <Ban className="mr-2 h-4 w-4"/> ส่งกลับ (เพื่อแก้ไข)
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => setConfirmingDoc(doc)}>
-                                        <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงิน
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                            <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
+                                    <Eye className="h-4 w-4" />
+                                </Button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onSelect={() => setConfirmingDoc(doc)} className="text-green-600 focus:text-green-600">
+                                            <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงินและปิดงาน
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                            <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
                           </TableCell>
                       </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TabsContent>
-            <TabsContent value="ar">
+            <TabsContent value="ar" className="mt-0">
               <Table>
                 <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                  : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่พบรายการ</TableCell></TableRow>
+                  : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตั้งลูกหนี้</TableCell></TableRow>
                   : filteredDocs.map(doc => (
                       <TableRow key={doc.id}>
                           <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
                           <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
-                          <TableCell>{doc.docNo} ({doc.docType})</TableCell>
-                          <TableCell>{formatCurrency(doc.grandTotal)}</TableCell>
+                          <TableCell>
+                            <div className="font-medium">{doc.docNo}</div>
+                            <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
+                          </TableCell>
+                          <TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell>
                            <TableCell className="text-right">
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon"><MoreHorizontal /></Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                    <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
-                                        <Eye className="mr-2 h-4 w-4"/> ดูเอกสาร
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                        <Ban className="mr-2 h-4 w-4"/> ส่งกลับ (เพื่อแก้ไข)
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => handleCreateAR(doc)} disabled={isSubmitting}>
-                                        <HandCoins className="mr-2 h-4 w-4"/> ยืนยัน (ตั้งลูกหนี้)
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                            <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
+                                    <Eye className="h-4 w-4" />
+                                </Button>
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onSelect={() => handleCreateAR(doc)} disabled={isSubmitting}>
+                                            <HandCoins className="mr-2 h-4 w-4"/> ยืนยันเครดิตและปิดงาน
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                            <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            </div>
                           </TableCell>
                       </TableRow>
                   ))}
@@ -287,38 +329,46 @@ export default function AccountingInboxPage() {
           </CardContent>
         </Card>
       </Tabs>
+
       <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && setConfirmingDoc(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>ยืนยันการรับเงิน (รายการขาย)</DialogTitle>
-            <DialogDescription>สำหรับเอกสารเลขที่: {confirmingDoc?.docNo}</DialogDescription>
+            <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
+            <DialogDescription>สำหรับเอกสารเลขที่: {confirmingDoc?.docNo} - เมื่อยืนยันแล้ว ระบบจะลงบัญชีรายรับและปิดงานซ่อมนี้ทันที</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
-              <p>ยอดเงิน: <span className="font-bold">{formatCurrency(confirmingDoc?.grandTotal ?? 0)}</span></p>
+              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+                <p className="text-sm text-muted-foreground">ยอดเงินรวมสุทธิ</p>
+                <p className="text-2xl font-bold text-primary">{formatCurrency(confirmingDoc?.grandTotal ?? 0)} บาท</p>
+              </div>
               <div className="space-y-2">
-                <Label htmlFor="account">เข้าบัญชี</Label>
+                <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
                 <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                    <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
-                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
+                    <SelectTrigger><SelectValue placeholder="เลือกบัญชีที่รับเงิน..."/></SelectTrigger>
+                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}</SelectContent>
                 </Select>
               </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยัน</Button>
+            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || !selectedAccountId}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันการรับเงิน</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       <Dialog open={!!disputingDoc} onOpenChange={(open) => !open && setDisputingDoc(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>ส่งกลับเพื่อแก้ไข</DialogTitle>
+            <DialogTitle>ส่งเอกสารกลับเพื่อแก้ไข</DialogTitle>
             <DialogDescription>สำหรับเอกสารเลขที่: {disputingDoc?.docNo}</DialogDescription>
           </DialogHeader>
-          <div className="py-4"><Textarea placeholder="กรุณาระบุเหตุผล..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} /></div>
+          <div className="py-4 space-y-2">
+            <Label htmlFor="reason">ระบุเหตุผลที่ไม่ถูกต้อง (จะปรากฏให้ฝ่ายออฟฟิศเห็น)</Label>
+            <Textarea id="reason" placeholder="เช่น ยอดเงินไม่ตรงกับสลิปโอนเงิน, เลือกประเภทลูกค้าผิด..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDisputingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button variant="destructive" onClick={handleDispute} disabled={isSubmitting || !disputeReason}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยัน</Button>
+            <Button variant="destructive" onClick={handleDispute} disabled={isSubmitting || !disputeReason}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันตีกลับ</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

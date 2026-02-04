@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon, PlusCircle, Settings } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon, PlusCircle, Settings, Send } from "lucide-react";
 import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount, OutsourceVendor } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
@@ -291,7 +291,8 @@ export function JobList({
         const fetchedAccounts = accountsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data()} as AccountingAccount));
         setAccountingAccounts(fetchedAccounts);
         if(fetchedAccounts.length > 0) {
-            setSuggestedAccountId(fetchedAccounts[0].id);
+            const defaultAcc = fetchedAccounts.find(a => a.type === 'CASH') || fetchedAccounts[0];
+            setSuggestedAccountId(defaultAcc.id);
         }
     } catch (e) {
         toast({ variant: 'destructive', title: 'Error fetching accounts' });
@@ -313,49 +314,33 @@ export function JobList({
     }
 
     if (paymentMode === 'PAID' && !suggestedAccountId) {
-        toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'กรุณาเลือกบัญชีที่คาดว่าจะเข้า'});
+        toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'กรุณาเลือกบัญชีที่รับเงิน'});
         return;
     }
     
     setIsClosing(true);
     try {
+        const docRefToUpdate = doc(db, 'documents', selectedDoc.id);
+        
         if (paymentMode === 'PAID') {
-            await ensurePaymentClaimForDocument(
-                db,
-                selectedDoc.id,
-                profile,
-                {
-                    suggestedPaymentMethod: paymentMethod,
-                    suggestedAccountId: suggestedAccountId,
-                    note: paymentNotes || 'ส่งมอบงานแล้ว รอตรวจสอบรายรับ',
-                }
-            );
+            await updateDoc(docRefToUpdate, {
+                status: 'PENDING_REVIEW',
+                arStatus: 'PENDING',
+                paymentTerms: 'CASH',
+                receivedAccountId: suggestedAccountId,
+                paymentMethod: paymentMethod,
+                updatedAt: serverTimestamp()
+            });
         } else {
-            const arRef = doc(collection(db, 'accountingObligations'));
-            const arData = {
-                type: 'AR',
-                status: 'UNPAID',
-                jobId: closingJob.id,
-                sourceDocType: selectedDoc.docType,
-                sourceDocId: selectedDoc.id,
-                sourceDocNo: selectedDoc.docNo,
-                amountTotal: selectedDoc.grandTotal,
-                amountPaid: 0,
-                balance: selectedDoc.grandTotal,
-                customerNameSnapshot: closingJob.customerSnapshot.name,
-                customerPhoneSnapshot: closingJob.customerSnapshot.phone,
+            await updateDoc(docRefToUpdate, {
+                status: 'PENDING_REVIEW',
+                arStatus: 'PENDING',
+                paymentTerms: 'CREDIT',
                 dueDate: creditDueDate || null,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            };
-            await setDoc(arRef, arData);
+                updatedAt: serverTimestamp()
+            });
         }
 
-        if (selectedDoc.status === 'DRAFT') {
-            const docRefToUpdate = doc(db, 'documents', selectedDoc.id);
-            await updateDoc(docRefToUpdate, { status: 'PENDING_REVIEW', updatedAt: serverTimestamp() });
-        }
-        
         const salesDocInfo = {
             salesDocType: selectedDoc.docType,
             salesDocId: selectedDoc.id,
@@ -365,7 +350,7 @@ export function JobList({
 
         await archiveAndCloseJob(db, closingJob.id, pickupDate, profile, salesDocInfo);
 
-        toast({ title: 'ปิดงานและย้ายไปที่ประวัติสำเร็จ' });
+        toast({ title: 'ส่งมอบงานและย้ายไปที่ Inbox บัญชีสำเร็จ' });
         setClosingJob(null);
     } catch (error: any) {
         toast({ variant: 'destructive', title: 'ปิดงานไม่สำเร็จ', description: error.message });
@@ -791,8 +776,8 @@ export function JobList({
                     className="w-full"
                     onClick={() => handleOpenCloseDialog(job)}
                   >
-                    <PackageCheck />
-                    ส่งงาน
+                    <Send className="mr-2 h-4 w-4" />
+                    ส่งมอบงาน
                   </Button>
                 )}
               </>
@@ -868,56 +853,51 @@ export function JobList({
      <Dialog open={!!closingJob} onOpenChange={(isOpen) => !isOpen && setClosingJob(null)}>
         <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-                <DialogTitle>ส่งมอบงาน / ปิดงาน</DialogTitle>
+                <DialogTitle>ส่งมอบงานให้ลูกค้า</DialogTitle>
                 <DialogDescription>
-                    สำหรับ: {closingJob?.customerSnapshot.name}
+                    ขั้นตอนนี้จะเป็นการส่งรายการขายให้ฝ่ายบัญชี (พี่ถิน) ตรวจสอบและปิดงานซ่อม
                 </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
                 <div>
-                    <Label htmlFor="pickupDate">วันที่ลูกค้ารับสินค้า</Label>
-                    <Input id="pickupDate" type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} border-border={true} />
-                </div>
-                <div>
-                    <Label htmlFor="salesDoc">เอกสารขายที่เกี่ยวข้อง</Label>
+                    <Label htmlFor="salesDoc">1. เลือกเอกสารขายที่อ้างอิง</Label>
                     {isLoadingDocs ? <Loader2 className="animate-spin"/> : (
                         relatedDocs.length > 0 ? (
                             <Select onValueChange={setSelectedDocId} value={selectedDocId}>
-                                <SelectTrigger id="salesDoc"><SelectValue/></SelectTrigger>
+                                <SelectTrigger id="salesDoc" className="mt-1"><SelectValue/></SelectTrigger>
                                 <SelectContent>
                                 {relatedDocs.map(doc => (
                                     <SelectItem key={doc.id} value={doc.id}>
-                                        {doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'} {doc.docNo}
+                                        {doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'} {doc.docNo} - ยอด {doc.grandTotal.toLocaleString()} บาท
                                     </SelectItem>
                                 ))}
                                 </SelectContent>
                             </Select>
-                        ) : <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md">ไม่พบเอกสารขาย กรุณาออกบิลก่อน</p>
+                        ) : <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md mt-1">ไม่พบเอกสารขาย กรุณาออกบิลก่อนปิดงาน</p>
                     )}
                 </div>
                 <div>
-                    <Label>สถานะการชำระ</Label>
+                    <Label>2. สถานะการรับเงิน</Label>
                     <RadioGroup value={paymentMode} onValueChange={(v) => setPaymentMode(v as any)} className="flex gap-4 pt-2">
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="PAID" id="paid" /><Label htmlFor="paid">จ่ายแล้ว</Label></div>
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="UNPAID" id="unpaid" /><Label htmlFor="unpaid">เครดิต (ยังไม่จ่าย)</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="PAID" id="paid" /><Label htmlFor="paid">จ่ายเงินแล้ว (เงินสด/โอน)</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="UNPAID" id="unpaid" /><Label htmlFor="unpaid">ค้างชำระ (เครดิต)</Label></div>
                     </RadioGroup>
                 </div>
                 {paymentMode === 'PAID' && (
                     <div className="p-4 border rounded-md space-y-4 bg-muted/50">
-                        <h4 className="font-semibold text-sm">ข้อมูลการชำระเงิน</h4>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>ช่องทางรับเงิน</Label>
-                                <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
-                                    <SelectTrigger><SelectValue/></SelectTrigger>
-                                    <SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent>
+                                <Label>ช่องทางที่รับเงิน</Label>
+                                <Select value={paymentMethod} onValueChange={setPaymentMethod as any}>
+                                    <SelectTrigger className="bg-background"><SelectValue/></SelectTrigger>
+                                    <SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">เงินโอน</SelectItem></SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>บัญชีที่คาดว่าจะเข้า</Label>
-                                {isLoadingAccounts ? <Loader2 className="animate-spin"/> : (
+                                <Label>บัญชีที่รับเงิน</Label>
+                                {isLoadingAccounts ? <Loader2 className="animate-spin h-4 w-4"/> : (
                                     <Select value={suggestedAccountId} onValueChange={setSuggestedAccountId}>
-                                        <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
+                                        <SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
                                         <SelectContent>
                                             {accountingAccounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                                         </SelectContent>
@@ -925,24 +905,24 @@ export function JobList({
                                 )}
                             </div>
                         </div>
-                         <div>
-                            <Label htmlFor="paymentNotes">หมายเหตุ</Label>
-                            <Textarea id="paymentNotes" value={paymentNotes} onChange={(e) => setPaymentNotes(e.target.value)} placeholder="รายละเอียดเพิ่มเติม..."/>
-                         </div>
                     </div>
                 )}
                  {paymentMode === 'UNPAID' && (
                     <div className="p-4 border rounded-md space-y-4 bg-muted/50">
                         <Label htmlFor="creditDueDate">วันครบกำหนดชำระ (ถ้ามี)</Label>
-                        <Input id="creditDueDate" type="date" value={creditDueDate} onChange={(e) => setCreditDueDate(e.target.value)}/>
+                        <Input id="creditDueDate" type="date" value={creditDueDate} onChange={(e) => setCreditDueDate(e.target.value)} className="bg-background"/>
                     </div>
                  )}
+                <div>
+                    <Label htmlFor="pickupDate">3. วันที่ส่งมอบจริง</Label>
+                    <Input id="pickupDate" type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className="mt-1" />
+                </div>
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setClosingJob(null)} disabled={isClosing}>ยกเลิก</Button>
                 <Button onClick={handleCloseJob} disabled={isClosing || isLoadingDocs || !selectedDocId}>
                     {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    ยืนยันส่งงาน
+                    ส่งบัญชีตรวจสอบและปิดงาน
                 </Button>
             </DialogFooter>
         </DialogContent>
