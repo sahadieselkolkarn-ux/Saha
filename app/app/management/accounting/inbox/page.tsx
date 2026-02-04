@@ -263,7 +263,7 @@ export default function AccountingInboxPage() {
                           <TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
+                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/documents/${doc.id}`)} title="ดูเอกสาร">
                                     <Eye className="h-4 w-4" />
                                 </Button>
                                 <DropdownMenu>
@@ -303,7 +303,7 @@ export default function AccountingInboxPage() {
                           <TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell>
                            <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
+                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/documents/${doc.id}`)} title="ดูเอกสาร">
                                     <Eye className="h-4 w-4" />
                                 </Button>
                                 <DropdownMenu>

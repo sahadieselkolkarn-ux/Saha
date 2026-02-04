@@ -240,7 +240,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 updatedAt: serverTimestamp(),
             }));
             toast({ title: "อัปเดตใบเสนอราคาสำเร็จ" });
-            router.push(`/app/office/documents/${editDocId}`);
+            router.push(`/app/documents/${editDocId}`);
         } else {
             const { docId } = await createDocument(
                 db,
@@ -250,7 +250,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 data.jobId ? 'WAITING_APPROVE' : undefined
             );
             toast({ title: "สร้างใบเสนอราคาสำเร็จ" });
-            router.push(`/app/office/documents/${docId}`);
+            router.push(`/app/documents/${docId}`);
         }
     } catch (error: any) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });

@@ -261,8 +261,8 @@ export default function BatchBillingNotePage() {
     return { totalCustomers, totalInvoices, totalAmount, deferredCount, separateCount };
   }, [customerData]);
 
-  const handlePreview = (docId: string) => router.push(`/app/office/documents/${docId}`);
-  const handlePrint = (docId: string) => router.push(`/app/office/documents/${docId}?print=1&autoprint=1`);
+  const handlePreview = (docId: string) => router.push(`/app/documents/${docId}`);
+  const handlePrint = (docId: string) => router.push(`/app/documents/${docId}?print=1&autoprint=1`);
 
   return (
     <>
