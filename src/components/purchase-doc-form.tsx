@@ -30,6 +30,8 @@ import { cn, sanitizeForFirestore } from "@/lib/utils";
 import Image from "next/image";
 
 import { createPurchaseDoc } from "@/firebase/purchases";
+import { VENDOR_TYPES } from "@/lib/constants";
+import { vendorTypeLabel } from "@/lib/ui-labels";
 import type { PurchaseDoc, Vendor, AccountingAccount } from "@/lib/types";
 
 const lineItemSchema = z.object({
@@ -40,7 +42,7 @@ const lineItemSchema = z.object({
 });
 
 const purchaseFormSchema = z.object({
-  vendorId: z.string().min(1, "กรุณาเลือกร้านค้า"),
+  vendorId: z.string().min(1, "กรุณาเลือกล้านค้า"),
   docDate: z.string().min(1, "กรุณาเลือกวันที่"),
   invoiceNo: z.string().min(1, "กรุณากรอกเลขที่บิล"),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
@@ -72,6 +74,7 @@ export function PurchaseDocForm() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [vendorSearch, setVendorSearch] = useState("");
   const [isVendorPopoverOpen, setIsVendorPopoverOpen] = useState(false);
+  const [selectedVendorType, setSelectedVendorType] = useState<string>("SUPPLIER");
   
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
@@ -129,8 +132,16 @@ export function PurchaseDocForm() {
         dueDate: docToEdit.dueDate,
         note: docToEdit.note,
       });
+      
+      // Auto-set the vendor type if editing
+      if (vendors.length > 0) {
+        const vendor = vendors.find(v => v.id === docToEdit.vendorId);
+        if (vendor) {
+          setSelectedVendorType(vendor.vendorType);
+        }
+      }
     }
-  }, [docToEdit, form]);
+  }, [docToEdit, form, vendors]);
 
   useEffect(() => {
     const subtotal = watchedItems.reduce((sum, item) => sum + (item.total || 0), 0);
@@ -152,6 +163,18 @@ export function PurchaseDocForm() {
       const newPreviews = files.map(file => URL.createObjectURL(file));
       setPhotoPreviews(prev => [...prev, ...newPreviews]);
     }
+  };
+
+  const handleVendorTypeChange = (value: string) => {
+    setSelectedVendorType(value);
+    const currentVendorId = form.getValues("vendorId");
+    const currentVendor = vendors.find(v => v.id === currentVendorId);
+    
+    // Clear vendorId if it doesn't match the new type to avoid confusion
+    if (currentVendor && currentVendor.vendorType !== value) {
+      form.setValue("vendorId", "");
+    }
+    setVendorSearch("");
   };
 
   const onSubmit = async (data: PurchaseFormData) => {
@@ -228,7 +251,10 @@ export function PurchaseDocForm() {
     }
   };
 
-  const filteredVendors = vendors.filter(v => v.companyName.toLowerCase().includes(vendorSearch.toLowerCase()) || v.shortName.toLowerCase().includes(vendorSearch.toLowerCase()));
+  const filteredVendors = vendors.filter(v => 
+    v.vendorType === selectedVendorType &&
+    (v.companyName.toLowerCase().includes(vendorSearch.toLowerCase()) || v.shortName.toLowerCase().includes(vendorSearch.toLowerCase()))
+  );
 
   if (isLoadingData || isLoadingDoc) return <Skeleton className="h-96" />;
 
@@ -244,26 +270,69 @@ export function PurchaseDocForm() {
             <Card>
                 <CardHeader><CardTitle className="text-base">1. ข้อมูลผู้ขาย</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                    <FormField name="vendorId" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>ร้านค้า</FormLabel>
-                            <Popover open={isVendorPopoverOpen} onOpenChange={setIsVendorPopoverOpen}>
-                                <PopoverTrigger asChild>
-                                    <FormControl><Button variant="outline" className="w-full justify-between">{field.value ? vendors.find(v=>v.id===field.value)?.companyName : "เลือกร้านค้า..."}<ChevronsUpDown className="ml-2 h-4 w-4 opacity-50"/></Button></FormControl>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                    <Input placeholder="ค้นหา..." value={vendorSearch} onChange={e=>setVendorSearch(e.target.value)} className="m-2 w-[calc(100%-1rem)]" />
-                                    <ScrollArea className="h-60">
-                                        {filteredVendors.map(v => (
-                                            <Button key={v.id} variant="ghost" className="w-full justify-start" onClick={()=>{field.onChange(v.id); setIsVendorPopoverOpen(false);}}>{v.shortName} - {v.companyName}</Button>
-                                        ))}
-                                    </ScrollArea>
-                                </PopoverContent>
-                            </Popover>
-                        </FormItem>
-                    )} />
-                    <FormField name="invoiceNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล</FormLabel><FormControl><Input {...field}/></FormControl></FormItem>)} />
-                    <FormField name="docDate" render={({ field }) => (<FormItem><FormLabel>วันที่ในบิล</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <FormItem>
+                        <FormLabel>ชนิดร้านค้า</FormLabel>
+                        <Select value={selectedVendorType} onValueChange={handleVendorTypeChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="เลือกชนิดร้านค้า" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {VENDOR_TYPES.map(type => (
+                              <SelectItem key={type} value={type}>{vendorTypeLabel(type)}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+
+                      <FormField name="vendorId" render={({ field }) => (
+                          <FormItem>
+                              <FormLabel>รายชื่อร้านค้า</FormLabel>
+                              <Popover open={isVendorPopoverOpen} onOpenChange={setIsVendorPopoverOpen}>
+                                  <PopoverTrigger asChild>
+                                      <FormControl>
+                                        <Button variant="outline" className="w-full justify-between overflow-hidden">
+                                          <span className="truncate">{field.value ? vendors.find(v=>v.id===field.value)?.companyName : "เลือกร้านค้า..."}</span>
+                                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
+                                        </Button>
+                                      </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                      <div className="p-2">
+                                        <Input placeholder="ค้นหาชื่อร้าน..." value={vendorSearch} onChange={e=>setVendorSearch(e.target.value)} />
+                                      </div>
+                                      <ScrollArea className="h-60">
+                                          {filteredVendors.length > 0 ? (
+                                            filteredVendors.map(v => (
+                                              <Button 
+                                                key={v.id} 
+                                                variant="ghost" 
+                                                className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none" 
+                                                onClick={()=>{field.onChange(v.id); setIsVendorPopoverOpen(false);}}
+                                              >
+                                                <div className="text-left">
+                                                  <p className="font-semibold">{v.shortName}</p>
+                                                  <p className="text-xs text-muted-foreground">{v.companyName}</p>
+                                                </div>
+                                              </Button>
+                                            ))
+                                          ) : (
+                                            <p className="text-center p-4 text-sm text-muted-foreground">ไม่พบร้านค้าในหมวดนี้</p>
+                                          )}
+                                      </ScrollArea>
+                                  </PopoverContent>
+                              </Popover>
+                              <FormMessage />
+                          </FormItem>
+                      )} />
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <FormField name="invoiceNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล</FormLabel><FormControl><Input {...field}/></FormControl></FormItem>)} />
+                      <FormField name="docDate" render={({ field }) => (<FormItem><FormLabel>วันที่ในบิล</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                    </div>
                 </CardContent>
             </Card>
 
