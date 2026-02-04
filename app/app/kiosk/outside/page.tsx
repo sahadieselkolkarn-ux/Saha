@@ -1,1 +1,5 @@
-// This route has been consolidated into /app/app/kiosk
+import { redirect } from 'next/navigation';
+
+export default function Page() {
+  redirect('/app/kiosk');
+}

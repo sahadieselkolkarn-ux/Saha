@@ -6,8 +6,10 @@ import * as z from "zod";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { doc, getDoc } from "firebase/firestore";
 
 import { useAuth } from "@/context/auth-context";
+import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +38,8 @@ const loginSchema = z.object({
 });
 
 export default function LoginPage() {
-  const { signIn, loading, authError } = useAuth();
+  const { signIn, signOut, loading, authError } = useAuth();
+  const { db } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,11 +53,38 @@ export default function LoginPage() {
   });
 
   async function onSubmit(values: z.infer<typeof loginSchema>) {
+    if (!db) return;
     setIsSubmitting(true);
     try {
-      await signIn(values.email, values.password);
+      const userCredential = await signIn(values.email, values.password);
+      const user = userCredential.user;
+
+      // Direct check for status before allowing entry
+      const profileSnap = await getDoc(doc(db, "users", user.uid));
+      
+      if (!profileSnap.exists()) {
+        await signOut();
+        toast({
+          variant: "destructive",
+          title: "Login Denied",
+          description: "ไม่พบข้อมูลโปรไฟล์ของคุณในระบบ กรุณาติดต่อแอดมิน",
+        });
+        return;
+      }
+
+      const profileData = profileSnap.data();
+      if (profileData.status !== 'ACTIVE') {
+        await signOut();
+        toast({
+          variant: "destructive",
+          title: "บัญชียังไม่อนุมัติ",
+          description: "บัญชีของคุณรอการอนุมัติ หรือถูกระงับการใช้งาน กรุณาติดต่อแอดมิน",
+        });
+        return;
+      }
+
       toast({ title: "Login Successful" });
-      router.push("/app"); // Redirect to home, which will handle routing to /app or /pending
+      router.push("/app"); 
     } catch (error: any) {
       toast({
         variant: "destructive",

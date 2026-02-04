@@ -1,1 +1,5 @@
-// This file is being deleted
+import { redirect } from 'next/navigation';
+
+export default function Page() {
+  redirect('/app/management/accounting/cashbook');
+}

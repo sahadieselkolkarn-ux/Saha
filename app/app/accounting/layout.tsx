@@ -1,1 +1,3 @@
-// This file is being deleted
+export default function AccountingLayout({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
