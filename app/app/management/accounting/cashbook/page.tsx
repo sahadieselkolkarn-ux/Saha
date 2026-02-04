@@ -10,7 +10,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
 import { useFirebase } from "@/firebase/client-provider";
-import { useCollection, type WithId } from "@/firebase/firestore/use-collection";
+import { useCollection } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -561,7 +562,7 @@ function CashbookPageContent() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const accountsQuery = useMemo(() => db ? query(collection(db, "accountingAccounts"), where("isActive", "==", true)) : null, [db]);
-  const { data: accounts, isLoading: isLoadingAccounts } = useCollection<WithId<AccountingAccount>>(accountsQuery);
+  const { data: accounts, isLoading: isLoadingAccounts } = useCollection<AccountingAccount>(accountsQuery);
   
   const [allVendors, setAllVendors] = useState<WithId<Vendor>[]>([]);
   const [isLoadingVendors, setIsLoadingVendors] = useState(true);
@@ -587,7 +588,7 @@ function CashbookPageContent() {
     return query(collection(db, "accountingEntries"), ...constraints);
   }, [db, selectedAccountId]);
 
-  const { data: entries, isLoading: isLoadingEntries } = useCollection<WithId<AccountingEntry>>(entriesQuery);
+  const { data: entries, isLoading: isLoadingEntries } = useCollection<AccountingEntry>(entriesQuery);
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
   const filteredEntries = useMemo(() => {
@@ -608,7 +609,20 @@ function CashbookPageContent() {
   }, [entries, dateRange, searchTerm]);
 
   if (!profile) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
-  if (!hasPermission) return <PageHeader title="ไม่มีสิทธิ์เข้าถึง" />;
+  
+  if (!hasPermission) {
+    return (
+      <div className="w-full">
+        <PageHeader title="รับ–จ่ายเงิน" />
+        <Card className="text-center py-12">
+            <CardHeader>
+                <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
+                <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
+            </CardHeader>
+        </Card>
+      </div>
+    );
+  }
   
   const isLoading = isLoadingAccounts || isLoadingEntries || isLoadingVendors;
 

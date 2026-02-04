@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase/client-provider";
 import { collection, query, onSnapshot, orderBy, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, where } from "firebase/firestore";
@@ -71,8 +71,26 @@ function ApproveCashDialog({ claim, accounts, onClose, onConfirm }: { claim: Wit
           <form id="approve-cash-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
             <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>วันที่จ่ายเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <div className="grid grid-cols-2 gap-4">
-              <FormField control={form.control} name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
-              <FormField control={form.control} name="accountId" render={({ field }) => (<FormItem><FormLabel>บัญชีที่จ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
+              <FormField control={form.control} name="paymentMethod" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ช่องทาง</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
+                    <SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="accountId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>บัญชีที่จ่าย</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
+                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
             </div>
             <div className="text-right font-bold text-lg">ยอดจ่าย: {formatCurrency(claim.amountTotal)}</div>
           </form>
@@ -120,7 +138,7 @@ function RejectClaimDialog({ claim, onClose, onConfirm }: { claim: WithId<Purcha
   );
 }
 
-export default function PurchaseInboxPage() {
+function PurchaseInboxPageContent() {
   const { profile } = useAuth();
   const { db } = useFirebase();
   const { toast } = useToast();
@@ -260,7 +278,7 @@ export default function PurchaseInboxPage() {
 
   if (!hasPermission) {
     return (
-        <>
+        <div className="w-full">
             <PageHeader title="รอตรวจสอบรายการซื้อ" />
             <Card className="text-center py-12">
                 <CardHeader>
@@ -268,7 +286,7 @@ export default function PurchaseInboxPage() {
                     <CardDescription>สำหรับฝ่ายบริหาร/ผู้ดูแลเท่านั้น</CardDescription>
                 </CardHeader>
             </Card>
-        </>
+        </div>
     );
   }
 
@@ -334,5 +352,13 @@ export default function PurchaseInboxPage() {
       )}
       {rejectingClaim && <RejectClaimDialog claim={rejectingClaim} onClose={() => setRejectingClaim(null)} onConfirm={handleRejectConfirm} />}
     </>
+  );
+}
+
+export default function PurchaseInboxPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}>
+      <PurchaseInboxPageContent />
+    </Suspense>
   );
 }

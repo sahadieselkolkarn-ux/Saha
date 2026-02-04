@@ -5,9 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, addDoc } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
@@ -21,8 +21,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { ScrollArea } from "./ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import Image from "next/image";
 
@@ -268,14 +271,47 @@ export function PurchaseDocForm() {
                 <CardHeader><CardTitle className="text-base">2. เงื่อนไขการจ่ายเงิน</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                     <FormField name="paymentMode" render={({ field }) => (
-                        <FormItem><FormLabel>รูปแบบ</FormLabel><RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2"><div className="flex items-center space-x-2"><RadioGroupItem value="CASH" id="p-cash"/><Label htmlFor="cash">เงินสด/โอน</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="CREDIT" id="p-credit"/><Label htmlFor="credit">เครดิต</Label></div></RadioGroup></FormItem>
+                        <FormItem>
+                          <FormLabel>รูปแบบ</FormLabel>
+                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2">
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="CASH" id="p-cash"/>
+                              <Label htmlFor="p-cash">เงินสด/โอน</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="CREDIT" id="p-credit"/>
+                              <Label htmlFor="p-credit">เครดิต</Label>
+                            </div>
+                          </RadioGroup>
+                        </FormItem>
                     )} />
                     {watchedPaymentMode === 'CREDIT' ? (
                         <FormField name="dueDate" render={({ field }) => (<FormItem><FormLabel>วันครบกำหนด</FormLabel><FormControl><Input type="date" {...field} value={field.value || ''}/></FormControl></FormItem>)} />
                     ) : (
                         <div className="grid grid-cols-2 gap-4">
-                            <FormField name="suggestedPaymentMethod" render={({ field }) => (<FormItem><FormLabel>จ่ายโดย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">เงินโอน</SelectItem></SelectContent></Select></FormItem>)} />
-                            <FormField name="suggestedAccountId" render={({ field }) => (<FormItem><FormLabel>บัญชีที่จ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></FormItem>)} />
+                            <FormField name="suggestedPaymentMethod" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>จ่ายโดย</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="CASH">เงินสด</SelectItem>
+                                    <SelectItem value="TRANSFER">เงินโอน</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </FormItem>
+                            )} />
+                            <FormField name="suggestedAccountId" render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>บัญชีที่จ่าย</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl><SelectTrigger><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl>
+                                  <SelectContent>
+                                    {accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </FormItem>
+                            )} />
                         </div>
                     )}
                 </CardContent>
