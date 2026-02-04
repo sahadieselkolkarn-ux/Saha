@@ -6,9 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { safeFormat } from "@/lib/date-utils";
@@ -104,7 +103,6 @@ export default function EditAccountPage() {
       if (isUserAdmin) {
         dataToUpdate.openingBalance = values.openingBalance;
         dataToUpdate.openingBalanceDate = values.openingBalanceDate;
-        // Update audit fields only if the balance has actually changed
         if (values.openingBalance !== account?.openingBalance || values.openingBalanceDate !== account?.openingBalanceDate) {
             dataToUpdate.openingBalanceSetByUid = profile.uid;
             dataToUpdate.openingBalanceSetAt = serverTimestamp();

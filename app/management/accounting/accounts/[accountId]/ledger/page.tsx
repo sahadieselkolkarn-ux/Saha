@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
-import { useFirebase } from '@/firebase';
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { DateRange } from "react-day-picker";
@@ -17,7 +17,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Loader2, Search, ArrowLeft, CalendarIcon } from 'lucide-react';
-import { WithId } from '@/firebase/firestore/use-collection';
 import { AccountingAccount, AccountingEntry } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { safeFormat } from '@/lib/date-utils';
@@ -53,7 +52,6 @@ export default function AccountLedgerPage() {
             setLoading(true);
             setError(null);
             try {
-                // Query without ordering to avoid needing a composite index
                 const entriesQuery = query(collection(db, 'accountingEntries'), where('accountId', '==', accountId));
                 const accountDocRef = doc(db, 'accountingAccounts', accountId);
 
@@ -85,7 +83,6 @@ export default function AccountLedgerPage() {
     const processedData = useMemo(() => {
         if (!account) return { items: [], totals: { totalIncome: 0, totalExpense: 0, periodEndBalance: 0 }, periodStartingBalance: 0 };
     
-        // Client-side sorting
         const sortedAllEntries = [...entries].sort((a, b) => {
             const dateA = parseISO(a.entryDate).getTime();
             const dateB = parseISO(b.entryDate).getTime();
@@ -100,7 +97,6 @@ export default function AccountLedgerPage() {
     
         let periodStartingBalance = account.openingBalance ?? 0;
         
-        // Calculate starting balance based on entries before the selected date range
         if (dateRange?.from) {
              sortedAllEntries.forEach(entry => {
                 const entryDate = parseISO(entry.entryDate);
@@ -114,7 +110,6 @@ export default function AccountLedgerPage() {
             });
         }
     
-        // Client-side filtering
         const visibleEntries = sortedAllEntries.filter(entry => {
             const entryDate = parseISO(entry.entryDate);
             const isInRange = dateRange?.from && dateRange?.to ? (entryDate >= dateRange.from && entryDate <= dateRange.to) : true;

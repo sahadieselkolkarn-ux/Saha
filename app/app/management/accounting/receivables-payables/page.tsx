@@ -3,7 +3,7 @@
 import { useMemo, Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { useFirebase } from '@/firebase/client-provider';
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy, runTransaction } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
@@ -29,9 +29,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from '@/components/ui/separator';
 
-import { useCollection } from '@/firebase/firestore/use-collection';
-import { useDoc } from '@/firebase/firestore/use-doc';
-import type { WithId } from '@/firebase/firestore/use-collection';
 import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType, AccountingEntry, PurchaseDoc, StoreSettings, DocumentSettings } from '@/lib/types';
 import { safeFormat } from '@/lib/date-utils';
 import { cn, sanitizeForFirestore } from '@/lib/utils';
@@ -289,7 +286,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
   const watchedWhtEnabled = form.watch("withholdingEnabled");
   const watchedWhtPercent = form.watch("withholdingPercent") || 0;
 
-  // Fetch related source document data (especially for Purchase docs to get VAT info)
   const sourceDocRef = useMemo(() => {
       if (!db || !obligation.sourceDocId) return null;
       const col = obligation.sourceDocType === 'PURCHASE' ? 'purchaseDocs' : 'documents';
@@ -297,7 +293,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
   }, [db, obligation.sourceDocId, obligation.sourceDocType]);
   const { data: sourceDoc } = useDoc<any>(sourceDocRef);
 
-  // Fetch account balance data
   const accountRef = useMemo(() => db && watchedAccountId ? doc(db, 'accountingAccounts', watchedAccountId) : null, [db, watchedAccountId]);
   const { data: accountData, isLoading: isLoadingAccount } = useDoc<AccountingAccount>(accountRef);
 
@@ -322,7 +317,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
     return balance;
   }, [accountData, accountEntries]);
 
-  // WHT Calculations
   const whtInfo = useMemo(() => {
       if (!sourceDoc || !watchedWhtEnabled) return { whtBase: 0, whtAmount: 0 };
       
@@ -330,7 +324,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
       if (!isPurchase) return { whtBase: watchedAmount, whtAmount: watchedAmount * (watchedWhtPercent / 100) };
 
       const purchase = sourceDoc as PurchaseDoc;
-      // กติกา: มี VAT หักจาก Subtotal, ไม่มี VAT หักจาก GrandTotal
       const whtBase = (purchase.withTax && purchase.vatAmount > 0) ? purchase.subtotal : purchase.grandTotal;
       const whtAmount = whtBase * (watchedWhtPercent / 100);
       return { whtBase, whtAmount };
@@ -392,7 +385,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
         let whtDocId = '';
         let whtDocNo = '';
 
-        // 1. Create WHT Document if enabled
         if (data.withholdingEnabled && obligation.sourceDocType === 'PURCHASE' && sourceDoc) {
             const purchase = sourceDoc as PurchaseDoc;
             const newCount = (currentCounters.withholdingTax || 0) + 1;
@@ -430,7 +422,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             transaction.update(counterRef, { withholdingTax: newCount });
         }
 
-        // 2. Create Accounting Entry
         const entryRef = doc(collection(db, "accountingEntries"));
         transaction.set(entryRef, sanitizeForFirestore({
             entryType: "CASH_OUT",
@@ -457,7 +448,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             createdAt: serverTimestamp(),
         }));
 
-        // 3. Update Obligation
         const obligationRef = doc(db, 'accountingObligations', obligation.id);
         const newAmountPaid = obligation.amountPaid + data.amount;
         const newBalance = Math.max(0, obligation.amountTotal - newAmountPaid);
@@ -472,7 +462,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             updatedAt: serverTimestamp(),
         });
 
-        // 4. Update Source Document Status
         if (obligation.sourceDocId) {
             const col = obligation.sourceDocType === 'PURCHASE' ? 'purchaseDocs' : 'documents';
             transaction.update(doc(db, col, obligation.sourceDocId), {
@@ -533,7 +522,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
               )} />
             </div>
 
-            {/* WHT Section */}
             <div className="p-4 border rounded-md bg-muted/20 space-y-4">
                 <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
                     <FormItem className="flex items-center gap-2 space-y-0">
@@ -569,7 +557,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                 )}
             </div>
 
-            {/* Balance Preview Section */}
             <div className="p-4 border rounded-md bg-muted/30 space-y-2">
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
                     <Wallet className="h-3 w-3" /> ตรวจสอบยอดเงิน
@@ -613,7 +600,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
           </form>
         </Form>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
+          <Button variant="outline" onClose={onClose} disabled={isSubmitting}>ยกเลิก</Button>
           <Button 
             type="submit" 
             form="ap-payment-form" 

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
   format as dfFormat,
@@ -24,7 +24,6 @@ import {
 import { safeFormat } from '@/lib/date-utils';
 
 import type { UserProfile, Attendance, LeaveRequest, HRHoliday as HRHolidayType, HRSettings, AttendanceAdjustment, UserStatus } from "@/lib/types";
-import type { WithId } from "@/firebase/firestore/use-collection";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

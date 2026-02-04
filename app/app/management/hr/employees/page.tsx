@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -33,7 +33,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { WithId } from "@/firebase";
 
 const userProfileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -385,7 +384,7 @@ export default function ManagementHREmployeesPage() {
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
-            className="sm:max-w-2xl flex flex-col max-h-[90vh]" 
+            className="sm:max-w-[600px] flex flex-col max-h-[90vh]" 
             onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
             onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
@@ -538,5 +537,3 @@ export default function ManagementHREmployeesPage() {
     </>
   );
 }
-
-    

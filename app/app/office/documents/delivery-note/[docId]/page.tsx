@@ -3,8 +3,7 @@
 import { useMemo, useState, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useFirebase, useDoc, type WithId } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";

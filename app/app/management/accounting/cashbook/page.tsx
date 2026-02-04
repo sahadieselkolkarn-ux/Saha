@@ -8,10 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
-import { useFirebase } from "@/firebase/client-provider";
-import { useCollection } from "@/firebase/firestore/use-collection";
-import type { WithId } from "@/firebase/firestore/use-collection";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
@@ -279,7 +276,7 @@ function EntryFormDialog({
 
     if (values.entryType === 'CASH_OUT' && values.withholdingEnabled) {
         if (!values.vendorId) {
-            toast({ variant: 'destructive', title: "กรุณาเลือกร้านค้า", description: "ต้องระบุคู่ค้าเพื่อออกหนังสือรับรองหัก ณ ที่จ่าย" });
+            toast({ variant: 'destructive', title: "กรุณาเลือกลูกค้า", description: "ต้องระบุคู่ค้าเพื่อออกหนังสือรับรองหัก ณ ที่จ่าย" });
             return;
         }
         const selectedVendor = allVendors.find(v => v.id === values.vendorId);
@@ -683,7 +680,7 @@ function CashbookPageContent() {
       data = data.filter(entry => 
         entry.description?.toLowerCase().includes(lowerSearch) || 
         entry.sourceDocNo?.toLowerCase().includes(lowerSearch) || 
-        entry.vendorNameSnapshot?.toLowerCase().includes(lowerSearch) ||
+        entry.vendorNameSnapshot?.toLowerCase().includes(lowerSearch) || 
         entry.customerNameSnapshot?.toLowerCase().includes(lowerSearch)
       );
     }

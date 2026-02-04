@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
@@ -7,9 +6,8 @@ import Image from "next/image";
 import Link from 'next/link';
 import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where, getDocs, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useCollection } from "@/firebase/firestore/use-collection";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
 import { archiveCollectionNameByYear } from '@/lib/archive-utils';
@@ -101,12 +99,10 @@ function JobDetailsPageContent() {
   const [relatedDocuments, setRelatedDocuments] = useState<Partial<Record<DocType, DocumentType[]>>>({});
   const [loadingDocs, setLoadingDocs] = useState(true);
 
-  // New states for description edit dialog
   const [isEditDescriptionDialogOpen, setIsEditDescriptionDialogOpen] = useState(false);
   const [descriptionToEdit, setDescriptionToEdit] = useState("");
   const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
 
-  // New states for office note edit dialog
   const [isEditOfficeNoteDialogOpen, setIsEditOfficeNoteDialogOpen] = useState(false);
   const [officeNoteToEdit, setOfficeNoteToEdit] = useState("");
   const [isUpdatingOfficeNote, setIsUpdatingOfficeNote] = useState(false);
@@ -320,7 +316,7 @@ function JobDetailsPageContent() {
     } catch (error: any) {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
     } finally {
-        setIsSubmitting(false);
+        setIsSubmittingNote(false);
     }
   };
 
@@ -363,13 +359,11 @@ function JobDetailsPageContent() {
       const jobDocRef = doc(db, "jobs", jobId as string);
       const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
 
-      // 1. Update job report
       batch.update(jobDocRef, {
         technicalReport: techReport,
         lastActivityAt: serverTimestamp()
       });
 
-      // 2. Add activity log
       batch.set(activityDocRef, {
           text: `อัปเดตผลการตรวจ/งานที่ทำ`,
           userName: profile.displayName,
@@ -433,9 +427,7 @@ function JobDetailsPageContent() {
         const jobUpdates: any = { 
             lastActivityAt: serverTimestamp() 
         };
-        // This is for activity photos, NOT main job photos.
         
-        // 1. Add new activity document
         batch.set(doc(activitiesColRef), {
             text: newNote,
             userName: profile.displayName,
@@ -444,7 +436,6 @@ function JobDetailsPageContent() {
             photos: photoURLs,
         });
         
-        // 2. Update main job document's last activity timestamp
         batch.update(jobDocRef, jobUpdates);
         
         await batch.commit();
@@ -500,16 +491,14 @@ function JobDetailsPageContent() {
         
         const batch = writeBatch(db);
         
-        // 1. Add activity log
         batch.set(doc(activitiesColRef), {
             text: `Added ${validFiles.length} photo(s) to the main job.`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
-            photos: photoURLs, // Also log the photos in the activity for history
+            photos: photoURLs,
         });
         
-        // 2. Update main job document's photos array
         batch.update(jobDocRef, { 
             photos: arrayUnion(...photoURLs),
             lastActivityAt: serverTimestamp() 
@@ -539,7 +528,6 @@ function JobDetailsPageContent() {
 
         const batch = writeBatch(db);
 
-        // Update job doc
         batch.update(jobDocRef, {
             department: transferDepartment,
             status: 'RECEIVED',
@@ -548,7 +536,6 @@ function JobDetailsPageContent() {
             lastActivityAt: serverTimestamp(),
         });
 
-        // Add activity to subcollection
         const activityText = `แอดมินเปลี่ยนแผนกหลักของงานเป็น ${transferDepartment} และคืนงานเข้าคิวแผนก. หมายเหตุ: ${transferNote || 'ไม่มี'}`;
         batch.set(doc(activitiesColRef), {
             text: activityText,
@@ -583,7 +570,6 @@ function JobDetailsPageContent() {
       );
       const snapshot = await getDocs(q);
       const workers = snapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as UserProfile));
-      // Exclude the current assignee from the list
       setDepartmentWorkers(workers.filter(w => w.uid !== job.assigneeUid));
     } catch (error) {
       toast({ variant: 'destructive', title: "Failed to fetch workers" });
@@ -722,13 +708,11 @@ const handlePartsReady = async () => {
 };
 
   useEffect(() => {
-    // Cleanup function to revoke object URLs
     return () => {
       photoPreviews.forEach(url => URL.revokeObjectURL(url));
     };
   }, [photoPreviews]);
 
-  // Reset transfer form when dialog closes
   useEffect(() => {
       if (!isTransferDialogOpen) {
           setTransferNote('');
@@ -1001,7 +985,7 @@ const handlePartsReady = async () => {
                     const docType = docTypeKey;
                     const label = {
                       QUOTATION: 'ใบเสนอราคา',
-                      DELIVERY_NOTE: 'ใบส่งของ',
+                      DELIVERY_NOTE: 'ใบส่งของชั่วคราว',
                       TAX_INVOICE: 'ใบกำกับภาษี',
                       RECEIPT: 'ใบเสร็จ'
                     }[docType];
@@ -1186,7 +1170,6 @@ const handlePartsReady = async () => {
         </DialogContent>
     </Dialog>
 
-      {/* Customer Approval Dialogs */}
       <AlertDialog open={isApproveConfirmOpen} onOpenChange={setIsApproveConfirmOpen}>
           <AlertDialogContent>
               <AlertDialogHeader>
@@ -1240,7 +1223,7 @@ const handlePartsReady = async () => {
               <AlertDialogFooter>
                   <AlertDialogCancel disabled={isApprovalActionLoading} onClick={() => setRejectionChoice(null)}>Cancel</AlertDialogCancel>
                   <AlertDialogAction onClick={handleCustomerRejection} disabled={isApprovalActionLoading}>
-                      {isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                      {isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm"}
                   </AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
@@ -1257,7 +1240,7 @@ const handlePartsReady = async () => {
               <AlertDialogFooter>
                   <AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel>
                   <AlertDialogAction onClick={handlePartsReady} disabled={isApprovalActionLoading}>
-                      {isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                      {isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm"}
                   </AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>

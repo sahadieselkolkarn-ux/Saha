@@ -1,10 +1,8 @@
-
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useFirebase, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -23,7 +21,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayslipSnapshot } from "@/lib/types";
 import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
-import type { WithId } from "@/firebase/firestore/use-collection";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
 import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
 import { formatPayslipAsText, formatPayslipAsJson } from "@/lib/payroll/formatPayslipCopy";
@@ -388,7 +385,7 @@ export default function HRGeneratePayslipsPage() {
                         <>
                           <Button variant="outline" onClick={() => setEditingPayslip(null)} disabled={isActing === editingPayslip.uid}>ยกเลิก</Button>
                           <Button onClick={handleSaveDraft} disabled={isActing === editingPayslip.uid}><Save className="mr-2"/>บันทึกฉบับร่าง</Button>
-                          <Button onClick={handleSaveAndSend} disabled={isActing === editingPayslip.uid}>{isActing === editingPayslip.uid ? <Loader2 className="animate-spin mr-2"/> : <Send className="mr-2"/>}บันทึกแล้วส่ง</Button>
+                          <Button onClick={handleSaveAndSend} disabled={isActing === editingPayslip.uid}>{isActing === editingPayslip.uid ? <Loader2 className="mr-2 animate-spin mr-2"/> : <Send className="mr-2"/>}บันทึกแล้วส่ง</Button>
                         </>
                       )
                     }
