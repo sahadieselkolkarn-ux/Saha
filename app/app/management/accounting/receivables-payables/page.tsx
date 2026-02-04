@@ -23,14 +23,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt } from 'lucide-react';
+import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { useDoc } from '@/firebase/firestore/use-doc';
 import type { WithId } from '@/firebase/firestore/use-collection';
-import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType } from '@/lib/types';
+import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType, AccountingEntry } from '@/lib/types';
 import { safeFormat } from '@/lib/date-utils';
+import { cn } from '@/lib/utils';
 
 const formatCurrency = (value: number) => {
   return (value ?? 0).toLocaleString('th-TH', {
@@ -261,6 +264,7 @@ const apPaymentSchema = z.object({
 
 function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligation: WithId<AccountingObligation>; accounts: WithId<AccountingAccount>[]; isOpen: boolean; onClose: () => void; }) {
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -275,15 +279,47 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
     },
   });
   
+  const watchedAccountId = form.watch("accountId");
+  const watchedAmount = form.watch("amount") || 0;
+
+  // Fetch account balance data
+  const accountRef = useMemo(() => db && watchedAccountId ? doc(db, 'accountingAccounts', watchedAccountId) : null, [db, watchedAccountId]);
+  const { data: accountData, isLoading: isLoadingAccount } = useDoc<AccountingAccount>(accountRef);
+
+  const entriesQuery = useMemo(() => {
+    if (!db || !watchedAccountId) return null;
+    return query(collection(db, 'accountingEntries'), where('accountId', '==', watchedAccountId));
+  }, [db, watchedAccountId]);
+  const { data: accountEntries, isLoading: isLoadingEntries } = useCollection<AccountingEntry>(entriesQuery);
+
+  const currentBalance = useMemo(() => {
+    if (!accountData) return 0;
+    let balance = accountData.openingBalance || 0;
+    if (accountEntries) {
+      accountEntries.forEach(e => {
+        if (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') balance += e.amount;
+        else if (e.entryType === 'CASH_OUT') balance -= e.amount;
+      });
+    }
+    return balance;
+  }, [accountData, accountEntries]);
+
+  const balanceAfter = currentBalance - watchedAmount;
+  const isInsufficient = currentBalance < watchedAmount;
+  const canOverride = profile?.role === 'ADMIN';
+  const isBlocked = isInsufficient && !canOverride;
+
   useEffect(() => {
-    form.reset({
-      paymentDate: new Date().toISOString().split("T")[0],
-      amount: obligation.balance,
-      paymentMethod: "TRANSFER",
-      notes: "",
-      accountId: accounts[0]?.id || "",
-    });
-  }, [obligation, accounts, form]);
+    if (isOpen) {
+        form.reset({
+            paymentDate: new Date().toISOString().split("T")[0],
+            amount: obligation.balance,
+            paymentMethod: "TRANSFER",
+            notes: "",
+            accountId: accounts[0]?.id || "",
+        });
+    }
+  }, [obligation, accounts, form, isOpen]);
 
   const handleSavePayment = async (data: z.infer<typeof apPaymentSchema>) => {
     if (!db) return;
@@ -312,12 +348,15 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
         amount: data.amount,
         accountId: data.accountId,
         paymentMethod: data.paymentMethod,
-        description: `จ่ายเจ้าหนี้: ${obligation.vendorShortNameSnapshot} (บิล: ${obligation.invoiceNo})`,
+        description: `จ่ายเจ้าหนี้: ${obligation.vendorShortNameSnapshot || obligation.vendorNameSnapshot} (บิล: ${obligation.invoiceNo || obligation.sourceDocNo})`,
         notes: data.notes,
         vendorId: obligation.vendorId,
         vendorShortNameSnapshot: obligation.vendorShortNameSnapshot,
         vendorNameSnapshot: obligation.vendorNameSnapshot,
-        sourceDocNo: obligation.invoiceNo,
+        sourceDocNo: obligation.invoiceNo || obligation.sourceDocNo,
+        obligationId: obligation.id,
+        sourceDocType: obligation.sourceDocType,
+        sourceDocId: obligation.sourceDocId,
         createdAt: serverTimestamp(),
       });
 
@@ -336,7 +375,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>จ่ายเจ้าหนี้</DialogTitle>
-          <DialogDescription>สำหรับบิลเลขที่: {obligation.invoiceNo} ({obligation.vendorShortNameSnapshot})</DialogDescription>
+          <DialogDescription>สำหรับบิลเลขที่: {obligation.invoiceNo || obligation.sourceDocNo} ({obligation.vendorShortNameSnapshot || obligation.vendorNameSnapshot})</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form id="ap-payment-form" onSubmit={form.handleSubmit(handleSavePayment)} className="space-y-4 py-4">
@@ -360,7 +399,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
               )} />
               <FormField name="accountId" control={form.control} render={({ field }) => (
                   <FormItem>
-                      <FormLabel>บัญชี</FormLabel>
+                      <FormLabel>หักจากบัญชี</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
                           <SelectContent>
@@ -371,12 +410,60 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                   </FormItem>
               )} />
             </div>
+
+            {/* Balance Preview Section */}
+            <div className="p-4 border rounded-md bg-muted/30 space-y-2">
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
+                    <Wallet className="h-3 w-3" /> ตรวจสอบยอดเงินในบัญชี
+                </h4>
+                {isLoadingAccount || isLoadingEntries ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin"/> กำลังคำนวณยอดคงเหลือ...</div>
+                ) : (
+                    <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                            <span>ยอดคงเหลือปัจจุบัน:</span>
+                            <span className="font-medium">{formatCurrency(currentBalance)}</span>
+                        </div>
+                        <div className="flex justify-between text-destructive">
+                            <span>เงินออกครั้งนี้:</span>
+                            <span className="font-medium">-{formatCurrency(watchedAmount)}</span>
+                        </div>
+                        <Separator className="my-1"/>
+                        <div className={cn("flex justify-between font-bold", balanceAfter < 0 ? "text-destructive" : "text-green-600")}>
+                            <span>คงเหลือหลังจ่าย (ประมาณการ):</span>
+                            <span>{formatCurrency(balanceAfter)}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {isInsufficient && (
+                <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <div>
+                        <p className="font-bold">ยอดเงินในบัญชีไม่เพียงพอ</p>
+                        {isBlocked ? (
+                            <p className="text-xs">กรุณาเลือกบัญชีอื่นที่มีเงินพอ หรือติดต่อ Admin เพื่อทำรายการ</p>
+                        ) : (
+                            <p className="text-xs italic">คุณเป็น Admin สามารถกด "บันทึก" เพื่อยืนยันรายการจ่ายติดลบได้</p>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
           </form>
         </Form>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
-          <Button type="submit" form="ap-payment-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin"/>}บันทึกการจ่าย</Button>
+          <Button 
+            type="submit" 
+            form="ap-payment-form" 
+            disabled={isSubmitting || isBlocked}
+          >
+            {isSubmitting ? <Loader2 className="mr-2 animate-spin"/> : <HandCoins className="mr-2 h-4 w-4"/>}
+            บันทึกการจ่าย
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -431,6 +518,7 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                 vendorNameSnapshot: selectedVendor.companyName,
                 invoiceNo: data.invoiceNo,
                 sourceDocNo: data.invoiceNo,
+                sourceDocType: 'PURCHASE_ORDER',
                 docDate: data.docDate,
                 dueDate: data.dueDate || null,
                 amountTotal: data.amountTotal,
