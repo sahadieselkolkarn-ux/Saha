@@ -75,7 +75,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
 
-  const { data: job, isLoading: isLoadingJob, error: jobError } = useDoc<Job>(jobDocRef);
+  const { data: job, isLoading: isLoadingJob } = useDoc<Job>(jobDocRef);
   const { data: docToEdit, isLoading: isLoadingDocToEdit } = useDoc<DocumentType>(docToEditRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
   
@@ -298,7 +298,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                  <h1 className="text-2xl font-bold text-right">ใบเสนอราคา</h1>
                  {isEditing && <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>}
                  <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
-                 <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormMessage>)} />
+                 <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
             </div>
         </div>
 

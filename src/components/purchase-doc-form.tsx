@@ -12,7 +12,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, Camera, X } from "lucide-react";
@@ -42,7 +42,7 @@ const lineItemSchema = z.object({
 });
 
 const purchaseFormSchema = z.object({
-  vendorId: z.string().min(1, "กรุณาเลือกล้านค้า"),
+  vendorId: z.string().min(1, "กรุณาเลือกร้านค้า"),
   docDate: z.string().min(1, "กรุณาเลือกวันที่"),
   invoiceNo: z.string().min(1, "กรุณากรอกเลขที่บิล"),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
@@ -133,7 +133,6 @@ export function PurchaseDocForm() {
         note: docToEdit.note,
       });
       
-      // Auto-set the vendor type if editing
       if (vendors.length > 0) {
         const vendor = vendors.find(v => v.id === docToEdit.vendorId);
         if (vendor) {
@@ -170,7 +169,6 @@ export function PurchaseDocForm() {
     const currentVendorId = form.getValues("vendorId");
     const currentVendor = vendors.find(v => v.id === currentVendorId);
     
-    // Clear vendorId if it doesn't match the new type to avoid confusion
     if (currentVendor && currentVendor.vendorType !== value) {
       form.setValue("vendorId", "");
     }
@@ -201,47 +199,25 @@ export function PurchaseDocForm() {
       } else {
         const docNo = await createPurchaseDoc(db, docData, profile);
         
-        // If Cash, create a claim immediately
-        if (data.paymentMode === 'CASH') {
-            const q = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo));
-            const snap = await getDocs(q);
-            const newDocId = snap.docs[0].id;
-            
-            await addDoc(collection(db, "purchaseClaims"), {
-                status: 'PENDING',
-                createdAt: serverTimestamp(),
-                createdByUid: profile.uid,
-                createdByName: profile.displayName,
-                purchaseDocId: newDocId,
-                purchaseDocNo: docNo,
-                vendorNameSnapshot: vendor.companyName,
-                invoiceNo: data.invoiceNo,
-                paymentMode: 'CASH',
-                amountTotal: data.grandTotal,
-                suggestedAccountId: data.suggestedAccountId,
-                suggestedPaymentMethod: data.suggestedPaymentMethod,
-                note: data.note,
-            });
-        } else {
-            // If Credit, create a claim for approval to create AP
-            const q = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo));
-            const snap = await getDocs(q);
-            const newDocId = snap.docs[0].id;
+        const q = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo));
+        const snap = await getDocs(q);
+        const newDocId = snap.docs[0].id;
 
-            await addDoc(collection(db, "purchaseClaims"), {
-                status: 'PENDING',
-                createdAt: serverTimestamp(),
-                createdByUid: profile.uid,
-                createdByName: profile.displayName,
-                purchaseDocId: newDocId,
-                purchaseDocNo: docNo,
-                vendorNameSnapshot: vendor.companyName,
-                invoiceNo: data.invoiceNo,
-                paymentMode: 'CREDIT',
-                amountTotal: data.grandTotal,
-                note: data.note,
-            });
-        }
+        await addDoc(collection(db, "purchaseClaims"), {
+            status: 'PENDING',
+            createdAt: serverTimestamp(),
+            createdByUid: profile.uid,
+            createdByName: profile.displayName,
+            purchaseDocId: newDocId,
+            purchaseDocNo: docNo,
+            vendorNameSnapshot: vendor.companyName,
+            invoiceNo: data.invoiceNo,
+            paymentMode: data.paymentMode,
+            amountTotal: data.grandTotal,
+            suggestedAccountId: data.suggestedAccountId,
+            suggestedPaymentMethod: data.suggestedPaymentMethod,
+            note: data.note,
+        });
       }
 
       toast({ title: "บันทึกรายการซื้อสำเร็จ" });
