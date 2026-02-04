@@ -21,14 +21,13 @@ import type { AccountingAccount, AccountingEntry, Vendor, StoreSettings, Documen
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText, Printer, CheckCircle2, MoreHorizontal, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
@@ -36,10 +35,13 @@ import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 type EntryType = 'CASH_IN' | 'CASH_OUT' | 'RECEIPT';
 
 const entrySchema = z.object({
+  entryType: z.enum(['CASH_IN', 'CASH_OUT'], { required_error: "กรุณาเลือกประเภทรายการ" }),
   entryDate: z.string().min(1, "กรุณาเลือกวันที่"),
   description: z.string().min(1, "กรุณากรอกรายการ"),
   categoryMain: z.string().min(1, "กรุณาเลือกหมวดหมู่หลัก"),
@@ -59,37 +61,39 @@ const entrySchema = z.object({
   withholdingPercent: z.coerce.number().optional(),
   withholdingAmount: z.coerce.number().optional(),
 }).superRefine((data, ctx) => {
-  if (data.billType === 'TAX_INVOICE') {
-    if (data.netAmount === undefined || data.netAmount <= 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "กรุณาระบุยอดก่อน VAT",
-        path: ["netAmount"],
-      });
+  if (data.entryType === 'CASH_OUT') {
+    if (data.billType === 'TAX_INVOICE') {
+      if (data.netAmount === undefined || data.netAmount <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุยอดก่อน VAT",
+          path: ["netAmount"],
+        });
+      }
+      if (data.vatRate === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุอัตรา VAT",
+          path: ["vatRate"],
+        });
+      }
     }
-    if (data.vatRate === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "กรุณาระบุอัตรา VAT",
-        path: ["vatRate"],
-      });
-    }
-  }
 
-  if (data.withholdingEnabled) {
-    if (!data.withholdingPercent) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "กรุณาระบุอัตราหัก ณ ที่จ่าย",
-        path: ["withholdingPercent"],
-      });
-    }
-    if (data.withholdingAmount === undefined || data.withholdingAmount < 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "กรุณาระบุจำนวนภาษีที่หัก",
-        path: ["withholdingAmount"],
-      });
+    if (data.withholdingEnabled) {
+      if (!data.withholdingPercent) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุอัตราหัก ณ ที่จ่าย",
+          path: ["withholdingPercent"],
+        });
+      }
+      if (data.withholdingAmount === undefined || data.withholdingAmount < 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "กรุณาระบุจำนวนภาษีที่หัก",
+          path: ["withholdingAmount"],
+        });
+      }
     }
   }
 });
@@ -142,7 +146,6 @@ function VendorCombobox({ allVendors, selectedId, onSelect, disabled }: { allVen
 }
 
 function EntryFormDialog({ 
-  entryType, 
   accounts, 
   allVendors, 
   onSaveSuccess, 
@@ -150,7 +153,6 @@ function EntryFormDialog({
   isOpen,
   onOpenChange
 }: { 
-  entryType: EntryType, 
   accounts: WithId<AccountingAccount>[], 
   allVendors: WithId<Vendor>[], 
   onSaveSuccess: () => void,
@@ -163,19 +165,16 @@ function EntryFormDialog({
   const { toast } = useToast();
   const [successDocId, setSuccessDocId] = useState<string | null>(null);
 
-  const categories = entryType === 'CASH_IN' ? ACCOUNTING_CATEGORIES.INCOME : ACCOUNTING_CATEGORIES.EXPENSE;
-  const mainCategories = Object.keys(categories);
-  const defaultCategoryMain = entryType === 'CASH_OUT' ? 'ต้นทุนงาน' : 'งานซ่อม';
-
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
   const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
 
   const form = useForm<EntryFormData>({
     resolver: zodResolver(entrySchema),
     defaultValues: {
+      entryType: 'CASH_IN',
       entryDate: format(new Date(), 'yyyy-MM-dd'),
       description: "",
-      categoryMain: defaultCategoryMain,
+      categoryMain: 'งานซ่อม',
       categorySub: "",
       amount: 0,
       accountId: "",
@@ -191,6 +190,7 @@ function EntryFormDialog({
     },
   });
   
+  const watchedEntryType = form.watch('entryType');
   const watchedBillType = form.watch('billType');
   const watchedNetAmount = form.watch('netAmount') || 0;
   const watchedVatRate = form.watch('vatRate') || 0;
@@ -198,8 +198,11 @@ function EntryFormDialog({
   const watchedWhtPercent = form.watch('withholdingPercent') || 0;
   const watchedAmount = form.watch('amount') || 0;
 
+  const categories = watchedEntryType === 'CASH_IN' ? ACCOUNTING_CATEGORIES.INCOME : ACCOUNTING_CATEGORIES.EXPENSE;
+  const mainCategories = Object.keys(categories);
+
   useEffect(() => {
-    if (entryType !== 'CASH_OUT') return;
+    if (watchedEntryType !== 'CASH_OUT') return;
 
     if (watchedBillType === 'TAX_INVOICE') {
       const vatAmount = Math.round(watchedNetAmount * (watchedVatRate / 100) * 100) / 100;
@@ -215,18 +218,19 @@ function EntryFormDialog({
       form.setValue('netAmount', watchedAmount);
       form.setValue('withholdingAmount', whtAmount);
     }
-  }, [watchedNetAmount, watchedVatRate, watchedWhtEnabled, watchedWhtPercent, watchedBillType, watchedAmount, form, entryType]);
+  }, [watchedNetAmount, watchedVatRate, watchedWhtEnabled, watchedWhtPercent, watchedBillType, watchedAmount, form, watchedEntryType]);
 
   useEffect(() => {
     if (isOpen) {
         setSuccessDocId(null);
         if (editingEntry) {
             form.reset({
+                entryType: (editingEntry.entryType as any) || 'CASH_IN',
                 entryDate: editingEntry.entryDate,
                 description: editingEntry.description || "",
-                categoryMain: editingEntry.categoryMain || defaultCategoryMain,
+                categoryMain: editingEntry.categoryMain || (editingEntry.entryType === 'CASH_OUT' ? 'ต้นทุนงาน' : 'งานซ่อม'),
                 categorySub: editingEntry.categorySub || "",
-                amount: editingEntry.grossAmount || editingEntry.amount, // Use gross for form if available
+                amount: editingEntry.grossAmount || editingEntry.amount,
                 accountId: editingEntry.accountId,
                 paymentMethod: (editingEntry.paymentMethod as any) || "CASH",
                 sourceDocNo: editingEntry.sourceDocNo || "",
@@ -243,9 +247,10 @@ function EntryFormDialog({
             });
         } else {
             form.reset({
+                entryType: 'CASH_IN',
                 entryDate: format(new Date(), 'yyyy-MM-dd'),
                 description: "",
-                categoryMain: defaultCategoryMain,
+                categoryMain: 'งานซ่อม',
                 categorySub: "",
                 amount: 0,
                 accountId: accounts[0]?.id || "",
@@ -261,7 +266,7 @@ function EntryFormDialog({
             });
         }
     }
-  }, [isOpen, form, defaultCategoryMain, accounts, editingEntry]);
+  }, [isOpen, form, accounts, editingEntry]);
 
   const selectedMainCategory = form.watch('categoryMain');
   const subCategories = useMemo(() => {
@@ -272,7 +277,7 @@ function EntryFormDialog({
   const onSubmit = async (values: EntryFormData) => {
     if (!db || !profile) return;
 
-    if (entryType === 'CASH_OUT' && values.withholdingEnabled) {
+    if (values.entryType === 'CASH_OUT' && values.withholdingEnabled) {
         if (!values.vendorId) {
             toast({ variant: 'destructive', title: "กรุณาเลือกร้านค้า", description: "ต้องระบุคู่ค้าเพื่อออกหนังสือรับรองหัก ณ ที่จ่าย" });
             return;
@@ -307,7 +312,7 @@ function EntryFormDialog({
       await runTransaction(db, async (transaction) => {
         let withholdingTaxDocId = "";
 
-        if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
+        if (values.entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
             const year = new Date(values.entryDate).getFullYear();
             const counterRef = doc(db, 'documentCounters', String(year));
             const docSettingsRef = doc(db, 'settings', 'documents');
@@ -372,7 +377,6 @@ function EntryFormDialog({
             ...values,
             amount: actualCashAmount,
             grossAmount: values.amount,
-            entryType,
             withholdingTaxDocId,
             createdAt: serverTimestamp(),
         }));
@@ -392,9 +396,7 @@ function EntryFormDialog({
     }
   };
   
-  const dialogTitle = editingEntry 
-    ? "แก้ไขรายการ" 
-    : (entryType === 'CASH_IN' ? "บันทึกรับเงิน" : "บันทึกจ่ายเงิน");
+  const dialogTitle = editingEntry ? "แก้ไขรายการ" : "บันทึกรายการรับ-จ่าย";
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -408,7 +410,7 @@ function EntryFormDialog({
                 </div>
                 <div className="flex flex-col gap-2">
                     <Button asChild size="lg" className="w-full">
-                        <Link href={`/app/management/accounting/withholding-tax/${successDocId}/print`} target="_blank">
+                        <Link href={`/app/management/accounting/documents/withholding-tax/${successDocId}/print`} target="_blank">
                             <Printer className="mr-2 h-5 w-5" /> พิมพ์หนังสือรับรอง (50 ทวิ)
                         </Link>
                     </Button>
@@ -419,10 +421,32 @@ function EntryFormDialog({
             <>
             <DialogHeader className="p-6 pb-0">
                 <DialogTitle>{dialogTitle}</DialogTitle>
-                <DialogDescription>{entryType === 'CASH_IN' ? "บันทึกรายการเงินเข้าทั่วไป" : "บันทึกรายการค่าใช้จ่ายทั่วไป"}</DialogDescription>
+                <DialogDescription>บันทึกรายการเงินเข้าหรือเงินออกทั่วไปเพื่อกระทบยอดบัญชี</DialogDescription>
             </DialogHeader>
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} id="entry-form" className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                    <FormField control={form.control} name="entryType" render={({ field }) => (
+                        <FormItem className="space-y-3">
+                            <FormLabel>ประเภทรายการ</FormLabel>
+                            <FormControl>
+                                <RadioGroup onValueChange={(v) => {
+                                    field.onChange(v);
+                                    form.setValue('categoryMain', v === 'CASH_OUT' ? 'ต้นทุนงาน' : 'งานซ่อม');
+                                }} value={field.value} className="flex gap-4">
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="CASH_IN" id="in" />
+                                        <Label htmlFor="in" className="font-semibold text-green-600">เงินเข้า (Income)</Label>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                        <RadioGroupItem value="CASH_OUT" id="out" />
+                                        <Label htmlFor="out" className="font-semibold text-destructive">เงินออก (Expense)</Label>
+                                    </div>
+                                </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )} />
+
                     <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="entryDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
                         <FormField control={form.control} name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
@@ -439,7 +463,7 @@ function EntryFormDialog({
                         )}
                     </div>
                     
-                    {entryType === 'CASH_OUT' && (
+                    {watchedEntryType === 'CASH_OUT' && (
                         <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-dashed">
                             <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold flex items-center gap-2 text-primary"><AlertCircle className="h-4 w-4" /> รายละเอียดภาษีและบิล</h4>
@@ -533,8 +557,8 @@ function EntryFormDialog({
                                         type="number" 
                                         step="0.01" 
                                         {...field} 
-                                        className={cn("text-lg font-bold", watchedBillType === 'TAX_INVOICE' && "bg-muted")} 
-                                        readOnly={watchedBillType === 'TAX_INVOICE'} 
+                                        className={cn("text-lg font-bold", (watchedEntryType === 'CASH_OUT' && watchedBillType === 'TAX_INVOICE') && "bg-muted")} 
+                                        readOnly={watchedEntryType === 'CASH_OUT' && watchedBillType === 'TAX_INVOICE'} 
                                     />
                                 </FormControl>
                                 <FormMessage />
@@ -542,7 +566,7 @@ function EntryFormDialog({
                         )} />
                         <FormField control={form.control} name="accountId" render={({ field }) => (
                             <FormItem>
-                                <FormLabel>จ่ายออกจากบัญชี</FormLabel>
+                                <FormLabel>{watchedEntryType === 'CASH_IN' ? 'รับเงินเข้าบัญชี' : 'จ่ายออกจากบัญชี'}</FormLabel>
                                 <Select onValueChange={field.onChange} value={field.value}>
                                     <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
                                     <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
@@ -552,7 +576,7 @@ function EntryFormDialog({
                         )} />
                     </div>
 
-                    {entryType === 'CASH_OUT' && watchedWhtEnabled && (
+                    {watchedEntryType === 'CASH_OUT' && watchedWhtEnabled && (
                         <div className="flex justify-end pr-2">
                             <span className="text-sm font-semibold text-destructive">
                                 ยอดจ่ายจริง (หัก WHT แล้ว): {(form.watch('amount') - (form.watch('withholdingAmount') || 0)).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท
@@ -567,18 +591,20 @@ function EntryFormDialog({
                                 <FormControl><Input {...field} placeholder="เช่น เลขที่บิลร้านค้า" /></FormControl>
                             </FormItem>
                         )} />
-                        <FormItem>
-                            <FormLabel>คู่ค้า (Vendor)</FormLabel>
-                            <VendorCombobox 
-                                allVendors={allVendors} 
-                                selectedId={form.watch('vendorId')} 
-                                onSelect={(vendor) => { 
-                                    form.setValue('vendorId', vendor?.id); 
-                                    form.setValue('vendorShortNameSnapshot', vendor?.shortName); 
-                                    form.setValue('vendorNameSnapshot', vendor?.companyName); 
-                                }} 
-                            />
-                        </FormItem>
+                        {watchedEntryType === 'CASH_OUT' && (
+                            <FormItem>
+                                <FormLabel>คู่ค้า (Vendor)</FormLabel>
+                                <VendorCombobox 
+                                    allVendors={allVendors} 
+                                    selectedId={form.watch('vendorId')} 
+                                    onSelect={(vendor) => { 
+                                        form.setValue('vendorId', vendor?.id); 
+                                        form.setValue('vendorShortNameSnapshot', vendor?.shortName); 
+                                        form.setValue('vendorNameSnapshot', vendor?.companyName); 
+                                    }} 
+                                />
+                            </FormItem>
+                        )}
                     </div>
                 </form>
             </Form>
@@ -600,10 +626,7 @@ function CashbookPageContent() {
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
-  const searchParams = useSearchParams();
-  const initialTab = searchParams.get('tab') === 'out' ? 'out' : 'in';
 
-  const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState("");
@@ -711,64 +734,103 @@ function CashbookPageContent() {
 
   return (
     <>
-      <PageHeader title="รับ–จ่ายเงิน" description="บันทึกรายการเงินเข้า–ออก" />
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
-          <TabsList><TabsTrigger value="in">เงินเข้า</TabsTrigger><TabsTrigger value="out">เงินออก</TabsTrigger></TabsList>
-          <div className="flex gap-2 items-center">
-            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft/></Button>
-            <div className="font-bold text-center w-36">{format(currentMonth, 'MMMM yyyy')}</div>
-            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight/></Button>
-            <Separator orientation="vertical" className="h-8 mx-2" />
-            <Select value={selectedAccountId} onValueChange={setSelectedAccountId}><SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">ทุกบัญชี</SelectItem>{accounts?.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select>
-          </div>
+      <PageHeader title="รับ–จ่ายเงิน" description="รายการเคลื่อนไหวเงินสดและธนาคารประจำเดือน" />
+      
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+        <div className="flex gap-2 items-center">
+          <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft/></Button>
+          <div className="font-bold text-center w-36 text-lg">{format(currentMonth, 'MMMM yyyy')}</div>
+          <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight/></Button>
+          <Separator orientation="vertical" className="h-8 mx-2" />
+          <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+            <SelectTrigger className="w-[200px]"><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">ทุกบัญชี</SelectItem>
+              {accounts?.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
-        <Card>
-            <CardHeader className="flex flex-row justify-between items-center"><div className="relative flex-1 max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="ค้นหา..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" /></div><Button onClick={() => setIsAddDialogOpen(true)}><PlusCircle className="mr-2" /> บันทึกรายการใหม่</Button></CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>รายการ</TableHead><TableHead>คู่ค้า</TableHead><TableHead className="text-right">เงินเข้า</TableHead><TableHead className="text-right">เงินออก</TableHead><TableHead>บัญชี</TableHead><TableHead/></TableRow></TableHeader>
-                    <TableBody>
-                        {isLoading ? <TableRow><TableCell colSpan={7} className="text-center"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow> : filteredEntries.filter(e => activeTab === 'in' ? (e.entryType !== 'CASH_OUT') : e.entryType === 'CASH_OUT').map(entry => (
-                            <TableRow key={entry.id}>
-                                <TableCell>{safeFormat(parseISO(entry.entryDate), 'dd/MM/yy')}</TableCell>
-                                <TableCell>{entry.description}</TableCell>
-                                <TableCell>{entry.vendorShortNameSnapshot || entry.customerNameSnapshot || '-'}</TableCell>
-                                <TableCell className="text-right text-green-600">{activeTab === 'in' ? entry.amount.toLocaleString() : ''}</TableCell>
-                                <TableCell className="text-right text-destructive">{activeTab === 'out' ? entry.amount.toLocaleString() : ''}</TableCell>
-                                <TableCell>{accounts?.find(a => a.id === entry.accountId)?.name}</TableCell>
-                                <TableCell className="text-right">
-                                    <div className="flex justify-end gap-1">
-                                        {entry.withholdingTaxDocId && (
-                                            <Button asChild variant="ghost" size="icon" title="พิมพ์หนังสือรับรอง">
-                                                <Link href={`/app/management/accounting/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
-                                            </Button>
-                                        )}
-                                        {entry.entryType !== 'RECEIPT' && (
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => setEditingEntry(entry)}><Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>
-                                                    {isAdmin && <DropdownMenuItem onClick={() => setDeletingEntry(entry)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/> ลบ</DropdownMenuItem>}
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        )}
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
-      </Tabs>
+        <Button onClick={() => setIsAddDialogOpen(true)} className="w-full md:w-auto">
+          <PlusCircle className="mr-2 h-4 w-4" /> บันทึกรายการรับ-จ่าย
+        </Button>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="ค้นหาจากรายการ, ร้านค้า, ลูกค้า..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px]">วันที่</TableHead>
+                  <TableHead>รายการ</TableHead>
+                  <TableHead>คู่ค้า/ลูกค้า</TableHead>
+                  <TableHead className="text-right">เงินเข้า</TableHead>
+                  <TableHead className="text-right">เงินออก</TableHead>
+                  <TableHead>บัญชี</TableHead>
+                  <TableHead className="text-right w-[100px]">จัดการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={7} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                ) : filteredEntries.length > 0 ? (
+                  filteredEntries.map(entry => (
+                    <TableRow key={entry.id} className="hover:bg-muted/50">
+                      <TableCell className="text-muted-foreground">{safeFormat(parseISO(entry.entryDate), 'dd/MM/yy')}</TableCell>
+                      <TableCell className="font-medium">
+                        {entry.description}
+                        {entry.entryType === 'RECEIPT' && <Badge variant="outline" className="ml-2 text-[10px]">Payment</Badge>}
+                      </TableCell>
+                      <TableCell>{entry.vendorShortNameSnapshot || entry.customerNameSnapshot || '-'}</TableCell>
+                      <TableCell className="text-right text-green-600 font-semibold">
+                        {entry.entryType !== 'CASH_OUT' ? entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
+                      </TableCell>
+                      <TableCell className="text-right text-destructive font-semibold">
+                        {entry.entryType === 'CASH_OUT' ? entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
+                      </TableCell>
+                      <TableCell className="text-xs">{accounts?.find(a => a.id === entry.accountId)?.name || '-'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {entry.withholdingTaxDocId && (
+                            <Button asChild variant="ghost" size="icon" title="พิมพ์หนังสือรับรอง">
+                              <Link href={`/app/management/accounting/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
+                            </Button>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => setEditingEntry(entry)}><Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>
+                              {isAdmin && (
+                                <DropdownMenuItem onClick={() => setDeletingEntry(entry)} className="text-destructive focus:text-destructive">
+                                  <Trash2 className="mr-2 h-4 w-4"/> ลบ
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow><TableCell colSpan={7} className="h-24 text-center text-muted-foreground">ไม่มีรายการในช่วงเวลานี้</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
       {accounts && (
           <>
             <EntryFormDialog 
                 isOpen={isAddDialogOpen} 
                 onOpenChange={setIsAddDialogOpen}
-                entryType={activeTab === 'in' ? 'CASH_IN' : 'CASH_OUT'} 
                 accounts={accounts} 
                 allVendors={allVendors} 
                 onSaveSuccess={() => {}} 
@@ -777,7 +839,6 @@ function CashbookPageContent() {
                 <EntryFormDialog 
                     isOpen={!!editingEntry} 
                     onOpenChange={(open) => !open && setEditingEntry(null)}
-                    entryType={editingEntry.entryType as any} 
                     accounts={accounts} 
                     allVendors={allVendors} 
                     editingEntry={editingEntry}
