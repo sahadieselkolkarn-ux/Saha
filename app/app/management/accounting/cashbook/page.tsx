@@ -2,9 +2,8 @@
 
 import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { DateRange } from "react-day-picker";
-import { format, startOfMonth, endOfMonth, parseISO, isBefore, isAfter } from "date-fns";
-import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch, runTransaction, increment } from "firebase/firestore";
+import { format, startOfMonth, endOfMonth, parseISO, isBefore, isAfter, subMonths, addMonths } from "date-fns";
+import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch, runTransaction, increment, updateDoc, deleteDoc } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -29,15 +28,16 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText, Printer, CheckCircle2 } from "lucide-react";
+import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText, Printer, CheckCircle2, MoreHorizontal, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
-type EntryType = 'CASH_IN' | 'CASH_OUT';
+type EntryType = 'CASH_IN' | 'CASH_OUT' | 'RECEIPT';
 
 const entrySchema = z.object({
   entryDate: z.string().min(1, "กรุณาเลือกวันที่"),
@@ -141,11 +141,26 @@ function VendorCombobox({ allVendors, selectedId, onSelect, disabled }: { allVen
   );
 }
 
-function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { entryType: EntryType, accounts: WithId<AccountingAccount>[], allVendors: WithId<Vendor>[], onSaveSuccess: () => void }) {
+function EntryFormDialog({ 
+  entryType, 
+  accounts, 
+  allVendors, 
+  onSaveSuccess, 
+  editingEntry,
+  isOpen,
+  onOpenChange
+}: { 
+  entryType: EntryType, 
+  accounts: WithId<AccountingAccount>[], 
+  allVendors: WithId<Vendor>[], 
+  onSaveSuccess: () => void,
+  editingEntry?: WithId<AccountingEntry> | null,
+  isOpen: boolean,
+  onOpenChange: (open: boolean) => void
+}) {
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
-  const [isOpen, setIsOpen] = useState(false);
   const [successDocId, setSuccessDocId] = useState<string | null>(null);
 
   const categories = entryType === 'CASH_IN' ? ACCOUNTING_CATEGORIES.INCOME : ACCOUNTING_CATEGORIES.EXPENSE;
@@ -205,25 +220,48 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   useEffect(() => {
     if (isOpen) {
         setSuccessDocId(null);
-        form.reset({
-            entryDate: format(new Date(), 'yyyy-MM-dd'),
-            description: "",
-            categoryMain: defaultCategoryMain,
-            categorySub: "",
-            amount: 0,
-            accountId: accounts[0]?.id || "",
-            paymentMethod: "CASH",
-            sourceDocNo: "",
-            billType: "NO_TAX_INVOICE",
-            vatRate: 7,
-            vatAmount: 0,
-            netAmount: 0,
-            withholdingEnabled: false,
-            withholdingPercent: 3,
-            withholdingAmount: 0,
-        });
+        if (editingEntry) {
+            form.reset({
+                entryDate: editingEntry.entryDate,
+                description: editingEntry.description || "",
+                categoryMain: editingEntry.categoryMain || defaultCategoryMain,
+                categorySub: editingEntry.categorySub || "",
+                amount: editingEntry.grossAmount || editingEntry.amount, // Use gross for form if available
+                accountId: editingEntry.accountId,
+                paymentMethod: (editingEntry.paymentMethod as any) || "CASH",
+                sourceDocNo: editingEntry.sourceDocNo || "",
+                billType: (editingEntry.billType as any) || "NO_TAX_INVOICE",
+                vatRate: editingEntry.vatRate ?? 7,
+                vatAmount: editingEntry.vatAmount || 0,
+                netAmount: editingEntry.netAmount || 0,
+                withholdingEnabled: editingEntry.withholdingEnabled || false,
+                withholdingPercent: editingEntry.withholdingPercent || 3,
+                withholdingAmount: editingEntry.withholdingAmount || 0,
+                vendorId: editingEntry.vendorId || "",
+                vendorShortNameSnapshot: editingEntry.vendorShortNameSnapshot || "",
+                vendorNameSnapshot: editingEntry.vendorNameSnapshot || "",
+            });
+        } else {
+            form.reset({
+                entryDate: format(new Date(), 'yyyy-MM-dd'),
+                description: "",
+                categoryMain: defaultCategoryMain,
+                categorySub: "",
+                amount: 0,
+                accountId: accounts[0]?.id || "",
+                paymentMethod: "CASH",
+                sourceDocNo: "",
+                billType: "NO_TAX_INVOICE",
+                vatRate: 7,
+                vatAmount: 0,
+                netAmount: 0,
+                withholdingEnabled: false,
+                withholdingPercent: 3,
+                withholdingAmount: 0,
+            });
+        }
     }
-  }, [isOpen, form, defaultCategoryMain, accounts]);
+  }, [isOpen, form, defaultCategoryMain, accounts, editingEntry]);
 
   const selectedMainCategory = form.watch('categoryMain');
   const subCategories = useMemo(() => {
@@ -234,7 +272,6 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
   const onSubmit = async (values: EntryFormData) => {
     if (!db || !profile) return;
 
-    // Validation for Withholding Tax
     if (entryType === 'CASH_OUT' && values.withholdingEnabled) {
         if (!values.vendorId) {
             toast({ variant: 'destructive', title: "กรุณาเลือกร้านค้า", description: "ต้องระบุคู่ค้าเพื่อออกหนังสือรับรองหัก ณ ที่จ่าย" });
@@ -252,10 +289,24 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
     }
 
     try {
+      if (editingEntry) {
+          const entryRef = doc(db, 'accountingEntries', editingEntry.id);
+          const actualCashAmount = values.amount - (values.withholdingAmount || 0);
+          await updateDoc(entryRef, sanitizeForFirestore({
+              ...values,
+              amount: actualCashAmount,
+              grossAmount: values.amount,
+              updatedAt: serverTimestamp(),
+          }));
+          toast({ title: "อัปเดตรายการสำเร็จ" });
+          onOpenChange(false);
+          onSaveSuccess();
+          return;
+      }
+
       await runTransaction(db, async (transaction) => {
         let withholdingTaxDocId = "";
 
-        // CASE: Withholding Tax Enabled -> Transactional creation of WHT Doc + Entry
         if (entryType === 'CASH_OUT' && values.withholdingEnabled && values.vendorId && storeSettings) {
             const year = new Date(values.entryDate).getFullYear();
             const counterRef = doc(db, 'documentCounters', String(year));
@@ -332,7 +383,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
           if (docId) {
               setSuccessDocId(docId);
           } else {
-              setIsOpen(false);
+              onOpenChange(false);
               onSaveSuccess();
           }
       });
@@ -341,13 +392,12 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
     }
   };
   
-  const dialogTitle = entryType === 'CASH_IN' ? "บันทึกรับเงิน" : "บันทึกจ่ายเงิน";
+  const dialogTitle = editingEntry 
+    ? "แก้ไขรายการ" 
+    : (entryType === 'CASH_IN' ? "บันทึกรับเงิน" : "บันทึกจ่ายเงิน");
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button><PlusCircle className="mr-2" /> {dialogTitle}</Button>
-      </DialogTrigger>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
         {successDocId ? (
             <div className="p-12 text-center space-y-6">
@@ -362,7 +412,7 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                             <Printer className="mr-2 h-5 w-5" /> พิมพ์หนังสือรับรอง (50 ทวิ)
                         </Link>
                     </Button>
-                    <Button variant="outline" onClick={() => { setIsOpen(false); onSaveSuccess(); }}>ปิดหน้าต่าง</Button>
+                    <Button variant="outline" onClick={() => { onOpenChange(false); onSaveSuccess(); }}>ปิดหน้าต่าง</Button>
                 </div>
             </div>
         ) : (
@@ -469,9 +519,6 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                                             </FormItem>
                                         )} />
                                     </div>
-                                    <p className="text-[10px] text-muted-foreground italic">
-                                        ฐานหัก ณ ที่จ่าย: {watchedBillType === 'TAX_INVOICE' ? 'ยอดก่อน VAT' : 'ยอดเงินรวม'}
-                                    </p>
                                 </div>
                             )}
                         </div>
@@ -536,10 +583,10 @@ function AddEntryDialog({ entryType, accounts, allVendors, onSaveSuccess }: { en
                 </form>
             </Form>
             <DialogFooter className="p-6 border-t bg-muted/50">
-                <Button variant="outline" onClick={() => setIsOpen(false)}>ยกเลิก</Button>
+                <Button variant="outline" onClick={() => onOpenChange(false)}>ยกเลิก</Button>
                 <Button type="submit" form="entry-form" disabled={form.formState.isSubmitting}>
                     {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {watchedWhtEnabled ? "บันทึกและออก 50 ทวิ" : "บันทึกรายการ"}
+                    {editingEntry ? "บันทึกการแก้ไข" : (watchedWhtEnabled ? "บันทึกและออก 50 ทวิ" : "บันทึกรายการ")}
                 </Button>
             </DialogFooter>
             </>
@@ -558,8 +605,18 @@ function CashbookPageContent() {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState("");
+  
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<WithId<AccountingEntry> | null>(null);
+  const [deletingEntry, setDeletingEntry] = useState<WithId<AccountingEntry> | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+
+  const dateRange = useMemo(() => ({
+    from: startOfMonth(currentMonth),
+    to: endOfMonth(currentMonth)
+  }), [currentMonth]);
 
   const accountsQuery = useMemo(() => db ? query(collection(db, "accountingAccounts"), where("isActive", "==", true)) : null, [db]);
   const { data: accounts, isLoading: isLoadingAccounts } = useCollection<AccountingAccount>(accountsQuery);
@@ -589,7 +646,9 @@ function CashbookPageContent() {
   }, [db, selectedAccountId]);
 
   const { data: entries, isLoading: isLoadingEntries } = useCollection<AccountingEntry>(entriesQuery);
+  
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+  const isAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
 
   const filteredEntries = useMemo(() => {
     if (!entries) return [];
@@ -607,6 +666,30 @@ function CashbookPageContent() {
     }
     return data;
   }, [entries, dateRange, searchTerm]);
+
+  const handleDelete = async () => {
+    if (!db || !deletingEntry) return;
+    setIsActionLoading(true);
+    try {
+        const batch = writeBatch(db);
+        batch.delete(doc(db, 'accountingEntries', deletingEntry.id));
+        
+        if (deletingEntry.withholdingTaxDocId) {
+            batch.update(doc(db, 'documents', deletingEntry.withholdingTaxDocId), {
+                status: 'CANCELLED',
+                updatedAt: serverTimestamp()
+            });
+        }
+        
+        await batch.commit();
+        toast({ title: "ลบรายการเรียบร้อยแล้ว" });
+        setDeletingEntry(null);
+    } catch(e: any) {
+        toast({ variant: 'destructive', title: "ลบไม่สำเร็จ", description: e.message });
+    } finally {
+        setIsActionLoading(false);
+    }
+  };
 
   if (!profile) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
   
@@ -632,13 +715,16 @@ function CashbookPageContent() {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
           <TabsList><TabsTrigger value="in">เงินเข้า</TabsTrigger><TabsTrigger value="out">เงินออก</TabsTrigger></TabsList>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft/></Button>
+            <div className="font-bold text-center w-36">{format(currentMonth, 'MMMM yyyy')}</div>
+            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight/></Button>
+            <Separator orientation="vertical" className="h-8 mx-2" />
             <Select value={selectedAccountId} onValueChange={setSelectedAccountId}><SelectTrigger className="w-[200px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">ทุกบัญชี</SelectItem>{accounts?.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select>
-            <Popover><PopoverTrigger asChild><Button variant="outline"><CalendarIcon className="mr-2 h-4 w-4" />{dateRange?.from ? format(dateRange.from, "PP") : "เลือกวันที่"}</Button></PopoverTrigger><PopoverContent className="w-auto p-0" align="end"><Calendar mode="range" selected={dateRange} onSelect={setDateRange} numberOfMonths={2}/></PopoverContent></Popover>
           </div>
         </div>
         <Card>
-            <CardHeader className="flex flex-row justify-between items-center"><div className="relative flex-1 max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="ค้นหา..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" /></div>{accounts && <AddEntryDialog entryType={activeTab === 'in' ? 'CASH_IN' : 'CASH_OUT'} accounts={accounts} allVendors={allVendors} onSaveSuccess={() => {}} />}</CardHeader>
+            <CardHeader className="flex flex-row justify-between items-center"><div className="relative flex-1 max-w-sm"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="ค้นหา..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" /></div><Button onClick={() => setIsAddDialogOpen(true)}><PlusCircle className="mr-2" /> บันทึกรายการใหม่</Button></CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>รายการ</TableHead><TableHead>คู่ค้า</TableHead><TableHead className="text-right">เงินเข้า</TableHead><TableHead className="text-right">เงินออก</TableHead><TableHead>บัญชี</TableHead><TableHead/></TableRow></TableHeader>
@@ -652,11 +738,22 @@ function CashbookPageContent() {
                                 <TableCell className="text-right text-destructive">{activeTab === 'out' ? entry.amount.toLocaleString() : ''}</TableCell>
                                 <TableCell>{accounts?.find(a => a.id === entry.accountId)?.name}</TableCell>
                                 <TableCell className="text-right">
-                                    {entry.withholdingTaxDocId && (
-                                        <Button asChild variant="ghost" size="icon" title="พิมพ์หนังสือรับรอง">
-                                            <Link href={`/app/management/accounting/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
-                                        </Button>
-                                    )}
+                                    <div className="flex justify-end gap-1">
+                                        {entry.withholdingTaxDocId && (
+                                            <Button asChild variant="ghost" size="icon" title="พิมพ์หนังสือรับรอง">
+                                                <Link href={`/app/management/accounting/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
+                                            </Button>
+                                        )}
+                                        {entry.entryType !== 'RECEIPT' && (
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => setEditingEntry(entry)}><Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>
+                                                    {isAdmin && <DropdownMenuItem onClick={() => setDeletingEntry(entry)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/> ลบ</DropdownMenuItem>}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        )}
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -665,6 +762,53 @@ function CashbookPageContent() {
             </CardContent>
         </Card>
       </Tabs>
+
+      {accounts && (
+          <>
+            <EntryFormDialog 
+                isOpen={isAddDialogOpen} 
+                onOpenChange={setIsAddDialogOpen}
+                entryType={activeTab === 'in' ? 'CASH_IN' : 'CASH_OUT'} 
+                accounts={accounts} 
+                allVendors={allVendors} 
+                onSaveSuccess={() => {}} 
+            />
+            {editingEntry && (
+                <EntryFormDialog 
+                    isOpen={!!editingEntry} 
+                    onOpenChange={(open) => !open && setEditingEntry(null)}
+                    entryType={editingEntry.entryType as any} 
+                    accounts={accounts} 
+                    allVendors={allVendors} 
+                    editingEntry={editingEntry}
+                    onSaveSuccess={() => {}} 
+                />
+            )}
+          </>
+      )}
+
+      <AlertDialog open={!!deletingEntry} onOpenChange={(open) => !open && setDeletingEntry(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการลบรายการ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      ต้องการลบรายการ "{deletingEntry?.description}" หรือไม่?
+                      {deletingEntry?.withholdingTaxDocId && (
+                          <span className="block mt-2 font-bold text-destructive">
+                              * ใบหัก ณ ที่จ่ายที่เกี่ยวข้องจะถูกเปลี่ยนสถานะเป็น "ยกเลิก"
+                          </span>
+                      )}
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isActionLoading}>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90" disabled={isActionLoading}>
+                      {isActionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+                      ยืนยันการลบ
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
