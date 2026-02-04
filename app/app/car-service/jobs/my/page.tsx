@@ -29,7 +29,7 @@ export default function CarServiceMyJobsPage() {
       <PageHeader title="งานของฉัน" description="งานที่อยู่ในความรับผิดชอบของคุณ" />
       <JobList 
         department="CAR_SERVICE" 
-        status={['IN_PROGRESS', 'IN_REPAIR_PROCESS']}
+        status={['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'PENDING_PARTS', 'IN_REPAIR_PROCESS']}
         assigneeUid={profile.uid}
         emptyTitle="คุณยังไม่มีงานที่กำลังทำ"
         emptyDescription="ไปที่หน้า 'งานทั้งหมด' เพื่อรับงานใหม่"
