@@ -476,6 +476,15 @@ export interface Document {
   whtSection?: string; // e.g. "มาตรา 50 ทวิ"
   payerSnapshot?: Partial<StoreSettings>;
   payeeSnapshot?: Partial<Vendor | Customer>;
+  
+  incomeTypeCode?: 'ITEM1' | 'ITEM2' | 'ITEM3' | 'ITEM4' | 'ITEM5' | 'ITEM6';
+  paidMonth?: number;
+  paidYear?: number;
+  paidAmountGross?: number;
+  paidAmountNet?: number;
+  pndSequenceNo?: string;
+  senderName?: string;
+  receiverName?: string;
 
   delivery?: {
     deliveredDate?: string; // YYYY-MM-DD
@@ -552,9 +561,10 @@ export interface AccountingEntry {
 
   // Tax and Bill fields (Updated for detailed CASH_OUT support)
   billType?: 'NO_BILL' | 'NO_TAX_INVOICE' | 'TAX_INVOICE';
-  vatRate?: 0 | 7;
+  vatRate?: 0 | 7 | number;
   vatAmount?: number;
   netAmount?: number; // amount - vatAmount
+  grossAmount?: number; // amount including tax/wht
   withholdingEnabled?: boolean;
   withholdingPercent?: 1 | 3 | number;
   withholdingAmount?: number;
@@ -649,7 +659,7 @@ export interface AccountingObligation {
   id: string;
   type: 'AR' | 'AP';
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
-  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'PURCHASE_ORDER' | 'BILL';
+  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'PURCHASE_ORDER' | 'BILL' | 'PURCHASE';
   sourceDocId: string;
   sourceDocNo: string;
   amountTotal: number;
@@ -686,6 +696,7 @@ export interface PurchaseDoc {
     shortName: string;
     companyName: string;
     taxId?: string;
+    address?: string;
   };
   invoiceNo: string;
   items: PurchaseDocItem[];

@@ -4,7 +4,7 @@ import { useMemo, Suspense, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { useFirebase } from '@/firebase/client-provider';
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy, runTransaction } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,17 +23,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle } from 'lucide-react';
+import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle, Info } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Separator } from '@/components/ui/separator';
 
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import type { WithId } from '@/firebase/firestore/use-collection';
-import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType, AccountingEntry } from '@/lib/types';
+import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType, AccountingEntry, PurchaseDoc, StoreSettings, DocumentSettings } from '@/lib/types';
 import { safeFormat } from '@/lib/date-utils';
-import { cn } from '@/lib/utils';
+import { cn, sanitizeForFirestore } from '@/lib/utils';
 
 const formatCurrency = (value: number) => {
   return (value ?? 0).toLocaleString('th-TH', {
@@ -260,6 +261,8 @@ const apPaymentSchema = z.object({
   accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
   paymentMethod: z.enum(["CASH", "TRANSFER"]),
   notes: z.string().optional(),
+  withholdingEnabled: z.boolean().default(false),
+  withholdingPercent: z.coerce.number().min(0).max(100).optional(),
 });
 
 function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligation: WithId<AccountingObligation>; accounts: WithId<AccountingAccount>[]; isOpen: boolean; onClose: () => void; }) {
@@ -276,11 +279,23 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
       paymentMethod: "TRANSFER",
       notes: "",
       accountId: accounts[0]?.id || "",
+      withholdingEnabled: false,
+      withholdingPercent: 3,
     },
   });
   
   const watchedAccountId = form.watch("accountId");
   const watchedAmount = form.watch("amount") || 0;
+  const watchedWhtEnabled = form.watch("withholdingEnabled");
+  const watchedWhtPercent = form.watch("withholdingPercent") || 0;
+
+  // Fetch related source document data (especially for Purchase docs to get VAT info)
+  const sourceDocRef = useMemo(() => {
+      if (!db || !obligation.sourceDocId) return null;
+      const col = obligation.sourceDocType === 'PURCHASE' ? 'purchaseDocs' : 'documents';
+      return doc(db, col, obligation.sourceDocId);
+  }, [db, obligation.sourceDocId, obligation.sourceDocType]);
+  const { data: sourceDoc } = useDoc<any>(sourceDocRef);
 
   // Fetch account balance data
   const accountRef = useMemo(() => db && watchedAccountId ? doc(db, 'accountingAccounts', watchedAccountId) : null, [db, watchedAccountId]);
@@ -291,6 +306,9 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
     return query(collection(db, 'accountingEntries'), where('accountId', '==', watchedAccountId));
   }, [db, watchedAccountId]);
   const { data: accountEntries, isLoading: isLoadingEntries } = useCollection<AccountingEntry>(entriesQuery);
+
+  const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
+  const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
 
   const currentBalance = useMemo(() => {
     if (!accountData) return 0;
@@ -304,8 +322,23 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
     return balance;
   }, [accountData, accountEntries]);
 
-  const balanceAfter = currentBalance - watchedAmount;
-  const isInsufficient = currentBalance < watchedAmount;
+  // WHT Calculations
+  const whtInfo = useMemo(() => {
+      if (!sourceDoc || !watchedWhtEnabled) return { whtBase: 0, whtAmount: 0 };
+      
+      const isPurchase = obligation.sourceDocType === 'PURCHASE';
+      if (!isPurchase) return { whtBase: watchedAmount, whtAmount: watchedAmount * (watchedWhtPercent / 100) };
+
+      const purchase = sourceDoc as PurchaseDoc;
+      // กติกา: มี VAT หักจาก Subtotal, ไม่มี VAT หักจาก GrandTotal
+      const whtBase = (purchase.withTax && purchase.vatAmount > 0) ? purchase.subtotal : purchase.grandTotal;
+      const whtAmount = whtBase * (watchedWhtPercent / 100);
+      return { whtBase, whtAmount };
+  }, [sourceDoc, watchedWhtEnabled, watchedWhtPercent, watchedAmount, obligation.sourceDocType]);
+
+  const cashOutAmount = watchedAmount - whtInfo.whtAmount;
+  const balanceAfter = currentBalance - cashOutAmount;
+  const isInsufficient = currentBalance < cashOutAmount;
   const canOverride = profile?.role === 'ADMIN';
   const isBlocked = isInsufficient && !canOverride;
 
@@ -317,50 +350,139 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             paymentMethod: "TRANSFER",
             notes: "",
             accountId: accounts[0]?.id || "",
+            withholdingEnabled: false,
+            withholdingPercent: 3,
         });
     }
   }, [obligation, accounts, form, isOpen]);
 
   const handleSavePayment = async (data: z.infer<typeof apPaymentSchema>) => {
-    if (!db) return;
+    if (!db || !profile || !storeSettings) return;
+
+    if (data.withholdingEnabled) {
+        if (!storeSettings.taxId) {
+            toast({ variant: 'destructive', title: 'ข้อมูลร้านไม่ครบถ้วน', description: 'กรุณาตั้งค่าเลขผู้เสียภาษีของร้านก่อนออกใบหัก ณ ที่จ่าย'});
+            return;
+        }
+        if (obligation.sourceDocType === 'PURCHASE' && sourceDoc) {
+            const purchase = sourceDoc as PurchaseDoc;
+            if (!purchase.vendorSnapshot.taxId || !purchase.vendorSnapshot.address) {
+                toast({ variant: 'destructive', title: 'ข้อมูลร้านค้าไม่ครบถ้วน', description: 'ร้านค้าต้องมีเลขผู้เสียภาษีและที่อยู่เพื่อออกใบหัก ณ ที่จ่าย'});
+                return;
+            }
+        }
+    }
+
     setIsSubmitting(true);
     try {
-      const batch = writeBatch(db);
+      await runTransaction(db, async (transaction) => {
+        const year = new Date(data.paymentDate).getFullYear();
+        const counterRef = doc(db, 'documentCounters', String(year));
+        const docSettingsRef = doc(db, 'settings', 'documents');
+        
+        const [counterSnap, settingsSnap] = await Promise.all([
+            transaction.get(counterRef),
+            transaction.get(docSettingsRef)
+        ]);
 
-      const obligationRef = doc(db, 'accountingObligations', obligation.id);
-      const newAmountPaid = obligation.amountPaid + data.amount;
-      const newBalance = obligation.amountTotal - newAmountPaid;
-      const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+        const settingsData = settingsSnap.exists() ? settingsSnap.data() as DocumentSettings : {};
+        const whtPrefix = settingsData.withholdingTaxPrefix || 'WHT';
+        let currentCounters = counterSnap.exists() ? counterSnap.data() as any : { year };
 
-      batch.update(obligationRef, {
-        amountPaid: newAmountPaid,
-        balance: newBalance,
-        status: newStatus,
-        lastPaymentDate: data.paymentDate,
-        paidOffDate: newStatus === 'PAID' ? data.paymentDate : null,
-        updatedAt: serverTimestamp(),
+        let whtDocId = '';
+        let whtDocNo = '';
+
+        // 1. Create WHT Document if enabled
+        if (data.withholdingEnabled && obligation.sourceDocType === 'PURCHASE' && sourceDoc) {
+            const purchase = sourceDoc as PurchaseDoc;
+            const newCount = (currentCounters.withholdingTax || 0) + 1;
+            whtDocNo = `${whtPrefix}${year}-${String(newCount).padStart(4, '0')}`;
+            
+            const whtRef = doc(collection(db, 'documents'));
+            whtDocId = whtRef.id;
+
+            transaction.set(whtRef, sanitizeForFirestore({
+                id: whtDocId,
+                docType: 'WITHHOLDING_TAX',
+                docNo: whtDocNo,
+                docDate: data.paymentDate,
+                payerSnapshot: storeSettings,
+                payeeSnapshot: {
+                    name: purchase.vendorSnapshot.companyName,
+                    taxId: purchase.vendorSnapshot.taxId,
+                    address: purchase.vendorSnapshot.address
+                },
+                vendorId: purchase.vendorId,
+                paidMonth: new Date(data.paymentDate).getMonth() + 1,
+                paidYear: year,
+                incomeTypeCode: 'ITEM5',
+                paidAmountGross: whtInfo.whtBase,
+                withholdingPercent: data.withholdingPercent,
+                withholdingAmount: whtInfo.whtAmount,
+                paidAmountNet: whtInfo.whtBase - whtInfo.whtAmount,
+                status: 'ISSUED',
+                senderName: profile.displayName,
+                receiverName: purchase.vendorSnapshot.companyName,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            }));
+            
+            transaction.update(counterRef, { withholdingTax: newCount });
+        }
+
+        // 2. Create Accounting Entry
+        const entryRef = doc(collection(db, "accountingEntries"));
+        transaction.set(entryRef, sanitizeForFirestore({
+            entryType: "CASH_OUT",
+            entryDate: data.paymentDate,
+            amount: cashOutAmount,
+            grossAmount: data.amount,
+            accountId: data.accountId,
+            paymentMethod: data.paymentMethod,
+            description: `จ่ายเจ้าหนี้: ${obligation.vendorShortNameSnapshot || obligation.vendorNameSnapshot} (บิล: ${obligation.invoiceNo || obligation.sourceDocNo})`,
+            notes: data.notes,
+            vendorId: obligation.vendorId,
+            vendorShortNameSnapshot: obligation.vendorShortNameSnapshot,
+            vendorNameSnapshot: obligation.vendorNameSnapshot,
+            sourceDocNo: obligation.invoiceNo || obligation.sourceDocNo,
+            obligationId: obligation.id,
+            sourceDocType: obligation.sourceDocType,
+            sourceDocId: obligation.sourceDocId,
+            withholdingEnabled: data.withholdingEnabled,
+            withholdingPercent: data.withholdingPercent,
+            withholdingAmount: whtInfo.whtAmount,
+            withholdingTaxDocId: whtDocId,
+            vatAmount: sourceDoc?.vatAmount || 0,
+            netAmount: sourceDoc?.subtotal || data.amount,
+            createdAt: serverTimestamp(),
+        }));
+
+        // 3. Update Obligation
+        const obligationRef = doc(db, 'accountingObligations', obligation.id);
+        const newAmountPaid = obligation.amountPaid + data.amount;
+        const newBalance = Math.max(0, obligation.amountTotal - newAmountPaid);
+        const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+
+        transaction.update(obligationRef, {
+            amountPaid: newAmountPaid,
+            balance: newBalance,
+            status: newStatus,
+            lastPaymentDate: data.paymentDate,
+            paidOffDate: newStatus === 'PAID' ? data.paymentDate : null,
+            updatedAt: serverTimestamp(),
+        });
+
+        // 4. Update Source Document Status
+        if (obligation.sourceDocId) {
+            const col = obligation.sourceDocType === 'PURCHASE' ? 'purchaseDocs' : 'documents';
+            transaction.update(doc(db, col, obligation.sourceDocId), {
+                status: newStatus,
+                updatedAt: serverTimestamp(),
+                accountingEntryId: entryRef.id,
+            });
+        }
       });
 
-      const entryRef = doc(collection(db, "accountingEntries"));
-      batch.set(entryRef, {
-        entryType: "CASH_OUT",
-        entryDate: data.paymentDate,
-        amount: data.amount,
-        accountId: data.accountId,
-        paymentMethod: data.paymentMethod,
-        description: `จ่ายเจ้าหนี้: ${obligation.vendorShortNameSnapshot || obligation.vendorNameSnapshot} (บิล: ${obligation.invoiceNo || obligation.sourceDocNo})`,
-        notes: data.notes,
-        vendorId: obligation.vendorId,
-        vendorShortNameSnapshot: obligation.vendorShortNameSnapshot,
-        vendorNameSnapshot: obligation.vendorNameSnapshot,
-        sourceDocNo: obligation.invoiceNo || obligation.sourceDocNo,
-        obligationId: obligation.id,
-        sourceDocType: obligation.sourceDocType,
-        sourceDocId: obligation.sourceDocId,
-        createdAt: serverTimestamp(),
-      });
-
-      await batch.commit();
       toast({ title: "บันทึกการจ่ายเจ้าหนี้สำเร็จ" });
       onClose();
     } catch (e: any) {
@@ -381,7 +503,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
           <form id="ap-payment-form" onSubmit={form.handleSubmit(handleSavePayment)} className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <FormField name="paymentDate" control={form.control} render={({ field }) => (<FormItem><FormLabel>วันที่จ่ายเงิน</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage/></FormItem>)} />
-              <FormField name="amount" control={form.control} render={({ field }) => (<FormItem><FormLabel>จำนวนเงินที่จ่าย</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
+              <FormField name="amount" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดตัดหนี้ (Gross)</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <FormField name="paymentMethod" control={form.control} render={({ field }) => (
@@ -411,13 +533,49 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
               )} />
             </div>
 
+            {/* WHT Section */}
+            <div className="p-4 border rounded-md bg-muted/20 space-y-4">
+                <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
+                    <FormItem className="flex items-center gap-2 space-y-0">
+                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                        <FormLabel className="font-semibold text-primary">หักภาษี ณ ที่จ่าย (WHT)</FormLabel>
+                    </FormItem>
+                )} />
+                {watchedWhtEnabled && (
+                    <div className="space-y-3 pt-2">
+                        <FormField control={form.control} name="withholdingPercent" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-xs">อัตราหัก (%)</FormLabel>
+                                <Select onValueChange={(v) => field.onChange(Number(v))} value={field.value?.toString()}>
+                                    <FormControl><SelectTrigger className="h-8"><SelectValue /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="1">1% (ขนส่ง)</SelectItem>
+                                        <SelectItem value="3">3% (บริการ)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </FormItem>
+                        )} />
+                        {sourceDoc?.withTax && (
+                            <div className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 p-1 rounded">
+                                <Info className="h-3 w-3" />
+                                มี VAT: คำนวณ WHT จากยอดก่อนภาษี ({formatCurrency(sourceDoc.subtotal)})
+                            </div>
+                        )}
+                        <div className="flex justify-between text-xs font-medium text-destructive">
+                            <span>ยอดหักภาษี:</span>
+                            <span>-{formatCurrency(whtInfo.whtAmount)}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {/* Balance Preview Section */}
             <div className="p-4 border rounded-md bg-muted/30 space-y-2">
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
-                    <Wallet className="h-3 w-3" /> ตรวจสอบยอดเงินในบัญชี
+                    <Wallet className="h-3 w-3" /> ตรวจสอบยอดเงิน
                 </h4>
                 {isLoadingAccount || isLoadingEntries ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin"/> กำลังคำนวณยอดคงเหลือ...</div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin"/> กำลังคำนวณ...</div>
                 ) : (
                     <div className="space-y-1 text-sm">
                         <div className="flex justify-between">
@@ -425,12 +583,12 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                             <span className="font-medium">{formatCurrency(currentBalance)}</span>
                         </div>
                         <div className="flex justify-between text-destructive">
-                            <span>เงินออกครั้งนี้:</span>
-                            <span className="font-medium">-{formatCurrency(watchedAmount)}</span>
+                            <span>เงินออกจริงครั้งนี้:</span>
+                            <span className="font-medium">-{formatCurrency(cashOutAmount)}</span>
                         </div>
                         <Separator className="my-1"/>
                         <div className={cn("flex justify-between font-bold", balanceAfter < 0 ? "text-destructive" : "text-green-600")}>
-                            <span>คงเหลือหลังจ่าย (ประมาณการ):</span>
+                            <span>คงเหลือประมาณการ:</span>
                             <span>{formatCurrency(balanceAfter)}</span>
                         </div>
                     </div>
@@ -441,11 +599,11 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                 <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
                     <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                     <div>
-                        <p className="font-bold">ยอดเงินในบัญชีไม่เพียงพอ</p>
+                        <p className="font-bold">ยอดเงินไม่เพียงพอ</p>
                         {isBlocked ? (
-                            <p className="text-xs">กรุณาเลือกบัญชีอื่นที่มีเงินพอ หรือติดต่อ Admin เพื่อทำรายการ</p>
+                            <p className="text-xs">กรุณาเลือกบัญชีที่มีเงินพอ หรือติดต่อ Admin</p>
                         ) : (
-                            <p className="text-xs italic">คุณเป็น Admin สามารถกด "บันทึก" เพื่อยืนยันรายการจ่ายติดลบได้</p>
+                            <p className="text-xs italic">Admin: กด "บันทึก" เพื่อยืนยันรายการติดลบ</p>
                         )}
                     </div>
                 </div>
@@ -550,7 +708,8 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                         <FormField name="vendorId" control={form.control} render={({ field }) => (
                             <FormItem className="flex flex-col">
                                 <FormLabel>Vendor</FormLabel>
-                                <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}><PopoverTrigger asChild>
+                                <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+                                <PopoverTrigger asChild>
                                 <FormControl><Button variant="outline" role="combobox" className="justify-between">
                                     {field.value ? vendors.find(v => v.id === field.value)?.shortName : "เลือก Vendor..."}
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
