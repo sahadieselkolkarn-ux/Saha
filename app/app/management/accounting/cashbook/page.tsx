@@ -26,7 +26,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText, Printer, CheckCircle2, MoreHorizontal, Edit, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText, Printer, CheckCircle2, MoreHorizontal, Edit, Trash2, ChevronLeft, ChevronRight, Filter } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
@@ -446,7 +446,23 @@ function EntryFormDialog({
 
                     <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="entryDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                        <FormField control={form.control} name="paymentMethod" render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select><FormMessage /></FormItem>)} />
+                        <FormField control={form.control} name="paymentMethod" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>ช่องทาง</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="CASH">เงินสด</SelectItem>
+                                        <SelectItem value="TRANSFER">โอน</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                        )} />
                     </div>
                     <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>รายการ</FormLabel><FormControl><Input placeholder="ระบุรายละเอียดรายการ" {...field} /></FormControl><FormMessage /></FormItem>)} />
                     <div className="grid grid-cols-2 gap-4">
@@ -625,6 +641,7 @@ function CashbookPageContent() {
   const { toast } = useToast();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('ALL');
+  const [entryTypeFilter, setEntryTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -673,8 +690,19 @@ function CashbookPageContent() {
   const filteredEntries = useMemo(() => {
     if (!entries) return [];
     let data = entries;
+
+    // 1. กรองเดือน
     if (dateRange?.from) data = data.filter(entry => !isBefore(parseISO(entry.entryDate), dateRange.from!));
     if (dateRange?.to) data = data.filter(entry => !isAfter(parseISO(entry.entryDate), dateRange.to!));
+    
+    // 2. กรองประเภทรายการ (เงินเข้า / เงินออก)
+    if (entryTypeFilter === 'IN') {
+      data = data.filter(entry => entry.entryType !== 'CASH_OUT');
+    } else if (entryTypeFilter === 'OUT') {
+      data = data.filter(entry => entry.entryType === 'CASH_OUT');
+    }
+
+    // 3. กรองคำค้นหา
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       data = data.filter(entry => 
@@ -685,7 +713,7 @@ function CashbookPageContent() {
       );
     }
     return data;
-  }, [entries, dateRange, searchTerm]);
+  }, [entries, dateRange, searchTerm, entryTypeFilter]);
 
   const handleDelete = async () => {
     if (!db || !deletingEntry) return;
@@ -734,92 +762,113 @@ function CashbookPageContent() {
       <PageHeader title="รับ–จ่ายเงิน" description="รายการเคลื่อนไหวเงินสดและธนาคารประจำเดือน" />
       
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-        <div className="flex gap-2 items-center">
-          <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft/></Button>
-          <div className="font-bold text-center w-36 text-lg">{format(currentMonth, 'MMMM yyyy')}</div>
-          <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight/></Button>
-          <Separator orientation="vertical" className="h-8 mx-2" />
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex items-center bg-muted/50 rounded-lg p-1 border">
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft/></Button>
+            <div className="font-bold text-center w-36 text-sm">{format(currentMonth, 'MMMM yyyy')}</div>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight/></Button>
+          </div>
+          
+          <Separator orientation="vertical" className="hidden md:block h-8 mx-2" />
+          
           <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-            <SelectTrigger className="w-[200px]"><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger>
+            <SelectTrigger className="w-[180px]"><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">ทุกบัญชี</SelectItem>
               {accounts?.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
             </SelectContent>
           </Select>
+
+          <Select value={entryTypeFilter} onValueChange={(v: any) => setEntryTypeFilter(v)}>
+            <SelectTrigger className="w-[140px]">
+              <div className="flex items-center gap-2">
+                <Filter className="h-3 w-3" />
+                <SelectValue placeholder="ประเภท" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">ทุกประเภท</SelectItem>
+              <SelectItem value="IN" className="text-green-600 font-medium">เงินเข้า</SelectItem>
+              <SelectItem value="OUT" className="text-destructive font-medium">เงินออก</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Button onClick={() => setIsAddDialogOpen(true)} className="w-full md:w-auto">
-          <PlusCircle className="mr-2 h-4 w-4" /> บันทึกรายการรับ-จ่าย
+        
+        <Button onClick={() => setIsAddDialogOpen(true)} className="w-full md:w-auto shadow-md">
+          <PlusCircle className="mr-2 h-4 w-4" /> สร้างรายการรับ-จ่าย
         </Button>
       </div>
 
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 border-b bg-muted/10">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="ค้นหาจากรายการ, ร้านค้า, ลูกค้า..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="border rounded-md">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[100px]">วันที่</TableHead>
-                  <TableHead>รายการ</TableHead>
-                  <TableHead>คู่ค้า/ลูกค้า</TableHead>
-                  <TableHead className="text-right">เงินเข้า</TableHead>
-                  <TableHead className="text-right">เงินออก</TableHead>
-                  <TableHead>บัญชี</TableHead>
-                  <TableHead className="text-right w-[100px]">จัดการ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow><TableCell colSpan={7} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                ) : filteredEntries.length > 0 ? (
-                  filteredEntries.map(entry => (
-                    <TableRow key={entry.id} className="hover:bg-muted/50">
-                      <TableCell className="text-muted-foreground">{safeFormat(parseISO(entry.entryDate), 'dd/MM/yy')}</TableCell>
-                      <TableCell className="font-medium">
-                        {entry.description}
-                        {entry.entryType === 'RECEIPT' && <Badge variant="outline" className="ml-2 text-[10px]">Payment</Badge>}
-                      </TableCell>
-                      <TableCell>{entry.vendorShortNameSnapshot || entry.customerNameSnapshot || '-'}</TableCell>
-                      <TableCell className="text-right text-green-600 font-semibold">
-                        {entry.entryType !== 'CASH_OUT' ? entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
-                      </TableCell>
-                      <TableCell className="text-right text-destructive font-semibold">
-                        {entry.entryType === 'CASH_OUT' ? entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
-                      </TableCell>
-                      <TableCell className="text-xs">{accounts?.find(a => a.id === entry.accountId)?.name || '-'}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {entry.withholdingTaxDocId && (
-                            <Button asChild variant="ghost" size="icon" title="พิมพ์หนังสือรับรอง">
-                              <Link href={`/app/management/accounting/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
-                            </Button>
-                          )}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setEditingEntry(entry)}><Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>
-                              {isAdmin && (
-                                <DropdownMenuItem onClick={() => setDeletingEntry(entry)} className="text-destructive focus:text-destructive">
-                                  <Trash2 className="mr-2 h-4 w-4"/> ลบ
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow><TableCell colSpan={7} className="h-24 text-center text-muted-foreground">ไม่มีรายการในช่วงเวลานี้</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/30">
+                <TableHead className="w-[100px] pl-6">วันที่</TableHead>
+                <TableHead>รายการ</TableHead>
+                <TableHead>คู่ค้า/ลูกค้า</TableHead>
+                <TableHead className="text-right">เงินเข้า</TableHead>
+                <TableHead className="text-right">เงินออก</TableHead>
+                <TableHead>บัญชี</TableHead>
+                <TableHead className="text-right pr-6 w-[100px]">จัดการ</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow><TableCell colSpan={7} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+              ) : filteredEntries.length > 0 ? (
+                filteredEntries.map(entry => (
+                  <TableRow key={entry.id} className="hover:bg-muted/50">
+                    <TableCell className="text-muted-foreground pl-6">{safeFormat(parseISO(entry.entryDate), 'dd/MM/yy')}</TableCell>
+                    <TableCell className="font-medium">
+                      {entry.description}
+                      {entry.entryType === 'RECEIPT' && <Badge variant="outline" className="ml-2 text-[10px] bg-blue-50 text-blue-700 border-blue-200">ชำระบิล</Badge>}
+                    </TableCell>
+                    <TableCell className="text-sm">{entry.vendorShortNameSnapshot || entry.customerNameSnapshot || '-'}</TableCell>
+                    <TableCell className="text-right text-green-600 font-semibold">
+                      {entry.entryType !== 'CASH_OUT' ? entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
+                    </TableCell>
+                    <TableCell className="text-right text-destructive font-semibold">
+                      {entry.entryType === 'CASH_OUT' ? entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
+                    </TableCell>
+                    <TableCell className="text-[10px] text-muted-foreground">
+                      <span className="bg-muted px-1.5 py-0.5 rounded border">
+                        {accounts?.find(a => a.id === entry.accountId)?.name || '-'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right pr-6">
+                      <div className="flex justify-end gap-1">
+                        {entry.withholdingTaxDocId && (
+                          <Button asChild variant="ghost" size="icon" title="พิมพ์หนังสือรับรอง" className="h-8 w-8">
+                            <Link href={`/app/management/accounting/withholding-tax/${entry.withholdingTaxDocId}/print`} target="_blank"><Printer className="h-4 w-4"/></Link>
+                          </Button>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditingEntry(entry)}><Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>
+                            {isAdmin && (
+                              <DropdownMenuItem onClick={() => setDeletingEntry(entry)} className="text-destructive focus:text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4"/> ลบ
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow><TableCell colSpan={7} className="h-32 text-center text-muted-foreground">ไม่พบรายการในช่วงเวลานี้</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
