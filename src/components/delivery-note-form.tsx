@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle, Send } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -96,6 +96,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [jobSearch, setJobSearch] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isReviewSubmission, setIsReviewSubmission] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -324,7 +325,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     toast({ title: "อ้างอิงงานซ่อมแล้ว", description: `เลือกงานของ ${job.customerSnapshot.name}` });
   };
 
-  const executeSave = async (data: DeliveryNoteFormData) => {
+  const executeSave = async (data: DeliveryNoteFormData, submitForReview: boolean) => {
     const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
@@ -332,6 +333,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     }
     
     setIsSubmitting(true);
+
+    const targetStatus = submitForReview ? 'PENDING_REVIEW' : 'DRAFT';
+    const targetArStatus = submitForReview ? 'PENDING' : null;
 
     const documentDataPayload = {
       customerId: data.customerId,
@@ -360,25 +364,23 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       },
       paymentTerms: data.paymentTerms,
       billingRequired: data.billingRequired,
-      arStatus: 'PENDING' as 'PENDING',
+      arStatus: targetArStatus,
       referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
     };
 
     try {
         let docId: string;
-        // ทุกครั้งที่บันทึกหรือแก้ไข ให้สถานะเริ่มต้นเป็น PENDING_REVIEW เสมอ
         const options = {
             ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
-            initialStatus: 'PENDING_REVIEW',
+            initialStatus: targetStatus,
         };
         
         if (isEditing && editDocId) {
             docId = editDocId;
             const docRef = doc(db, 'documents', docId);
-            // เมื่อมีการแก้ไขใบส่งของชั่วคราว ให้เปลี่ยนสถานะเป็น PENDING_REVIEW เพื่อให้บัญชีตรวจสอบใหม่เสมอ
             await updateDoc(docRef, sanitizeForFirestore({ 
                 ...documentDataPayload, 
-                status: 'PENDING_REVIEW',
+                status: targetStatus,
                 updatedAt: serverTimestamp() 
             }));
         } else {
@@ -393,7 +395,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             docId = result.docId;
         }
         
-        toast({ title: isEditing ? "บันทึกเอกสารและส่งตรวจสอบใหม่สำเร็จ" : "สร้างเอกสารสำเร็จ" });
+        toast({ title: submitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
@@ -403,23 +405,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     }
   };
 
-  const handleSave = async (data: DeliveryNoteFormData) => {
-    // Check for existing DN only on new creation
-    if (!isEditing && data.jobId && db) {
-        const q = query(
-            collection(db, "documents"), 
-            where("jobId", "==", data.jobId), 
-            where("docType", "==", "DELIVERY_NOTE")
-        );
-        const snap = await getDocs(q);
-        const activeDn = snap.docs.find(d => d.data().status !== 'CANCELLED');
-        
-        if (activeDn) {
-            // Logic to prevent duplicate active DNs if necessary, but here we just proceed to executeSave
-            // which handles the status and logic.
-        }
-    }
-    await executeSave(data);
+  const handleSave = async (data: DeliveryNoteFormData, submitForReview: boolean) => {
+    setIsReviewSubmission(submitForReview);
+    await executeSave(data, submitForReview);
   };
 
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer || isLoadingDocToEdit;
@@ -444,13 +432,28 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
           </Alert>
         )}
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSave, onInvalid)} className="space-y-6">
+          <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
             <div className="flex justify-between items-center">
               <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> ย้อนกลับ</Button>
-              <Button type="submit" disabled={isFormLoading || isLocked}>
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบส่งของ'}
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                    type="button" 
+                    variant="secondary"
+                    onClick={() => form.handleSubmit((data) => handleSave(data, false))()}
+                    disabled={isFormLoading || isLocked}
+                >
+                    {isSubmitting && !isReviewSubmission ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    บันทึกฉบับร่าง
+                </Button>
+                <Button 
+                    type="button"
+                    onClick={() => form.handleSubmit((data) => handleSave(data, true))()}
+                    disabled={isFormLoading || isLocked || docToEdit?.status === 'PENDING_REVIEW'}
+                >
+                    {isSubmitting && isReviewSubmission ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    ส่งบัญชีตรวจสอบ
+                </Button>
+              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

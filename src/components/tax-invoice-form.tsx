@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle, AlertCircle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle, AlertCircle, Send } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -93,18 +93,19 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [quotations, setQuotations] = useState<DocumentType[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   const [referencedQuotationId, setReferencedQuotationId] = useState<string | null>(null);
   const [quotationUsages, setQuotationUsages] = useState<number>(0);
+  const [quotations, setQuotations] = useState<DocumentType[]>([]);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [existingDn, setExistingDn] = useState<DocumentType | null>(null);
   const [showDnCancelDialog, setShowDnCancelDialog] = useState(false);
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
+  const [isReviewSubmission, setIsReviewSubmission] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -316,7 +317,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     });
   };
   
-  const executeSave = async (data: TaxInvoiceFormData) => {
+  const executeSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
     const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
       toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
@@ -324,6 +325,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
     
     setIsSubmitting(true);
+
+    const targetStatus = submitForReview ? 'PENDING_REVIEW' : 'DRAFT';
+    const targetArStatus = submitForReview ? 'PENDING' : null;
 
     const documentDataPayload = {
       customerId: data.customerId,
@@ -349,7 +353,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       },
       paymentTerms: data.paymentTerms,
       billingRequired: data.billingRequired,
-      arStatus: 'PENDING' as 'PENDING',
+      arStatus: targetArStatus,
       referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
     };
 
@@ -357,13 +361,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         let docId: string;
         const options = {
             ...(data.isBackfill && { manualDocNo: data.manualDocNo }),
-            initialStatus: 'DRAFT',
+            initialStatus: targetStatus,
         };
         
         if (isEditing && editDocId) {
             docId = editDocId;
             const docRef = doc(db, 'documents', docId);
-            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, updatedAt: serverTimestamp() }));
+            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, status: targetStatus, updatedAt: serverTimestamp() }));
         } else {
             const result = await createDocument(
                 db,
@@ -376,7 +380,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             docId = result.docId;
         }
         
-        toast({ title: isEditing ? "บันทึกเอกสารสำเร็จ" : "สร้างเอกสารสำเร็จ" });
+        toast({ title: submitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
         router.push('/app/office/documents/tax-invoice');
 
     } catch (error: any) {
@@ -386,8 +390,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
   };
 
-  const handleSave = async (data: TaxInvoiceFormData) => {
-    if (!isEditing && data.jobId && db) {
+  const handleSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
+    // เช็คใบส่งของเดิมเฉพาะเมื่อมีการส่งตรวจสอบหรือสร้างใหม่
+    if (!isEditing && data.jobId && db && submitForReview) {
         const q = query(
             collection(db, "documents"), 
             where("jobId", "==", data.jobId), 
@@ -399,11 +404,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         if (activeDn) {
             setExistingDn({ id: activeDn.id, ...activeDn.data() } as DocumentType);
             setPendingData(data);
+            setIsReviewSubmission(true);
             setShowDnCancelDialog(true);
             return;
         }
     }
-    await executeSave(data);
+    await executeSave(data, submitForReview);
   };
 
   const handleConfirmCancelAndSave = async () => {
@@ -417,7 +423,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         });
         toast({ title: "ยกเลิกใบส่งของเดิมเรียบร้อย" });
         setShowDnCancelDialog(false);
-        await executeSave(pendingData);
+        await executeSave(pendingData, isReviewSubmission);
     } catch(e: any) {
         toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: e.message });
     }
@@ -444,13 +450,28 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </Alert>
       )}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSave, onInvalid)} className="space-y-6">
+        <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
           <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> Back</Button>
-            <Button type="submit" disabled={isSubmitting || isLocked}>
-              {isSubmitting ? <Loader2 className="animate-spin" /> : <Save />}
-              {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบกำกับภาษี'}
-            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+            <div className="flex gap-2">
+                <Button 
+                    type="button" 
+                    variant="secondary"
+                    onClick={() => form.handleSubmit((data) => handleSave(data, false))()}
+                    disabled={isFormLoading || isLocked}
+                >
+                    {isSubmitting && !isReviewSubmission ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    บันทึกฉบับร่าง
+                </Button>
+                <Button 
+                    type="button"
+                    onClick={() => form.handleSubmit((data) => handleSave(data, true))()}
+                    disabled={isFormLoading || isLocked || docToEdit?.status === 'PENDING_REVIEW'}
+                >
+                    {isSubmitting && isReviewSubmission ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    ส่งบัญชีตรวจสอบ
+                </Button>
+            </div>
           </div>
 
           <Card>
@@ -561,7 +582,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                               ))}
                           </SelectContent>
                         </Select>
-                        <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown/> ดึงรายการ</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown className="mr-2 h-4 w-4"/> ดึงรายการ</Button>
                       </div>
                       {quotationUsages > 0 && (
                         <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
@@ -679,7 +700,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                  <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); if(pendingData) executeSave(pendingData); }} disabled={isSubmitting}>
+                  <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); if(pendingData) executeSave(pendingData, isReviewSubmission); }} disabled={isSubmitting}>
                       ไม่ยกเลิก (ออกคู่กัน)
                   </Button>
                   <AlertDialogAction onClick={handleConfirmCancelAndSave} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
