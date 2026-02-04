@@ -335,7 +335,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     setIsSubmitting(true);
 
     const targetStatus = submitForReview ? 'PENDING_REVIEW' : 'DRAFT';
-    const targetArStatus = submitForReview ? 'PENDING' : null;
+    const targetArStatus = submitForReview ? 'PENDING' : (isEditing ? docToEdit?.arStatus : null);
+    const targetDispute = submitForReview ? null : (isEditing ? docToEdit?.dispute : null);
 
     const documentDataPayload = {
       customerId: data.customerId,
@@ -365,6 +366,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       paymentTerms: data.paymentTerms,
       billingRequired: data.billingRequired,
       arStatus: targetArStatus,
+      dispute: targetDispute,
       referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
     };
 

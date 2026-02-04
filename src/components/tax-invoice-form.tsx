@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -36,7 +36,6 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { createDocument } from "@/firebase/documents";
-import { sanitizeForFirestore } from "@/lib/utils";
 import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -327,7 +326,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     setIsSubmitting(true);
 
     const targetStatus = submitForReview ? 'PENDING_REVIEW' : 'DRAFT';
-    const targetArStatus = submitForReview ? 'PENDING' : null;
+    const targetArStatus = submitForReview ? 'PENDING' : (isEditing ? docToEdit?.arStatus : null);
+    const targetDispute = submitForReview ? null : (isEditing ? docToEdit?.dispute : null);
 
     const documentDataPayload = {
       customerId: data.customerId,
@@ -354,6 +354,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       paymentTerms: data.paymentTerms,
       billingRequired: data.billingRequired,
       arStatus: targetArStatus,
+      dispute: targetDispute,
       referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
     };
 
@@ -630,7 +631,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
               <Card>
                   <CardHeader><CardTitle>หมายเหตุและเงื่อนไข</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
-                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isLocked}/></FormControl></FormItem>)} />
+                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isLocked}/></FormControl></FormItem>)} />
                        <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="paymentTerms" render={({ field }) => (
                             <FormItem>
