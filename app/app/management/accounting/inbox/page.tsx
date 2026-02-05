@@ -174,7 +174,7 @@ export default function AccountingInboxPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data();
         
-        if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.accountingEntryId) {
+        if (docData.arStatus !== 'PENDING' || docData.status === 'PAID' || docData.accountingEntryId) {
           throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
         }
 
@@ -213,9 +213,10 @@ export default function AccountingInboxPage() {
           customerNameSnapshot: confirmingDoc.customerSnapshot.name,
         });
 
+        // Set status to PAID for Office UI visibility
         transaction.update(docRef, { 
             arStatus: 'PAID',
-            status: 'APPROVED',
+            status: 'PAID',
             paymentSummary: {
                 paidTotal: confirmingDoc.grandTotal,
                 balance: 0,
@@ -231,7 +232,7 @@ export default function AccountingInboxPage() {
 
       if (process.env.NODE_ENV === 'development') console.debug("[ConfirmCash] Transaction OK");
 
-      // STEP 2: Archive Job (Separate block to handle partial failures)
+      // STEP 2: Archive Job
       if (confirmingDoc.jobId) {
           try {
               const salesDocInfo = {
@@ -247,7 +248,7 @@ export default function AccountingInboxPage() {
               setConfirmError(`บันทึกบัญชีสำเร็จ แต่การปิดงานขัดข้อง: ${archiveError.message || archiveError.toString()}. กรุณาลองกดปิดงานอีกครั้งเพื่อย้ายงานเข้าคลังประวัติ`);
               setIsSubmitting(false);
               toast({ variant: 'destructive', title: "คำเตือน", description: "บันทึกบัญชีเรียบร้อย แต่ย้ายงานเข้าประวัติไม่สำเร็จ กรุณาลองใหม่อีกครั้งเพื่อปิดงาน" });
-              return; // Stay in dialog so they can see the error
+              return; 
           }
       }
 
@@ -279,7 +280,7 @@ export default function AccountingInboxPage() {
             if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
             const docData = docSnap.data();
             
-            if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.arObligationId) {
+            if (docData.arStatus !== 'PENDING' || docData.status === 'UNPAID' || docData.arObligationId) {
                 throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
             }
 
@@ -301,9 +302,10 @@ export default function AccountingInboxPage() {
                 customerNameSnapshot: docToProcess.customerSnapshot.name,
             });
 
+            // Set status to UNPAID for Office UI visibility
             transaction.update(docRef, { 
                 arStatus: 'UNPAID',
-                status: 'APPROVED',
+                status: 'UNPAID',
                 arObligationId: arId,
                 updatedAt: serverTimestamp()
             });
@@ -400,7 +402,7 @@ export default function AccountingInboxPage() {
                           <TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/documents/${doc.id}`)} title="ดูเอกสาร">
+                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
                                     <Eye className="h-4 w-4" />
                                 </Button>
                                 <DropdownMenu>
@@ -440,7 +442,7 @@ export default function AccountingInboxPage() {
                           <TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell>
                            <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/documents/${doc.id}`)} title="ดูเอกสาร">
+                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
                                     <Eye className="h-4 w-4" />
                                 </Button>
                                 <DropdownMenu>
