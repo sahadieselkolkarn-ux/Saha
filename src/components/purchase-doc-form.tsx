@@ -25,6 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import Image from "next/image";
 
