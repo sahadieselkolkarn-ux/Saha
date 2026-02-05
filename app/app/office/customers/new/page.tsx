@@ -12,8 +12,22 @@ import { useRouter } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { 
+  Card, 
+  CardContent, 
+  CardHeader, 
+  CardTitle,
+  CardFooter 
+} from "@/components/ui/card";
+import { 
+  Form, 
+  FormControl, 
+  FormField, 
+  FormItem, 
+  FormLabel, 
+  FormMessage, 
+  FormDescription 
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,17 +38,26 @@ import Link from "next/link";
 import { ACQUISITION_SOURCES } from "@/lib/constants";
 
 const customerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  phone: z.string().min(1, "Phone is required"),
+  name: z.string().min(1, "กรุณากรอกชื่อลูกค้า"),
+  phone: z.string().min(1, "กรุณากรอกเบอร์โทรศัพท์"),
   detail: z.string().optional().default(""),
   useTax: z.boolean().default(false),
   taxName: z.string().optional(),
   taxAddress: z.string().optional(),
   taxId: z.string().optional(),
-  acquisitionSource: z.enum(ACQUISITION_SOURCES).optional(),
+  isNewCustomer: z.boolean().default(false),
+  acquisitionSource: z.enum(ACQUISITION_SOURCES).optional().nullable(),
 }).refine(data => !data.useTax || (data.taxName && data.taxAddress && data.taxId), {
-  message: "Tax information is required when 'Use Tax Invoice' is checked",
+  message: "กรุณากรอกข้อมูลภาษีให้ครบถ้วนเมื่อเลือก 'ต้องการใบกำกับภาษี'",
   path: ["taxName"], 
+}).superRefine((data, ctx) => {
+  if (data.isNewCustomer && !data.acquisitionSource) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "กรุณาระบุช่องทางที่ลูกค้ารู้จักร้าน",
+      path: ["acquisitionSource"],
+    });
+  }
 });
 
 
@@ -54,10 +77,13 @@ export default function OfficeCustomersNewPage() {
       taxName: "",
       taxAddress: "",
       taxId: "",
+      isNewCustomer: false,
+      acquisitionSource: null,
     },
   });
 
   const useTax = form.watch("useTax");
+  const isNewCustomer = form.watch("isNewCustomer");
 
   const onSubmit = async (values: z.infer<typeof customerSchema>) => {
     if (!db) return;
@@ -65,15 +91,28 @@ export default function OfficeCustomersNewPage() {
     
     try {
       const addData = { 
-        ...values, 
+        name: values.name,
+        phone: values.phone,
+        detail: values.detail || "",
+        useTax: values.useTax,
+        taxName: values.useTax ? values.taxName : "",
+        taxAddress: values.useTax ? values.taxAddress : "",
+        taxId: values.useTax ? values.taxId : "",
+        acquisitionSource: values.isNewCustomer ? values.acquisitionSource : null,
         createdAt: serverTimestamp(), 
         updatedAt: serverTimestamp() 
       };
+      
       await addDoc(collection(db, "customers"), addData);
+      
       toast({ title: "เพิ่มข้อมูลลูกค้าสำเร็จ" });
       router.push("/app/management/customers");
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Creation Failed", description: error.message });
+      toast({ 
+        variant: "destructive", 
+        title: "เกิดข้อผิดพลาด", 
+        description: error.message 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -95,50 +134,75 @@ export default function OfficeCustomersNewPage() {
                     )} />
                     
                     <Card className="bg-primary/5 border-primary/20">
-                        <CardHeader className="pb-2"><CardTitle className="text-sm font-bold text-primary">การตลาด</CardTitle></CardHeader>
-                        <CardContent>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-bold text-primary">การตลาด (Marketing)</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
                             <FormField
                                 control={form.control}
-                                name="acquisitionSource"
+                                name="isNewCustomer"
                                 render={({ field }) => (
-                                    <FormItem className="space-y-3">
-                                    <FormLabel>ลูกค้ารู้จักร้านจากช่องทางไหน?</FormLabel>
-                                    <FormDescription className="text-xs">ช่วยระบุเพื่อให้ฝ่ายบริหารนำไปวิเคราะห์ช่องทางการตลาด</FormDescription>
+                                    <FormItem className="flex flex-row items-center space-x-3 space-y-0">
                                     <FormControl>
-                                        <RadioGroup
-                                        onValueChange={field.onChange}
-                                        defaultValue={field.value}
-                                        className="grid grid-cols-2 sm:grid-cols-3 gap-4"
-                                        >
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="REFERRAL" id="r-referral" />
-                                            <Label htmlFor="r-referral" className="font-normal cursor-pointer">ลูกค้าแนะนำ</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="GOOGLE" id="r-google" />
-                                            <Label htmlFor="r-google" className="font-normal cursor-pointer">Google</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="FACEBOOK" id="r-facebook" />
-                                            <Label htmlFor="r-facebook" className="font-normal cursor-pointer">Facebook</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="TIKTOK" id="r-tiktok" />
-                                            <Label htmlFor="r-tiktok" className="font-normal cursor-pointer">Tiktok</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="YOUTUBE" id="r-youtube" />
-                                            <Label htmlFor="r-youtube" className="font-normal cursor-pointer">Youtube</Label>
-                                        </div>
-                                        <div className="flex items-center space-x-2">
-                                            <RadioGroupItem value="OTHER" id="r-other" />
-                                            <Label htmlFor="r-other" className="font-normal cursor-pointer">อื่นๆ</Label>
-                                        </div>
-                                        </RadioGroup>
+                                        <Checkbox
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                        />
                                     </FormControl>
+                                    <div className="space-y-1 leading-none">
+                                        <FormLabel className="cursor-pointer">ลูกค้าใหม่ (New Customer)</FormLabel>
+                                        <FormDescription className="text-xs text-muted-foreground">
+                                            ใช้เก็บสถิติในหน้าแดชบอร์ดว่าลูกค้ารู้จักร้านจากช่องทางใด
+                                        </FormDescription>
+                                    </div>
                                     </FormItem>
                                 )}
                             />
+
+                            {isNewCustomer && (
+                                <FormField
+                                    control={form.control}
+                                    name="acquisitionSource"
+                                    render={({ field }) => (
+                                        <FormItem className="space-y-3 pt-2">
+                                        <FormLabel>ลูกค้ารู้จักร้านจากช่องทางไหน?</FormLabel>
+                                        <FormControl>
+                                            <RadioGroup
+                                            onValueChange={field.onChange}
+                                            defaultValue={field.value || undefined}
+                                            className="grid grid-cols-2 sm:grid-cols-3 gap-4"
+                                            >
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="REFERRAL" id="r-referral" />
+                                                <Label htmlFor="r-referral" className="font-normal cursor-pointer">ลูกค้าแนะนำ</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="GOOGLE" id="r-google" />
+                                                <Label htmlFor="r-google" className="font-normal cursor-pointer">Google</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="FACEBOOK" id="r-facebook" />
+                                                <Label htmlFor="r-facebook" className="font-normal cursor-pointer">Facebook</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="TIKTOK" id="r-tiktok" />
+                                                <Label htmlFor="r-tiktok" className="font-normal cursor-pointer">Tiktok</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="YOUTUBE" id="r-youtube" />
+                                                <Label htmlFor="r-youtube" className="font-normal cursor-pointer">Youtube</Label>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <RadioGroupItem value="OTHER" id="r-other" />
+                                                <Label htmlFor="r-other" className="font-normal cursor-pointer">อื่นๆ</Label>
+                                            </div>
+                                            </RadioGroup>
+                                        </FormControl>
+                                        <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
                         </CardContent>
                     </Card>
 
@@ -149,7 +213,7 @@ export default function OfficeCustomersNewPage() {
                         <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                         <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                         <div className="space-y-1 leading-none">
-                            <FormLabel>ต้องการใบกำกับภาษี (Use Tax Invoice)</FormLabel>
+                            <FormLabel className="cursor-pointer">ต้องการใบกำกับภาษี (Use Tax Invoice)</FormLabel>
                             <FormDescription className="text-xs">ระบุข้อมูลเพื่อใช้ในการออกใบกำกับภาษีเต็มรูปแบบ</FormDescription>
                         </div>
                         </FormItem>
