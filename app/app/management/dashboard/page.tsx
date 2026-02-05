@@ -44,7 +44,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2 } from "lucide-react";
+import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2, PieChart as PieIcon } from "lucide-react";
 
 import type { Job, Document, AccountingEntry, JobDepartment, AccountingObligation } from "@/lib/types";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
@@ -201,7 +201,43 @@ function AppDashboardPage() {
       return { name: format(mStart, "MMM yy"), "Cash In": cin, "Cash Out": cout, Net: cin - cout };
     });
 
-    // 5. Alerts
+    // 5. Customer Acquisition Stats
+    const acqCounts = {
+      EXISTING: 0,
+      REFERRAL: 0,
+      GOOGLE: 0,
+      FACEBOOK: 0,
+      TIKTOK: 0,
+      YOUTUBE: 0,
+      OTHER: 0,
+    };
+
+    currentInflow.forEach(j => {
+      if (j.customerType === 'NEW') {
+        const src = j.customerAcquisitionSource;
+        if (src === 'REFERRAL') acqCounts.REFERRAL++;
+        else if (src === 'GOOGLE') acqCounts.GOOGLE++;
+        else if (src === 'FACEBOOK') acqCounts.FACEBOOK++;
+        else if (src === 'TIKTOK') acqCounts.TIKTOK++;
+        else if (src === 'YOUTUBE') acqCounts.YOUTUBE++;
+        else if (src === 'OTHER') acqCounts.OTHER++;
+        else acqCounts.OTHER++;
+      } else {
+        acqCounts.EXISTING++;
+      }
+    });
+
+    const acquisitionData = [
+      { name: "ลูกค้าเก่า", value: acqCounts.EXISTING, color: "hsl(var(--muted-foreground))" },
+      { name: "ลูกค้าเดิมบอกต่อ", value: acqCounts.REFERRAL, color: "hsl(var(--chart-1))" },
+      { name: "Google", value: acqCounts.GOOGLE, color: "hsl(var(--chart-2))" },
+      { name: "Facebook", value: acqCounts.FACEBOOK, color: "hsl(var(--chart-3))" },
+      { name: "Tiktok", value: acqCounts.TIKTOK, color: "hsl(var(--chart-4))" },
+      { name: "Youtube", value: acqCounts.YOUTUBE, color: "hsl(var(--chart-5))" },
+      { name: "อื่นๆ", value: acqCounts.OTHER, color: "hsl(var(--primary))" },
+    ].filter(v => v.value > 0);
+
+    // 6. Alerts
     const alerts = [
       { 
         label: "เอกสารรอตรวจสอบรายการขาย", 
@@ -247,6 +283,7 @@ function AppDashboardPage() {
       deptStats,
       currentInflowByDept,
       cashFlowData,
+      acquisitionData,
       alerts
     };
   }, [jobs, documents, entries, obligations, dateRange]);
@@ -383,6 +420,59 @@ function AppDashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Customer Acquisition Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>สถิติลูกค้าที่เข้ามาใช้บริการ</CardTitle>
+            <CardDescription>แสดงตามช่วงเวลาเดียวกับที่ตั้งค่าในแดชบอร์ด</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="h-[200px]">
+              {stats.acquisitionData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={stats.acquisitionData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={80} paddingAngle={5}>
+                      {stats.acquisitionData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => [`${v} ราย`, 'จำนวน']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground italic">
+                  ยังไม่มีข้อมูลลูกค้าในช่วงเวลานี้
+                </div>
+              )}
+            </div>
+            <div className="rounded-md border text-sm">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="p-2 text-left font-medium">ช่องทาง/หมวด</th>
+                    <th className="p-2 text-right font-medium">จำนวน</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.acquisitionData.length > 0 ? (
+                    stats.acquisitionData.map((d, i) => (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="p-2 flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
+                          {d.name}
+                        </td>
+                        <td className="p-2 text-right font-medium">{d.value} ราย</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={2} className="p-4 text-center text-muted-foreground text-xs">ไม่มีรายการ</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Financial Flow */}
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -403,9 +493,11 @@ function AppDashboardPage() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+      </div>
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Alerts & To-do */}
-        <div className="space-y-6">
+        <div className="lg:col-span-1 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -432,24 +524,31 @@ function AppDashboardPage() {
               )}
             </CardContent>
           </Card>
+        </div>
 
-          {/* Jobs By Dept Snapshot */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold">New Jobs by Dept (Period)</CardTitle>
-            </CardHeader>
-            <CardContent className="h-[150px]">
+        {/* Jobs By Dept Snapshot */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">New Jobs by Dept (Period)</CardTitle>
+            <CardDescription>จำนวนการเปิดงานใหม่แยกตามแผนกในช่วงที่เลือก</CardDescription>
+          </CardHeader>
+          <CardContent className="h-[200px]">
+            {stats.currentInflowByDept.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stats.currentInflowByDept} layout="vertical">
                   <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" width={100} fontSize={10} />
+                  <YAxis dataKey="name" type="category" width={120} fontSize={12} />
                   <Tooltip cursor={{fill: 'transparent'}} />
                   <Bar dataKey="value" name="งานใหม่" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground italic">
+                ไม่มีงานใหม่ในช่วงเวลานี้
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Financial Snapshot */}
