@@ -1,5 +1,5 @@
 import type { Timestamp } from 'firebase/firestore';
-import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew, VENDOR_TYPES } from './constants';
+import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew, VENDOR_TYPES, AcquisitionSource } from './constants';
 
 export interface UserProfile {
   uid: string;
@@ -122,6 +122,8 @@ export interface Job {
     partNumber?: string;
     registrationNumber?: string;
   };
+  customerType: 'NEW' | 'EXISTING';
+  customerAcquisitionSource: AcquisitionSource | 'EXISTING';
   createdAt: Timestamp;
   updatedAt: Timestamp;
   lastActivityAt: Timestamp;

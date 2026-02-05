@@ -16,13 +16,16 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { JOB_DEPARTMENTS } from "@/lib/constants";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { JOB_DEPARTMENTS, ACQUISITION_SOURCES } from "@/lib/constants";
 import { Loader2, Camera, X, ChevronsUpDown, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -32,6 +35,8 @@ const intakeSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   department: z.enum(JOB_DEPARTMENTS, { required_error: "กรุณาเลือกแผนก" }),
   description: z.string().min(1, "กรุณากรอกรายละเอียดงาน"),
+  isNewCustomer: z.boolean().default(false),
+  acquisitionSource: z.enum(ACQUISITION_SOURCES).optional(),
   carServiceDetails: z.object({
     brand: z.string().optional(),
     model: z.string().optional(),
@@ -47,6 +52,14 @@ const intakeSchema = z.object({
     partNumber: z.string().optional(),
     registrationNumber: z.string().optional(),
   }).optional(),
+}).superRefine((data, ctx) => {
+  if (data.isNewCustomer && !data.acquisitionSource) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "กรุณาระบุช่องทางที่ลูกค้ารู้จักร้าน",
+      path: ["acquisitionSource"],
+    });
+  }
 });
 
 export default function IntakePage() {
@@ -66,6 +79,7 @@ export default function IntakePage() {
     defaultValues: {
       customerId: "",
       description: "",
+      isNewCustomer: false,
       carServiceDetails: { brand: '', model: '', licensePlate: '' },
       commonrailDetails: { brand: '', partNumber: '', registrationNumber: '' },
       mechanicDetails: { brand: '', partNumber: '', registrationNumber: '' },
@@ -73,6 +87,7 @@ export default function IntakePage() {
   });
 
   const selectedDepartment = form.watch("department");
+  const isNewCustomer = form.watch("isNewCustomer");
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) {
@@ -161,6 +176,8 @@ export default function IntakePage() {
               id: selectedCustomer.id 
             },
             status: "RECEIVED",
+            customerType: values.isNewCustomer ? 'NEW' : 'EXISTING',
+            customerAcquisitionSource: values.isNewCustomer ? values.acquisitionSource : 'EXISTING',
             photos: photoURLs,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -181,7 +198,7 @@ export default function IntakePage() {
         
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.set(activityDocRef, {
-            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)}`,
+            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)} (${values.isNewCustomer ? 'ลูกค้าใหม่' : 'ลูกค้าเดิม'})`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
@@ -218,85 +235,159 @@ export default function IntakePage() {
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl mx-auto">
-              <FormField
-                name="customerId"
-                control={form.control}
-                render={({ field }) => {
-                  const selectedCustomer = field.value
-                    ? customers.find(
-                        (customer) => customer.id === field.value
-                      )
-                    : null;
-                  return (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>ลูกค้า (Customer)</FormLabel>
-                      <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className={cn(
-                                "w-full justify-between font-normal",
-                                !field.value && "text-muted-foreground"
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  name="customerId"
+                  control={form.control}
+                  render={({ field }) => {
+                    const selectedCustomer = field.value
+                      ? customers.find(
+                          (customer) => customer.id === field.value
+                        )
+                      : null;
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>ลูกค้า (Customer)</FormLabel>
+                        <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {selectedCustomer
+                                  ? `${selectedCustomer.name} (${selectedCustomer.phone})`
+                                  : "ค้นหาชื่อ หรือเบอร์โทรลูกค้า..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <div className="p-2">
+                              <Input
+                                autoFocus
+                                placeholder="พิมพ์ชื่อ หรือเบอร์โทรเพื่อค้นหา..."
+                                value={customerSearch}
+                                onChange={(e) => setCustomerSearch(e.target.value)}
+                              />
+                            </div>
+                            <ScrollArea className="h-fit max-h-60">
+                              {filteredCustomers.length > 0 ? (
+                                filteredCustomers.map((customer) => (
+                                  <Button
+                                    variant="ghost"
+                                    key={customer.id}
+                                    onClick={() => {
+                                      field.onChange(customer.id);
+                                      setIsCustomerPopoverOpen(false);
+                                      setCustomerSearch('');
+                                    }}
+                                    className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none"
+                                  >
+                                    <div className="flex flex-col items-start">
+                                      <p className="font-medium">{customer.name}</p>
+                                      <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                                    </div>
+                                  </Button>
+                                ))
+                              ) : (
+                                <div className="py-6 text-center text-sm text-muted-foreground">
+                                  ไม่พบข้อมูลลูกค้าที่ค้นหา
+                                </div>
                               )}
-                            >
-                              {selectedCustomer
-                                ? `${selectedCustomer.name} (${selectedCustomer.phone})`
-                                : "ค้นหาชื่อ หรือเบอร์โทรลูกค้า..."}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                          <div className="p-2">
-                            <Input
-                              autoFocus
-                              placeholder="พิมพ์ชื่อ หรือเบอร์โทรเพื่อค้นหา..."
-                              value={customerSearch}
-                              onChange={(e) => setCustomerSearch(e.target.value)}
-                            />
-                          </div>
-                          <ScrollArea className="h-fit max-h-60">
-                            {filteredCustomers.length > 0 ? (
-                              filteredCustomers.map((customer) => (
-                                <Button
-                                  variant="ghost"
-                                  key={customer.id}
-                                  onClick={() => {
-                                    field.onChange(customer.id);
-                                    setIsCustomerPopoverOpen(false);
-                                    setCustomerSearch('');
-                                  }}
-                                  className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none"
-                                >
-                                  <div className="flex flex-col items-start">
-                                    <p className="font-medium">{customer.name}</p>
-                                    <p className="text-xs text-muted-foreground">{customer.phone}</p>
-                                  </div>
-                                </Button>
-                              ))
-                            ) : (
-                              <div className="py-6 text-center text-sm text-muted-foreground">
-                                ไม่พบข้อมูลลูกค้าที่ค้นหา
-                              </div>
-                            )}
-                          </ScrollArea>
-                          <div className="border-t p-2">
-                            <Button asChild variant="outline" className="w-full">
-                              <Link href="/app/office/customers/new">
-                                <PlusCircle className="mr-2 h-4 w-4" />
-                                เพิ่มลูกค้าใหม่
-                              </Link>
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
+                            </ScrollArea>
+                            <div className="border-t p-2">
+                              <Button asChild variant="outline" className="w-full">
+                                <Link href="/app/office/customers/new">
+                                  <PlusCircle className="mr-2 h-4 w-4" />
+                                  เพิ่มลูกค้าใหม่
+                                </Link>
+                              </Button>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="isNewCustomer"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>ลูกค้าใหม่</FormLabel>
+                        <FormDescription className="text-[10px]">
+                          ติ๊กเมื่อเป็นลูกค้าที่ไม่เคยมีในระบบมาก่อน
+                        </FormDescription>
+                      </div>
                     </FormItem>
-                  );
-                }}
-              />
+                  )}
+                />
+              </div>
+
+              {isNewCustomer && (
+                <Card className="bg-primary/5 border-primary/20">
+                  <CardContent className="pt-6">
+                    <FormField
+                      control={form.control}
+                      name="acquisitionSource"
+                      render={({ field }) => (
+                        <FormItem className="space-y-3">
+                          <FormLabel className="font-bold text-primary">ลูกค้ารู้จักร้านจากช่องทางไหน?</FormLabel>
+                          <FormDescription className="text-xs">ข้อมูลนี้ใช้สำหรับทำสถิติแหล่งที่มาลูกค้าในหน้าแดชบอร์ด</FormDescription>
+                          <FormControl>
+                            <RadioGroup
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                              className="grid grid-cols-2 sm:grid-cols-3 gap-4"
+                            >
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl><RadioGroupItem value="REFERRAL" /></FormControl>
+                                <Label className="font-normal cursor-pointer">ลูกค้าแนะนำ</Label>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl><RadioGroupItem value="GOOGLE" /></FormControl>
+                                <Label className="font-normal cursor-pointer">Google</Label>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl><RadioGroupItem value="FACEBOOK" /></FormControl>
+                                <Label className="font-normal cursor-pointer">Facebook</Label>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl><RadioGroupItem value="TIKTOK" /></FormControl>
+                                <Label className="font-normal cursor-pointer">Tiktok</Label>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl><RadioGroupItem value="YOUTUBE" /></FormControl>
+                                <Label className="font-normal cursor-pointer">Youtube</Label>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-2 space-y-0">
+                                <FormControl><RadioGroupItem value="OTHER" /></FormControl>
+                                <Label className="font-normal cursor-pointer">อื่นๆ</Label>
+                              </FormItem>
+                            </RadioGroup>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
                   <FormLabel>แผนกที่รับผิดชอบ (Department)</FormLabel>

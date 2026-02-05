@@ -39,6 +39,9 @@ export const TOKEN_BUFFER_MS = 5000; // 5 seconds buffer
 export const CASH_DRAWER_STATUSES = ["OPEN", "CLOSED", "LOCKED"] as const;
 export type CashDrawerStatus = (typeof CASH_DRAWER_STATUSES)[number];
 
+export const ACQUISITION_SOURCES = ["REFERRAL", "GOOGLE", "FACEBOOK", "TIKTOK", "YOUTUBE", "OTHER"] as const;
+export type AcquisitionSource = (typeof ACQUISITION_SOURCES)[number];
+
 export const ACCOUNTING_CATEGORIES = {
     INCOME: {
       "งานซ่อม": ["หน้าร้าน (CAR_SERVICE)", "คอมมอนเรล (COMMONRAIL)", "แมคคานิค (MECHANIC)"],
