@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, addDoc, getDocs } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, addDoc, getDocs, setDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
@@ -79,7 +79,6 @@ export function PurchaseDocForm() {
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // IDEMPOTENCY: Generate a stable ID for new documents on mount
   const [creationId] = useState(() => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let autoId = '';
@@ -189,7 +188,6 @@ export function PurchaseDocForm() {
   };
 
   const onSubmit = async (data: PurchaseFormData, isSubmitForReview: boolean) => {
-    // IDEMPOTENCY GUARD: Exit immediately if already submitting
     if (!db || !profile || !storage || isSubmitting) return;
     
     const vendor = vendors.find(v => v.id === data.vendorId);
@@ -219,24 +217,15 @@ export function PurchaseDocForm() {
       };
 
       let finalDocId = editDocId || creationId;
-      let finalDocNo = docToEdit?.docNo;
+      let finalDocNo: string;
 
       if (editDocId) {
         await updateDoc(doc(db, "purchaseDocs", editDocId), sanitizeForFirestore(docData));
+        finalDocNo = docToEdit?.docNo || "Unknown";
       } else {
-        // Use createPurchaseDoc with idempotency provided ID
         finalDocNo = await createPurchaseDoc(db, docData, profile, targetStatus, creationId);
       }
 
-      // Ensure we have finalDocNo for claim logic if it was just created
-      if (!finalDocNo && !editDocId) {
-          // This should not happen with the logic in createPurchaseDoc but as a safety:
-          const q = query(collection(db, "purchaseDocs"), where("__name__", "==", creationId));
-          const snap = await getDocs(q);
-          if (!snap.empty) finalDocNo = snap.docs[0].data().docNo;
-      }
-
-      // If submitting for review, ensure a claim is created or updated
       if (isSubmitForReview && finalDocId && finalDocNo) {
         const claimsQuery = query(collection(db, "purchaseClaims"), where("purchaseDocId", "==", finalDocId));
         const claimsSnap = await getDocs(claimsQuery);
@@ -270,11 +259,9 @@ export function PurchaseDocForm() {
 
       toast({ title: isSubmitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
       router.push("/app/office/parts/purchases");
-      // Note: We intentionally do NOT set isSubmitting back to false on success 
-      // to keep buttons disabled while the router navigates away.
     } catch (e: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: e.message });
-      setIsSubmitting(false); // Reset only on error
+      setIsSubmitting(false);
     }
   };
 
@@ -468,14 +455,12 @@ export function PurchaseDocForm() {
                         {photoPreviews.length > 0 && <p className="text-xs text-muted-foreground">{photoPreviews.length} ไฟล์ที่เลือกใหม่</p>}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        {/* Show existing photos */}
                         {docToEdit?.billPhotos?.map((url, i) => (
                             <div key={`existing-${i}`} className="relative aspect-square w-20 border rounded-md overflow-hidden bg-muted">
                                 <Image src={url} alt="existing" fill className="object-cover" />
                                 <Badge className="absolute bottom-0 right-0 rounded-none text-[8px] h-3 px-1">Cloud</Badge>
                             </div>
                         ))}
-                        {/* Show new previews */}
                         {photoPreviews.map((p, i) => (
                             <div key={`new-${i}`} className="relative aspect-square w-20 border rounded-md overflow-hidden bg-muted">
                                 <Image src={p} alt="preview" fill className="object-cover" />

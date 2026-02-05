@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase/client-provider";
-import { collection, query, onSnapshot, orderBy, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, where } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, where, runTransaction } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -163,7 +163,7 @@ function PurchaseInboxPageContent() {
       setLoading(false);
       return;
     }
-    const claimsQuery = query(collection(db, "purchaseClaims"), orderBy("createdAt", "desc"));
+    const claimsQuery = query(collection(db, "purchaseClaims"), orderBy("updatedAt", "desc"));
     const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
     
     const unsubClaims = onSnapshot(claimsQuery, 
@@ -200,37 +200,53 @@ function PurchaseInboxPageContent() {
 
   const handleApproveCash = async (formData: z.infer<typeof cashApprovalSchema>) => {
     if (!db || !profile || !approvingClaim) return;
+    
     try {
-        const purchaseDocRef = doc(db, 'purchaseDocs', approvingClaim.purchaseDocId);
-        const purchaseDocSnap = await getDoc(purchaseDocRef);
-        if (!purchaseDocSnap.exists()) throw new Error(`ไม่พบเอกสารจัดซื้อเลขที่ ${approvingClaim.purchaseDocNo}`);
-        
-        const batch = writeBatch(db);
-        const claimRef = doc(db, 'purchaseClaims', approvingClaim.id);
-        const entryRef = doc(collection(db, 'accountingEntries'));
+        await runTransaction(db, async (transaction) => {
+            const purchaseDocRef = doc(db, 'purchaseDocs', approvingClaim.purchaseDocId);
+            const purchaseDocSnap = await transaction.get(purchaseDocRef);
+            if (!purchaseDocSnap.exists()) throw new Error(`ไม่พบเอกสารจัดซื้อเลขที่ ${approvingClaim.purchaseDocNo}`);
+            
+            const claimRef = doc(db, 'purchaseClaims', approvingClaim.id);
+            const entryId = `PURCHASE_${approvingClaim.purchaseDocId}`;
+            const entryRef = doc(db, 'accountingEntries', entryId);
 
-        batch.update(claimRef, { status: 'APPROVED', approvedAt: serverTimestamp(), approvedByUid: profile.uid, approvedByName: profile.displayName });
-        batch.set(entryRef, {
-            entryType: 'CASH_OUT',
-            entryDate: formData.paidDate,
-            amount: approvingClaim.amountTotal,
-            accountId: formData.accountId,
-            paymentMethod: formData.paymentMethod,
-            description: `จ่ายค่าสินค้า/อะไหล่: ${approvingClaim.vendorNameSnapshot} (บิล: ${approvingClaim.invoiceNo})`,
-            sourceDocId: approvingClaim.purchaseDocId,
-            sourceDocNo: approvingClaim.purchaseDocNo,
-            sourceDocType: 'PURCHASE',
-            vendorNameSnapshot: approvingClaim.vendorNameSnapshot,
-            createdAt: serverTimestamp(),
+            // Check if entry already exists (Idempotency)
+            const entrySnap = await transaction.get(entryRef);
+            if (entrySnap.exists()) throw new Error("รายการนี้เคยถูกลงบัญชีไปแล้ว");
+
+            transaction.update(claimRef, { 
+                status: 'APPROVED', 
+                approvedAt: serverTimestamp(), 
+                approvedByUid: profile.uid, 
+                approvedByName: profile.displayName,
+                updatedAt: serverTimestamp()
+            });
+
+            transaction.set(entryRef, {
+                entryType: 'CASH_OUT',
+                entryDate: formData.paidDate,
+                amount: approvingClaim.amountTotal,
+                accountId: formData.accountId,
+                paymentMethod: formData.paymentMethod,
+                description: `จ่ายค่าสินค้า/อะไหล่: ${approvingClaim.vendorNameSnapshot} (บิล: ${approvingClaim.invoiceNo})`,
+                sourceDocId: approvingClaim.purchaseDocId,
+                sourceDocNo: approvingClaim.purchaseDocNo,
+                sourceDocType: 'PURCHASE',
+                vendorNameSnapshot: approvingClaim.vendorNameSnapshot,
+                createdAt: serverTimestamp(),
+            });
+
+            transaction.update(purchaseDocRef, { 
+                status: 'PAID', 
+                approvedAt: serverTimestamp(), 
+                approvedByUid: profile.uid, 
+                approvedByName: profile.displayName, 
+                accountingEntryId: entryId,
+                updatedAt: serverTimestamp()
+            });
         });
-        batch.update(purchaseDocRef, { 
-            status: 'PAID', 
-            approvedAt: serverTimestamp(), 
-            approvedByUid: profile.uid, 
-            approvedByName: profile.displayName, 
-            accountingEntryId: entryRef.id 
-        });
-        await batch.commit();
+        
         toast({ title: "อนุมัติและบันทึกการจ่ายเงินสำเร็จ" });
         setApprovingClaim(null);
     } catch (e: any) {
@@ -241,36 +257,58 @@ function PurchaseInboxPageContent() {
   const handleApproveCredit = async () => {
      if (!db || !profile || !approvingClaim) return;
      try {
-        const purchaseDocRef = doc(db, 'purchaseDocs', approvingClaim.purchaseDocId);
-        const purchaseDocSnap = await getDoc(purchaseDocRef);
-        if (!purchaseDocSnap.exists()) throw new Error(`ไม่พบเอกสารจัดซื้อเลขที่ ${approvingClaim.purchaseDocNo}`);
-        const purchaseDocData = purchaseDocSnap.data() as PurchaseDoc;
+        await runTransaction(db, async (transaction) => {
+            const purchaseDocRef = doc(db, 'purchaseDocs', approvingClaim.purchaseDocId);
+            const purchaseDocSnap = await transaction.get(purchaseDocRef);
+            if (!purchaseDocSnap.exists()) throw new Error(`ไม่พบเอกสารจัดซื้อเลขที่ ${approvingClaim.purchaseDocNo}`);
+            const purchaseDocData = purchaseDocSnap.data() as PurchaseDoc;
 
-        const batch = writeBatch(db);
-        const claimRef = doc(db, 'purchaseClaims', approvingClaim.id);
-        const apObligationRef = doc(collection(db, 'accountingObligations'));
-        
-        batch.update(claimRef, { status: 'APPROVED', approvedAt: serverTimestamp(), approvedByUid: profile.uid, approvedByName: profile.displayName });
-        batch.set(apObligationRef, {
-            type: 'AP', status: 'UNPAID',
-            vendorId: purchaseDocData.vendorId,
-            vendorShortNameSnapshot: purchaseDocData.vendorSnapshot.shortName,
-            vendorNameSnapshot: purchaseDocData.vendorSnapshot.companyName,
-            invoiceNo: purchaseDocData.invoiceNo,
-            sourceDocType: 'PURCHASE', sourceDocId: purchaseDocData.id, sourceDocNo: purchaseDocData.docNo,
-            docDate: purchaseDocData.docDate, dueDate: purchaseDocData.dueDate,
-            amountTotal: purchaseDocData.grandTotal, amountPaid: 0, balance: purchaseDocData.grandTotal,
-            createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+            const claimRef = doc(db, 'purchaseClaims', approvingClaim.id);
+            const apId = `AP_${approvingClaim.purchaseDocId}`;
+            const apObligationRef = doc(db, 'accountingObligations', apId);
+            
+            // Check if AP already exists
+            const apSnap = await transaction.get(apObligationRef);
+            if (apSnap.exists()) throw new Error("รายการเจ้าหนี้นี้เคยถูกสร้างไปแล้ว");
+
+            transaction.update(claimRef, { 
+                status: 'APPROVED', 
+                approvedAt: serverTimestamp(), 
+                approvedByUid: profile.uid, 
+                approvedByName: profile.displayName,
+                updatedAt: serverTimestamp()
+            });
+
+            transaction.set(apObligationRef, {
+                id: apId,
+                type: 'AP', 
+                status: 'UNPAID',
+                vendorId: purchaseDocData.vendorId,
+                vendorShortNameSnapshot: purchaseDocData.vendorSnapshot.shortName,
+                vendorNameSnapshot: purchaseDocData.vendorSnapshot.companyName,
+                invoiceNo: purchaseDocData.invoiceNo,
+                sourceDocType: 'PURCHASE', 
+                sourceDocId: purchaseDocData.id, 
+                sourceDocNo: purchaseDocData.docNo,
+                docDate: purchaseDocData.docDate, 
+                dueDate: purchaseDocData.dueDate || null,
+                amountTotal: purchaseDocData.grandTotal, 
+                amountPaid: 0, 
+                balance: purchaseDocData.grandTotal,
+                createdAt: serverTimestamp(), 
+                updatedAt: serverTimestamp(),
+            });
+
+            transaction.update(purchaseDocRef, { 
+                status: 'UNPAID', 
+                approvedAt: serverTimestamp(), 
+                approvedByUid: profile.uid, 
+                approvedByName: profile.displayName, 
+                apObligationId: apId,
+                updatedAt: serverTimestamp()
+            });
         });
-        batch.update(purchaseDocRef, { 
-            status: 'UNPAID', 
-            approvedAt: serverTimestamp(), 
-            approvedByUid: profile.uid, 
-            approvedByName: profile.displayName, 
-            apObligationId: apObligationRef.id 
-        });
         
-        await batch.commit();
         toast({ title: "อนุมัติและสร้างเจ้าหนี้สำเร็จ" });
         setApprovingClaim(null);
      } catch (e: any) {
@@ -282,12 +320,20 @@ function PurchaseInboxPageContent() {
     if (!db || !profile || !rejectingClaim) return;
     try {
         const batch = writeBatch(db);
-        batch.update(doc(db, 'purchaseClaims', rejectingClaim.id), { status: 'REJECTED', rejectedAt: serverTimestamp(), rejectedByUid: profile.uid, rejectedByName: profile.displayName, rejectReason: reason });
+        batch.update(doc(db, 'purchaseClaims', rejectingClaim.id), { 
+            status: 'REJECTED', 
+            rejectedAt: serverTimestamp(), 
+            rejectedByUid: profile.uid, 
+            rejectedByName: profile.displayName, 
+            rejectReason: reason,
+            updatedAt: serverTimestamp()
+        });
         batch.update(doc(db, 'purchaseDocs', rejectingClaim.purchaseDocId), { 
             status: 'REJECTED',
             reviewRejectReason: reason,
             reviewRejectedAt: serverTimestamp(),
-            reviewRejectedByName: profile.displayName
+            reviewRejectedByName: profile.displayName,
+            updatedAt: serverTimestamp()
         });
         await batch.commit();
         toast({ title: "ตีกลับรายการสำเร็จ" });
@@ -317,13 +363,13 @@ function PurchaseInboxPageContent() {
         <Card>
           <CardContent className="pt-6 overflow-x-auto">
             <Table>
-              <TableHeader><TableRow><TableHead>วันที่แจ้ง</TableHead><TableHead>ร้านค้า</TableHead><TableHead>เลขที่เอกสาร/บิล</TableHead><TableHead className="text-right">ยอดเงิน</TableHead><TableHead>รูปแบบ</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>วันที่อัปเดต</TableHead><TableHead>ร้านค้า</TableHead><TableHead>เลขที่เอกสาร/บิล</TableHead><TableHead className="text-right">ยอดเงิน</TableHead><TableHead>รูปแบบ</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
               <TableBody>
                 {loading ? <TableRow><TableCell colSpan={7} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                 : filteredClaims.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground italic">ไม่พบรายการ</TableCell></TableRow>
                 : filteredClaims.map(claim => (
                     <TableRow key={claim.id}>
-                        <TableCell className="text-xs whitespace-nowrap">{safeFormat(claim.createdAt, "dd/MM/yy HH:mm")}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{safeFormat(claim.updatedAt, "dd/MM/yy HH:mm")}</TableCell>
                         <TableCell className="font-medium">{claim.vendorNameSnapshot}</TableCell>
                         <TableCell className="text-xs">
                             <div className="font-mono">{claim.purchaseDocNo}</div>
