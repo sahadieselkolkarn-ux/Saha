@@ -2,24 +2,23 @@
 
 import { PageHeader } from "@/components/page-header";
 import { DocumentList } from "@/components/document-list";
-import { CreditNoteForm } from "@/components/credit-note-form";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
 export default function ManagementCreditNotesPage() {
   return (
-    <Tabs defaultValue="list">
-        <PageHeader title="ใบลดหนี้" description="สร้างและจัดการใบลดหนี้">
-            <TabsList>
-                <TabsTrigger value="list">รายการทั้งหมด</TabsTrigger>
-                <TabsTrigger value="new">สร้างใหม่</TabsTrigger>
-            </TabsList>
-        </PageHeader>
-        <TabsContent value="list">
-             <DocumentList docType="CREDIT_NOTE" baseContext="accounting" />
-        </TabsContent>
-        <TabsContent value="new">
-            <CreditNoteForm />
-        </TabsContent>
-    </Tabs>
+    <div className="space-y-6">
+        <PageHeader title="ใบลดหนี้" description="จัดการข้อมูลใบลดหนี้" />
+        
+        <Alert variant="secondary" className="bg-amber-50 border-amber-200 text-amber-800">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertTitle>ฟีเจอร์นี้ยังไม่พร้อมใช้งานเต็มรูปแบบ</AlertTitle>
+            <AlertDescription>
+                ขณะนี้ระบบแสดงรายการใบลดหนี้เพื่อเป็นเอกสารอ้างอิงทางบัญชีเท่านั้น ฟังก์ชันการสร้างและแก้ไขเอกสารใหม่กำลังอยู่ระหว่างการพัฒนา
+            </AlertDescription>
+        </Alert>
+
+        <DocumentList docType="CREDIT_NOTE" baseContext="accounting" />
+    </div>
   );
 }
