@@ -36,6 +36,9 @@ export type PayslipStatusNew = (typeof PAYSLIP_STATUS_NEW)[number];
 export const TOKEN_TTL_MS = 30000; // 30 seconds
 export const TOKEN_BUFFER_MS = 5000; // 5 seconds buffer
 
+export const CASH_DRAWER_STATUSES = ["OPEN", "CLOSED", "LOCKED"] as const;
+export type CashDrawerStatus = (typeof CASH_DRAWER_STATUSES)[number];
+
 export const ACCOUNTING_CATEGORIES = {
     INCOME: {
       "งานซ่อม": ["หน้าร้าน (CAR_SERVICE)", "คอมมอนเรล (COMMONRAIL)", "แมคคานิค (MECHANIC)"],

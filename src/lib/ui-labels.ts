@@ -75,6 +75,17 @@ const VENDOR_TYPE_LABELS: Record<string, string> = {
     CONTRACTOR: "ผู้รับเหมา/งานนอก",
 };
 
+const CASH_DRAWER_STATUS_LABELS: Record<string, string> = {
+    OPEN: "กำลังใช้งาน (เปิด)",
+    CLOSED: "รอตรวจสอบ (ปิด)",
+    LOCKED: "เสร็จสมบูรณ์ (ล็อก)",
+};
+
+export function cashDrawerStatusLabel(status: string | undefined): string {
+    if (!status) return '';
+    return CASH_DRAWER_STATUS_LABELS[status] || status;
+}
+
 export function vendorTypeLabel(type: string | undefined): string {
     if (!type) return '';
     return VENDOR_TYPE_LABELS[type] || type;

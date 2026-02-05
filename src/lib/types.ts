@@ -755,3 +755,35 @@ export interface BillingRun {
   updatedByUid?: string;
   updatedByName?: string;
 }
+
+export interface CashDrawerSession {
+  id: string;
+  status: 'OPEN' | 'CLOSED' | 'LOCKED';
+  openedAt: Timestamp;
+  openedByUid: string;
+  openedByName: string;
+  openingAmount: number;
+  expectedAmount: number;
+  countedAmount?: number;
+  difference?: number;
+  closedAt?: Timestamp;
+  closedByUid?: string;
+  closedByName?: string;
+  lockedAt?: Timestamp;
+  lockedByUid?: string;
+  lockedByName?: string;
+  notes?: string;
+}
+
+export interface CashDrawerTransaction {
+  id: string;
+  sessionId: string;
+  type: 'IN' | 'OUT';
+  amount: number;
+  category: string;
+  description: string;
+  photos?: string[];
+  createdAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+}
