@@ -45,19 +45,12 @@ const customerSchema = z.object({
   taxName: z.string().optional(),
   taxAddress: z.string().optional(),
   taxId: z.string().optional(),
-  isNewCustomer: z.boolean().default(false),
-  acquisitionSource: z.enum(ACQUISITION_SOURCES).optional().nullable(),
+  acquisitionSource: z.enum(ACQUISITION_SOURCES, {
+    errorMap: () => ({ message: "กรุณาเลือกช่องทางที่ลูกค้ารู้จักร้าน เพื่อใช้ทำสถิติในแดชบอร์ด" })
+  }),
 }).refine(data => !data.useTax || (data.taxName && data.taxAddress && data.taxId), {
   message: "กรุณากรอกข้อมูลภาษีให้ครบถ้วนเมื่อเลือก 'ต้องการใบกำกับภาษี'",
   path: ["taxName"], 
-}).superRefine((data, ctx) => {
-  if (data.isNewCustomer && !data.acquisitionSource) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "กรุณาระบุช่องทางที่ลูกค้ารู้จักร้าน",
-      path: ["acquisitionSource"],
-    });
-  }
 });
 
 
@@ -77,13 +70,12 @@ export default function OfficeCustomersNewPage() {
       taxName: "",
       taxAddress: "",
       taxId: "",
-      isNewCustomer: false,
-      acquisitionSource: null,
+      // @ts-ignore - Let it be empty to trigger validation
+      acquisitionSource: undefined,
     },
   });
 
   const useTax = form.watch("useTax");
-  const isNewCustomer = form.watch("isNewCustomer");
 
   const onSubmit = async (values: z.infer<typeof customerSchema>) => {
     if (!db) return;
@@ -98,7 +90,7 @@ export default function OfficeCustomersNewPage() {
         taxName: values.useTax ? values.taxName : "",
         taxAddress: values.useTax ? values.taxAddress : "",
         taxId: values.useTax ? values.taxId : "",
-        acquisitionSource: values.isNewCustomer ? values.acquisitionSource : null,
+        acquisitionSource: values.acquisitionSource,
         createdAt: serverTimestamp(), 
         updatedAt: serverTimestamp() 
       };
@@ -133,76 +125,54 @@ export default function OfficeCustomersNewPage() {
                         <FormItem><FormLabel>เบอร์โทรศัพท์</FormLabel><FormControl><Input {...field} placeholder="เช่น 0812345678" /></FormControl><FormMessage /></FormItem>
                     )} />
                     
-                    <Card className="bg-primary/5 border-primary/20">
+                    <Card className="bg-primary/5 border-primary/20 shadow-none">
                         <CardHeader className="pb-2">
                           <CardTitle className="text-sm font-bold text-primary">การตลาด (Marketing)</CardTitle>
+                          <CardDescription className="text-xs">ข้อมูลนี้ใช้ทำสถิติในหน้าแดชบอร์ด</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
+                        <CardContent className="space-y-4 pt-2">
                             <FormField
                                 control={form.control}
-                                name="isNewCustomer"
+                                name="acquisitionSource"
                                 render={({ field }) => (
-                                    <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                                    <FormItem className="space-y-3">
+                                    <FormLabel>ลูกค้ารู้จักร้านจากช่องทางไหน?</FormLabel>
                                     <FormControl>
-                                        <Checkbox
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                        />
+                                        <RadioGroup
+                                        onValueChange={field.onChange}
+                                        value={field.value}
+                                        className="grid grid-cols-2 sm:grid-cols-3 gap-4"
+                                        >
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="REFERRAL" id="r-referral" />
+                                            <Label htmlFor="r-referral" className="font-normal cursor-pointer">ลูกค้าแนะนำ</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="GOOGLE" id="r-google" />
+                                            <Label htmlFor="r-google" className="font-normal cursor-pointer">Google</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="FACEBOOK" id="r-facebook" />
+                                            <Label htmlFor="r-facebook" className="font-normal cursor-pointer">Facebook</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="TIKTOK" id="r-tiktok" />
+                                            <Label htmlFor="r-tiktok" className="font-normal cursor-pointer">Tiktok</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="YOUTUBE" id="r-youtube" />
+                                            <Label htmlFor="r-youtube" className="font-normal cursor-pointer">Youtube</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="OTHER" id="r-other" />
+                                            <Label htmlFor="r-other" className="font-normal cursor-pointer">อื่นๆ</Label>
+                                        </div>
+                                        </RadioGroup>
                                     </FormControl>
-                                    <div className="space-y-1 leading-none">
-                                        <FormLabel className="cursor-pointer">ลูกค้าใหม่ (New Customer)</FormLabel>
-                                        <FormDescription className="text-xs text-muted-foreground">
-                                            ใช้เก็บสถิติในหน้าแดชบอร์ดว่าลูกค้ารู้จักร้านจากช่องทางใด
-                                        </FormDescription>
-                                    </div>
+                                    <FormMessage />
                                     </FormItem>
                                 )}
                             />
-
-                            {isNewCustomer && (
-                                <FormField
-                                    control={form.control}
-                                    name="acquisitionSource"
-                                    render={({ field }) => (
-                                        <FormItem className="space-y-3 pt-2">
-                                        <FormLabel>ลูกค้ารู้จักร้านจากช่องทางไหน?</FormLabel>
-                                        <FormControl>
-                                            <RadioGroup
-                                            onValueChange={field.onChange}
-                                            defaultValue={field.value || undefined}
-                                            className="grid grid-cols-2 sm:grid-cols-3 gap-4"
-                                            >
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="REFERRAL" id="r-referral" />
-                                                <Label htmlFor="r-referral" className="font-normal cursor-pointer">ลูกค้าแนะนำ</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="GOOGLE" id="r-google" />
-                                                <Label htmlFor="r-google" className="font-normal cursor-pointer">Google</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="FACEBOOK" id="r-facebook" />
-                                                <Label htmlFor="r-facebook" className="font-normal cursor-pointer">Facebook</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="TIKTOK" id="r-tiktok" />
-                                                <Label htmlFor="r-tiktok" className="font-normal cursor-pointer">Tiktok</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="YOUTUBE" id="r-youtube" />
-                                                <Label htmlFor="r-youtube" className="font-normal cursor-pointer">Youtube</Label>
-                                            </div>
-                                            <div className="flex items-center space-x-2">
-                                                <RadioGroupItem value="OTHER" id="r-other" />
-                                                <Label htmlFor="r-other" className="font-normal cursor-pointer">อื่นๆ</Label>
-                                            </div>
-                                            </RadioGroup>
-                                        </FormControl>
-                                        <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
-                            )}
                         </CardContent>
                     </Card>
 
