@@ -6,6 +6,7 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 
