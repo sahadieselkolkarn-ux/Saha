@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -515,7 +515,7 @@ export function HRSettingsForm() {
             <LeavePolicyFields type="BUSINESS" form={form} />
             <LeavePolicyFields type="VACATION" form={form} />
           </CardContent>
-
+        </Card>
 
         <Card>
           <CardHeader>
