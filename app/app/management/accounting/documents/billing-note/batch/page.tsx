@@ -14,6 +14,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
@@ -85,7 +86,7 @@ export default function BatchBillingNotePage() {
       const startDate = startOfMonth(currentMonth);
       const endDate = endOfMonth(currentMonth);
 
-      // Query all potential documents for the month
+      // 1. Query documents specifically for the selected month
       const invoicesQuery = query(
         collection(db, 'documents'),
         where('docDate', '>=', format(startDate, 'yyyy-MM-dd')),
@@ -102,17 +103,12 @@ export default function BatchBillingNotePage() {
 
       const allDocs = invoicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Document));
       
-      // Strict Filter per business context:
-      // 1. CREDIT terms only
-      // 2. Must be explicitly flagged for billing
-      // 3. Not yet PAID
-      // 4. TI or DN only
+      // 2. Strict filtering based on business rules
       const unpaidInvoices = allDocs.filter(doc => 
         (doc.docType === 'TAX_INVOICE' || doc.docType === 'DELIVERY_NOTE') &&
         doc.paymentTerms === 'CREDIT' &&
         doc.billingRequired === true &&
-        doc.status !== 'PAID' &&
-        doc.paymentSummary?.paymentStatus !== 'PAID'
+        doc.status !== 'PAID'
       );
 
       const groupedByCustomer: Record<string, { customer: Customer; invoices: Document[] }> = {};
@@ -169,6 +165,8 @@ export default function BatchBillingNotePage() {
 
   const handleSaveOverrides = async (customerId: string, deferred: Record<string, boolean>, separate: Record<string, string>) => {
     if (!profile || !billingRunRef) return;
+    
+    // Perform a localized update to avoid race conditions
     const newDeferred = { ...billingRun?.deferredInvoices, ...deferred };
     const newSeparate = { ...billingRun?.separateInvoiceGroups, ...separate };
 
@@ -189,13 +187,15 @@ export default function BatchBillingNotePage() {
     await fetchData();
   };
   
-  const createBillingNotesForCustomer = async (customerData: GroupedCustomerData) => {
+  const createBillingNotesForCustomer = async (targetCustomerData: GroupedCustomerData) => {
     if (!profile || !storeSettings || !db || !billingRunRef) return { success: false, error: "Required data missing." };
     
-    const { customer, includedInvoices, separateGroups, createdNoteIds } = customerData;
+    const { customer, includedInvoices, separateGroups } = targetCustomerData;
     
-    // Idempotency: skip if already created
-    if (createdNoteIds) {
+    // Idempotency: Double check against server before proceeding
+    const freshSnap = await getDoc(billingRunRef);
+    const freshCreatedNotes = freshSnap.exists() ? freshSnap.data().createdBillingNotes?.[customer.id] : null;
+    if (freshCreatedNotes) {
         return { success: true, error: "Already created" };
     }
 
@@ -224,7 +224,7 @@ export default function BatchBillingNotePage() {
           storeSnapshot: storeSettings,
           items: itemsForDoc,
           invoiceIds: groupInvoices.map(inv => inv.id),
-          subtotal: totalAmount,
+          subtotal: totalAmount, 
           discountAmount: 0,
           net: totalAmount,
           withTax: false,
@@ -251,13 +251,20 @@ export default function BatchBillingNotePage() {
         if (groupId) createdIds.separate[groupKey] = groupId;
     }
     
-    if (!hasError) {
-      // Use nested set to avoid overwriting other customer entries in the month batch
-      await setDoc(billingRunRef, { 
-        createdBillingNotes: { 
-          [customer.id]: createdIds 
-        } 
-      }, { merge: true });
+    if (!hasError && (createdIds.main || Object.keys(createdIds.separate).length > 0)) {
+      // 3. Nested field update to prevent overwriting other customers
+      if (!freshSnap.exists()) {
+          await setDoc(billingRunRef, {
+              monthId,
+              createdBillingNotes: { [customer.id]: createdIds },
+              updatedAt: serverTimestamp(),
+          });
+      } else {
+          await updateDoc(billingRunRef, { 
+            [`createdBillingNotes.${customer.id}`]: createdIds,
+            updatedAt: serverTimestamp(),
+          });
+      }
     }
 
     return { success: !hasError, error: hasError ? "Some notes failed." : "" };
@@ -303,7 +310,7 @@ export default function BatchBillingNotePage() {
 
   return (
     <>
-      <PageHeader title="ใบวางบิล (สรุปทั้งเดือน)" description="รวบรวมใบกำกับภาษีและใบส่งของเครดิตเพื่อวางบิล">
+      <PageHeader title="ใบวางบิล (Batch)" description="รวบรวมใบกำกับภาษีและใบส่งของเครดิตที่ต้องวางบิลประจำเดือน">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft /></Button>
           <span className="font-semibold text-lg w-36 text-center">{format(currentMonth, 'MMMM yyyy')}</span>
@@ -317,11 +324,11 @@ export default function BatchBillingNotePage() {
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-6">
-        <Card><CardHeader><CardTitle>{summary.totalCustomers}</CardTitle><CardDescription>ลูกค้าที่มียอดค้าง</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>{summary.totalInvoices}</CardTitle><CardDescription>บิลที่รวบรวมได้</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>฿{formatCurrency(summary.totalAmount)}</CardTitle><CardDescription>ยอดรวมที่จะวางบิล</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>{summary.deferredCount}</CardTitle><CardDescription>บิลที่เลื่อนไป</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>{summary.separateCount}</CardTitle><CardDescription>บิลที่แยกเล่ม</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle className="text-2xl">{summary.totalCustomers}</CardTitle><CardDescription>ลูกค้าที่ต้องวางบิล</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle className="text-2xl">{summary.totalInvoices}</CardTitle><CardDescription>บิลที่รวบรวมได้</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle className="text-2xl">฿{formatCurrency(summary.totalAmount)}</CardTitle><CardDescription>ยอดรวมที่จะวางบิล</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle className="text-2xl">{summary.deferredCount}</CardTitle><CardDescription>บิลที่เลื่อนไป</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle className="text-2xl">{summary.separateCount}</CardTitle><CardDescription>บิลที่แยกเล่ม</CardDescription></CardHeader></Card>
       </div>
 
       <Card>
@@ -354,13 +361,13 @@ export default function BatchBillingNotePage() {
                         ) : (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button size="sm" variant="secondary">ดูเอกสาร <ChevronDown/></Button>
+                                    <Button size="sm" variant="secondary">ดูเอกสาร <ChevronDown className="ml-2 h-4 w-4"/></Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent>
-                                    {data.createdNoteIds.main && <DropdownMenuItem onClick={() => handlePreview(data.createdNoteIds!.main!)}><FileText/> พรีวิว (ใบหลัก)</DropdownMenuItem>}
-                                    {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={id} onClick={() => handlePreview(id)}><FileText/> พรีวิว ({key})</DropdownMenuItem>)}
-                                    {data.createdNoteIds.main && <DropdownMenuItem onClick={() => handlePrint(data.createdNoteIds!.main!)}><Printer/> พิมพ์ PDF (ใบหลัก)</DropdownMenuItem>}
-                                    {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={`p-${id}`} onClick={() => handlePrint(id)}><Printer/> พิมพ์ PDF ({key})</DropdownMenuItem>)}
+                                <DropdownMenuContent align="end">
+                                    {data.createdNoteIds.main && <DropdownMenuItem onClick={() => handlePreview(data.createdNoteIds!.main!)}><FileText className="mr-2 h-4 w-4"/> พรีวิว (ใบหลัก)</DropdownMenuItem>}
+                                    {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={id} onClick={() => handlePreview(id)}><FileText className="mr-2 h-4 w-4"/> พรีวิว ({key})</DropdownMenuItem>)}
+                                    {data.createdNoteIds.main && <DropdownMenuItem onClick={() => handlePrint(data.createdNoteIds!.main!)}><Printer className="mr-2 h-4 w-4"/> พิมพ์ PDF (ใบหลัก)</DropdownMenuItem>}
+                                    {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={`p-${id}`} onClick={() => handlePrint(id)}><Printer className="mr-2 h-4 w-4"/> พิมพ์ PDF ({key})</DropdownMenuItem>)}
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         )}
