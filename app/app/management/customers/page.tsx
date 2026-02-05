@@ -32,6 +32,8 @@ import {
 import type { Customer } from "@/lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/auth-context";
+import { ACQUISITION_SOURCES } from "@/lib/constants";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -41,6 +43,7 @@ const customerSchema = z.object({
   taxName: z.string().optional(),
   taxAddress: z.string().optional(),
   taxId: z.string().optional(),
+  acquisitionSource: z.enum(ACQUISITION_SOURCES).optional().nullable(),
 }).refine(data => !data.useTax || (data.taxName && data.taxAddress && data.taxId), {
   message: "Tax information is required when 'Use Tax Invoice' is checked",
   path: ["taxName"], 
@@ -148,7 +151,10 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
   useEffect(() => {
     if (isDialogOpen) {
       if (editingCustomer) {
-        form.reset(editingCustomer);
+        form.reset({
+            ...editingCustomer,
+            acquisitionSource: editingCustomer.acquisitionSource || null
+        });
       }
     } else {
       setEditingCustomer(null);
@@ -160,6 +166,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
         taxName: "",
         taxAddress: "",
         taxId: "",
+        acquisitionSource: null
       });
     }
   }, [isDialogOpen, editingCustomer, form]);
@@ -323,55 +330,84 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
-            className="sm:max-w-[600px]"
+            className="sm:max-w-[600px] flex flex-col max-h-[90vh]"
             onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
             onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0">
             <DialogTitle>Edit Customer</DialogTitle>
             <DialogDescription>Update the details below.</DialogDescription>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-              <FormField name="name" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="phone" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="detail" control={form.control} render={({ field }) => (
-                <FormItem><FormLabel>Details</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField name="useTax" control={form.control} render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Use Tax Invoice</FormLabel>
-                    <FormMessage />
-                  </div>
-                </FormItem>
-              )} />
-              {useTax && (
-                <div className="space-y-4 p-4 border rounded-md bg-muted/50">
-                    <FormField name="taxName" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField name="taxAddress" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField name="taxId" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                </div>
-              )}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+          <ScrollArea className="flex-1 pr-4">
+            <Form {...form}>
+                <form id="edit-customer-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+                <FormField name="name" control={form.control} render={({ field }) => (
+                    <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField name="phone" control={form.control} render={({ field }) => (
+                    <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                
+                <FormField
+                    control={form.control}
+                    name="acquisitionSource"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>แหล่งที่มาลูกค้า (Marketing Source)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || "NONE"}>
+                            <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="เลือกช่องทาง..." />
+                                </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                <SelectItem value="NONE">-- ไม่ระบุ --</SelectItem>
+                                <SelectItem value="REFERRAL">ลูกค้าแนะนำ</SelectItem>
+                                <SelectItem value="GOOGLE">Google</SelectItem>
+                                <SelectItem value="FACEBOOK">Facebook</SelectItem>
+                                <SelectItem value="TIKTOK">Tiktok</SelectItem>
+                                <SelectItem value="YOUTUBE">Youtube</SelectItem>
+                                <SelectItem value="OTHER">อื่นๆ</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        </FormItem>
+                    )}
+                />
+
+                <FormField name="detail" control={form.control} render={({ field }) => (
+                    <FormItem><FormLabel>Details</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                )} />
+                <FormField name="useTax" control={form.control} render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                    <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                    <div className="space-y-1 leading-none">
+                        <FormLabel>Use Tax Invoice</FormLabel>
+                        <FormMessage />
+                    </div>
+                    </FormItem>
+                )} />
+                {useTax && (
+                    <div className="space-y-4 p-4 border rounded-md bg-muted/50">
+                        <FormField name="taxName" control={form.control} render={({ field }) => (
+                            <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                        )} />
+                        <FormField name="taxAddress" control={form.control} render={({ field }) => (
+                            <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                        )} />
+                        <FormField name="taxId" control={form.control} render={({ field }) => (
+                            <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                        )} />
+                    </div>
+                )}
+                </form>
+            </Form>
+          </ScrollArea>
+          <DialogFooter className="shrink-0 border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+            <Button type="submit" form="edit-customer-form" disabled={isSubmitting}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

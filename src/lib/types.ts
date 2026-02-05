@@ -51,6 +51,7 @@ export interface Customer {
   taxId?: string;
   taxBranchType?: 'HEAD_OFFICE' | 'BRANCH';
   taxBranchNo?: string;
+  acquisitionSource?: AcquisitionSource;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
