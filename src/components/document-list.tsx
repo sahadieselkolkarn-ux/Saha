@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, ExternalLink } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -20,6 +20,7 @@ import { safeFormat } from '@/lib/date-utils';
 import type { Document, DocType } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 
 interface DocumentListProps {
   docType: DocType;
@@ -72,6 +73,7 @@ export function DocumentList({
   const [error, setError] = useState<FirestoreError | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
   
   const [docToAction, setDocToAction] = useState<Document | null>(null);
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
@@ -85,8 +87,6 @@ export function DocumentList({
   // Memoize the query to prevent re-registration of onSnapshot
   const stableQuery = useMemo(() => {
     if (!db) return null;
-    // We add a reasonable limit for real-time lists to ensure performance.
-    // If they need more, they should use search or specific history reports.
     return query(
       collection(db, "documents"), 
       where("docType", "==", docType),
@@ -99,22 +99,25 @@ export function DocumentList({
     if (!stableQuery) return;
     
     setLoading(true);
+    setIndexCreationUrl(null);
     const unsubscribe = onSnapshot(stableQuery, (snapshot) => {
         const docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
         setAllDocuments(docsData);
         setLoading(false);
         setError(null);
+        setIndexCreationUrl(null);
     }, (err: FirestoreError) => {
         console.error("Error fetching documents: ", err);
         setError(err);
-        setLoading(false);
-        if (!err.message?.includes('requires an index')) {
-            toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร", description: err.message });
+        if (err.message?.includes('requires an index')) {
+            const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+            if (urlMatch) setIndexCreationUrl(urlMatch[0]);
         }
+        setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [stableQuery, toast]);
+  }, [stableQuery]);
 
   const processedDocuments = useMemo(() => {
     let filtered = [...allDocuments];
@@ -133,9 +136,6 @@ export function DocumentList({
         doc.carSnapshot?.licensePlate?.toLowerCase().includes(lowercasedTerm)
       );
     }
-    
-    // sorting is already done in Firestore query, but we re-sort here if sorting by a field that's not in the query
-    // or just leave it since the query already handles it for the primary list.
 
     return filtered;
   }, [allDocuments, searchTerm, statusFilter]);
@@ -202,6 +202,21 @@ export function DocumentList({
     <>
       <Card>
         <CardContent className="pt-6 space-y-4">
+          {indexCreationUrl && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
+              <AlertDescription className="flex flex-col gap-2">
+                <span>ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับเอกสาร กรุณากดสร้างดัชนีตามลิงก์ด้านล่าง (ใช้เวลา 2-3 นาที)</span>
+                <Button asChild variant="outline" size="sm" className="w-fit">
+                  <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index ใน Firebase Console
+                  </a>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -228,16 +243,11 @@ export function DocumentList({
           
           {loading ? (
             <div className="flex justify-center items-center h-48"><Loader2 className="animate-spin h-8 w-8" /></div>
-          ) : error ? (
+          ) : error && !indexCreationUrl ? (
             <div className="text-center text-destructive flex flex-col items-center gap-2 h-48 justify-center">
               <AlertCircle />
               <p>เกิดข้อผิดพลาดในการโหลดเอกสาร</p>
               <p className="text-xs">{error.message}</p>
-              {error.message?.includes('requires an index') && (
-                  <Button asChild size="sm" variant="outline" className="mt-2">
-                      <a href={error.message.match(/https?:\/\/[^\s]+/)?.[0]} target="_blank" rel="noopener noreferrer">สร้าง Index</a>
-                  </Button>
-              )}
             </div>
           ) : (
             <div className="border rounded-md">

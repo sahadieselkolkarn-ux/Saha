@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase/client-provider";
-import { collection, query, onSnapshot, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, updateDoc, runTransaction, limit, orderBy } from "firebase/firestore";
+import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye } from "lucide-react";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
@@ -34,6 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -48,6 +49,7 @@ export default function AccountingInboxPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"receive" | "ar">("receive");
+  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const [confirmingDoc, setConfirmingDoc] = useState<WithId<DocumentType> | null>(null);
   const [disputingDoc, setDisputingDoc] = useState<WithId<DocumentType> | null>(null);
@@ -71,10 +73,10 @@ export default function AccountingInboxPage() {
 
   const accountsQuery = useMemo(() => {
     if (!db) return null;
+    // Removed orderBy to avoid missing index error, will sort on client side
     return query(
       collection(db, "accountingAccounts"), 
-      where("isActive", "==", true),
-      orderBy("name", "asc")
+      where("isActive", "==", true)
     );
   }, [db]);
 
@@ -87,16 +89,26 @@ export default function AccountingInboxPage() {
     const unsubDocs = onSnapshot(docsQuery, 
       (snap) => { 
         setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>))); 
-        setLoading(false); 
+        setLoading(false);
+        setIndexCreationUrl(null);
       },
-      (err) => { 
+      (err: FirestoreError) => { 
         console.error(err);
+        if (err.message?.includes('requires an index')) {
+            const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+            if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+        }
         setLoading(false); 
       }
     );
 
     const unsubAccounts = onSnapshot(accountsQuery, 
-      (snap) => setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)))
+      (snap) => {
+          const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>));
+          // Sort by name on client side
+          data.sort((a, b) => a.name.localeCompare(b.name, 'th'));
+          setAccounts(data);
+      }
     );
 
     return () => { unsubDocs(); unsubAccounts(); };
@@ -301,6 +313,22 @@ export default function AccountingInboxPage() {
   return (
     <>
       <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลก่อนลงบัญชีและปิดงาน" />
+      
+      {indexCreationUrl && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2">
+            <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงข้อมูล กรุณากดสร้างดัชนีตามลิงก์ด้านล่าง (ใช้เวลา 2-3 นาที)</span>
+            <Button asChild variant="outline" size="sm" className="w-fit">
+              <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index ใน Firebase Console
+              </a>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <TabsList>
