@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, limit } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
@@ -82,12 +82,24 @@ export function DocumentList({
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
-  useEffect(() => {
-    if (!db) return;
-    setLoading(true);
-    const q = query(collection(db, "documents"), where("docType", "==", docType));
+  // Memoize the query to prevent re-registration of onSnapshot
+  const stableQuery = useMemo(() => {
+    if (!db) return null;
+    // We add a reasonable limit for real-time lists to ensure performance.
+    // If they need more, they should use search or specific history reports.
+    return query(
+      collection(db, "documents"), 
+      where("docType", "==", docType),
+      orderBy(orderByField, orderByDirection),
+      limit(500)
+    );
+  }, [db, docType, orderByField, orderByDirection]);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  useEffect(() => {
+    if (!stableQuery) return;
+    
+    setLoading(true);
+    const unsubscribe = onSnapshot(stableQuery, (snapshot) => {
         const docsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Document));
         setAllDocuments(docsData);
         setLoading(false);
@@ -96,11 +108,13 @@ export function DocumentList({
         console.error("Error fetching documents: ", err);
         setError(err);
         setLoading(false);
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร", description: err.message });
+        if (!err.message?.includes('requires an index')) {
+            toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการโหลดเอกสาร", description: err.message });
+        }
     });
 
     return () => unsubscribe();
-  }, [db, docType, toast]);
+  }, [stableQuery, toast]);
 
   const processedDocuments = useMemo(() => {
     let filtered = [...allDocuments];
@@ -120,17 +134,11 @@ export function DocumentList({
       );
     }
     
-    filtered.sort((a, b) => {
-        const valA = a[orderByField as keyof Document] as any;
-        const valB = b[orderByField as keyof Document] as any;
-
-        if (valA < valB) return orderByDirection === 'asc' ? -1 : 1;
-        if (valA > valB) return orderByDirection === 'asc' ? 1 : -1;
-        return 0;
-    });
+    // sorting is already done in Firestore query, but we re-sort here if sorting by a field that's not in the query
+    // or just leave it since the query already handles it for the primary list.
 
     return filtered;
-  }, [allDocuments, searchTerm, statusFilter, orderByField, orderByDirection]);
+  }, [allDocuments, searchTerm, statusFilter]);
   
   const paginatedDocuments = useMemo(() => {
     const start = currentPage * limitProp;
@@ -225,6 +233,11 @@ export function DocumentList({
               <AlertCircle />
               <p>เกิดข้อผิดพลาดในการโหลดเอกสาร</p>
               <p className="text-xs">{error.message}</p>
+              {error.message?.includes('requires an index') && (
+                  <Button asChild size="sm" variant="outline" className="mt-2">
+                      <a href={error.message.match(/https?:\/\/[^\s]+/)?.[0]} target="_blank" rel="noopener noreferrer">สร้าง Index</a>
+                  </Button>
+              )}
             </div>
           ) : (
             <div className="border rounded-md">

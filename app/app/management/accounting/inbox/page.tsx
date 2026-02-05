@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase/client-provider";
-import { collection, query, onSnapshot, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, updateDoc, runTransaction } from "firebase/firestore";
+import { collection, query, onSnapshot, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, updateDoc, runTransaction, limit, orderBy } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 
@@ -48,24 +48,48 @@ export default function AccountingInboxPage() {
 
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
+  // Memoize queries to prevent unnecessary re-subscriptions
+  const docsQuery = useMemo(() => {
+    if (!db) return null;
+    return query(
+      collection(db, "documents"), 
+      where("arStatus", "==", "PENDING"),
+      limit(200) // Show top 200 pending items
+    );
+  }, [db]);
+
+  const accountsQuery = useMemo(() => {
+    if (!db) return null;
+    return query(
+      collection(db, "accountingAccounts"), 
+      where("isActive", "==", true),
+      orderBy("name", "asc")
+    );
+  }, [db]);
+
   useEffect(() => {
-    if (!db || !hasPermission) {
-      setLoading(false);
+    if (!hasPermission || !docsQuery || !accountsQuery) {
+      if (!hasPermission) setLoading(false);
       return;
     }
 
-    const docsQuery = query(collection(db, "documents"), where("arStatus", "==", "PENDING"));
-    const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
-
     const unsubDocs = onSnapshot(docsQuery, 
-      (snap) => { setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>))); setLoading(false); },
-      (err) => { toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการโหลดข้อมูลเอกสาร", description: err.message }); setLoading(false); }
+      (snap) => { 
+        setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>))); 
+        setLoading(false); 
+      },
+      (err) => { 
+        console.error(err);
+        setLoading(false); 
+      }
     );
+
     const unsubAccounts = onSnapshot(accountsQuery, 
       (snap) => setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)))
     );
+
     return () => { unsubDocs(); unsubAccounts(); };
-  }, [db, toast, hasPermission]);
+  }, [hasPermission, docsQuery, accountsQuery]);
   
   useEffect(() => {
     if (confirmingDoc) {
@@ -105,7 +129,6 @@ export default function AccountingInboxPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data();
         
-        // Idempotency check: Abort if already processed
         if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.accountingEntryId) {
           throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
         }
@@ -115,7 +138,6 @@ export default function AccountingInboxPage() {
         const arId = `AR_${confirmingDoc.id}`;
         const arRef = doc(db, 'accountingObligations', arId);
 
-        // 1. Create entry (Idempotent by fixed ID)
         transaction.set(entryRef, {
           entryType: 'CASH_IN', 
           entryDate: confirmingDoc.docDate, 
@@ -131,7 +153,6 @@ export default function AccountingInboxPage() {
           createdAt: serverTimestamp(),
         });
 
-        // 2. Create AR obligation marked as PAID
         transaction.set(arRef, {
           type: 'AR', 
           status: 'PAID', 
@@ -147,7 +168,6 @@ export default function AccountingInboxPage() {
           customerNameSnapshot: confirmingDoc.customerSnapshot.name,
         });
 
-        // 3. Update doc status
         transaction.update(docRef, { 
             arStatus: 'PAID',
             status: 'APPROVED',
@@ -195,7 +215,6 @@ export default function AccountingInboxPage() {
             if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
             const docData = docSnap.data();
             
-            // Idempotency check
             if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.arObligationId) {
                 throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
             }
