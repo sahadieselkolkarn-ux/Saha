@@ -85,9 +85,9 @@ export default function BatchBillingNotePage() {
       const startDate = startOfMonth(currentMonth);
       const endDate = endOfMonth(currentMonth);
 
+      // Query all potential documents for the month
       const invoicesQuery = query(
         collection(db, 'documents'),
-        where('docType', '==', 'TAX_INVOICE'),
         where('docDate', '>=', format(startDate, 'yyyy-MM-dd')),
         where('docDate', '<=', format(endDate, 'yyyy-MM-dd'))
       );
@@ -100,8 +100,20 @@ export default function BatchBillingNotePage() {
       const currentBillingRun = billingRunSnap.exists() ? { id: billingRunSnap.id, ...billingRunSnap.data() } as WithId<BillingRun> : null;
       setBillingRun(currentBillingRun);
 
-      const allInvoices = invoicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Document));
-      const unpaidInvoices = allInvoices.filter(inv => inv.paymentSummary?.paymentStatus !== 'PAID');
+      const allDocs = invoicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Document));
+      
+      // Strict Filter per business context:
+      // 1. CREDIT terms only
+      // 2. Must be explicitly flagged for billing
+      // 3. Not yet PAID
+      // 4. TI or DN only
+      const unpaidInvoices = allDocs.filter(doc => 
+        (doc.docType === 'TAX_INVOICE' || doc.docType === 'DELIVERY_NOTE') &&
+        doc.paymentTerms === 'CREDIT' &&
+        doc.billingRequired === true &&
+        doc.status !== 'PAID' &&
+        doc.paymentSummary?.paymentStatus !== 'PAID'
+      );
 
       const groupedByCustomer: Record<string, { customer: Customer; invoices: Document[] }> = {};
       unpaidInvoices.forEach(inv => {
@@ -180,7 +192,13 @@ export default function BatchBillingNotePage() {
   const createBillingNotesForCustomer = async (customerData: GroupedCustomerData) => {
     if (!profile || !storeSettings || !db || !billingRunRef) return { success: false, error: "Required data missing." };
     
-    const { customer, includedInvoices, separateGroups } = customerData;
+    const { customer, includedInvoices, separateGroups, createdNoteIds } = customerData;
+    
+    // Idempotency: skip if already created
+    if (createdNoteIds) {
+        return { success: true, error: "Already created" };
+    }
+
     const createdIds: { main?: string; separate: Record<string, string> } = { separate: {} };
     let hasError = false;
 
@@ -188,12 +206,15 @@ export default function BatchBillingNotePage() {
       if (groupInvoices.length === 0) return;
       
       const totalAmount = groupInvoices.reduce((sum, inv) => sum + inv.grandTotal, 0);
-      const itemsForDoc = groupInvoices.map(inv => ({
-        description: `ใบกำกับภาษีเลขที่ ${inv.docNo} (วันที่: ${safeFormat(new Date(inv.docDate), 'dd/MM/yy')})`,
-        quantity: 1,
-        unitPrice: inv.grandTotal,
-        total: inv.grandTotal,
-      }));
+      const itemsForDoc = groupInvoices.map(inv => {
+        const typeLabel = inv.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของ';
+        return {
+          description: `${typeLabel}เลขที่ ${inv.docNo} (วันที่: ${safeFormat(new Date(inv.docDate), 'dd/MM/yy')})`,
+          quantity: 1,
+          unitPrice: inv.grandTotal,
+          total: inv.grandTotal,
+        };
+      });
       
       try {
         const { docId } = await createDocument(db, 'BILLING_NOTE', {
@@ -209,7 +230,7 @@ export default function BatchBillingNotePage() {
           withTax: false,
           vatAmount: 0,
           grandTotal: totalAmount,
-          notes: `เอกสารกลุ่ม: ${groupKey}`,
+          notes: groupKey === 'MAIN' ? '' : `เอกสารกลุ่ม: ${groupKey}`,
           senderName: profile.displayName,
           receiverName: customer.name
         }, profile);
@@ -231,7 +252,12 @@ export default function BatchBillingNotePage() {
     }
     
     if (!hasError) {
-      await setDoc(billingRunRef, { createdBillingNotes: { [customer.id]: createdIds } }, { merge: true });
+      // Use nested set to avoid overwriting other customer entries in the month batch
+      await setDoc(billingRunRef, { 
+        createdBillingNotes: { 
+          [customer.id]: createdIds 
+        } 
+      }, { merge: true });
     }
 
     return { success: !hasError, error: hasError ? "Some notes failed." : "" };
@@ -240,13 +266,24 @@ export default function BatchBillingNotePage() {
   const handleBulkCreate = async () => {
     setIsBulkCreating(true);
     let successCount = 0;
+    let skippedCount = 0;
+
     for (const data of customerData) {
+        if (data.createdNoteIds) {
+            skippedCount++;
+            continue;
+        }
+
         if (data.includedInvoices.length > 0 || Object.keys(data.separateGroups).length > 0) {
             const result = await createBillingNotesForCustomer(data);
             if (result.success) successCount++;
         }
     }
-    toast({ title: "สร้างใบวางบิลทั้งหมดเสร็จสิ้น", description: `สร้างสำเร็จ ${successCount} จาก ${customerData.length} รายการ` });
+    
+    toast({ 
+        title: "สร้างใบวางบิลเสร็จสิ้น", 
+        description: `สร้างใหม่ ${successCount} รายการ, ข้ามรายที่ทำไปแล้ว ${skippedCount} รายการ` 
+    });
     setIsBulkCreating(false);
     await fetchData();
   };
@@ -266,7 +303,7 @@ export default function BatchBillingNotePage() {
 
   return (
     <>
-      <PageHeader title="ใบวางบิล (สรุปทั้งเดือน)" description="สร้างใบวางบิลอัตโนมัติจากใบกำกับภาษีที่ยังไม่ชำระ">
+      <PageHeader title="ใบวางบิล (สรุปทั้งเดือน)" description="รวบรวมใบกำกับภาษีและใบส่งของเครดิตเพื่อวางบิล">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft /></Button>
           <span className="font-semibold text-lg w-36 text-center">{format(currentMonth, 'MMMM yyyy')}</span>
@@ -281,10 +318,10 @@ export default function BatchBillingNotePage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-6">
         <Card><CardHeader><CardTitle>{summary.totalCustomers}</CardTitle><CardDescription>ลูกค้าที่มียอดค้าง</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>{summary.totalInvoices}</CardTitle><CardDescription>บิลที่ยังไม่จ่าย</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>฿{formatCurrency(summary.totalAmount)}</CardTitle><CardDescription>ยอดรวม (ที่รวมในบิล)</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>{summary.deferredCount}</CardTitle><CardDescription>รายการที่เลื่อนไป</CardDescription></CardHeader></Card>
-        <Card><CardHeader><CardTitle>{summary.separateCount}</CardTitle><CardDescription>รายการที่แยกวางบิล</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle>{summary.totalInvoices}</CardTitle><CardDescription>บิลที่รวบรวมได้</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle>฿{formatCurrency(summary.totalAmount)}</CardTitle><CardDescription>ยอดรวมที่จะวางบิล</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle>{summary.deferredCount}</CardTitle><CardDescription>บิลที่เลื่อนไป</CardDescription></CardHeader></Card>
+        <Card><CardHeader><CardTitle>{summary.separateCount}</CardTitle><CardDescription>บิลที่แยกเล่ม</CardDescription></CardHeader></Card>
       </div>
 
       <Card>
@@ -305,13 +342,13 @@ export default function BatchBillingNotePage() {
                         {data.createdNoteIds ? (
                           <Badge variant="default">สร้างแล้ว</Badge>
                         ) : (data.includedInvoices.length > 0 || Object.keys(data.separateGroups).length > 0) ? (
-                          <Badge variant="outline">ยังไม่ได้สร้าง</Badge>
+                          <Badge variant="outline">รอดำเนินการ</Badge>
                         ) : (
                           <Badge variant="secondary">ไม่มีรายการ</Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="outline" size="sm" className="mr-2" onClick={() => setEditingCustomerData(data)}><Edit className="mr-2 h-3 w-3"/> แก้ไข</Button>
+                        <Button variant="outline" size="sm" className="mr-2" onClick={() => setEditingCustomerData(data)} disabled={!!data.createdNoteIds}><Edit className="mr-2 h-3 w-3"/> แก้ไข</Button>
                         {!data.createdNoteIds ? (
                             <Button size="sm" onClick={() => createBillingNotesForCustomer(data).then(() => fetchData())} disabled={(data.includedInvoices.length + Object.keys(data.separateGroups).length) === 0}>สร้างใบวางบิล</Button>
                         ) : (
@@ -332,7 +369,7 @@ export default function BatchBillingNotePage() {
                   </Fragment>
                 ))
               ) : (
-                <TableRow><TableCell colSpan={5} className="h-24 text-center">ไม่พบใบกำกับภาษีที่ยังไม่จ่ายในเดือนนี้</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="h-24 text-center">ไม่พบเอกสารเครดิตที่ต้องวางบิลในเดือนนี้</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
