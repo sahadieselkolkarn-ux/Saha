@@ -79,6 +79,16 @@ export function PurchaseDocForm() {
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // IDEMPOTENCY: Generate a stable ID for new documents on mount
+  const [creationId] = useState(() => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let autoId = '';
+    for (let i = 0; i < 20; i++) {
+      autoId += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return autoId;
+  });
+
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "purchaseDocs", editDocId) : null), [db, editDocId]);
   const { data: docToEdit, isLoading: isLoadingDoc } = useDoc<PurchaseDoc>(docToEditRef);
 
@@ -179,10 +189,12 @@ export function PurchaseDocForm() {
   };
 
   const onSubmit = async (data: PurchaseFormData, isSubmitForReview: boolean) => {
+    // IDEMPOTENCY GUARD: Exit immediately if already submitting
     if (!db || !profile || !storage || isSubmitting) return;
+    
     const vendor = vendors.find(v => v.id === data.vendorId);
     if (!vendor) {
-        toast({ variant: 'destructive', title: 'กรุณาเลือกร้านค้า' });
+        toast({ variant: 'destructive', title: 'กรุณาเลือกล้านค้า' });
         return;
     }
 
@@ -206,17 +218,22 @@ export function PurchaseDocForm() {
         ...(isSubmitForReview && { submittedAt: serverTimestamp() })
       };
 
-      let finalDocId = editDocId;
+      let finalDocId = editDocId || creationId;
       let finalDocNo = docToEdit?.docNo;
 
       if (editDocId) {
         await updateDoc(doc(db, "purchaseDocs", editDocId), sanitizeForFirestore(docData));
       } else {
-        const docNo = await createPurchaseDoc(db, docData, profile, targetStatus);
-        finalDocNo = docNo;
-        const q = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo));
-        const snap = await getDocs(q);
-        finalDocId = snap.docs[0].id;
+        // Use createPurchaseDoc with idempotency provided ID
+        finalDocNo = await createPurchaseDoc(db, docData, profile, targetStatus, creationId);
+      }
+
+      // Ensure we have finalDocNo for claim logic if it was just created
+      if (!finalDocNo && !editDocId) {
+          // This should not happen with the logic in createPurchaseDoc but as a safety:
+          const q = query(collection(db, "purchaseDocs"), where("__name__", "==", creationId));
+          const snap = await getDocs(q);
+          if (!snap.empty) finalDocNo = snap.docs[0].data().docNo;
       }
 
       // If submitting for review, ensure a claim is created or updated
@@ -253,10 +270,11 @@ export function PurchaseDocForm() {
 
       toast({ title: isSubmitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
       router.push("/app/office/parts/purchases");
+      // Note: We intentionally do NOT set isSubmitting back to false on success 
+      // to keep buttons disabled while the router navigates away.
     } catch (e: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: e.message });
-    } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false); // Reset only on error
     }
   };
 

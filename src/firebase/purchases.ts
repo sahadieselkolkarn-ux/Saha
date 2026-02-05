@@ -11,18 +11,33 @@ import {
 import type { DocumentSettings, DocumentCounters, PurchaseDoc, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
 
+/**
+ * Creates a new purchase document with a transactionally-generated document number.
+ * Includes an idempotency check if providedDocId is supplied.
+ */
 export async function createPurchaseDoc(
   db: Firestore,
   data: Omit<PurchaseDoc, 'id' | 'docNo' | 'status' | 'createdAt' | 'updatedAt'>,
   userProfile: UserProfile,
-  initialStatus: PurchaseDoc['status'] = 'DRAFT'
+  initialStatus: PurchaseDoc['status'] = 'DRAFT',
+  providedDocId?: string
 ): Promise<string> {
   const year = new Date(data.docDate).getFullYear();
   const counterRef = doc(db, 'documentCounters', String(year));
   const docSettingsRef = doc(db, 'settings', 'documents');
-  const newDocRef = doc(collection(db, 'purchaseDocs'));
+  
+  // Use provided ID for idempotency or generate a new reference
+  const newDocRef = providedDocId ? doc(db, 'purchaseDocs', providedDocId) : doc(collection(db, 'purchaseDocs'));
 
   const documentNumber = await runTransaction(db, async (transaction) => {
+    // IDEMPOTENCY CHECK: If document already exists, just return its docNo
+    if (providedDocId) {
+      const existingDoc = await transaction.get(newDocRef);
+      if (existingDoc.exists()) {
+        return existingDoc.data().docNo as string;
+      }
+    }
+
     const counterDoc = await transaction.get(counterRef);
     const docSettingsDoc = await transaction.get(docSettingsRef);
 
