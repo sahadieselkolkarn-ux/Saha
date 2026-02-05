@@ -23,10 +23,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Loader2, Search, MoreHorizontal, CheckCircle, XCircle } from "lucide-react";
+import { Loader2, Search, MoreHorizontal, CheckCircle, XCircle, Eye } from "lucide-react";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { PurchaseClaim, AccountingAccount, PurchaseDoc } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
+import Link from "next/link";
 
 type ClaimStatus = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -49,8 +50,8 @@ function ApproveCashDialog({ claim, accounts, onClose, onConfirm }: { claim: Wit
     resolver: zodResolver(cashApprovalSchema),
     defaultValues: {
       paidDate: format(new Date(), "yyyy-MM-dd"),
-      paymentMethod: claim.suggestedPaymentMethod,
-      accountId: claim.suggestedAccountId,
+      paymentMethod: claim.suggestedPaymentMethod || 'CASH',
+      accountId: claim.suggestedAccountId || (accounts.find(a=>a.type==='CASH')?.id || accounts[0]?.id || ""),
     },
   });
 
@@ -65,11 +66,11 @@ function ApproveCashDialog({ claim, accounts, onClose, onConfirm }: { claim: Wit
       <DialogContent>
         <DialogHeader>
           <DialogTitle>ยืนยันการจ่ายเงิน (รายการซื้อ)</DialogTitle>
-          <DialogDescription>สำหรับเอกสาร: {claim.purchaseDocNo}</DialogDescription>
+          <DialogDescription>สำหรับเอกสาร: {claim.purchaseDocNo} ({claim.vendorNameSnapshot})</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form id="approve-cash-form" onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 py-4">
-            <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>วันที่จ่ายเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+            <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>วันที่จ่ายเงินจริง</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="paymentMethod" render={({ field }) => (
                 <FormItem>
@@ -92,12 +93,15 @@ function ApproveCashDialog({ claim, accounts, onClose, onConfirm }: { claim: Wit
                 </FormItem>
               )} />
             </div>
-            <div className="text-right font-bold text-lg">ยอดจ่าย: {formatCurrency(claim.amountTotal)}</div>
+            <div className="p-4 border rounded-md text-center bg-primary/5">
+                <p className="text-sm text-muted-foreground">ยอดเงินที่จะบันทึกจ่าย</p>
+                <p className="text-2xl font-bold text-primary">{formatCurrency(claim.amountTotal)} บาท</p>
+            </div>
           </form>
         </Form>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isLoading}>ยกเลิก</Button>
-          <Button type="submit" form="approve-cash-form" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 animate-spin" />}ยืนยันการจ่าย</Button>
+          <Button type="submit" form="approve-cash-form" disabled={isLoading}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยันการจ่ายและลงบัญชี</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -110,7 +114,7 @@ function RejectClaimDialog({ claim, onClose, onConfirm }: { claim: WithId<Purcha
   const { toast } = useToast();
   
   const handleSubmit = async () => {
-    if (!reason) {
+    if (!reason.trim()) {
       toast({ variant: "destructive", title: "กรุณากรอกเหตุผล" });
       return;
     }
@@ -123,15 +127,15 @@ function RejectClaimDialog({ claim, onClose, onConfirm }: { claim: WithId<Purcha
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>ตีกลับรายการ</DialogTitle>
-          <DialogDescription>สำหรับเอกสาร: {claim.purchaseDocNo}</DialogDescription>
+          <DialogTitle>ตีกลับรายการซื้อ</DialogTitle>
+          <DialogDescription>ระบุเหตุผลเพื่อให้ออฟฟิศแก้ไขเอกสาร: {claim.purchaseDocNo}</DialogDescription>
         </DialogHeader>
         <div className="py-4">
-          <Textarea placeholder="กรุณาระบุเหตุผลในการตีกลับ..." value={reason} onChange={e => setReason(e.target.value)} />
+          <Textarea placeholder="เช่น ยอดเงินไม่ตรงกับบิล, เลือกชื่อร้านค้าผิด..." value={reason} onChange={e => setReason(e.target.value)} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isLoading}>ยกเลิก</Button>
-          <Button variant="destructive" onClick={handleSubmit} disabled={isLoading || !reason}>{isLoading && <Loader2 className="mr-2 animate-spin" />}ตีกลับ</Button>
+          <Button variant="destructive" onClick={handleSubmit} disabled={isLoading || !reason.trim()}>{isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยันตีกลับ</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -219,7 +223,13 @@ function PurchaseInboxPageContent() {
             vendorNameSnapshot: approvingClaim.vendorNameSnapshot,
             createdAt: serverTimestamp(),
         });
-        batch.update(purchaseDocRef, { status: 'PAID', approvedAt: serverTimestamp(), approvedByUid: profile.uid, approvedByName: profile.displayName, accountingEntryId: entryRef.id });
+        batch.update(purchaseDocRef, { 
+            status: 'PAID', 
+            approvedAt: serverTimestamp(), 
+            approvedByUid: profile.uid, 
+            approvedByName: profile.displayName, 
+            accountingEntryId: entryRef.id 
+        });
         await batch.commit();
         toast({ title: "อนุมัติและบันทึกการจ่ายเงินสำเร็จ" });
         setApprovingClaim(null);
@@ -252,7 +262,13 @@ function PurchaseInboxPageContent() {
             amountTotal: purchaseDocData.grandTotal, amountPaid: 0, balance: purchaseDocData.grandTotal,
             createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
         });
-        batch.update(purchaseDocRef, { status: 'UNPAID', approvedAt: serverTimestamp(), approvedByUid: profile.uid, approvedByName: profile.displayName, apObligationId: apObligationRef.id });
+        batch.update(purchaseDocRef, { 
+            status: 'UNPAID', 
+            approvedAt: serverTimestamp(), 
+            approvedByUid: profile.uid, 
+            approvedByName: profile.displayName, 
+            apObligationId: apObligationRef.id 
+        });
         
         await batch.commit();
         toast({ title: "อนุมัติและสร้างเจ้าหนี้สำเร็จ" });
@@ -267,7 +283,12 @@ function PurchaseInboxPageContent() {
     try {
         const batch = writeBatch(db);
         batch.update(doc(db, 'purchaseClaims', rejectingClaim.id), { status: 'REJECTED', rejectedAt: serverTimestamp(), rejectedByUid: profile.uid, rejectedByName: profile.displayName, rejectReason: reason });
-        batch.update(doc(db, 'purchaseDocs', rejectingClaim.purchaseDocId), { status: 'CANCELLED' });
+        batch.update(doc(db, 'purchaseDocs', rejectingClaim.purchaseDocId), { 
+            status: 'REJECTED',
+            reviewRejectReason: reason,
+            reviewRejectedAt: serverTimestamp(),
+            reviewRejectedByName: profile.displayName
+        });
         await batch.commit();
         toast({ title: "ตีกลับรายการสำเร็จ" });
         setRejectingClaim(null);
@@ -276,25 +297,13 @@ function PurchaseInboxPageContent() {
     }
   };
 
-  if (!hasPermission) {
-    return (
-        <div className="w-full">
-            <PageHeader title="รอตรวจสอบรายการซื้อ" />
-            <Card className="text-center py-12">
-                <CardHeader>
-                    <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
-                    <CardDescription>สำหรับฝ่ายบริหาร/ผู้ดูแลเท่านั้น</CardDescription>
-                </CardHeader>
-            </Card>
-        </div>
-    );
-  }
+  if (!hasPermission) return <Card className="py-12 text-center"><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle></Card>;
 
   return (
     <>
-      <PageHeader title="รอตรวจสอบรายการซื้อ" description="ตรวจสอบและยืนยันการขออนุมัติจัดซื้อ/จ่ายเงิน" />
+      <PageHeader title="รอตรวจสอบรายการซื้อ" description="ตรวจสอบและยืนยันการบันทึกรายการซื้อสินค้าจากออฟฟิศ" />
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ClaimStatus)}>
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <TabsList>
             <TabsTrigger value="PENDING">รอตรวจสอบ</TabsTrigger>
             <TabsTrigger value="APPROVED">ยืนยันแล้ว</TabsTrigger>
@@ -302,34 +311,50 @@ function PurchaseInboxPageContent() {
           </TabsList>
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="ค้นหาจากเลขที่เอกสาร, ชื่อร้านค้า, เลขบิล..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
+            <Input placeholder="ค้นหาชื่อร้านค้า, เลขบิล..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
           </div>
         </div>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="pt-6 overflow-x-auto">
             <Table>
-              <TableHeader><TableRow><TableHead>วันที่แจ้ง</TableHead><TableHead>ร้านค้า</TableHead><TableHead>เลขที่เอกสาร/บิล</TableHead><TableHead>ยอดเงิน</TableHead><TableHead>รูปแบบ</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>วันที่แจ้ง</TableHead><TableHead>ร้านค้า</TableHead><TableHead>เลขที่เอกสาร/บิล</TableHead><TableHead className="text-right">ยอดเงิน</TableHead><TableHead>รูปแบบ</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
               <TableBody>
                 {loading ? <TableRow><TableCell colSpan={7} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                : filteredClaims.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center h-24">ไม่พบรายการ</TableCell></TableRow>
+                : filteredClaims.length === 0 ? <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground italic">ไม่พบรายการ</TableCell></TableRow>
                 : filteredClaims.map(claim => (
                     <TableRow key={claim.id}>
-                        <TableCell>{safeFormat(claim.createdAt, "dd/MM/yy HH:mm")}</TableCell>
-                        <TableCell>{claim.vendorNameSnapshot}</TableCell>
-                        <TableCell>{claim.purchaseDocNo} / {claim.invoiceNo}</TableCell>
-                        <TableCell>{formatCurrency(claim.amountTotal)}</TableCell>
-                        <TableCell><Badge variant={claim.paymentMode === 'CASH' ? 'default' : 'outline'}>{claim.paymentMode}</Badge></TableCell>
-                        <TableCell><Badge variant={claim.status === 'APPROVED' ? 'default' : claim.status === 'REJECTED' ? 'destructive' : 'secondary'}>{claim.status}</Badge></TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">{safeFormat(claim.createdAt, "dd/MM/yy HH:mm")}</TableCell>
+                        <TableCell className="font-medium">{claim.vendorNameSnapshot}</TableCell>
+                        <TableCell className="text-xs">
+                            <div className="font-mono">{claim.purchaseDocNo}</div>
+                            <div className="text-muted-foreground italic">บิล: {claim.invoiceNo}</div>
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-primary">{formatCurrency(claim.amountTotal)}</TableCell>
+                        <TableCell><Badge variant={claim.paymentMode === 'CASH' ? 'default' : 'outline'}>{claim.paymentMode === 'CASH' ? 'เงินสด' : 'เครดิต'}</Badge></TableCell>
+                        <TableCell>
+                            <Badge variant={claim.status === 'APPROVED' ? 'default' : claim.status === 'REJECTED' ? 'destructive' : 'secondary'}>
+                                {claim.status === 'PENDING' ? 'รอตรวจสอบ' : claim.status === 'APPROVED' ? 'ยืนยันแล้ว' : 'ตีกลับ'}
+                            </Badge>
+                        </TableCell>
                         <TableCell className="text-right">
-                            {claim.status === 'PENDING' && (
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                                    <DropdownMenuContent>
-                                        <DropdownMenuItem onSelect={() => setApprovingClaim(claim)}><CheckCircle className="mr-2 h-4 w-4"/>อนุมัติ</DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => setRejectingClaim(claim)} className="text-destructive"><XCircle className="mr-2 h-4 w-4"/>ตีกลับ</DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            )}
+                            <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="icon" asChild title="ดูรายละเอียด">
+                                    <Link href={`/app/office/parts/purchases/${claim.purchaseDocId}`}><Eye className="h-4 w-4"/></Link>
+                                </Button>
+                                {claim.status === 'PENDING' && (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button></DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onSelect={() => setApprovingClaim(claim)} className="text-green-600 focus:text-green-600 font-semibold">
+                                                <CheckCircle className="mr-2 h-4 w-4"/>ยืนยันลงบัญชี
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => setRejectingClaim(claim)} className="text-destructive focus:text-destructive">
+                                                <XCircle className="mr-2 h-4 w-4"/>ตีกลับแก้ไข
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )}
+                            </div>
                         </TableCell>
                     </TableRow>
                 ))}
@@ -342,10 +367,10 @@ function PurchaseInboxPageContent() {
       {approvingClaim?.paymentMode === 'CREDIT' && (
           <AlertDialog open={true} onOpenChange={(open) => !open && setApprovingClaim(null)}>
               <AlertDialogContent>
-                  <AlertDialogHeader><AlertDialogTitle>ยืนยันการอนุมัติ (เครดิต)</AlertDialogTitle><AlertDialogDescription>ต้องการอนุมัติรายการนี้และสร้างเป็นเจ้าหนี้การค้า (AP) หรือไม่?</AlertDialogDescription></AlertDialogHeader>
+                  <AlertDialogHeader><AlertDialogTitle>ยืนยันรายการซื้อ (เครดิต)</AlertDialogTitle><AlertDialogDescription>ต้องการอนุมัติรายการนี้และสร้างเป็นเจ้าหนี้การค้า (AP) หรือไม่?</AlertDialogDescription></AlertDialogHeader>
                   <AlertDialogFooter>
                       <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleApproveCredit}>ยืนยัน</AlertDialogAction>
+                      <AlertDialogAction onClick={handleApproveCredit}>ยืนยันและตั้งเจ้าหนี้</AlertDialogAction>
                   </AlertDialogFooter>
               </AlertDialogContent>
           </AlertDialog>

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, addDoc, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
@@ -15,17 +15,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, Camera, X } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, Camera, X, Send } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import Image from "next/image";
 
@@ -42,7 +41,7 @@ const lineItemSchema = z.object({
 });
 
 const purchaseFormSchema = z.object({
-  vendorId: z.string().min(1, "กรุณาเลือกร้านค้า"),
+  vendorId: z.string().min(1, "กรุณาเลือกล้านค้า"),
   docDate: z.string().min(1, "กรุณาเลือกวันที่"),
   invoiceNo: z.string().min(1, "กรุณากรอกเลขที่บิล"),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
@@ -78,6 +77,7 @@ export function PurchaseDocForm() {
   
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "purchaseDocs", editDocId) : null), [db, editDocId]);
   const { data: docToEdit, isLoading: isLoadingDoc } = useDoc<PurchaseDoc>(docToEditRef);
@@ -102,6 +102,9 @@ export function PurchaseDocForm() {
   const watchedDiscount = useWatch({ control: form.control, name: "discountAmount" });
   const watchedIsVat = useWatch({ control: form.control, name: "withTax" });
   const watchedPaymentMode = form.watch("paymentMode");
+
+  const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
+  const { data: storeSettings } = useDoc<any>(storeSettingsRef);
 
   useEffect(() => {
     if (!db) return;
@@ -175,55 +178,85 @@ export function PurchaseDocForm() {
     setVendorSearch("");
   };
 
-  const onSubmit = async (data: PurchaseFormData) => {
-    if (!db || !profile || !storage) return;
+  const onSubmit = async (data: PurchaseFormData, isSubmitForReview: boolean) => {
+    if (!db || !profile || !storage || isSubmitting) return;
     const vendor = vendors.find(v => v.id === data.vendorId);
-    if (!vendor) return;
+    if (!vendor) {
+        toast({ variant: 'destructive', title: 'กรุณาเลือกร้านค้า' });
+        return;
+    }
 
+    setIsSubmitting(true);
     try {
-      const uploadedPhotos: string[] = [];
+      const uploadedPhotos: string[] = docToEdit?.billPhotos || [];
       for (const file of photos) {
         const photoRef = ref(storage, `purchases/${Date.now()}-${file.name}`);
         await uploadBytes(photoRef, file);
         uploadedPhotos.push(await getDownloadURL(photoRef));
       }
 
+      const targetStatus = isSubmitForReview ? 'PENDING_REVIEW' : 'DRAFT';
+
       const docData = {
         ...data,
-        vendorSnapshot: { shortName: vendor.shortName, companyName: vendor.companyName, taxId: vendor.taxId },
+        vendorSnapshot: { shortName: vendor.shortName, companyName: vendor.companyName, taxId: vendor.taxId, address: vendor.address },
         billPhotos: uploadedPhotos,
+        status: targetStatus,
+        updatedAt: serverTimestamp(),
+        ...(isSubmitForReview && { submittedAt: serverTimestamp() })
       };
 
+      let finalDocId = editDocId;
+      let finalDocNo = docToEdit?.docNo;
+
       if (editDocId) {
-        await updateDoc(doc(db, "purchaseDocs", editDocId), { ...sanitizeForFirestore(docData), updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, "purchaseDocs", editDocId), sanitizeForFirestore(docData));
       } else {
-        const docNo = await createPurchaseDoc(db, docData, profile);
-        
+        const docNo = await createPurchaseDoc(db, docData, profile, targetStatus);
+        finalDocNo = docNo;
         const q = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo));
         const snap = await getDocs(q);
-        const newDocId = snap.docs[0].id;
+        finalDocId = snap.docs[0].id;
+      }
 
-        await addDoc(collection(db, "purchaseClaims"), {
+      // If submitting for review, ensure a claim is created or updated
+      if (isSubmitForReview && finalDocId && finalDocNo) {
+        const claimsQuery = query(collection(db, "purchaseClaims"), where("purchaseDocId", "==", finalDocId));
+        const claimsSnap = await getDocs(claimsQuery);
+        
+        const claimData = {
             status: 'PENDING',
-            createdAt: serverTimestamp(),
-            createdByUid: profile.uid,
-            createdByName: profile.displayName,
-            purchaseDocId: newDocId,
-            purchaseDocNo: docNo,
+            purchaseDocId: finalDocId,
+            purchaseDocNo: finalDocNo,
             vendorNameSnapshot: vendor.companyName,
             invoiceNo: data.invoiceNo,
             paymentMode: data.paymentMode,
             amountTotal: data.grandTotal,
-            suggestedAccountId: data.suggestedAccountId,
-            suggestedPaymentMethod: data.suggestedPaymentMethod,
-            note: data.note,
-        });
+            suggestedAccountId: data.suggestedAccountId || null,
+            suggestedPaymentMethod: data.suggestedPaymentMethod || null,
+            note: data.note || "",
+            updatedAt: serverTimestamp(),
+        };
+
+        if (claimsSnap.empty) {
+            await addDoc(collection(db, "purchaseClaims"), {
+                ...claimData,
+                createdAt: serverTimestamp(),
+                createdByUid: profile.uid,
+                createdByName: profile.displayName,
+            });
+        } else {
+            const claimId = claimsSnap.docs[0].id;
+            await updateDoc(doc(db, "purchaseClaims", claimId), claimData);
+        }
       }
 
-      toast({ title: "บันทึกรายการซื้อสำเร็จ" });
+      toast({ title: isSubmitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
       router.push("/app/office/parts/purchases");
     } catch (e: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: e.message });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -232,14 +265,36 @@ export function PurchaseDocForm() {
     (v.companyName.toLowerCase().includes(vendorSearch.toLowerCase()) || v.shortName.toLowerCase().includes(vendorSearch.toLowerCase()))
   );
 
-  if (isLoadingData || isLoadingDoc) return <Skeleton className="h-96" />;
+  if (isLoadingData || (editDocId && isLoadingDoc)) return <Skeleton className="h-96" />;
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <div className="flex justify-between items-center">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button>
-            <Button type="submit" disabled={form.formState.isSubmitting}><Save className="mr-2"/> {editDocId ? "บันทึกการแก้ไข" : "ส่งขออนุมัติ"}</Button>
+      <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting}>
+                <ArrowLeft className="mr-2 h-4 w-4"/> กลับ
+            </Button>
+            <div className="flex gap-2 w-full sm:w-auto">
+                <Button 
+                    type="button" 
+                    variant="secondary" 
+                    className="flex-1 sm:flex-none"
+                    disabled={isSubmitting} 
+                    onClick={() => form.handleSubmit(data => onSubmit(data, false))()}
+                >
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
+                    บันทึกฉบับร่าง
+                </Button>
+                <Button 
+                    type="button" 
+                    className="flex-1 sm:flex-none"
+                    disabled={isSubmitting} 
+                    onClick={() => form.handleSubmit(data => onSubmit(data, true))()}
+                >
+                    {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
+                    บันทึกและส่งตรวจสอบ
+                </Button>
+            </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -249,7 +304,7 @@ export function PurchaseDocForm() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormItem>
                         <FormLabel>ชนิดร้านค้า</FormLabel>
-                        <Select value={selectedVendorType} onValueChange={handleVendorTypeChange}>
+                        <Select value={selectedVendorType} onValueChange={handleVendorTypeChange} disabled={isSubmitting}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="เลือกชนิดร้านค้า" />
@@ -269,7 +324,7 @@ export function PurchaseDocForm() {
                               <Popover open={isVendorPopoverOpen} onOpenChange={setIsVendorPopoverOpen}>
                                   <PopoverTrigger asChild>
                                       <FormControl>
-                                        <Button variant="outline" className="w-full justify-between overflow-hidden">
+                                        <Button variant="outline" className="w-full justify-between overflow-hidden" disabled={isSubmitting}>
                                           <span className="truncate">{field.value ? vendors.find(v=>v.id===field.value)?.companyName : "เลือกร้านค้า..."}</span>
                                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50"/>
                                         </Button>
@@ -285,10 +340,10 @@ export function PurchaseDocForm() {
                                               <Button 
                                                 key={v.id} 
                                                 variant="ghost" 
-                                                className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none" 
+                                                className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" 
                                                 onClick={()=>{field.onChange(v.id); setIsVendorPopoverOpen(false);}}
                                               >
-                                                <div className="text-left">
+                                                <div className="flex flex-col">
                                                   <p className="font-semibold">{v.shortName}</p>
                                                   <p className="text-xs text-muted-foreground">{v.companyName}</p>
                                                 </div>
@@ -306,8 +361,8 @@ export function PurchaseDocForm() {
                     </div>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <FormField name="invoiceNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล</FormLabel><FormControl><Input {...field}/></FormControl></FormItem>)} />
-                      <FormField name="docDate" render={({ field }) => (<FormItem><FormLabel>วันที่ในบิล</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                      <FormField name="invoiceNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล</FormLabel><FormControl><Input {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
+                      <FormField name="docDate" render={({ field }) => (<FormItem><FormLabel>วันที่ในบิล</FormLabel><FormControl><Input type="date" {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
                     </div>
                 </CardContent>
             </Card>
@@ -318,7 +373,7 @@ export function PurchaseDocForm() {
                     <FormField name="paymentMode" render={({ field }) => (
                         <FormItem>
                           <FormLabel>รูปแบบ</FormLabel>
-                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2">
+                          <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2" disabled={isSubmitting}>
                             <div className="flex items-center space-x-2">
                               <RadioGroupItem value="CASH" id="p-cash"/>
                               <Label htmlFor="p-cash">เงินสด/โอน</Label>
@@ -331,13 +386,13 @@ export function PurchaseDocForm() {
                         </FormItem>
                     )} />
                     {watchedPaymentMode === 'CREDIT' ? (
-                        <FormField name="dueDate" render={({ field }) => (<FormItem><FormLabel>วันครบกำหนด</FormLabel><FormControl><Input type="date" {...field} value={field.value || ''}/></FormControl></FormItem>)} />
+                        <FormField name="dueDate" render={({ field }) => (<FormItem><FormLabel>วันครบกำหนด</FormLabel><FormControl><Input type="date" {...field} value={field.value || ''} disabled={isSubmitting}/></FormControl></FormItem>)} />
                     ) : (
                         <div className="grid grid-cols-2 gap-4">
                             <FormField name="suggestedPaymentMethod" render={({ field }) => (
                               <FormItem>
                                 <FormLabel>จ่ายโดย</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                                   <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                                   <SelectContent>
                                     <SelectItem value="CASH">เงินสด</SelectItem>
@@ -349,7 +404,7 @@ export function PurchaseDocForm() {
                             <FormField name="suggestedAccountId" render={({ field }) => (
                               <FormItem>
                                 <FormLabel>บัญชีที่จ่าย</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
+                                <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                                   <FormControl><SelectTrigger><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl>
                                   <SelectContent>
                                     {accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
@@ -366,21 +421,23 @@ export function PurchaseDocForm() {
         <Card>
             <CardHeader><CardTitle className="text-base">3. รายการสินค้า/อะไหล่</CardTitle></CardHeader>
             <CardContent>
-                <Table>
-                    <TableHeader><TableRow><TableHead>รายการ</TableHead><TableHead className="w-24">จำนวน</TableHead><TableHead className="w-32">ราคา/หน่วย</TableHead><TableHead className="w-32 text-right">รวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
-                    <TableBody>
-                        {fields.map((field, index) => (
-                            <TableRow key={field.id}>
-                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} />)}/></TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" {...field} onChange={e => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`)); }} />)}/></TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" {...field} onChange={e => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`)); }} />)}/></TableCell>
-                                <TableCell className="text-right">{(form.watch(`items.${index}.total`) || 0).toLocaleString()}</TableCell>
-                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={()=>remove(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-                <Button type="button" variant="outline" size="sm" className="mt-4" onClick={()=>append({description:'', quantity:1, unitPrice:0, total:0})}><PlusCircle className="mr-2"/> เพิ่มรายการ</Button>
+                <div className="border rounded-md overflow-x-auto">
+                    <Table>
+                        <TableHeader><TableRow><TableHead>รายการ</TableHead><TableHead className="w-24">จำนวน</TableHead><TableHead className="w-32">ราคา/หน่วย</TableHead><TableHead className="w-32 text-right">รวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
+                        <TableBody>
+                            {fields.map((field, index) => (
+                                <TableRow key={field.id}>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} disabled={isSubmitting} />)}/></TableCell>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" className="text-right" {...field} disabled={isSubmitting} onChange={e => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`)); }} />)}/></TableCell>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" className="text-right" {...field} disabled={isSubmitting} onChange={e => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`)); }} />)}/></TableCell>
+                                    <TableCell className="text-right font-medium">{(form.watch(`items.${index}.total`) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                                    <TableCell><Button type="button" variant="ghost" size="icon" disabled={isSubmitting} onClick={()=>remove(index)}><Trash2 className="h-4 w-4 text-destructive"/></Button></TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="mt-4" disabled={isSubmitting} onClick={()=>append({description:'', quantity:1, unitPrice:0, total:0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
             </CardContent>
         </Card>
 
@@ -388,35 +445,46 @@ export function PurchaseDocForm() {
             <Card>
                 <CardHeader><CardTitle className="text-base">4. แนบรูปบิล</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                    <Input type="file" multiple accept="image/*" onChange={handlePhotoChange} />
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="flex items-center gap-4">
+                        <Input type="file" multiple accept="image/*" disabled={isSubmitting} onChange={handlePhotoChange} className="max-w-[300px]" />
+                        {photoPreviews.length > 0 && <p className="text-xs text-muted-foreground">{photoPreviews.length} ไฟล์ที่เลือกใหม่</p>}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {/* Show existing photos */}
+                        {docToEdit?.billPhotos?.map((url, i) => (
+                            <div key={`existing-${i}`} className="relative aspect-square w-20 border rounded-md overflow-hidden bg-muted">
+                                <Image src={url} alt="existing" fill className="object-cover" />
+                                <Badge className="absolute bottom-0 right-0 rounded-none text-[8px] h-3 px-1">Cloud</Badge>
+                            </div>
+                        ))}
+                        {/* Show new previews */}
                         {photoPreviews.map((p, i) => (
-                            <div key={i} className="relative aspect-square border rounded-md overflow-hidden">
+                            <div key={`new-${i}`} className="relative aspect-square w-20 border rounded-md overflow-hidden bg-muted">
                                 <Image src={p} alt="preview" fill className="object-cover" />
-                                <Button type="button" variant="destructive" size="icon" className="absolute top-0 right-0 h-6 w-6" onClick={() => {
+                                <Button type="button" variant="destructive" size="icon" className="absolute top-0 right-0 h-5 w-5 rounded-none" onClick={() => {
                                     setPhotos(prev => prev.filter((_, idx) => idx !== i));
                                     setPhotoPreviews(prev => prev.filter((_, idx) => idx !== i));
                                 }}><X className="h-3 w-3"/></Button>
                             </div>
                         ))}
                     </div>
-                    <FormField name="note" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+                    <FormField name="note" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
                 </CardContent>
             </Card>
-            <div className="space-y-2 p-6 border rounded-lg bg-muted/30 h-fit">
-                <div className="flex justify-between"><span>รวมเป็นเงิน</span><span>{(form.watch('subtotal') || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between items-center">
-                    <span>ส่วนลด</span>
-                    <FormField name="discountAmount" render={({ field }) => (<Input type="number" className="w-32 text-right" {...field}/>)} />
+            <div className="space-y-4 p-6 border rounded-lg bg-muted/30 h-fit">
+                <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">รวมเป็นเงิน</span><span className="font-medium">{(form.watch('subtotal') || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">ส่วนลด (บาท)</span>
+                    <FormField name="discountAmount" render={({ field }) => (<Input type="number" step="any" className="w-32 text-right bg-background h-8" {...field} disabled={isSubmitting}/>)} />
                 </div>
                 <div className="flex justify-between items-center py-2">
                     <FormField name="withTax" render={({ field }) => (
-                        <div className="flex items-center space-x-2"><Checkbox checked={field.value} onCheckedChange={field.onChange}/><Label>ภาษีมูลค่าเพิ่ม 7%</Label></div>
+                        <div className="flex items-center space-x-2"><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isSubmitting}/><Label className="text-sm font-normal cursor-pointer">ภาษีมูลค่าเพิ่ม 7%</Label></div>
                     )} />
-                    <span>{(form.watch('vatAmount') || 0).toLocaleString()}</span>
+                    <span className="text-sm">{(form.watch('vatAmount') || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
                 <Separator className="my-2"/>
-                <div className="flex justify-between text-xl font-bold"><span>ยอดรวมสุทธิ</span><span>{(form.watch('grandTotal') || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between items-center text-xl font-bold text-primary"><span>ยอดรวมสุทธิ</span><span>{(form.watch('grandTotal') || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
             </div>
         </div>
       </form>

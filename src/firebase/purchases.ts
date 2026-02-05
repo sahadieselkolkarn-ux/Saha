@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -15,7 +14,8 @@ import { sanitizeForFirestore } from '@/lib/utils';
 export async function createPurchaseDoc(
   db: Firestore,
   data: Omit<PurchaseDoc, 'id' | 'docNo' | 'status' | 'createdAt' | 'updatedAt'>,
-  userProfile: UserProfile
+  userProfile: UserProfile,
+  initialStatus: PurchaseDoc['status'] = 'DRAFT'
 ): Promise<string> {
   const year = new Date(data.docDate).getFullYear();
   const counterRef = doc(db, 'documentCounters', String(year));
@@ -45,9 +45,10 @@ export async function createPurchaseDoc(
       ...data,
       id: newDocRef.id,
       docNo,
-      status: 'DRAFT',
+      status: initialStatus,
       createdAt: serverTimestamp() as Timestamp,
       updatedAt: serverTimestamp() as Timestamp,
+      ...(initialStatus === 'PENDING_REVIEW' && { submittedAt: serverTimestamp() as Timestamp })
     };
     
     const sanitizedData = sanitizeForFirestore(newDocumentData);

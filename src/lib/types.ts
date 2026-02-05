@@ -715,9 +715,10 @@ export interface PurchaseDoc {
   grandTotal: number;
   paymentMode: 'CASH' | 'CREDIT';
   dueDate?: string | null;
-  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'UNPAID' | 'PAID' | 'CANCELLED';
+  status: 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'UNPAID' | 'PAID' | 'CANCELLED';
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  submittedAt?: Timestamp;
   approvedAt?: Timestamp;
   approvedByUid?: string;
   approvedByName?: string;

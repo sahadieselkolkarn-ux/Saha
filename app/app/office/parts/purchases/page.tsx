@@ -2,8 +2,9 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, orderBy, where, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, where, limit, deleteDoc, doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -11,21 +12,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Eye } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Eye, Edit, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { PurchaseDoc } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { safeFormat } from "@/lib/date-utils";
 
-const getStatusVariant = (status?: PurchaseDoc['status']) => {
+const getStatusDisplay = (status?: PurchaseDoc['status']) => {
   switch (status) {
-    case 'DRAFT': return 'secondary';
-    case 'SUBMITTED': return 'outline';
-    case 'APPROVED':
-    case 'UNPAID':
-    case 'PAID': return 'default';
-    case 'CANCELLED': return 'destructive';
-    default: return 'outline';
+    case 'DRAFT': return { label: "ฉบับร่าง", variant: "secondary" as const };
+    case 'PENDING_REVIEW': return { label: "รอตรวจสอบ", variant: "outline" as const };
+    case 'REJECTED': return { label: "ตีกลับแก้ไข", variant: "destructive" as const };
+    case 'APPROVED': return { label: "อนุมัติแล้ว", variant: "default" as const };
+    case 'UNPAID': return { label: "รอชำระเงิน", variant: "default" as const };
+    case 'PAID': return { label: "จ่ายแล้ว", variant: "default" as const };
+    case 'CANCELLED': return { label: "ยกเลิก", variant: "destructive" as const };
+    default: return { label: status || "-", variant: "outline" as const };
   }
 };
 
@@ -36,10 +39,15 @@ const formatCurrency = (value: number) => {
 export default function PurchaseDocsListPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile } = useAuth();
 
   const [docs, setDocs] = useState<WithId<PurchaseDoc>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [docToDelete, setDocToDelete] = useState<WithId<PurchaseDoc> | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const isAdmin = profile?.role === 'ADMIN';
 
   useEffect(() => {
     if (!db) return;
@@ -66,6 +74,20 @@ export default function PurchaseDocsListPage() {
       (doc.invoiceNo && doc.invoiceNo.toLowerCase().includes(lowercasedFilter))
     );
   }, [docs, searchTerm]);
+
+  const handleDelete = async () => {
+    if (!db || !docToDelete) return;
+    setIsDeleting(true);
+    try {
+        await deleteDoc(doc(db, "purchaseDocs", docToDelete.id));
+        toast({ title: "ลบเอกสารสำเร็จ" });
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "ลบไม่สำเร็จ", description: e.message });
+    } finally {
+        setIsDeleting(false);
+        setDocToDelete(null);
+    }
+  };
 
   return (
     <>
@@ -107,26 +129,46 @@ export default function PurchaseDocsListPage() {
                 {loading ? (
                   <TableRow><TableCell colSpan={7} className="h-24 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
                 ) : filteredDocs.length > 0 ? (
-                  filteredDocs.map(doc => (
-                    <TableRow key={doc.id}>
-                      <TableCell>{safeFormat(new Date(doc.docDate), 'dd/MM/yy')}</TableCell>
-                      <TableCell className="font-medium">{doc.docNo}</TableCell>
-                      <TableCell>{doc.vendorSnapshot.shortName}</TableCell>
-                      <TableCell>{doc.invoiceNo}</TableCell>
-                      <TableCell><Badge variant={getStatusVariant(doc.status)}>{doc.status}</Badge></TableCell>
-                      <TableCell className="text-right">{formatCurrency(doc.grandTotal)}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            <DropdownMenuItem asChild>
-                                <Link href={`/app/office/parts/purchases/${doc.id}`}><Eye className="mr-2"/> ดูรายละเอียด</Link>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredDocs.map(purchaseDoc => {
+                    const statusInfo = getStatusDisplay(purchaseDoc.status);
+                    return (
+                      <TableRow key={purchaseDoc.id}>
+                        <TableCell>{safeFormat(new Date(purchaseDoc.docDate), 'dd/MM/yy')}</TableCell>
+                        <TableCell className="font-medium">{purchaseDoc.docNo}</TableCell>
+                        <TableCell>{purchaseDoc.vendorSnapshot.shortName}</TableCell>
+                        <TableCell>{purchaseDoc.invoiceNo}</TableCell>
+                        <TableCell><Badge variant={statusInfo.variant}>{statusInfo.label}</Badge></TableCell>
+                        <TableCell className="text-right">{formatCurrency(purchaseDoc.grandTotal)}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                  <Link href={`/app/office/parts/purchases/${purchaseDoc.id}`}><Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด</Link>
+                              </DropdownMenuItem>
+                              
+                              {(purchaseDoc.status === 'DRAFT' || purchaseDoc.status === 'REJECTED') && (
+                                <DropdownMenuItem asChild>
+                                    <Link href={`/app/office/parts/purchases/new?editDocId=${purchaseDoc.id}`}><Edit className="mr-2 h-4 w-4"/> แก้ไข</Link>
+                                </DropdownMenuItem>
+                              )}
+
+                              {isAdmin && (purchaseDoc.status === 'DRAFT' || purchaseDoc.status === 'REJECTED' || purchaseDoc.status === 'CANCELLED') && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDocToDelete(purchaseDoc)}>
+                                        <Trash2 className="mr-2 h-4 w-4"/> ลบเอกสาร
+                                    </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 ) : (
                   <TableRow><TableCell colSpan={7} className="h-24 text-center">ไม่พบเอกสารจัดซื้อ</TableCell></TableRow>
                 )}
@@ -135,6 +177,23 @@ export default function PurchaseDocsListPage() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!docToDelete} onOpenChange={(open) => !open && setDocToDelete(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการลบเอกสาร?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      คุณกำลังจะลบเอกสารเลขที่ {docToDelete?.docNo} ข้อมูลนี้จะหายไปจากฐานข้อมูลถาวร
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isDeleting}>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                      {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} ลบข้อมูล
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
