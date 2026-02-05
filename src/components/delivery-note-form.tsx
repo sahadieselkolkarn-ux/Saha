@@ -27,7 +27,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
-import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { deptLabel } from "@/lib/ui-labels";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -56,6 +56,8 @@ const deliveryNoteFormSchema = z.object({
   isBackfill: z.boolean().default(false),
   manualDocNo: z.string().optional(),
   paymentTerms: z.enum(["CASH", "CREDIT"], { required_error: "กรุณาเลือกเงื่อนไขการชำระเงิน" }),
+  suggestedPaymentMethod: z.enum(["CASH", "TRANSFER"]).optional(),
+  suggestedAccountId: z.string().optional(),
   billingRequired: z.boolean().default(false),
 }).superRefine((data, ctx) => {
     if (data.isBackfill && !data.manualDocNo) {
@@ -63,6 +65,13 @@ const deliveryNoteFormSchema = z.object({
             code: z.ZodIssueCode.custom,
             message: "กรุณากรอกเลขที่เอกสารเดิม",
             path: ["manualDocNo"],
+        });
+    }
+    if (data.paymentTerms === 'CASH' && !data.suggestedAccountId) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "กรุณาเลือกบัญชีที่รับเงิน",
+            path: ["suggestedAccountId"],
         });
     }
 });
@@ -83,6 +92,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotations, setQuotations] = useState<DocumentType[]>([]);
+  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
@@ -121,23 +131,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       receiverName: '',
       isBackfill: false,
       paymentTerms: 'CASH',
+      suggestedPaymentMethod: 'CASH',
       billingRequired: false,
     },
   });
 
-  const onInvalid = (errors: any) => {
-    const keys = Object.keys(errors);
-    toast({
-      variant: "destructive",
-      title: "ข้อมูลไม่ครบถ้วน",
-      description: keys.length
-        ? `กรุณาตรวจสอบช่อง: ${keys.join(", ")}`
-        : "กรุณาตรวจสอบข้อมูลในฟอร์ม",
-    });
-  };
-
   const currentJobId = form.watch('jobId');
   const selectedCustomerId = form.watch('customerId');
+  const watchedPaymentTerms = form.watch('paymentTerms');
   
   const customerDocRef = useMemo(() => {
     if (!db || !selectedCustomerId) return null;
@@ -150,17 +151,23 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "customers"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const qCustomers = query(collection(db, "customers"));
+    const unsubscribeCustomers = onSnapshot(qCustomers, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
       toast({ variant: "destructive", title: "Failed to load customers" });
       setIsLoadingCustomers(false);
     });
+
+    const qAccounts = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
+    const unsubscribeAccounts = onSnapshot(qAccounts, (snapshot) => {
+        setAccounts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AccountingAccount)));
+    });
     
     return () => {
-        unsubscribe();
+        unsubscribeCustomers();
+        unsubscribeAccounts();
     };
   }, [db, toast]);
 
@@ -224,6 +231,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         discountAmount: docToEdit.discountAmount || 0,
         isBackfill: false,
         paymentTerms: docToEdit.paymentTerms || 'CASH',
+        suggestedPaymentMethod: docToEdit.suggestedPaymentMethod || 'CASH',
+        suggestedAccountId: docToEdit.suggestedAccountId || '',
         billingRequired: docToEdit.billingRequired || false,
       });
       if (docToEdit.referencesDocIds && docToEdit.referencesDocIds.length > 0) {
@@ -364,6 +373,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         paymentStatus: 'UNPAID' as 'UNPAID' | 'PARTIAL' | 'PAID',
       },
       paymentTerms: data.paymentTerms,
+      suggestedPaymentMethod: data.suggestedPaymentMethod,
+      suggestedAccountId: data.suggestedAccountId,
       billingRequired: data.billingRequired,
       arStatus: targetArStatus,
       dispute: targetDispute,
@@ -536,11 +547,11 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               </Card>
 
               <Card>
-                  <CardHeader><CardTitle className="text-base">2. เงื่อนไขการชำระเงิน</CardTitle></CardHeader>
+                  <CardHeader><CardTitle className="text-base">2. การชำระเงิน</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                       <FormField control={form.control} name="paymentTerms" render={({ field }) => (
                           <FormItem>
-                              <FormLabel>รูปแบบการชำระ</FormLabel>
+                              <FormLabel>เงื่อนไขการชำระ</FormLabel>
                               <FormControl>
                                   <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
                                       <div className="flex items-center space-x-2">
@@ -556,6 +567,36 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                               <FormMessage />
                           </FormItem>
                       )} />
+
+                      {watchedPaymentTerms === 'CASH' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 border rounded-md bg-muted/30">
+                            <FormField control={form.control} name="suggestedPaymentMethod" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>รูปแบบที่คาดว่าจะรับ</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger></FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="CASH">เงินสด</SelectItem>
+                                            <SelectItem value="TRANSFER">เงินโอน</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </FormItem>
+                            )} />
+                            <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>บัญชีที่คาดว่าจะเข้า</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                        <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
+                                        <SelectContent>
+                                            {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
+                        </div>
+                      )}
+
                       <FormField control={form.control} name="billingRequired" render={({ field }) => (
                           <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
                               <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>

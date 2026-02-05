@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -66,6 +66,8 @@ const taxInvoiceFormSchema = z.object({
   isBackfill: z.boolean().default(false),
   manualDocNo: z.string().optional(),
   paymentTerms: z.enum(["CASH", "CREDIT"], { required_error: "กรุณาเลือกเงื่อนไขการชำระเงิน" }),
+  suggestedPaymentMethod: z.enum(["CASH", "TRANSFER"]).optional(),
+  suggestedAccountId: z.string().optional(),
   billingRequired: z.boolean().default(false),
 }).superRefine((data, ctx) => {
     if (data.isBackfill && !data.manualDocNo) {
@@ -73,6 +75,13 @@ const taxInvoiceFormSchema = z.object({
             code: z.ZodIssueCode.custom,
             message: "กรุณากรอกเลขที่เอกสารเดิม",
             path: ["manualDocNo"],
+        });
+    }
+    if (data.paymentTerms === 'CASH' && !data.suggestedAccountId) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "กรุณาเลือกบัญชีที่รับเงิน",
+            path: ["suggestedAccountId"],
         });
     }
 });
@@ -92,13 +101,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [quotations, setQuotations] = useState<DocumentType[]>([]);
+  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [selectedQuotationId, setSelectedQuotationId] = useState('');
   const [referencedQuotationId, setReferencedQuotationId] = useState<string | null>(null);
   const [quotationUsages, setQuotationUsages] = useState<number>(0);
-  const [quotations, setQuotations] = useState<DocumentType[]>([]);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [existingDn, setExistingDn] = useState<DocumentType | null>(null);
@@ -128,22 +138,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       vatAmount: 0,
       grandTotal: 0,
       paymentTerms: 'CASH',
+      suggestedPaymentMethod: 'CASH',
       billingRequired: false,
     },
   });
 
-  const onInvalid = (errors: any) => {
-    const fieldErrors = Object.keys(errors);
-    toast({
-      variant: "destructive",
-      title: "ข้อมูลไม่ครบถ้วน",
-      description: fieldErrors.length
-        ? `กรุณาตรวจสอบช่อง: ${fieldErrors.join(", ")}`
-        : "กรุณาตรวจสอบข้อมูลในฟอร์ม",
-    });
-  };
-  
   const selectedCustomerId = form.watch('customerId');
+  const watchedPaymentTerms = form.watch('paymentTerms');
   
   const customerDocRef = useMemo(() => {
     if (!db || !selectedCustomerId) return null;
@@ -154,14 +155,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const isLocked = isEditing && docToEdit?.status === 'PAID';
 
   useEffect(() => {
-    if (jobId || editDocId || !db) {
-      setIsLoadingCustomers(false);
-      return;
-    };
-    
-    setIsLoadingCustomers(true);
-    const q = query(collection(db, "customers"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    if (!db) return;
+    const qCustomers = query(collection(db, "customers"));
+    const unsubscribeCustomers = onSnapshot(qCustomers, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
@@ -169,10 +165,16 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       setIsLoadingCustomers(false);
     });
 
+    const qAccounts = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
+    const unsubscribeAccounts = onSnapshot(qAccounts, (snapshot) => {
+        setAccounts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AccountingAccount)));
+    });
+
     return () => {
-        unsubscribe();
+        unsubscribeCustomers();
+        unsubscribeAccounts();
     };
-  }, [db, jobId, editDocId, toast]);
+  }, [db, toast]);
   
   useEffect(() => {
     if (!db || !jobId) {
@@ -228,6 +230,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         vatAmount: docToEdit.vatAmount || 0,
         grandTotal: docToEdit.grandTotal || 0,
         paymentTerms: docToEdit.paymentTerms || 'CASH',
+        suggestedPaymentMethod: docToEdit.suggestedPaymentMethod || 'CASH',
+        suggestedAccountId: docToEdit.suggestedAccountId || '',
         billingRequired: docToEdit.billingRequired || false,
       });
       if (docToEdit.referencesDocIds && docToEdit.referencesDocIds.length > 0) {
@@ -355,6 +359,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         paymentStatus: 'UNPAID' as 'UNPAID' | 'PARTIAL' | 'PAID',
       },
       paymentTerms: data.paymentTerms,
+      suggestedPaymentMethod: data.suggestedPaymentMethod,
+      suggestedAccountId: data.suggestedAccountId,
       billingRequired: data.billingRequired,
       arStatus: targetArStatus,
       dispute: targetDispute,
@@ -642,38 +648,67 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
-                  <CardHeader><CardTitle>หมายเหตุและเงื่อนไข</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>การชำระเงินและเงื่อนไข</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
-                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isLocked}/></FormControl></FormItem>)} />
-                       <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="paymentTerms" render={({ field }) => (
+                       <FormField control={form.control} name="paymentTerms" render={({ field }) => (
                             <FormItem>
-                                <FormLabel>เงื่อนไขชำระเงิน</FormLabel>
+                                <FormLabel>เงื่อนไขการชำระ</FormLabel>
                                 <FormControl>
-                                    <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-4 pt-2">
-                                        <FormItem className="flex items-center space-x-2">
-                                            <FormControl><RadioGroupItem value="CASH" id="cash"/></FormControl>
-                                            <Label htmlFor="cash">เงินสด</Label>
-                                        </FormItem>
-                                        <FormItem className="flex items-center space-x-2">
-                                            <FormControl><RadioGroupItem value="CREDIT" id="credit"/></FormControl>
-                                            <Label htmlFor="credit">เครดิต</Label>
-                                        </FormItem>
+                                    <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="CASH" id="cash" disabled={isLocked} />
+                                            <Label htmlFor="cash" className="cursor-pointer">เงินสด/โอน (Cash)</Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} />
+                                            <Label htmlFor="credit" className="cursor-pointer">เครดิต (Credit)</Label>
+                                        </div>
                                     </RadioGroup>
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
                         )} />
-                        <FormField control={form.control} name="billingRequired" render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit mt-auto">
-                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+
+                        {form.watch('paymentTerms') === 'CASH' && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 border rounded-md bg-muted/30">
+                                <FormField control={form.control} name="suggestedPaymentMethod" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>รูปแบบที่คาดว่าจะรับ</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <FormControl><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="CASH">เงินสด</SelectItem>
+                                                <SelectItem value="TRANSFER">เงินโอน</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </FormItem>
+                                )} />
+                                <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>บัญชีที่คาดว่าจะเข้า</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                            </div>
+                        )}
+
+                       <FormField control={form.control} name="billingRequired" render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit">
+                                <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
                                 <div className="space-y-1 leading-none">
-                                    <FormLabel className="font-normal">ต้องออกใบวางบิล</FormLabel>
+                                    <FormLabel className="font-normal cursor-pointer">ต้องออกใบวางบิล</FormLabel>
                                     <FormMessage />
                                 </div>
                             </FormItem>
                         )} />
-                    </div>
+                       
+                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน หรือข้อมูลเพิ่มเติม" rows={3} disabled={isLocked}/></FormControl></FormItem>)} />
                   </CardContent>
               </Card>
               <div className="space-y-4">

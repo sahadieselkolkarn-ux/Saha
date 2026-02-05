@@ -471,6 +471,10 @@ export interface Document {
   invoiceIds?: string[]; // For BillingNote
   totalAmount?: number; // For BillingNote
 
+  // Suggested values for Accounting Inbox
+  suggestedPaymentMethod?: 'CASH' | 'TRANSFER';
+  suggestedAccountId?: string;
+
   // WHT Certificate Specific (Section 50 Bis)
   whtType?: string; // e.g. "ข้อ 5"
   whtSection?: string; // e.g. "มาตรา 50 ทวิ"

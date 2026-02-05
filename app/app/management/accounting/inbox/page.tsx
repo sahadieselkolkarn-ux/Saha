@@ -44,6 +44,7 @@ export default function AccountingInboxPage() {
   const [disputeReason, setDisputeReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
 
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
@@ -66,12 +67,13 @@ export default function AccountingInboxPage() {
     return () => { unsubDocs(); unsubAccounts(); };
   }, [db, toast, hasPermission]);
   
+  // Set defaults when opening confirmation dialog
   useEffect(() => {
-    if(accounts.length > 0 && !selectedAccountId) {
-        const defaultAccount = accounts.find(a => a.type === 'CASH') || accounts[0];
-        setSelectedAccountId(defaultAccount.id);
+    if (confirmingDoc) {
+        setSelectedAccountId(confirmingDoc.suggestedAccountId || (accounts.find(a => a.type === 'CASH')?.id || accounts[0]?.id || ""));
+        setSelectedPaymentMethod(confirmingDoc.suggestedPaymentMethod || 'CASH');
     }
-  }, [accounts, selectedAccountId]);
+  }, [confirmingDoc, accounts]);
 
   const filteredDocs = useMemo(() => {
     const filteredByTab = documents.filter(doc => {
@@ -119,8 +121,8 @@ export default function AccountingInboxPage() {
           entryDate: confirmingDoc.docDate, 
           amount: confirmingDoc.grandTotal, 
           accountId: selectedAccountId,
-          paymentMethod: 'CASH', 
-          description: `รับเงินสดจาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
+          paymentMethod: selectedPaymentMethod, 
+          description: `รับเงิน${selectedPaymentMethod === 'CASH' ? 'สด' : 'โอน'}จาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
           sourceDocId: confirmingDoc.id, 
           sourceDocNo: confirmingDoc.docNo, 
           sourceDocType: confirmingDoc.docType,
@@ -148,7 +150,7 @@ export default function AccountingInboxPage() {
         // 3. Update doc status
         transaction.update(docRef, { 
             arStatus: 'PAID',
-            status: 'APPROVED', // Change from PENDING_REVIEW to APPROVED
+            status: 'APPROVED',
             paymentSummary: {
                 paidTotal: confirmingDoc.grandTotal,
                 balance: 0,
@@ -156,11 +158,12 @@ export default function AccountingInboxPage() {
             },
             accountingEntryId: entryId,
             arObligationId: arId,
+            receivedAccountId: selectedAccountId,
+            paymentMethod: selectedPaymentMethod,
             updatedAt: serverTimestamp()
         });
       });
 
-      // 4. Archive job after transaction success
       if (confirmingDoc.jobId) {
           const salesDocInfo = {
               salesDocType: confirmingDoc.docType,
@@ -199,7 +202,6 @@ export default function AccountingInboxPage() {
             const arId = `AR_OBL_${docToProcess.id}`;
             const arRef = doc(db, 'accountingObligations', arId);
 
-            // 1. Create AR obligation (Idempotent by AR_OBL_{id})
             transaction.set(arRef, {
                 type: 'AR', 
                 status: 'UNPAID', 
@@ -215,7 +217,6 @@ export default function AccountingInboxPage() {
                 customerNameSnapshot: docToProcess.customerSnapshot.name,
             });
 
-            // 2. Update doc status
             transaction.update(docRef, { 
                 arStatus: 'UNPAID',
                 status: 'APPROVED',
@@ -224,7 +225,6 @@ export default function AccountingInboxPage() {
             });
         });
 
-        // 3. Archive job after transaction success
         if (docToProcess.jobId) {
             const salesDocInfo = {
                 salesDocType: docToProcess.docType,
@@ -373,17 +373,32 @@ export default function AccountingInboxPage() {
             <DialogDescription>สำหรับเอกสารเลขที่: {confirmingDoc?.docNo} - เมื่อยืนยันแล้ว ระบบจะลงบัญชีรายรับและปิดงานซ่อมนี้ทันที</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
+              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center">
                 <p className="text-sm text-muted-foreground">ยอดเงินรวมสุทธิ</p>
                 <p className="text-2xl font-bold text-primary">{formatCurrency(confirmingDoc?.grandTotal ?? 0)} บาท</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
-                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                    <SelectTrigger><SelectValue placeholder="เลือกบัญชีที่รับเงิน..."/></SelectTrigger>
-                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}</SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>ช่องทางที่รับ</Label>
+                    <Select value={selectedPaymentMethod} onValueChange={(v: any) => setSelectedPaymentMethod(v)}>
+                        <SelectTrigger><SelectValue/></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="CASH">เงินสด</SelectItem>
+                            <SelectItem value="TRANSFER">เงินโอน</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
+                    <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                        <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
+                        <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
               </div>
+              {confirmingDoc?.suggestedAccountId && confirmingDoc.suggestedAccountId !== selectedAccountId && (
+                  <p className="text-[10px] text-amber-600 font-medium italic">* ออฟฟิศระบุมาเป็นบัญชีอื่น</p>
+              )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
