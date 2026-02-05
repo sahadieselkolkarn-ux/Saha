@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, ArrowLeft, CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { safeFormat } from '@/lib/date-utils';
