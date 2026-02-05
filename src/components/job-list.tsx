@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon, PlusCircle, Settings, Send } from "lucide-react";
-import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount, OutsourceVendor } from "@/lib/types";
+import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount, Vendor } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
@@ -140,10 +140,11 @@ export function JobList({
   const [paymentNotes, setPaymentNotes] = useState('');
   
   const [outsourcingJob, setOutsourcingJob] = useState<Job | null>(null);
-  const [outsourceVendors, setOutsourceVendors] = useState<OutsourceVendor[]>([]);
+  const [outsourceVendors, setOutsourceVendors] = useState<{id: string, name: string}[]>([]);
   const [isFetchingVendors, setIsFetchingVendors] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [outsourceNotes, setOutsourceNotes] = useState("");
+  const [isLegacyOutsource, setIsLegacyOutsource] = useState(false);
 
   const jobsQuery = useMemo(() => {
     if (!db) return null;
@@ -443,15 +444,43 @@ export function JobList({
     setSelectedVendorId(null);
     setOutsourceNotes("");
     setIsFetchingVendors(true);
+    setIsLegacyOutsource(false);
+
     try {
+        // Step 1: Try new Vendors system
         const vendorsQuery = query(
-            collection(db, "outsourceVendors"),
+            collection(db, "vendors"),
             where("isActive", "==", true),
-            orderBy("shopName", "asc")
+            where("vendorType", "==", "CONTRACTOR"),
+            orderBy("companyName", "asc")
         );
         const querySnapshot = await getDocs(vendorsQuery);
-        setOutsourceVendors(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OutsourceVendor)));
+        
+        if (!querySnapshot.empty) {
+            setOutsourceVendors(querySnapshot.docs.map(doc => ({ 
+                id: doc.id, 
+                name: (doc.data() as Vendor).companyName 
+            })));
+        } else {
+            // Step 2: Fallback to legacy outsourceVendors collection
+            const legacyQuery = query(
+                collection(db, "outsourceVendors"),
+                where("isActive", "==", true),
+                orderBy("shopName", "asc")
+            );
+            const legacySnap = await getDocs(legacyQuery);
+            if (!legacySnap.empty) {
+                setIsLegacyOutsource(true);
+                setOutsourceVendors(legacySnap.docs.map(doc => ({
+                    id: doc.id,
+                    name: doc.data().shopName
+                })));
+            } else {
+                setOutsourceVendors([]);
+            }
+        }
     } catch (error: any) {
+        console.error("Error fetching outsource vendors:", error);
         toast({ variant: 'destructive', title: 'ไม่สามารถโหลดรายชื่อผู้รับเหมาได้', description: error.message });
         setOutsourceVendors([]);
     } finally {
@@ -481,11 +510,11 @@ export function JobList({
             department: 'OUTSOURCE',
             status: 'IN_PROGRESS',
             assigneeUid: selectedVendor.id,
-            assigneeName: selectedVendor.shopName,
+            assigneeName: selectedVendor.name,
             lastActivityAt: serverTimestamp(),
         });
 
-        const activityText = `มอบหมายงานนอก/ผู้รับเหมา: ${selectedVendor.shopName}. หมายเหตุ: ${outsourceNotes || 'ไม่มี'}`;
+        const activityText = `มอบหมายงานนอก/ผู้รับเหมา: ${selectedVendor.name}. หมายเหตุ: ${outsourceNotes || 'ไม่มี'}`;
         batch.set(activityRef, {
             text: activityText,
             userName: profile.displayName,
@@ -956,6 +985,13 @@ export function JobList({
                 </div>
             ) : outsourceVendors.length > 0 ? (
                 <div className="py-4 space-y-4">
+                    {isLegacyOutsource && (
+                        <Alert variant="destructive" className="py-2">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertTitle className="text-xs">ย้ายข้อมูลรายชื่อ</AlertTitle>
+                            <AlertDescription className="text-[10px]">ยังไม่ย้ายรายชื่อผู้รับเหมามาอยู่ในเมนูร้านค้า (Vendors)</AlertDescription>
+                        </Alert>
+                    )}
                     <div className="space-y-2">
                         <Label htmlFor="outsource-vendor">เลือกผู้รับเหมา/ร้านนอก</Label>
                         <Select onValueChange={setSelectedVendorId} value={selectedVendorId || ""}>
@@ -965,14 +1001,14 @@ export function JobList({
                             <SelectContent>
                                 {outsourceVendors.map(vendor => (
                                     <SelectItem key={vendor.id} value={vendor.id}>
-                                        {vendor.shopName}
+                                        {vendor.name}
                                     </SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="outsource-notes">หมายเหตุการส่งงาน</Label>
+                        <Label htmlFor="outsource-notes">หมายเหตุการส่งงาน (เช่น วันนัดรับ)</Label>
                         <Textarea id="outsource-notes" value={outsourceNotes} onChange={e => setOutsourceNotes(e.target.value)} placeholder="เช่น งานด่วน, รอรับวันไหน, อาการเพิ่มเติม..." />
                     </div>
                 </div>
@@ -980,7 +1016,7 @@ export function JobList({
                 <div className="py-6 text-center space-y-4">
                     <p className="text-sm text-muted-foreground">ยังไม่มีรายชื่อผู้รับเหมาในระบบ</p>
                     <Button asChild variant="outline" size="sm">
-                        <Link href="/app/office/list-management/outsource">
+                        <Link href="/app/office/parts/vendors?type=CONTRACTOR">
                             <PlusCircle className="mr-2 h-4 w-4" />
                             ไปเพิ่มรายชื่อผู้รับเหมา
                         </Link>
@@ -991,7 +1027,7 @@ export function JobList({
                 <div className="flex-1">
                     {outsourceVendors.length > 0 && (
                         <Button asChild variant="link" size="sm" className="px-0">
-                            <Link href="/app/office/list-management/outsource" className="flex items-center">
+                            <Link href="/app/office/parts/vendors?type=CONTRACTOR" className="flex items-center">
                                 <Settings className="mr-1 h-3 w-3" /> จัดการรายชื่อผู้รับเหมา
                             </Link>
                         </Button>

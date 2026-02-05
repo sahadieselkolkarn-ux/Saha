@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
@@ -12,21 +13,25 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, Eye, Trash2 } from "lucide-react";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, Eye, Trash2, Filter } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Vendor } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { vendorTypeLabel } from "@/lib/ui-labels";
+import { VENDOR_TYPES } from "@/lib/constants";
 
-export default function VendorsPage() {
+function VendorsPageContent() {
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
 
   const [vendors, setVendors] = useState<WithId<Vendor>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>(searchParams.get('type') || "ALL");
   const [vendorToDelete, setVendorToDelete] = useState<WithId<Vendor> | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
 
@@ -61,15 +66,26 @@ export default function VendorsPage() {
   }, [db, toast]);
 
   const filteredVendors = useMemo(() => {
-    if (!searchTerm.trim()) return vendors;
-    const lowercasedFilter = searchTerm.toLowerCase();
-    return vendors.filter(v =>
-      v.shortName.toLowerCase().includes(lowercasedFilter) ||
-      v.companyName.toLowerCase().includes(lowercasedFilter) ||
-      (v.phone && v.phone.includes(searchTerm)) ||
-      (v.contactName && v.contactName.toLowerCase().includes(lowercasedFilter))
-    );
-  }, [vendors, searchTerm]);
+    let filtered = [...vendors];
+
+    // Filter by type
+    if (typeFilter !== "ALL") {
+        filtered = filtered.filter(v => v.vendorType === typeFilter);
+    }
+
+    // Search by text
+    if (searchTerm.trim()) {
+        const lowercasedFilter = searchTerm.toLowerCase();
+        filtered = filtered.filter(v =>
+            v.shortName.toLowerCase().includes(lowercasedFilter) ||
+            v.companyName.toLowerCase().includes(lowercasedFilter) ||
+            (v.phone && v.phone.includes(searchTerm)) ||
+            (v.contactName && v.contactName.toLowerCase().includes(lowercasedFilter))
+        );
+    }
+
+    return filtered;
+  }, [vendors, searchTerm, typeFilter]);
 
   const handleDeleteRequest = (vendor: WithId<Vendor>) => {
     setVendorToDelete(vendor);
@@ -89,10 +105,6 @@ export default function VendorsPage() {
     }
   };
 
-  if (loading) {
-    return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
-  }
-
   if (!hasPermission) {
     return (
       <div className="w-full">
@@ -109,25 +121,44 @@ export default function VendorsPage() {
 
   return (
     <>
-      <PageHeader title="รายชื่อร้านค้า" description="จัดการข้อมูลร้านค้าและคู่ค้า">
+      <PageHeader title="รายชื่อร้านค้า" description="จัดการข้อมูลร้านค้า คู่ค้า และผู้รับเหมางานนอก">
         <Button asChild>
           <Link href="/app/office/parts/vendors/new">
             <PlusCircle className="mr-2 h-4 w-4" />
-            เพิ่มร้านค้า
+            เพิ่มร้านค้า/ผู้รับเหมา
           </Link>
         </Button>
       </PageHeader>
 
       <Card>
         <CardContent className="pt-6 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="ค้นหาจากชื่อย่อ, ชื่อร้าน, เบอร์โทร, หรือผู้ติดต่อ..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="ค้นหาจากชื่อย่อ, ชื่อร้าน, เบอร์โทร, หรือผู้ติดต่อ..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5 min-w-[200px]">
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger>
+                        <div className="flex items-center gap-2">
+                            <Filter className="h-4 w-4 text-muted-foreground" />
+                            <SelectValue placeholder="ทุกประเภท" />
+                        </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="ALL">ทุกประเภท</SelectItem>
+                        {VENDOR_TYPES.map(type => (
+                            <SelectItem key={type} value={type}>{vendorTypeLabel(type)}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground px-1">ใช้กรองรายชื่อร้านตามประเภทงาน</p>
+            </div>
           </div>
 
           <div className="border rounded-md">
@@ -137,24 +168,26 @@ export default function VendorsPage() {
                   <TableHead>ชื่อย่อ</TableHead>
                   <TableHead>ชื่อร้าน/บริษัท</TableHead>
                   <TableHead>ประเภท</TableHead>
-                  <TableHead>เบอร์โทรผู้ติดต่อ</TableHead>
+                  <TableHead>เบอร์โทร</TableHead>
                   <TableHead>ผู้ติดต่อ</TableHead>
                   <TableHead>สถานะ</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredVendors.length > 0 ? (
+                {loading ? (
+                  <TableRow><TableCell colSpan={7} className="h-24 text-center"><Loader2 className="mx-auto animate-spin" /></TableCell></TableRow>
+                ) : filteredVendors.length > 0 ? (
                   filteredVendors.map(vendor => (
                     <TableRow key={vendor.id}>
                       <TableCell className="font-medium">{vendor.shortName}</TableCell>
                       <TableCell>{vendor.companyName}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="font-normal">
+                        <Badge variant="outline" className="font-normal whitespace-nowrap">
                             {vendorTypeLabel(vendor.vendorType)}
                         </Badge>
                       </TableCell>
-                      <TableCell>{vendor.contactPhone || '-'}</TableCell>
+                      <TableCell>{vendor.phone || vendor.contactPhone || '-'}</TableCell>
                       <TableCell>{vendor.contactName || '-'}</TableCell>
                       <TableCell>
                         <Badge variant={vendor.isActive ? 'default' : 'secondary'}>{vendor.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}</Badge>
@@ -181,7 +214,7 @@ export default function VendorsPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={7} className="h-24 text-center">ไม่พบข้อมูลร้านค้า</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="h-24 text-center text-muted-foreground">ไม่พบข้อมูลร้านค้าในหมวดที่เลือก</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -205,4 +238,12 @@ export default function VendorsPage() {
       </AlertDialog>
     </>
   );
+}
+
+export default function VendorsPage() {
+    return (
+        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
+            <VendorsPageContent />
+        </Suspense>
+    )
 }
