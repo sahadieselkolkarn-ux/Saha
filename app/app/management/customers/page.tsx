@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, MoreHorizontal, PlusCircle, Upload, Search, Edit, Eye, Trash2 } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Upload, Search, Edit, Eye, Trash2, ChevronsUpDown } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +34,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/auth-context";
 import { ACQUISITION_SOURCES } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const customerSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -579,7 +581,7 @@ export default function ManagementCustomersPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState("all");
 
-    const isManagerOrAdmin = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER', [profile]);
+    const isManagerOrAdmin = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
     const isAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
 
     const placeholder = useMemo(() => {
