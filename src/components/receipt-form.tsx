@@ -30,7 +30,7 @@ const receiptFormSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   sourceDocId: z.string().min(1, "กรุณาเลือกเอกสารอ้างอิง"),
   paymentDate: z.string().min(1, "กรุณาเลือกวันที่"),
-  paymentMethod: z.enum(["CASH", "TRANSFER", "CREDIT"], { required_error: "กรุณาเลือกช่องทาง" }),
+  paymentMethod: z.enum(["CASH", "TRANSFER"], { required_error: "กรุณาเลือกช่องทาง" }),
   accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
   amount: z.coerce.number().min(0.01, "ยอดเงินต้องมากกว่า 0"),
   notes: z.string().optional(),
@@ -127,7 +127,7 @@ export function ReceiptForm() {
     if (selectedDoc) {
       const balance = selectedDoc.paymentSummary?.balance ?? selectedDoc.grandTotal;
       form.setValue('amount', balance);
-      if (selectedDoc.paymentTerms) {
+      if (selectedDoc.paymentTerms && (selectedDoc.paymentTerms === 'CASH' || selectedDoc.paymentTerms === 'TRANSFER')) {
           form.setValue('paymentMethod', selectedDoc.paymentTerms as any);
       }
     }
@@ -268,22 +268,21 @@ export function ReceiptForm() {
 
         {selectedSourceDocId && (
         <Card>
-            <CardHeader><CardTitle className="text-base">2. รายละเอียดการรับเงิน</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">2. รายละเอียดการรับเงิน (คาดการณ์)</CardTitle></CardHeader>
             <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField name="paymentDate" render={({ field }) => (<FormItem><FormLabel>วันที่รับเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <FormField name="amount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินที่รับชำระ</FormLabel><FormControl><Input type="number" step="0.01" {...field} className="font-bold text-lg" /></FormControl><FormMessage /></FormItem>)} />
+                <FormField name="paymentDate" render={({ field }) => (<FormItem><FormLabel>วันที่ออกใบเสร็จ</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
+                <FormField name="amount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินตามใบเสร็จ</FormLabel><FormControl><Input type="number" step="0.01" {...field} className="font-bold text-lg" /></FormControl><FormMessage /></FormItem>)} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField name="paymentMethod" render={({ field }) => (
                     <FormItem>
-                        <FormLabel>ช่องทางการชำrate</FormLabel>
+                        <FormLabel>ช่องทาง (คาดการณ์)</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
                             <SelectContent>
                                 <SelectItem value="CASH">เงินสด</SelectItem>
                                 <SelectItem value="TRANSFER">โอนเงิน</SelectItem>
-                                <SelectItem value="CREDIT">ค้างชำระ (เครดิต)</SelectItem>
                             </SelectContent>
                         </Select>
                         <FormMessage />
@@ -291,7 +290,7 @@ export function ReceiptForm() {
                 )} />
                 <FormField name="accountId" render={({ field }) => (
                     <FormItem>
-                        <FormLabel>บัญชีที่รับเงิน</FormLabel>
+                        <FormLabel>บัญชีที่คาดว่าจะเข้า</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
                             <SelectContent>
