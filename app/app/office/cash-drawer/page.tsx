@@ -212,7 +212,7 @@ export default function OfficeCashDrawerPage() {
   // Listen for History
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "cashDrawerSessions"), where("status", "!=", "OPEN"), orderBy("status", "desc"), orderBy("openedAt", "desc"), limit(10));
+    const q = query(collection(db, "cashDrawerSessions"), where("status", "!=", "OPEN"), orderBy("openedAt", "desc"), limit(10));
     return onSnapshot(q, (snap) => {
       setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -393,7 +393,7 @@ export default function OfficeCashDrawerPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>นับเงินสดได้จริง (บาท)</Label>
-                      <Input type="number" placeholder="0.00" id="countedAmount" onChange={(e) => {}} />
+                      <Input type="number" placeholder="0.00" id="countedAmount" />
                     </div>
                     <div className="space-y-2">
                       <Label>หมายเหตุเพิ่มเติม (ถ้ามี)</Label>
@@ -417,7 +417,7 @@ export default function OfficeCashDrawerPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>รายการเงินสดวันนี้</CardTitle>
+              <CardTitle>รายการเงินสดรอบปัจจุบัน</CardTitle>
               <Badge variant="outline">{transactions.length} รายการ</Badge>
             </CardHeader>
             <CardContent className="p-0">

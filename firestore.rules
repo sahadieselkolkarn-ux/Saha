@@ -1,4 +1,3 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -68,7 +67,6 @@ service cloud.firestore {
     // User Profiles
     match /users/{uid} {
       allow read: if signedIn();
-      // Allow updates if user is admin/mgmt OR if the user is editing their own profile.
       allow create, update: if isMgmt() || (signedIn() && request.auth.uid == uid);
       allow delete: if isAdmin();
     }
@@ -79,7 +77,21 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Customers & Vendors (MVP)
+    // Cash Drawer
+    match /cashDrawerSessions/{sessionId} {
+      allow read: if signedIn();
+      allow create: if isOfficeOrMgmt();
+      allow update: if isOfficeOrMgmt();
+      allow delete: if isAdmin();
+      
+      match /transactions/{transId} {
+        allow read: if signedIn();
+        allow create: if isOfficeOrMgmt();
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Customers & Vendors
     match /customers/{id} {
       allow read: if signedIn();
       allow create, update: if signedIn();
@@ -96,7 +108,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Jobs & Main Documents (MVP)
+    // Jobs & Main Documents
     match /jobs/{jobId} {
       allow read: if signedIn();
       allow create: if signedIn();
@@ -111,7 +123,7 @@ service cloud.firestore {
     
     match /jobsArchive_{year}/{jobId} {
         allow read: if signedIn();
-        allow create, update, delete: if isAdmin(); // Only allow admins to modify archives
+        allow create, update, delete: if isAdmin();
         match /activities/{activityId} {
             allow read: if signedIn();
             allow write: if isAdmin();
@@ -137,7 +149,6 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // --- Purchase Workflow ---
     match /purchaseDocs/{docId} {
       allow read: if signedIn();
       allow create: if signedIn();
@@ -150,7 +161,6 @@ service cloud.firestore {
         allow delete: if isAdmin();
     }
 
-    // --- Accounting Collections ---
     match /accountingAccounts/{id} {
       allow write: if isAccountingAllowed();
       allow read: if isAccountingAllowed();
@@ -167,17 +177,10 @@ service cloud.firestore {
       allow update: if isAccountingAllowed();
       allow delete: if isAdmin();
     }
-    match /paymentClaims/{id} {
-      allow create: if signedIn();
-      allow read, update: if isAccountingAllowed();
-      allow delete: if isAdmin();
-    }
     match /billingRuns/{monthId} {
         allow read, write: if isAccountingAllowed();
     }
 
-
-    // --- HR & Attendance (MVP) ---
     match /attendance/{id} { allow read, write: if signedIn(); }
     match /kioskTokens/{id} {
       allow read: if true;
@@ -186,7 +189,6 @@ service cloud.firestore {
       allow delete: if false;
     }
     
-    // HR Collections
     match /hrHolidays/{id} {
       allow read: if signedIn();
       allow create, update, delete: if isAdmin();
@@ -212,39 +214,27 @@ service cloud.firestore {
 
     match /payrollBatches/{batchId} {
       allow read, write: if isMgmt();
-
       match /payslips/{userId} {
-        // employee can read their own payslip
         allow read: if (signedIn() && request.auth.uid == userId) || isMgmt();
-        
-        // HR/Management can create/delete payslips
         allow create, delete: if isMgmt();
-
         allow update: if 
-          // Case 1: Employee accepts or requests revision.
           (
             request.auth.uid == userId &&
             resource.data.status == 'SENT_TO_EMPLOYEE' &&
             request.resource.data.status in ['READY_TO_PAY', 'REVISION_REQUESTED'] &&
-            request.resource.data.snapshot == resource.data.snapshot // Cannot change snapshot
+            request.resource.data.snapshot == resource.data.snapshot
           ) ||
-          // Case 2: Management/HR edits a draft or a revision request.
           (
             isMgmt() &&
             resource.data.status in ['DRAFT', 'REVISION_REQUESTED']
           ) ||
-          // Case 3: Accounting marks as paid.
           (
             isAccountingAllowed() &&
             resource.data.status == 'READY_TO_PAY' &&
             request.resource.data.status == 'PAID' &&
-            request.resource.data.snapshot == resource.data.snapshot // Cannot change snapshot
+            request.resource.data.snapshot == resource.data.snapshot
           );
       }
     }
-
-    // Deprecated collections - lock them down
-    match /userProfiles/{uid} { allow read, write: if false; }
-    match /profiles/{uid} { allow read, write: if false; }
   }
 }
