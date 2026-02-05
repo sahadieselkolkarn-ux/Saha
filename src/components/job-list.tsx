@@ -448,20 +448,28 @@ export function JobList({
 
     try {
         // Step 1: Try new Vendors system
+        // IMPORTANT: We use a simple query and filter on client to avoid composite index requirements
         const vendorsQuery = query(
             collection(db, "vendors"),
-            where("isActive", "==", true),
-            where("vendorType", "==", "CONTRACTOR"),
             orderBy("companyName", "asc")
         );
-        const querySnapshot = await getDocs(vendorsQuery);
         
-        if (!querySnapshot.empty) {
-            setOutsourceVendors(querySnapshot.docs.map(doc => ({ 
-                id: doc.id, 
-                name: (doc.data() as Vendor).companyName 
-            })));
-        } else {
+        let fetchedFromNewSystem = false;
+        try {
+            const querySnapshot = await getDocs(vendorsQuery);
+            const contractors = querySnapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() } as Vendor))
+                .filter(v => v.isActive && v.vendorType === 'CONTRACTOR');
+
+            if (contractors.length > 0) {
+                setOutsourceVendors(contractors.map(v => ({ id: v.id, name: v.companyName })));
+                fetchedFromNewSystem = true;
+            }
+        } catch (e) {
+            console.warn("New vendors system query failed (likely missing index), falling back to legacy or client filtering:", e);
+        }
+        
+        if (!fetchedFromNewSystem) {
             // Step 2: Fallback to legacy outsourceVendors collection
             const legacyQuery = query(
                 collection(db, "outsourceVendors"),
@@ -481,7 +489,7 @@ export function JobList({
         }
     } catch (error: any) {
         console.error("Error fetching outsource vendors:", error);
-        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดรายชื่อผู้รับเหมาได้', description: error.message });
+        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดรายชื่อผู้รับเหมาได้', description: "กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ" });
         setOutsourceVendors([]);
     } finally {
         setIsFetchingVendors(false);
