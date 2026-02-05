@@ -38,7 +38,7 @@ const lineItemSchema = z.object({
 
 const quotationFormSchema = z.object({
   jobId: z.string().optional(),
-  customerId: z.string().min(1, "Customer is required"),
+  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   issueDate: z.string().min(1, "กรุณาเลือกวันที่"),
   expiryDate: z.string().min(1, "กรุณาเลือกวันที่"),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
@@ -277,16 +277,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
           </Alert>
         )}
 
-        {quotationUsages > 0 && (
-          <Alert variant="default" className="bg-amber-50 border-amber-200">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
-            <AlertTitle className="text-amber-800">ข้อมูลประวัติการใช้งาน</AlertTitle>
-            <AlertDescription className="text-amber-700">
-              ใบเสนอราคานี้ถูกนำไปอ้างอิงเพื่อออกเอกสารใบส่งของหรือใบกำกับภาษีแล้ว {quotationUsages} ครั้ง
-            </AlertDescription>
-          </Alert>
-        )}
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
             <div className="lg:col-span-2 space-y-2">
                 <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Sahadiesel Service'}</h2>
@@ -295,43 +285,43 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {storeSettings?.taxId}</p>
             </div>
             <div className="space-y-4">
-                 <h1 className="text-2xl font-bold text-right">ใบเสนอราคา</h1>
+                 <h1 className="text-2xl font-bold text-right text-primary">ใบเสนอราคา</h1>
                  {isEditing && <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>}
-                 <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
+                 <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ออกเอกสาร</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
                  <FormField control={form.control} name="expiryDate" render={({ field }) => (<FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)} />
             </div>
         </div>
 
         <Card>
-            <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle></CardHeader>
             <CardContent>
                <FormField
                     name="customerId"
                     control={form.control}
                     render={({ field }) => (
                         <FormItem className="flex flex-col">
-                        <FormLabel>ลูกค้า</FormLabel>
+                        <FormLabel>ชื่อลูกค้า</FormLabel>
                         <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                             <PopoverTrigger asChild>
                             <FormControl>
-                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
-                                {displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}
+                                <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
+                                <span className="truncate">{displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "ค้นหาชื่อ หรือเบอร์โทรลูกค้า..."}</span>
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </FormControl>
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                 <div className="p-2 border-b">
-                                    <Input autoFocus placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                    <Input autoFocus placeholder="พิมพ์ชื่อ หรือเบอร์โทร..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
                                 <ScrollArea className="h-fit max-h-60">
                                     {filteredCustomers.length > 0 ? (
                                         filteredCustomers.map((c) => (
-                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
-                                                <div className="flex flex-col items-start"><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
+                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none">
+                                                <div className="flex flex-col items-start"><p className="font-medium">{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
                                             </Button>
                                         ))
-                                    ) : (<p className="text-center p-4 text-sm text-muted-foreground">No customers found.</p>)}
+                                    ) : (<p className="text-center p-4 text-sm text-muted-foreground">ไม่พบข้อมูลลูกค้า</p>)}
                                 </ScrollArea>
                             </PopoverContent>
                         </Popover>
@@ -340,8 +330,9 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                     )}
                 />
                  {displayCustomer && (
-                    <div className="mt-2 text-sm text-muted-foreground">
-                        <p>{displayCustomer.taxAddress || displayCustomer.detail || 'N/A'}</p>
+                    <div className="mt-3 p-3 bg-muted/50 rounded-md text-sm text-muted-foreground">
+                        <p className="font-medium text-foreground">{displayCustomer.name}</p>
+                        <p className="whitespace-pre-wrap">{displayCustomer.taxAddress || displayCustomer.detail || 'ไม่มีที่อยู่'}</p>
                         <p>โทร: {displayCustomer.phone}</p>
                         {displayCustomer.taxId && <p>เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId}</p>}
                     </div>
@@ -349,7 +340,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                  {(job || docToEdit?.jobId) && (
                     <>
                         <Separator className="my-4" />
-                        <p className="font-semibold">เรื่อง: {job?.description || docToEdit?.carSnapshot?.details}</p>
+                        <p className="font-semibold text-sm">เรื่อง: {job?.description || docToEdit?.carSnapshot?.details}</p>
                         {(job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate) && <p className="text-sm text-muted-foreground">ทะเบียนรถ: {job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate}</p>}
                     </>
                  )}
@@ -357,91 +348,94 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         </Card>
 
         <Card>
-            <CardHeader><CardTitle>รายการ</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">รายการสินค้า/บริการ</CardTitle></CardHeader>
             <CardContent>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-12">#</TableHead>
-                            <TableHead>รายละเอียด</TableHead>
-                            <TableHead className="w-32 text-right">จำนวน</TableHead>
-                            <TableHead className="w-40 text-right">ราคา/หน่วย</TableHead>
-                            <TableHead className="w-40 text-right">ยอดรวม</TableHead>
-                            <TableHead className="w-12"></TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {fields.map((field, index) => (
-                            <TableRow key={field.id}>
-                                <TableCell>{index + 1}</TableCell>
-                                <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" disabled={isCancelled} />)}/></TableCell>
-                                <TableCell>
-                                  <FormField
-                                    control={form.control}
-                                    name={`items.${index}.quantity`}
-                                    render={({ field }) => (
-                                      <Input
-                                        type="number"
-                                        inputMode="decimal"
-                                        placeholder="0"
-                                        className="text-right"
-                                        value={(field.value ?? 0) === 0 ? "" : field.value}
-                                        onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                        onChange={(e) => {
-                                          const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
-                                          field.onChange(newQuantity);
-                                          const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
-                                          form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
-                                        }}
-                                        disabled={isCancelled}
-                                      />
-                                    )}
-                                  />
-                                </TableCell>
-                                <TableCell>
-                                  <FormField
-                                    control={form.control}
-                                    name={`items.${index}.unitPrice`}
-                                    render={({ field }) => (
-                                      <Input
-                                        type="number"
-                                        inputMode="decimal"
-                                        placeholder="0.00"
-                                        className="text-right"
-                                        value={(field.value ?? 0) === 0 ? "" : field.value}
-                                        onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                        onChange={(e) => {
-                                          const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
-                                          field.onChange(newPrice);
-                                          const quantity = form.getValues(`items.${index}.quantity`) || 0;
-                                          form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
-                                        }}
-                                        disabled={isCancelled}
-                                      />
-                                    )}
-                                  />
-                                </TableCell>
-                                <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
-                                <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isCancelled}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
+                <div className="border rounded-md overflow-x-auto">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-12 text-center">#</TableHead>
+                                <TableHead>รายละเอียด</TableHead>
+                                <TableHead className="w-32 text-right">จำนวน</TableHead>
+                                <TableHead className="w-40 text-right">ราคา/หน่วย</TableHead>
+                                <TableHead className="w-40 text-right">ยอดรวม</TableHead>
+                                <TableHead className="w-12"></TableHead>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                        </TableHeader>
+                        <TableBody>
+                            {fields.map((field, index) => (
+                                <TableRow key={field.id}>
+                                    <TableCell className="text-center">{index + 1}</TableCell>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" disabled={isCancelled} />)}/></TableCell>
+                                    <TableCell>
+                                    <FormField
+                                        control={form.control}
+                                        name={`items.${index}.quantity`}
+                                        render={({ field }) => (
+                                        <Input
+                                            type="number"
+                                            inputMode="decimal"
+                                            placeholder="0"
+                                            className="text-right"
+                                            value={(field.value ?? 0) === 0 ? "" : field.value}
+                                            onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                            onChange={(e) => {
+                                            const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
+                                            field.onChange(newQuantity);
+                                            const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
+                                            form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
+                                            }}
+                                            disabled={isCancelled}
+                                        />
+                                        )}
+                                    />
+                                    </TableCell>
+                                    <TableCell>
+                                    <FormField
+                                        control={form.control}
+                                        name={`items.${index}.unitPrice`}
+                                        render={({ field }) => (
+                                        <Input
+                                            type="number"
+                                            inputMode="decimal"
+                                            placeholder="0.00"
+                                            className="text-right"
+                                            value={(field.value ?? 0) === 0 ? "" : field.value}
+                                            onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                            onChange={(e) => {
+                                            const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
+                                            field.onChange(newPrice);
+                                            const quantity = form.getValues(`items.${index}.quantity`) || 0;
+                                            form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
+                                            }}
+                                            disabled={isCancelled}
+                                        />
+                                        )}
+                                    />
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
+                                    <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isCancelled}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
                 {!isCancelled && <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>}
             </CardContent>
         </Card>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
              <Card>
-                <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-base">หมายเหตุ</CardTitle></CardHeader>
                 <CardContent>
-                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไขการชำระเงิน หรืออื่นๆ" rows={5} disabled={isCancelled} />)} />
+                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไขการชำระเงิน, ระยะเวลารับประกัน หรือข้อมูลอื่นๆ" rows={5} disabled={isCancelled} />)} />
                 </CardContent>
             </Card>
             <div className="space-y-4">
-                 <div className="space-y-2 p-4 border rounded-lg">
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">ส่วนลด</span>
+                 <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                    <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
+                    <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">ส่วนลด (บาท)</span>
                         <FormField
                             control={form.control}
                             name="discountAmount"
@@ -450,7 +444,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                 type="number"
                                 inputMode="decimal"
                                 placeholder="0.00"
-                                className="w-32 text-right"
+                                className="w-32 text-right bg-background"
                                 value={(field.value ?? 0) === 0 ? "" : field.value}
                                 onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
                                 onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
@@ -459,24 +453,24 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                             )}
                         />
                     </div>
-                    <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div>
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center font-medium text-sm"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div>
+                    <div className="flex justify-between items-center text-sm">
                         <FormField control={form.control} name="isVat" render={({ field }) => (
                             <FormItem className="flex items-center gap-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isCancelled}/></FormControl>
-                                <FormLabel className="font-normal">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
+                                <FormLabel className="font-normal cursor-pointer">ภาษีมูลค่าเพิ่ม 7%</FormLabel>
                             </FormItem>
                         )}/>
                         <span>{formatCurrency(form.watch('vatAmount'))}</span>
                     </div>
-                     <Separator/>
-                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
+                     <Separator className="my-2"/>
+                    <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิรวม</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                  </div>
             </div>
         </div>
 
         <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ</Button>
             <Button type="submit" disabled={isFormLoading || isCancelled}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
               {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบเสนอราคา'}

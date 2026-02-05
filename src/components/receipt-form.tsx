@@ -11,7 +11,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, ChevronsUpDown, AlertCircle, Info } from "lucide-react";
@@ -142,7 +142,7 @@ export function ReceiptForm() {
     }
     
     const items = [{
-      description: `ชำระค่าสินค้า/บริการ ตาม${sourceDoc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : sourceDoc.docType === 'BILLING_NOTE' ? 'ใบวางบิล' : 'ใบส่งของ'} เลขที่ ${sourceDoc.docNo}`,
+      description: `ชำระค่าสินค้า/บริการ ตาม${sourceDoc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : sourceDoc.docType === 'BILLING_NOTE' ? 'ใบวางบิล' : 'ใบส่งของชั่วคราว'} เลขที่ ${sourceDoc.docNo}`,
       quantity: 1,
       unitPrice: data.amount,
       total: data.amount
@@ -195,7 +195,7 @@ export function ReceiptForm() {
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold flex items-center gap-2"><Info className="h-5 w-5 text-primary" /> เลือกบิลที่ลูกค้าต้องการใบเสร็จ</h2>
+            <h2 className="text-lg font-semibold flex items-center gap-2 text-primary"><Info className="h-5 w-5" /> เลือกบิลที่ลูกค้าต้องการใบเสร็จ</h2>
             <Button type="submit" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2" />}
                 บันทึกและส่งตรวจสอบรับเงิน
@@ -210,20 +210,27 @@ export function ReceiptForm() {
                     <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                     <PopoverTrigger asChild>
                         <FormControl>
-                        <Button variant="outline" role="combobox" className="w-full md:w-[400px] justify-between">
-                            {field.value ? customers.find(c => c.id === field.value)?.name : "ค้นหาชื่อลูกค้า..."}
+                        <Button variant="outline" role="combobox" className="w-full md:w-[400px] justify-between font-normal">
+                            <span className="truncate">{field.value ? customers.find(c => c.id === field.value)?.name : "ค้นหาชื่อลูกค้า..."}</span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                         </FormControl>
                     </PopoverTrigger>
                     <PopoverContent className="w-[400px] p-0">
-                        <Input placeholder="พิมพ์ชื่อลูกค้า..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} className="m-2 w-[calc(100%-1rem)]" />
+                        <div className="p-2 border-b">
+                            <Input placeholder="พิมพ์ชื่อลูกค้า..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                        </div>
                         <ScrollArea className="h-60">
                         {filteredCustomers.length > 0 ? (
                             filteredCustomers.map(c => (
-                                <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start rounded-none border-b last:border-0">{c.name}</Button>
+                                <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start rounded-none border-b last:border-0 h-auto py-2 text-left">
+                                    <div className="flex flex-col">
+                                        <span>{c.name}</span>
+                                        <span className="text-xs text-muted-foreground">{c.phone}</span>
+                                    </div>
+                                </Button>
                             ))
-                        ) : <div className="p-4 text-center text-sm text-muted-foreground">ไม่พบลูกค้า</div>}
+                        ) : <div className="p-4 text-center text-sm text-muted-foreground">ไม่พบรายชื่อลูกค้า</div>}
                         </ScrollArea>
                     </PopoverContent>
                     </Popover>
@@ -257,7 +264,7 @@ export function ReceiptForm() {
                             <strong>นโยบายบริษัท:</strong>
                             <ul className="list-disc pl-4 mt-1">
                                 <li>ใบกำกับภาษีที่ระบุว่า "ต้องวางบิล" จะไม่ปรากฏที่นี่ กรุณาใช้ระบบ "ใบวางบิล" เพื่อรวบรวมก่อน</li>
-                                <li>การออกใบเสร็จจะลดภาระหนี้ของบิลอ้างอิงทันทีเมื่อพี่ถินกดยืนยันรับเงิน</li>
+                                <li>การออกใบเสร็จจะลดภาระหนี้ของบิลอ้างอิงทันทีเมื่อฝ่ายบัญชีกดยืนยันรับเงิน</li>
                             </ul>
                         </div>
                     </div>
@@ -272,12 +279,12 @@ export function ReceiptForm() {
             <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField name="paymentDate" render={({ field }) => (<FormItem><FormLabel>วันที่ออกใบเสร็จ</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
-                <FormField name="amount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินตามใบเสร็จ</FormLabel><FormControl><Input type="number" step="0.01" {...field} className="font-bold text-lg" /></FormControl><FormMessage /></FormItem>)} />
+                <FormField name="amount" render={({ field }) => (<FormItem><FormLabel>ยอดเงินตามใบเสร็จ (บาท)</FormLabel><FormControl><Input type="number" step="0.01" {...field} className="font-bold text-lg" /></FormControl><FormMessage /></FormItem>)} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField name="paymentMethod" render={({ field }) => (
                     <FormItem>
-                        <FormLabel>ช่องทาง (คาดการณ์)</FormLabel>
+                        <FormLabel>ช่องทางชำระ (คาดการณ์)</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
                             <SelectContent>
@@ -290,18 +297,19 @@ export function ReceiptForm() {
                 )} />
                 <FormField name="accountId" render={({ field }) => (
                     <FormItem>
-                        <FormLabel>บัญชีที่คาดว่าจะเข้า</FormLabel>
+                        <FormLabel>เข้าบัญชี (คาดการณ์)</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
                             <SelectContent>
                                 {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}
                             </SelectContent>
                         </Select>
+                        <FormDescription className="text-[10px]">บัญชีนี้เป็นข้อมูลที่ออฟฟิศระบุให้ฝ่ายบัญชีตรวจสอบภายหลัง สามารถแก้ไขได้ตอนยืนยัน</FormDescription>
                         <FormMessage />
                     </FormItem>
                 )} />
             </div>
-            <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>บันทึกเพิ่มเติม</FormLabel><FormControl><Textarea {...field} placeholder="เช่น เลขที่เช็ค, ธนาคารต้นทาง..." /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>บันทึกเพิ่มเติม</FormLabel><FormControl><Textarea {...field} placeholder="เช่น เลขที่เช็ค, ธนาคารต้นทาง, หรือข้อมูลอื่นที่ฝ่ายบัญชีควรทราบ..." /></FormControl></FormItem>)} />
             </CardContent>
         </Card>
         )}

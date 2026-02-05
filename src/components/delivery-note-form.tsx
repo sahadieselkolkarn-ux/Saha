@@ -35,7 +35,7 @@ import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
 
 const lineItemSchema = z.object({
-  description: z.string().min(1, "ต้องกรอกรายละเอียด"),
+  description: z.string().min(1, "กรุณากรอกรายละเอียด"),
   quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
   unitPrice: z.coerce.number().min(0, "ราคาต่อหน่วยห้ามติดลบ"),
   total: z.coerce.number(),
@@ -44,7 +44,7 @@ const lineItemSchema = z.object({
 const deliveryNoteFormSchema = z.object({
   jobId: z.string().optional(),
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
-  issueDate: z.string().min(1),
+  issueDate: z.string().min(1, "กรุณาเลือกวันที่"),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   subtotal: z.coerce.number(),
   discountAmount: z.coerce.number().min(0).optional(),
@@ -156,7 +156,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "Failed to load customers" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
       setIsLoadingCustomers(false);
     });
 
@@ -462,6 +462,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                     type="button"
                     onClick={() => form.handleSubmit((data) => handleSave(data, true))()}
                     disabled={isFormLoading || isLocked || docToEdit?.status === 'PENDING_REVIEW'}
+                    title="ส่งเอกสารนี้ไปให้ฝ่ายบัญชีตรวจสอบและยืนยันก่อนปิดงาน"
                 >
                     {isSubmitting && isReviewSubmission ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                     ส่งบัญชีตรวจสอบ
@@ -471,7 +472,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
-                  <CardHeader><CardTitle className="text-base">1. เลือกข้อมูลลูกค้า</CardTitle></CardHeader>
+                  <CardHeader><CardTitle className="text-base">1. ข้อมูลลูกค้า</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                       {!jobId && !isEditing && (
                           <div className="space-y-2">
@@ -551,7 +552,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                   <CardContent className="space-y-4">
                       <FormField control={form.control} name="paymentTerms" render={({ field }) => (
                           <FormItem>
-                              <FormLabel>เงื่อนไขการชำระ</FormLabel>
+                              <FormLabel>เงื่อนไขการชำระเงิน</FormLabel>
                               <FormControl>
                                   <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
                                       <div className="flex items-center space-x-2">
@@ -584,13 +585,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                             )} />
                             <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>บัญชีที่คาดว่าจะเข้า</FormLabel>
+                                    <FormLabel>เข้าบัญชี (คาดการณ์)</FormLabel>
                                     <Select onValueChange={field.onChange} value={field.value}>
                                         <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
                                         <SelectContent>
                                             {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
+                                    <FormDescription className="text-[10px]">บัญชีนี้เป็นข้อมูลที่ออฟฟิศระบุให้ฝ่ายบัญชีตรวจสอบภายหลัง สามารถแก้ไขได้ตอนยืนยัน</FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )} />
@@ -601,8 +603,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                           <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
                               <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
                               <div className="space-y-1 leading-none">
-                                  <FormLabel className="cursor-pointer">ต้องออกใบวางบิล</FormLabel>
-                                  <FormDescription>ติ๊กเลือกเมื่อต้องรวบรวมเพื่อวางบิลภายหลัง</FormDescription>
+                                  <FormLabel className="cursor-pointer">ต้องออกใบวางบิลรวม</FormLabel>
+                                  <FormDescription>ติ๊กเฉพาะกรณีลูกค้ารายนี้ต้องออกใบวางบิลรวมภายหลัง (ลูกค้าเครดิต)</FormDescription>
                               </div>
                           </FormItem>
                       )} />
@@ -647,7 +649,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                 {fields.map((field, index) => (
                                     <TableRow key={field.id}>
                                         <TableCell className="text-center">{index + 1}</TableCell>
-                                        <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="รายการสินค้า/บริการ" disabled={isLocked} />)}/></TableCell>
+                                        <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="ชื่อสินค้าหรือบริการ" disabled={isLocked} />)}/></TableCell>
                                         <TableCell>
                                             <FormField
                                                 control={form.control}
@@ -656,7 +658,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                                 <Input
                                                     type="number"
                                                     inputMode="decimal"
-                                                    placeholder="—"
+                                                    placeholder="0"
                                                     className="text-right"
                                                     value={(field.value ?? 0) === 0 ? "" : field.value}
                                                     onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
@@ -708,10 +710,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               <Card>
                   <CardHeader><CardTitle className="text-base">4. หมายเหตุ และรายละเอียดส่งมอบ</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
-                      <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน, เลขอะไหล่, หรือข้อมูลเพิ่มเติม" rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เช่น เงื่อนไขการรับประกัน, เลขอะไหล่ที่เปลี่ยน..." rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
-                          <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด</FormLabel><FormControl>
+                          <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ออกใบส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
+                          <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด (บาท)</FormLabel><FormControl>
                               <Input
                                     type="number"
                                     inputMode="decimal"
@@ -725,8 +727,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                           </FormControl></FormItem>)} />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-                          <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                          <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ (ฝ่ายร้าน)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                          <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ (ลูกค้า)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                       </div>
                   </CardContent>
                   <CardFooter className="flex-col items-end gap-2">

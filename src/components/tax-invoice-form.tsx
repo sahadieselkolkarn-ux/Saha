@@ -43,17 +43,17 @@ import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
 
 const lineItemSchema = z.object({
-  description: z.string().min(1, "Description is required."),
-  quantity: z.coerce.number().min(0.01, "Quantity must be > 0."),
-  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative."),
+  description: z.string().min(1, "กรุณากรอกรายละเอียด"),
+  quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
+  unitPrice: z.coerce.number().min(0, "ราคาต่อหน่วยห้ามติดลบ"),
   total: z.coerce.number(),
 });
 
 const taxInvoiceFormSchema = z.object({
   jobId: z.string().optional(),
-  customerId: z.string().min(1, "Customer is required"),
-  issueDate: z.string().min(1),
-  items: z.array(lineItemSchema).min(1, "At least one item is required."),
+  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
+  issueDate: z.string().min(1, "กรุณาเลือกวันที่"),
+  items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   subtotal: z.coerce.number(),
   discountAmount: z.coerce.number().min(0).optional(),
   net: z.coerce.number(),
@@ -405,7 +405,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   };
 
   const handleSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
-    // เช็คใบส่งของเดิมเฉพาะเมื่อมีการส่งตรวจสอบหรือสร้างใหม่
     if (!isEditing && data.jobId && db && submitForReview) {
         const q = query(
             collection(db, "documents"), 
@@ -435,7 +434,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             updatedAt: serverTimestamp(),
             notes: (existingDn.notes || "") + "\n[System] ยกเลิกเพื่อออกใบกำกับภาษีแทน",
         });
-        toast({ title: "ยกเลิกใบส่งของเดิมเรียบร้อย" });
+        toast({ title: "ยกเลิกใบส่งของชั่วคราวเดิมเรียบร้อย" });
         setShowDnCancelDialog(false);
         await executeSave(pendingData, isReviewSubmission);
     } catch(e: any) {
@@ -481,6 +480,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                     type="button"
                     onClick={() => form.handleSubmit((data) => handleSave(data, true))()}
                     disabled={isFormLoading || isLocked || docToEdit?.status === 'PENDING_REVIEW'}
+                    title="ส่งเอกสารนี้ไปให้ฝ่ายบัญชีตรวจสอบและยืนยันก่อนปิดงาน"
                 >
                     {isSubmitting && isReviewSubmission ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                     ส่งบัญชีตรวจสอบ
@@ -533,7 +533,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                       control={form.control}
                       render={({ field }) => (
                           <FormItem className="flex flex-col">
-                          <FormLabel>ลูกค้า</FormLabel>
+                          <FormLabel>ชื่อลูกค้า</FormLabel>
                           <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                               <PopoverTrigger asChild>
                               <FormControl>
@@ -545,16 +545,16 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                               </PopoverTrigger>
                               <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                   <div className="p-2 border-b">
-                                      <Input autoFocus placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                                      <Input autoFocus placeholder="พิมพ์ชื่อหรือเบอร์โทร..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                   </div>
                                   <ScrollArea className="h-fit max-h-60">
                                       {filteredCustomers.length > 0 ? (
                                         filteredCustomers.map((c) => (
                                           <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
-                                              <div><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
+                                              <div className="text-left"><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
                                           </Button>
                                           ))
-                                      ) : (<p className="text-center p-4 text-sm text-muted-foreground">No customers found.</p>)}
+                                      ) : (<p className="text-center p-4 text-sm text-muted-foreground">ไม่พบข้อมูลลูกค้า</p>)}
                                   </ScrollArea>
                               </PopoverContent>
                           </Popover>
@@ -563,7 +563,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   />
                   {displayCustomer && (
                       <div className="mt-2 text-sm text-muted-foreground">
-                          <p>{displayCustomer.taxAddress || 'N/A'}</p>
+                          <p>{displayCustomer.taxAddress || 'ไม่มีข้อมูลที่อยู่'}</p>
                           <p>โทร: {displayCustomer.phone}</p>
                           <p>เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId || 'N/A'}</p>
                       </div>
@@ -580,7 +580,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
           <Card>
               <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                  <CardTitle className="text-base">รายการ</CardTitle>
+                  <CardTitle className="text-base">รายการสินค้า/บริการ</CardTitle>
                   {jobId && quotations.length > 0 && (
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
@@ -611,10 +611,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   <Table>
                       <TableHeader>
                           <TableRow>
-                              <TableHead>#</TableHead>
+                              <TableHead className="w-12">#</TableHead>
                               <TableHead>รายละเอียด</TableHead>
-                              <TableHead className="text-right">จำนวน</TableHead>
-                              <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                              <TableHead className="w-32 text-right">จำนวน</TableHead>
+                              <TableHead className="w-40 text-right">ราคา/หน่วย</TableHead>
                               <TableHead className="text-right">ยอดรวม</TableHead>
                               <TableHead/>
                           </TableRow>
@@ -623,12 +623,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                           {fields.map((field, index) => (
                               <TableRow key={field.id}>
                                   <TableCell>{index + 1}</TableCell>
-                                  <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="Service or product" disabled={isLocked}/>)}/></TableCell>
+                                  <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="ชื่อรายการสินค้าหรือบริการ" disabled={isLocked}/>)}/></TableCell>
                                   <TableCell>
                                       <FormField
                                           control={form.control}
                                           name={`items.${index}.quantity`}
-                                          render={({ field }) => ( <Input type="number" inputMode="decimal" placeholder="—" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }} onChange={(e) => { const newQuantity = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(newQuantity); const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0; form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true }); }} disabled={isLocked} /> )}/>
+                                          render={({ field }) => ( <Input type="number" inputMode="decimal" placeholder="0" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }} onChange={(e) => { const newQuantity = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(newQuantity); const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0; form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true }); }} disabled={isLocked} /> )}/>
                                   </TableCell>
                                   <TableCell>
                                       <FormField
@@ -652,7 +652,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   <CardContent className="space-y-4">
                        <FormField control={form.control} name="paymentTerms" render={({ field }) => (
                             <FormItem>
-                                <FormLabel>เงื่อนไขการชำระ</FormLabel>
+                                <FormLabel>เงื่อนไขการชำระเงิน</FormLabel>
                                 <FormControl>
                                     <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
                                         <div className="flex items-center space-x-2">
@@ -685,13 +685,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                 )} />
                                 <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel>บัญชีที่คาดว่าจะเข้า</FormLabel>
+                                        <FormLabel>เข้าบัญชีที่รับเงิน (คาดการณ์)</FormLabel>
                                         <Select onValueChange={field.onChange} value={field.value}>
                                             <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
                                             <SelectContent>
                                                 {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
+                                        <FormDescription className="text-[10px]">บัญชีนี้เป็นข้อมูลที่ออฟฟิศระบุให้ฝ่ายบัญชีตรวจสอบภายหลัง สามารถแก้ไขได้ตอนยืนยัน</FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )} />
@@ -702,13 +703,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                             <FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4 h-fit">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
                                 <div className="space-y-1 leading-none">
-                                    <FormLabel className="font-normal cursor-pointer">ต้องออกใบวางบิล</FormLabel>
-                                    <FormMessage />
+                                    <FormLabel className="font-normal cursor-pointer">ต้องออกใบวางบิลรวม</FormLabel>
+                                    <FormDescription>ติ๊กเฉพาะกรณีลูกค้ารายนี้ต้องออกใบวางบิลรวมภายหลัง (ลูกค้าเครดิต)</FormDescription>
                                 </div>
                             </FormItem>
                         )} />
                        
-                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เงื่อนไขการรับประกัน หรือข้อมูลเพิ่มเติม" rows={3} disabled={isLocked}/></FormControl></FormItem>)} />
+                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เช่น เงื่อนไขการรับประกัน, รายละเอียดเพิ่มเติม..." rows={3} disabled={isLocked}/></FormControl></FormItem>)} />
                   </CardContent>
               </Card>
               <div className="space-y-4">
@@ -728,13 +729,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                           <span>{formatCurrency(form.watch('vatAmount'))}</span>
                       </div>
                       <Separator/>
-                      <div className="flex justify-between items-center text-lg font-bold"><span >ยอดสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
+                      <div className="flex justify-between items-center text-lg font-bold"><span >ยอดรวมสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                   </div>
               </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-              <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+              <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจลงนาม (ฝ่ายร้าน)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+              <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ (ลูกค้า)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
           </div>
         </form>
       </Form>
