@@ -167,37 +167,6 @@ export function DocumentList({
     setIsDeleteAlertOpen(true);
   };
 
-  const confirmCancel = async () => {
-    if (!db || !docToAction) return;
-    setIsActionLoading(true);
-    try {
-      const docRef = doc(db, "documents", docToAction.id);
-      await updateDoc(docRef, { status: 'CANCELLED', updatedAt: serverTimestamp() });
-      toast({ title: "ยกเลิกเอกสารสำเร็จ" });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "การยกเลิกล้มเหลว", description: e.message });
-    } finally {
-      setIsActionLoading(false);
-      setIsCancelAlertOpen(false);
-      setDocToAction(null);
-    }
-  };
-
-  const confirmDelete = async () => {
-    if (!db || !docToAction) return;
-    setIsActionLoading(true);
-    try {
-      await deleteDoc(doc(db, "documents", docToAction.id));
-      toast({ title: "ลบเอกสารสำเร็จ" });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "การลบล้มเหลว", description: e.message });
-    } finally {
-      setIsActionLoading(false);
-      setIsDeleteAlertOpen(false);
-      setDocToAction(null);
-    }
-  };
-
   return (
     <>
       <Card>
@@ -276,14 +245,19 @@ export function DocumentList({
                                 ? `/app/office/documents/quotation/${docItem.id}` 
                                 : `/app/documents/${docItem.id}`));
                       
-                      const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docType);
+                      const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docItem.docType);
                       const editPath = isOffice && hasOfficeEditRoute
-                        ? (docType === 'QUOTATION'
+                        ? (docItem.docType === 'QUOTATION'
                           ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
-                          : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`)
+                          : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`)
                         : null;
 
                       const displayStatus = getDocDisplayStatus(docItem);
+
+                      // Special case for DRAFT Delivery Notes: pressing "View" should go to Edit form to continue work.
+                      const isDraftDeliveryNote = docItem.docType === 'DELIVERY_NOTE' && docItem.status === 'DRAFT';
+                      const finalViewPath = isDraftDeliveryNote && editPath ? editPath : viewPath;
+                      const viewLabel = isDraftDeliveryNote ? "ดู/ทำต่อ" : "ดูรายละเอียด";
 
                       return (
                       <TableRow key={docItem.id}>
@@ -311,9 +285,9 @@ export function DocumentList({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => router.push(viewPath)}>
+                              <DropdownMenuItem onSelect={() => router.push(finalViewPath)}>
                                   <Eye className="mr-2 h-4 w-4"/>
-                                  ดูรายละเอียด
+                                  {viewLabel}
                               </DropdownMenuItem>
                               
                               {editPath && (
