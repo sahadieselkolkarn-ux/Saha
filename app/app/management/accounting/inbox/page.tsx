@@ -73,7 +73,6 @@ export default function AccountingInboxPage() {
 
   const accountsQuery = useMemo(() => {
     if (!db) return null;
-    // Removed orderBy to avoid missing index error, will sort on client side
     return query(
       collection(db, "accountingAccounts"), 
       where("isActive", "==", true)
@@ -105,7 +104,6 @@ export default function AccountingInboxPage() {
     const unsubAccounts = onSnapshot(accountsQuery, 
       (snap) => {
           const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>));
-          // Sort by name on client side
           data.sort((a, b) => a.name.localeCompare(b.name, 'th'));
           setAccounts(data);
       }
@@ -114,12 +112,45 @@ export default function AccountingInboxPage() {
     return () => { unsubDocs(); unsubAccounts(); };
   }, [hasPermission, docsQuery, accountsQuery]);
   
-  useEffect(() => {
-    if (confirmingDoc) {
-        setSelectedAccountId(confirmingDoc.suggestedAccountId || (accounts.find(a => a.type === 'CASH')?.id || accounts[0]?.id || ""));
-        setSelectedPaymentMethod(confirmingDoc.suggestedPaymentMethod || 'CASH');
+  // Helper to get fallback account
+  const getInitialAccountId = (doc: DocumentType, availableAccounts: AccountingAccount[]) => {
+    if (availableAccounts.length === 0) return "";
+    
+    // 1. Check suggested account from Office
+    if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
+        return doc.suggestedAccountId;
     }
-  }, [confirmingDoc, accounts]);
+    
+    // 2. Try first CASH account
+    const cashAccount = availableAccounts.find(a => a.type === 'CASH');
+    if (cashAccount) return cashAccount.id;
+    
+    // 3. Fallback to first available account
+    return availableAccounts[0].id;
+  };
+
+  const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
+    setConfirmingDoc(doc);
+    const initialId = getInitialAccountId(doc, accounts);
+    setSelectedAccountId(initialId);
+    setSelectedPaymentMethod(doc.suggestedPaymentMethod || 'CASH');
+    
+    if (process.env.NODE_ENV === 'development') {
+        console.debug("[ConfirmDialog] Opening for:", doc.docNo, {
+            suggested: doc.suggestedAccountId,
+            selected: initialId,
+            accountsCount: accounts.length
+        });
+    }
+  };
+
+  // Keep effect for when accounts finish loading AFTER dialog is already open
+  useEffect(() => {
+    if (confirmingDoc && accounts.length > 0 && !selectedAccountId) {
+        const initialId = getInitialAccountId(confirmingDoc, accounts);
+        setSelectedAccountId(initialId);
+    }
+  }, [confirmingDoc, accounts, selectedAccountId]);
 
   const filteredDocs = useMemo(() => {
     const filteredByTab = documents.filter(doc => {
@@ -367,7 +398,7 @@ export default function AccountingInboxPage() {
                                         <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onSelect={() => setConfirmingDoc(doc)} className="text-green-600 focus:text-green-600">
+                                        <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600">
                                             <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงินและปิดงาน
                                         </DropdownMenuItem>
                                         <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
@@ -439,32 +470,49 @@ export default function AccountingInboxPage() {
                 <p className="text-sm text-muted-foreground">ยอดเงินรวมสุทธิ</p>
                 <p className="text-2xl font-bold text-primary">{formatCurrency(confirmingDoc?.grandTotal ?? 0)} บาท</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>ช่องทางที่รับ</Label>
-                    <Select value={selectedPaymentMethod} onValueChange={(v: any) => setSelectedPaymentMethod(v)}>
-                        <SelectTrigger><SelectValue/></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="CASH">เงินสด</SelectItem>
-                            <SelectItem value="TRANSFER">เงินโอน</SelectItem>
-                        </SelectContent>
-                    </Select>
+
+              {accounts.length === 0 ? (
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>ไม่พบบัญชีรับเงิน</AlertTitle>
+                    <AlertDescription>
+                        ยังไม่มีบัญชีรับเงินในระบบ กรุณาไปเพิ่มในเมนู ‘บัญชีเงินสด/ธนาคาร’ ก่อน
+                    </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>ช่องทางที่รับ</Label>
+                        <Select value={selectedPaymentMethod} onValueChange={(v: any) => setSelectedPaymentMethod(v)}>
+                            <SelectTrigger><SelectValue/></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="CASH">เงินสด</SelectItem>
+                                <SelectItem value="TRANSFER">เงินโอน</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
+                        <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                            <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
+                            <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
                 </div>
-                <div className="space-y-2">
-                    <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
-                    <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                        <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
-                        <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}</SelectContent>
-                    </Select>
-                </div>
-              </div>
-              {confirmingDoc?.suggestedAccountId && confirmingDoc.suggestedAccountId !== selectedAccountId && (
+              )}
+
+              {confirmingDoc?.suggestedAccountId && confirmingDoc.suggestedAccountId !== selectedAccountId && accounts.length > 0 && (
                   <p className="text-[10px] text-amber-600 font-medium italic">* ออฟฟิศระบุมาเป็นบัญชีอื่น</p>
               )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || !selectedAccountId}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันและปิดงาน</Button>
+            <Button 
+                onClick={handleConfirmCashPayment} 
+                disabled={isSubmitting || !selectedAccountId || accounts.length === 0}
+            >
+                {isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันและปิดงาน
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
