@@ -182,18 +182,22 @@ export default function AccountingInboxPage() {
         const arId = `AR_${confirmingDoc.id}`;
         const arRef = doc(db, 'accountingObligations', arId);
 
+        // Deterministic fields to avoid undefined
+        const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
+        const jobIdFallback = confirmingDoc.jobId || null;
+
         transaction.set(entryRef, {
           entryType: 'CASH_IN', 
           entryDate: confirmingDoc.docDate, 
           amount: confirmingDoc.grandTotal, 
           accountId: selectedAccountId,
           paymentMethod: selectedPaymentMethod, 
-          description: `รับเงิน${selectedPaymentMethod === 'CASH' ? 'สด' : 'โอน'}จาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
+          description: `รับเงิน${selectedPaymentMethod === 'CASH' ? 'สด' : 'โอน'}จาก ${customerName} (เอกสาร: ${confirmingDoc.docNo})`,
           sourceDocId: confirmingDoc.id, 
           sourceDocNo: confirmingDoc.docNo, 
           sourceDocType: confirmingDoc.docType,
-          customerNameSnapshot: confirmingDoc.customerSnapshot.name, 
-          jobId: confirmingDoc.jobId,
+          customerNameSnapshot: customerName, 
+          jobId: jobIdFallback,
           createdAt: serverTimestamp(),
         });
 
@@ -209,7 +213,8 @@ export default function AccountingInboxPage() {
           createdAt: serverTimestamp(), 
           updatedAt: serverTimestamp(), 
           paidOffDate: confirmingDoc.docDate,
-          customerNameSnapshot: confirmingDoc.customerSnapshot.name,
+          customerNameSnapshot: customerName,
+          jobId: jobIdFallback,
         });
 
         transaction.update(docRef, { 
@@ -284,6 +289,10 @@ export default function AccountingInboxPage() {
             const arId = `AR_${docToProcess.id}`;
             const arRef = doc(db, 'accountingObligations', arId);
 
+            // Deterministic fields to avoid undefined
+            const customerName = docToProcess.customerSnapshot?.name || 'Unknown';
+            const jobIdFallback = docToProcess.jobId || null;
+
             transaction.set(arRef, {
                 type: 'AR', 
                 status: 'UNPAID', 
@@ -296,7 +305,8 @@ export default function AccountingInboxPage() {
                 createdAt: serverTimestamp(), 
                 updatedAt: serverTimestamp(), 
                 dueDate: docToProcess.dueDate || null,
-                customerNameSnapshot: docToProcess.customerSnapshot.name,
+                customerNameSnapshot: customerName,
+                jobId: jobIdFallback,
             });
 
             transaction.update(docRef, { 
@@ -335,7 +345,7 @@ export default function AccountingInboxPage() {
         status: 'REJECTED',
         reviewRejectReason: disputeReason,
         reviewRejectedAt: serverTimestamp(),
-        reviewRejectedByName: profile.displayName,
+        reviewRejectedByName: profile.displayName || 'Unknown',
         dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() }
       });
       toast({ title: "บันทึกข้อโต้แย้งและตีกลับสำเร็จ" });
