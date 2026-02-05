@@ -2,18 +2,22 @@
 
 import { useMemo, useState, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase, useDoc, type WithId } from "@/firebase";
+import { useFirebase, useDoc } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, Edit, Ban, Trash2, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, Trash2, Ban, Loader2, FileText, User, Calendar, CreditCard, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
+import { docStatusLabel } from "@/lib/ui-labels";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -27,6 +31,25 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+const getStatusVariant = (status: string) => {
+  switch (status) {
+    case 'DRAFT':
+    case 'PENDING_REVIEW':
+      return 'secondary';
+    case 'APPROVED':
+    case 'UNPAID':
+    case 'PARTIAL':
+      return 'default';
+    case 'PAID':
+      return 'outline';
+    case 'CANCELLED':
+    case 'REJECTED':
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+}
+
 function DeliveryNoteDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
@@ -39,8 +62,6 @@ function DeliveryNoteDetailPageContent() {
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const isAdmin = profile?.role === 'ADMIN';
-    
-    const isValidType = document?.docType === 'DELIVERY_NOTE';
     const isCancelled = document?.status === 'CANCELLED';
 
     const handleCancel = async () => {
@@ -50,7 +71,7 @@ function DeliveryNoteDetailPageContent() {
             await updateDoc(doc(db, 'documents', docId as string), {
                 status: 'CANCELLED',
                 updatedAt: serverTimestamp(),
-                notes: (document?.notes || "") + "\n[System] ผู้ใช้ยกเลิกเอกสาร"
+                notes: (document?.notes || "") + "\n[System] ยกเลิกเอกสารโดย " + profile?.displayName
             });
             toast({ title: "ยกเลิกใบส่งของชั่วคราวสำเร็จ" });
         } catch (e: any) {
@@ -73,22 +94,28 @@ function DeliveryNoteDetailPageContent() {
         }
     };
 
-    if (isLoading) return <Skeleton className="h-screen w-full" />;
+    if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
     
-    if (error || !document || !isValidType) {
+    if (error || !document || document.docType !== 'DELIVERY_NOTE') {
         return (
             <div className="p-8 text-center space-y-4">
                 <AlertCircle className="mx-auto h-12 w-12 text-destructive"/>
                 <h2 className="text-xl font-bold">ไม่พบข้อมูลใบส่งของชั่วคราว</h2>
-                <Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+                <p className="text-muted-foreground">เอกสารที่ท่านต้องการเข้าถึงอาจไม่มีอยู่ในระบบ หรือเป็นเอกสารประเภทอื่น</p>
+                <Button variant="outline" onClick={() => router.push('/app/office/documents/delivery-note')}><ArrowLeft className="mr-2 h-4 w-4"/> กลับไปหน้ารายการ</Button>
             </div>
         );
     }
 
+    const formatCurrency = (val: number) => (val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
-                <Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+            {/* Action Bar */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <Button variant="outline" onClick={() => router.push('/app/office/documents/delivery-note')}>
+                    <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
+                </Button>
                 <div className="flex flex-wrap gap-2">
                     {isAdmin && (
                         <AlertDialog>
@@ -97,8 +124,8 @@ function DeliveryNoteDetailPageContent() {
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
-                                    <AlertDialogTitle>ยืนยันการลบแบบถาวร?</AlertDialogTitle>
-                                    <AlertDialogDescription>การกระทำนี้จะลบข้อมูลออกจากฐานข้อมูลทันทีและไม่สามารถกู้คืนได้ เฉพาะผู้ดูแลระบบเท่านั้นที่ทำได้</AlertDialogDescription>
+                                    <AlertDialogTitle>ยืนยันการลบถาวร?</AlertDialogTitle>
+                                    <AlertDialogDescription>การกระทำนี้จะลบข้อมูลออกจากฐานข้อมูลทันทีและไม่สามารถกู้คืนได้ เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถทำได้</AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                     <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
@@ -108,70 +135,195 @@ function DeliveryNoteDetailPageContent() {
                         </AlertDialog>
                     )}
                     {!isCancelled && (
-                        <>
-                            <Button variant="outline" size="sm" onClick={() => router.push(`/app/office/documents/delivery-note/new?editDocId=${docId}`)}>
-                                <Edit className="mr-2 h-4 w-4"/> แก้ไข
-                            </Button>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="sm" disabled={isActionLoading}><Ban className="mr-2 h-4 w-4"/> ยกเลิกเอกสาร</Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>ยืนยันการยกเลิก?</AlertDialogTitle>
-                                        <AlertDialogDescription>เอกสารที่ยกเลิกแล้วจะไม่สามารถแก้ไขได้อีก แต่จะยังคงอยู่ในระบบเพื่อการตรวจสอบ</AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>ปิด</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleCancel}>
-                                            {isActionLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
-                                            ยืนยัน
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </>
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="outline" size="sm" disabled={isActionLoading} className="text-destructive border-destructive hover:bg-destructive/10">
+                                    <Ban className="mr-2 h-4 w-4"/> ยกเลิกเอกสาร
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>ยืนยันการยกเลิก?</AlertDialogTitle>
+                                    <AlertDialogDescription>เอกสารที่ยกเลิกแล้วจะไม่สามารถแก้ไขได้อีก แต่จะยังคงอยู่ในระบบเพื่อการตรวจสอบ</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>ปิด</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleCancel}>
+                                        {isActionLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
+                                        ยืนยันการยกเลิก
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     )}
                     <Button variant="default" size="sm" onClick={() => router.push(`/app/office/documents/${docId}?print=1&autoprint=1`)}>
-                        <Printer className="mr-2 h-4 w-4"/> พิมพ์
+                        <Printer className="mr-2 h-4 w-4"/> พิมพ์ (PDF)
                     </Button>
                 </div>
             </div>
 
             {isCancelled && (
-                <Alert variant="destructive" className="print:hidden">
+                <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>เอกสารนี้ถูกยกเลิกแล้ว</AlertTitle>
-                    <AlertDescription>ยกเลิกเมื่อวันที่: {safeFormat(document.updatedAt, 'PPpp')}</AlertDescription>
+                    <AlertDescription>สถานะปัจจุบันคือยกเลิก ไม่สามารถนำไปใช้ในการรับเงินหรือออกใบวางบิลได้</AlertDescription>
                 </Alert>
             )}
 
-            <Card className="print:shadow-none print:border-none">
-                <CardHeader className="flex flex-row items-start justify-between">
-                    <div>
-                        <CardTitle className="text-2xl">ใบส่งของชั่วคราว / Delivery Note</CardTitle>
-                        <CardDescription>เลขที่: {document.docNo} | วันที่: {safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</CardDescription>
-                    </div>
-                    <Badge variant={isCancelled ? 'destructive' : 'default'}>
-                        {isCancelled ? 'ยกเลิกแล้ว' : (document.status === 'PAID' ? 'จ่ายแล้ว' : 'ปกติ')}
-                    </Badge>
-                </CardHeader>
-                <CardContent>
-                    <div className="text-sm text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-                        <p className="mb-4">กรุณาใช้หน้า "พิมพ์" เพื่อดูรูปแบบเอกสารฉบับเต็มสำหรับการส่งให้ลูกค้า</p>
-                        <Button variant="outline" onClick={() => router.push(`/app/office/documents/${docId}`)}>
-                            เปิดหน้าพรีวิวมาตรฐาน
-                        </Button>
-                    </div>
-                </CardContent>
-            </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-6">
+                    {/* Items Table */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>รายการสินค้า / บริการ</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="border rounded-md overflow-hidden">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="w-12 text-center">#</TableHead>
+                                            <TableHead>รายละเอียด</TableHead>
+                                            <TableHead className="w-24 text-right">จำนวน</TableHead>
+                                            <TableHead className="w-32 text-right">ราคา/หน่วย</TableHead>
+                                            <TableHead className="w-32 text-right">รวมเงิน</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {document.items.map((item, i) => (
+                                            <TableRow key={i}>
+                                                <TableCell className="text-center text-muted-foreground">{i + 1}</TableCell>
+                                                <TableCell className="font-medium">{item.description}</TableCell>
+                                                <TableCell className="text-right">{item.quantity}</TableCell>
+                                                <TableCell className="text-right">{formatCurrency(item.unitPrice)}</TableCell>
+                                                <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            
+                            <div className="flex flex-col items-end gap-2 mt-6">
+                                <div className="flex justify-between w-full max-w-[300px] text-sm">
+                                    <span className="text-muted-foreground">รวมเป็นเงิน:</span>
+                                    <span>{formatCurrency(document.subtotal)}</span>
+                                </div>
+                                <div className="flex justify-between w-full max-w-[300px] text-sm text-destructive">
+                                    <span className="text-muted-foreground">ส่วนลด:</span>
+                                    <span>- {formatCurrency(document.discountAmount || 0)}</span>
+                                </div>
+                                <Separator className="my-1 w-full max-w-[300px]" />
+                                <div className="flex justify-between w-full max-w-[300px] text-lg font-bold text-primary">
+                                    <span>ยอดสุทธิ:</span>
+                                    <span>{formatCurrency(document.grandTotal)} บาท</span>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Notes */}
+                    {document.notes && (
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">หมายเหตุ</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="whitespace-pre-wrap text-sm">{document.notes}</p>
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
+
+                <div className="space-y-6">
+                    {/* Metadata Card */}
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">ข้อมูลเอกสาร</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-primary/10 rounded-full text-primary"><FileText className="h-4 w-4"/></div>
+                                <div>
+                                    <p className="text-xs text-muted-foreground">เลขที่เอกสาร</p>
+                                    <p className="font-bold font-mono">{document.docNo}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-primary/10 rounded-full text-primary"><Calendar className="h-4 w-4"/></div>
+                                <div>
+                                    <p className="text-xs text-muted-foreground">วันที่ออกเอกสาร</p>
+                                    <p className="font-medium">{safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</p>
+                                </div>
+                            </div>
+                            <Separator />
+                            <div>
+                                <p className="text-xs text-muted-foreground mb-1">สถานะ</p>
+                                <Badge variant={getStatusVariant(document.status)} className="w-full justify-center py-1">
+                                    {docStatusLabel(document.status)}
+                                </Badge>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Customer Card */}
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">ข้อมูลลูกค้า</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2 bg-primary/10 rounded-full text-primary mt-1"><User className="h-4 w-4"/></div>
+                                <div>
+                                    <p className="font-bold text-base">{document.customerSnapshot.name}</p>
+                                    <p className="text-sm text-muted-foreground">{document.customerSnapshot.phone}</p>
+                                    <p className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap">{document.customerSnapshot.taxAddress || document.customerSnapshot.detail || 'ไม่มีที่อยู่'}</p>
+                                </div>
+                            </div>
+                            {document.jobId && (
+                                <Button asChild variant="secondary" className="w-full" size="sm">
+                                    <Link href={`/app/jobs/${document.jobId}`}>
+                                        <ExternalLink className="mr-2 h-3 w-3" /> ไปที่งานซ่อม (Job)
+                                    </Link>
+                                </Button>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Payment Terms Card */}
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">เงื่อนไขการเงิน</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-primary/10 rounded-full text-primary"><CreditCard className="h-4 w-4"/></div>
+                                <div>
+                                    <p className="text-xs text-muted-foreground">การชำระเงิน</p>
+                                    <p className="font-bold">{document.paymentTerms === 'CREDIT' ? 'เครดิต (Credit)' : 'เงินสด/โอน (Cash)'}</p>
+                                </div>
+                            </div>
+                            {document.billingRequired && (
+                                <Badge variant="outline" className="w-full justify-center bg-amber-50 text-amber-700 border-amber-200">
+                                    ต้องวางบิลรวม
+                                </Badge>
+                            )}
+                            {document.dueDate && (
+                                <div className="pt-2">
+                                    <p className="text-xs text-muted-foreground">วันครบกำหนดชำระ</p>
+                                    <p className="font-semibold text-destructive">{safeFormat(new Date(document.dueDate), 'dd/MM/yyyy')}</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
         </div>
     );
 }
 
 export default function DeliveryNoteDetailPage() {
     return (
-        <Suspense fallback={<Skeleton className="h-screen w-full" />}>
+        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
             <DeliveryNoteDetailPageContent />
         </Suspense>
     );

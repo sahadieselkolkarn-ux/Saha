@@ -266,7 +266,13 @@ export function DocumentList({
                   <TableBody>
                     {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
                       const isOffice = baseContext === 'office';
-                      const viewPath = `/app/documents/${docItem.id}`;
+                      
+                      // Determination of View Path: Specific View page or Central Router (Edit)
+                      const viewPath = docItem.docType === 'DELIVERY_NOTE' 
+                        ? `/app/office/documents/delivery-note/${docItem.id}`
+                        : (docItem.docType === 'QUOTATION' 
+                            ? `/app/office/documents/quotation/${docItem.id}` 
+                            : `/app/documents/${docItem.id}`);
                       
                       const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docType);
                       const editPath = isOffice && hasOfficeEditRoute
@@ -305,14 +311,14 @@ export function DocumentList({
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onSelect={() => router.push(viewPath)}>
                                   <Eye className="mr-2 h-4 w-4"/>
-                                  ดู
+                                  ดูรายละเอียด
                               </DropdownMenuItem>
                               
-                              {editPath ? (
+                              {editPath && (
                                   docItem.status === 'PAID' ? (
                                       <DropdownMenuItem disabled>
                                           <Edit className="mr-2 h-4 w-4"/>
-                                          แก้ไขไม่ได้ (บันทึกรายรับแล้ว)
+                                          แก้ไขไม่ได้ (รับเงินแล้ว)
                                       </DropdownMenuItem>
                                   ) : (
                                       <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'CANCELLED'}>
@@ -320,11 +326,6 @@ export function DocumentList({
                                           แก้ไข
                                       </DropdownMenuItem>
                                   )
-                              ) : (
-                                  <DropdownMenuItem disabled>
-                                      <Edit className="mr-2 h-4 w-4"/>
-                                      {isOffice ? "ไม่สามารถแก้ไขประเภทนี้ได้" : "ไม่สามารถแก้ไขจากหน้านี้ได้"}
-                                  </DropdownMenuItem>
                               )}
 
                               <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || docItem.status === 'PAID'}>
