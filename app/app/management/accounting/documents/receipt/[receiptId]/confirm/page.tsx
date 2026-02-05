@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, query, where, writeBatch, serverTimestamp, getDocs, getDoc } from "firebase/firestore";
+import { doc, collection, query, where, writeBatch, serverTimestamp, getDocs, getDoc, runTransaction } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useAuth } from "@/context/auth-context";
@@ -256,83 +256,102 @@ function ConfirmReceiptPageContent() {
     if (!db || !profile || !receipt) return;
     setIsLoading(true);
     try {
-        const batch = writeBatch(db);
-        
-        const arPaymentRef = doc(collection(db, 'arPayments'));
-        batch.set(arPaymentRef, {
-            receiptId,
-            customerId: receipt.customerId,
-            paymentDate: data.paymentDate,
-            netReceivedTotal: data.netReceivedTotal,
-            withholdingTotal: totals.totalWht,
-            allocations: data.allocations.filter(a => a.grossApplied > 0).map(a => ({
-                invoiceId: a.invoiceId,
-                invoiceDocNo: a.invoiceDocNo,
-                netCashApplied: a.netCashApplied,
-                withholdingAmount: a.withholdingAmount,
-                grossApplied: a.grossApplied,
-            })),
-            createdAt: serverTimestamp(),
-        });
-        
-        const entryRef = doc(collection(db, 'accountingEntries'));
-        batch.set(entryRef, {
-            entryType: 'RECEIPT',
-            entryDate: data.paymentDate,
-            amount: data.netReceivedTotal,
-            accountId: data.accountId,
-            paymentMethod: data.paymentMethod,
-            sourceDocType: 'RECEIPT',
-            sourceDocId: receiptId,
-            sourceDocNo: receipt.docNo,
-            createdAt: serverTimestamp(),
-        });
-        
-        batch.update(doc(db, 'documents', receiptId as string), {
-            status: 'CONFIRMED',
-            receiptStatus: 'CONFIRMED',
-            confirmedPayment: {
-                accountId: data.accountId,
-                method: data.paymentMethod,
-                receivedDate: data.paymentDate,
+        await runTransaction(db, async (transaction) => {
+            const receiptRef = doc(db, 'documents', receipt.id);
+            const receiptSnap = await transaction.get(receiptRef);
+            
+            if (!receiptSnap.exists()) throw new Error("ไม่พบใบเสร็จรับเงิน");
+            
+            // Idempotency check
+            if (receiptSnap.data().status === 'CONFIRMED' || receiptSnap.data().receiptStatus === 'CONFIRMED' || receiptSnap.data().accountingEntryId) {
+                throw new Error("ใบเสร็จนี้ถูกยืนยันไปก่อนหน้านี้แล้ว");
+            }
+
+            const arPaymentId = `ARPAY_${receipt.id}`;
+            const arPaymentRef = doc(db, 'arPayments', arPaymentId);
+            
+            const entryId = `RECEIPT_${receipt.id}`;
+            const entryRef = doc(db, 'accountingEntries', entryId);
+
+            // 1. Create AR Payment record
+            transaction.set(arPaymentRef, {
+                id: arPaymentId,
+                receiptId: receipt.id,
+                customerId: receipt.customerId,
+                paymentDate: data.paymentDate,
                 netReceivedTotal: data.netReceivedTotal,
                 withholdingTotal: totals.totalWht,
-                arPaymentId: arPaymentRef.id,
-            },
-            updatedAt: serverTimestamp(),
-        });
-        
-        for (const alloc of data.allocations) {
-            if (alloc.grossApplied > 0) {
-                const ob = obligations[alloc.invoiceId];
-                if (ob) {
-                    const newBalance = ob.balance - alloc.grossApplied;
-                    const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
-                    
-                    batch.update(doc(db, 'accountingObligations', ob.id), {
-                        amountPaid: ob.amountPaid + alloc.grossApplied,
-                        balance: newBalance,
-                        status: newStatus,
-                        lastPaymentDate: data.paymentDate,
-                        paidOffDate: newStatus === 'PAID' ? data.paymentDate : null,
-                    });
-
-                    batch.update(doc(db, 'documents', alloc.invoiceId), {
-                        status: newStatus,
-                        arStatus: newStatus,
-                        receiptStatus: 'CONFIRMED',
-                        paymentSummary: {
-                            paidTotal: ob.amountPaid + alloc.grossApplied,
+                allocations: data.allocations.filter(a => a.grossApplied > 0).map(a => ({
+                    invoiceId: a.invoiceId,
+                    invoiceDocNo: a.invoiceDocNo,
+                    netCashApplied: a.netCashApplied,
+                    withholdingAmount: a.withholdingAmount,
+                    grossApplied: a.grossApplied,
+                })),
+                createdAt: serverTimestamp(),
+            });
+            
+            // 2. Create Accounting Entry
+            transaction.set(entryRef, {
+                entryType: 'RECEIPT',
+                entryDate: data.paymentDate,
+                amount: data.netReceivedTotal,
+                accountId: data.accountId,
+                paymentMethod: data.paymentMethod,
+                sourceDocType: 'RECEIPT',
+                sourceDocId: receipt.id,
+                sourceDocNo: receipt.docNo,
+                createdAt: serverTimestamp(),
+            });
+            
+            // 3. Update Receipt status
+            transaction.update(receiptRef, {
+                status: 'CONFIRMED',
+                receiptStatus: 'CONFIRMED',
+                accountingEntryId: entryId,
+                confirmedPayment: {
+                    accountId: data.accountId,
+                    method: data.paymentMethod,
+                    receivedDate: data.paymentDate,
+                    netReceivedTotal: data.netReceivedTotal,
+                    withholdingTotal: totals.totalWht,
+                    arPaymentId: arPaymentId,
+                },
+                updatedAt: serverTimestamp(),
+            });
+            
+            // 4. Update related Invoices and Obligations
+            for (const alloc of data.allocations) {
+                if (alloc.grossApplied > 0) {
+                    const ob = obligations[alloc.invoiceId];
+                    if (ob) {
+                        const newBalance = Math.max(0, ob.balance - alloc.grossApplied);
+                        const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+                        
+                        transaction.update(doc(db, 'accountingObligations', ob.id), {
+                            amountPaid: ob.amountPaid + alloc.grossApplied,
                             balance: newBalance,
-                            paymentStatus: newStatus
-                        },
-                        updatedAt: serverTimestamp(),
-                    });
+                            status: newStatus,
+                            lastPaymentDate: data.paymentDate,
+                            paidOffDate: newStatus === 'PAID' ? data.paymentDate : null,
+                            updatedAt: serverTimestamp(),
+                        });
+
+                        transaction.update(doc(db, 'documents', alloc.invoiceId), {
+                            status: newStatus,
+                            arStatus: newStatus,
+                            paymentSummary: {
+                                paidTotal: (ob.amountPaid || 0) + alloc.grossApplied,
+                                balance: newBalance,
+                                paymentStatus: newStatus
+                            },
+                            updatedAt: serverTimestamp(),
+                        });
+                    }
                 }
             }
-        }
+        });
         
-        await batch.commit();
         toast({ title: "ยืนยันการรับเงินสำเร็จ" });
         router.push('/app/management/accounting/inbox');
 

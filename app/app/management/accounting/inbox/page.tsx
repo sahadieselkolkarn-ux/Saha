@@ -67,7 +67,6 @@ export default function AccountingInboxPage() {
     return () => { unsubDocs(); unsubAccounts(); };
   }, [db, toast, hasPermission]);
   
-  // Set defaults when opening confirmation dialog
   useEffect(() => {
     if (confirmingDoc) {
         setSelectedAccountId(confirmingDoc.suggestedAccountId || (accounts.find(a => a.type === 'CASH')?.id || accounts[0]?.id || ""));
@@ -106,16 +105,17 @@ export default function AccountingInboxPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data();
         
+        // Idempotency check: Abort if already processed
         if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.accountingEntryId) {
           throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
         }
 
         const entryId = `SALE_${confirmingDoc.id}`;
         const entryRef = doc(db, 'accountingEntries', entryId);
-        const arId = `AR_OBL_${confirmingDoc.id}`;
+        const arId = `AR_${confirmingDoc.id}`;
         const arRef = doc(db, 'accountingObligations', arId);
 
-        // 1. Create entry (Idempotent by SALE_{id})
+        // 1. Create entry (Idempotent by fixed ID)
         transaction.set(entryRef, {
           entryType: 'CASH_IN', 
           entryDate: confirmingDoc.docDate, 
@@ -171,6 +171,8 @@ export default function AccountingInboxPage() {
               salesDocNo: confirmingDoc.docNo,
               paymentStatusAtClose: 'PAID' as const
           };
+          // archiveAndCloseJob handles its own transaction/batches internally, 
+          // called after main idempotency check
           await archiveAndCloseJob(db, confirmingDoc.jobId, confirmingDoc.docDate, profile, salesDocInfo);
       }
 
@@ -195,11 +197,12 @@ export default function AccountingInboxPage() {
             if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
             const docData = docSnap.data();
             
+            // Idempotency check
             if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.arObligationId) {
                 throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
             }
 
-            const arId = `AR_OBL_${docToProcess.id}`;
+            const arId = `AR_${docToProcess.id}`;
             const arRef = doc(db, 'accountingObligations', arId);
 
             transaction.set(arRef, {
@@ -284,7 +287,7 @@ export default function AccountingInboxPage() {
           <CardContent className="pt-6">
             <TabsContent value="receive" className="mt-0">
               <Table>
-                <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>วันที่</TableHead> Pel<TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตรวจสอบ</TableCell></TableRow>
