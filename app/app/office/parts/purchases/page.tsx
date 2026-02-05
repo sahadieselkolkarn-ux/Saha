@@ -8,27 +8,37 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/Card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Eye, Edit, Trash2 } from "lucide-react";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Eye, Edit, Trash2, HelpCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PurchaseDoc } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
 import { safeFormat } from "@/lib/date-utils";
 
+// Status Badge & Tooltip Helper (Thai Labels)
 const getStatusDisplay = (status?: PurchaseDoc['status']) => {
   switch (status) {
-    case 'DRAFT': return { label: "ฉบับร่าง", variant: "secondary" as const };
-    case 'PENDING_REVIEW': return { label: "รอตรวจสอบ", variant: "outline" as const };
-    case 'REJECTED': return { label: "ตีกลับแก้ไข", variant: "destructive" as const };
-    case 'APPROVED': return { label: "อนุมัติแล้ว", variant: "default" as const };
-    case 'UNPAID': return { label: "รอชำระเงิน", variant: "default" as const };
-    case 'PAID': return { label: "จ่ายแล้ว", variant: "default" as const };
-    case 'CANCELLED': return { label: "ยกเลิก", variant: "destructive" as const };
-    default: return { label: status || "-", variant: "outline" as const };
+    case 'DRAFT': 
+      return { label: "ฉบับร่าง", description: "ยังไม่ส่งตรวจ", variant: "secondary" as const };
+    case 'PENDING_REVIEW': 
+      return { label: "รอตรวจสอบ", description: "ส่งให้ฝ่ายบัญชีแล้ว", variant: "outline" as const };
+    case 'REJECTED': 
+      return { label: "ตีกลับแก้ไข", description: "บัญชีส่งกลับมาให้แก้ไข", variant: "destructive" as const };
+    case 'APPROVED': 
+      return { label: "อนุมัติแล้ว", description: "บัญชีตรวจสอบถูกต้องแล้ว", variant: "default" as const };
+    case 'UNPAID': 
+      return { label: "รอชำระเงิน", description: "รอการบันทึกจ่ายเงิน", variant: "default" as const };
+    case 'PAID': 
+      return { label: "จ่ายแล้ว", description: "จ่ายเงินและลงบัญชีแล้ว", variant: "default" as const };
+    case 'CANCELLED': 
+      return { label: "ยกเลิก", description: "ยกเลิกการใช้งาน", variant: "destructive" as const };
+    default: 
+      return { label: status || "-", description: "", variant: "outline" as const };
   }
 };
 
@@ -90,7 +100,7 @@ export default function PurchaseDocsListPage() {
   };
 
   return (
-    <>
+    <TooltipProvider>
       <PageHeader title="รายการซื้อ" description="สร้างและจัดการเอกสารการจัดซื้อ">
         <Button asChild>
           <Link href="/app/office/parts/purchases/new">
@@ -137,7 +147,20 @@ export default function PurchaseDocsListPage() {
                         <TableCell className="font-medium">{purchaseDoc.docNo}</TableCell>
                         <TableCell>{purchaseDoc.vendorSnapshot.shortName}</TableCell>
                         <TableCell>{purchaseDoc.invoiceNo}</TableCell>
-                        <TableCell><Badge variant={statusInfo.variant}>{statusInfo.label}</Badge></TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant={statusInfo.variant} className="cursor-help">
+                                {statusInfo.label}
+                              </Badge>
+                            </TooltipTrigger>
+                            {statusInfo.description && (
+                              <TooltipContent>
+                                <p>{statusInfo.description}</p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TableCell>
                         <TableCell className="text-right">{formatCurrency(purchaseDoc.grandTotal)}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -194,6 +217,6 @@ export default function PurchaseDocsListPage() {
               </AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
-    </>
+    </TooltipProvider>
   );
 }
