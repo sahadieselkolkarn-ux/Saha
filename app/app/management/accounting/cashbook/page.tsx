@@ -34,6 +34,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type EntryType = 'CASH_IN' | 'CASH_OUT' | 'RECEIPT';
 
@@ -677,19 +678,26 @@ function CashbookPageContent() {
 
   const entriesQuery = useMemo(() => {
     if (!db) return null;
-    const constraints = [orderBy("entryDate", "desc")];
-    if (selectedAccountId !== 'ALL') constraints.push(where("accountId", "==", selectedAccountId));
-    return query(collection(db, "accountingEntries"), ...constraints);
+    if (selectedAccountId === 'ALL') {
+      return query(collection(db, "accountingEntries"), orderBy("entryDate", "desc"));
+    } else {
+      // Avoid composite index requirement by removing orderBy when filtering by accountId
+      // We will handle sorting on the client side
+      return query(collection(db, "accountingEntries"), where("accountId", "==", selectedAccountId));
+    }
   }, [db, selectedAccountId]);
 
-  const { data: entries, isLoading: isLoadingEntries } = useCollection<AccountingEntry>(entriesQuery);
+  const { data: entries, isLoading: isLoadingEntries, error: entriesError } = useCollection<AccountingEntry>(entriesQuery);
   
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
   const isAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
 
   const filteredEntries = useMemo(() => {
     if (!entries) return [];
-    let data = entries;
+    
+    // Create a copy and sort client-side by entryDate desc
+    // This handles cases where the DB query didn't sort (when specific account is selected)
+    let data = [...entries].sort((a, b) => b.entryDate.localeCompare(a.entryDate));
 
     // 1. กรองเดือน
     if (dateRange?.from) data = data.filter(entry => !isBefore(parseISO(entry.entryDate), dateRange.from!));
@@ -798,6 +806,16 @@ function CashbookPageContent() {
           <PlusCircle className="mr-2 h-4 w-4" /> สร้างรายการรับ-จ่าย
         </Button>
       </div>
+
+      {entriesError && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>เกิดข้อผิดพลาดในการโหลดข้อมูล</AlertTitle>
+          <AlertDescription>
+            {entriesError.message}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader className="pb-3 border-b bg-muted/10">
