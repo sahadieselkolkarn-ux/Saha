@@ -44,9 +44,9 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2, PieChart as PieIcon } from "lucide-react";
+import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2, PieChart as PieIcon, Landmark } from "lucide-react";
 
-import type { Job, Document, AccountingEntry, JobDepartment, AccountingObligation } from "@/lib/types";
+import type { Job, Document, AccountingEntry, JobDepartment, AccountingObligation, PurchaseDoc } from "@/lib/types";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
@@ -94,6 +94,7 @@ function AppDashboardPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [obligations, setObligations] = useState<AccountingObligation[]>([]);
+  const [purchaseDocs, setPurchaseDocs] = useState<PurchaseDoc[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -117,11 +118,14 @@ function AppDashboardPage() {
     });
     const unsubObligations = onSnapshot(collection(db, "accountingObligations"), (snap) => {
       setObligations(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingObligation)));
+    });
+    const unsubPurchases = onSnapshot(collection(db, "purchaseDocs"), (snap) => {
+      setPurchaseDocs(snap.docs.map(d => ({ id: d.id, ...d.data() } as PurchaseDoc)));
       setLoading(false);
     });
 
     return () => {
-      unsubJobs(); unsubDocs(); unsubEntries(); unsubObligations();
+      unsubJobs(); unsubDocs(); unsubEntries(); unsubObligations(); unsubPurchases();
     };
   }, [db]);
 
@@ -201,7 +205,31 @@ function AppDashboardPage() {
       return { name: format(mStart, "MMM yy"), "Cash In": cin, "Cash Out": cout, Net: cin - cout };
     });
 
-    // 5. Customer Acquisition Stats
+    // 5. VAT Trend (6 Months)
+    const vatTrendData = Array.from({ length: 6 }).map((_, i) => {
+      const mStart = startOfMonth(subMonths(from, 5 - i));
+      const mEnd = endOfMonth(mStart);
+      const interval = { start: mStart, end: mEnd };
+
+      // Output VAT (from Sales Invoices)
+      const salesVat = documents
+        .filter(d => d.docType === 'TAX_INVOICE' && d.status !== 'CANCELLED' && isWithinInterval(parseISO(d.docDate), interval))
+        .reduce((sum, d) => sum + (d.vatAmount || 0), 0);
+
+      // Input VAT (from Purchase Documents)
+      const purchaseVat = purchaseDocs
+        .filter(p => p.status !== 'CANCELLED' && isWithinInterval(parseISO(p.docDate), interval))
+        .reduce((sum, p) => sum + (p.vatAmount || 0), 0);
+
+      return {
+        name: format(mStart, "MMM yy"),
+        "ภาษีขาย": salesVat,
+        "ภาษีซื้อ": purchaseVat,
+        Net: salesVat - purchaseVat
+      };
+    });
+
+    // 6. Customer Acquisition Stats
     const acqCounts = {
       EXISTING: 0,
       REFERRAL: 0,
@@ -237,7 +265,7 @@ function AppDashboardPage() {
       { name: "อื่นๆ", value: acqCounts.OTHER, color: "hsl(var(--primary))" },
     ].filter(v => v.value > 0);
 
-    // 6. Alerts
+    // 7. Alerts
     const alerts = [
       { 
         label: "เอกสารรอตรวจสอบรายการขาย", 
@@ -283,10 +311,11 @@ function AppDashboardPage() {
       deptStats,
       currentInflowByDept,
       cashFlowData,
+      vatTrendData,
       acquisitionData,
       alerts
     };
-  }, [jobs, documents, entries, obligations, dateRange]);
+  }, [jobs, documents, entries, obligations, purchaseDocs, dateRange]);
 
   const handleDatePreset = (preset: string) => {
     const today = startOfToday();
@@ -418,6 +447,30 @@ function AppDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* VAT Analysis Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>VAT Analysis (6 Months)</CardTitle>
+          <CardDescription>เปรียบเทียบภาษีขาย (Output VAT) และภาษีซื้อ (Input VAT)</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[350px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stats.vatTrendData}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="name" />
+              <YAxis tickFormatter={(v) => `${v / 1000}k`} />
+              <Tooltip 
+                formatter={(v: any) => formatCurrency(Number(v))}
+                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+              />
+              <Legend />
+              <Bar dataKey="ภาษีขาย" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="ภาษีซื้อ" fill="hsl(var(--chart-5))" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Customer Acquisition Chart */}
