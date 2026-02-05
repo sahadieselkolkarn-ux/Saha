@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { safeFormat } from '@/lib/date-utils';
 import type { Document, DocType } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
@@ -28,19 +29,30 @@ interface DocumentListProps {
   baseContext?: 'office' | 'accounting';
 }
 
-const getDocDisplayStatus = (doc: Document): { key: string; label: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
+const getDocDisplayStatus = (doc: Document): { key: string; label: string; description: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
     const status = String(doc.status ?? "").toUpperCase();
     const hasRejectionInfo = doc.reviewRejectReason || doc.reviewRejectedAt || doc.reviewRejectedByName;
+    const label = docStatusLabel(status) || status;
 
-    if (status === "CANCELLED") return { key: "CANCELLED", label: "ยกเลิก", variant: "destructive" };
-    if (status === "PAID") return { key: "PAID", label: "จ่ายแล้ว", variant: "default" };
+    let description = "สถานะเอกสารปกติ";
+    switch(status) {
+        case "DRAFT": description = "ออฟฟิศกำลังจัดทำ ยังไม่ได้ส่งให้บัญชีตรวจสอบ"; break;
+        case "PENDING_REVIEW": description = "ส่งเรื่องให้ฝ่ายบัญชีตรวจสอบรายการขายแล้ว"; break;
+        case "REJECTED": description = "ฝ่ายบัญชีพบจุดที่ต้องแก้ไขและส่งกลับมาให้ออฟฟิศ"; break;
+        case "APPROVED": description = "ฝ่ายบัญชีตรวจสอบข้อมูลเบื้องต้นถูกต้องแล้ว"; break;
+        case "PAID": description = "บันทึกรับเงินเข้าสมุดบัญชีเรียบร้อยแล้ว"; break;
+        case "CANCELLED": description = "เอกสารนี้ถูกยกเลิกการใช้งานแล้ว"; break;
+        case "UNPAID": description = "เป็นรายการขายเชื่อ ยอดเงินยังคงค้างชำระในระบบ"; break;
+        case "PARTIAL": description = "ได้รับเงินมาบางส่วนแล้ว ยอดที่เหลือยังค้างชำระ"; break;
+    }
 
-    if (status === "REJECTED" || !!hasRejectionInfo) return { key: "REJECTED", label: "ตีกลับ", variant: "destructive" };
-    
-    if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label: "รอตรวจสอบรายการขาย", variant: "secondary" };
-    if (status === "DRAFT") return { key: "DRAFT", label: "ฉบับร่าง", variant: "outline" };
+    if (status === "CANCELLED") return { key: "CANCELLED", label, description, variant: "destructive" };
+    if (status === "PAID") return { key: "PAID", label, description, variant: "default" };
+    if (status === "REJECTED" || !!hasRejectionInfo) return { key: "REJECTED", label: docStatusLabel("REJECTED"), description, variant: "destructive" };
+    if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label, description, variant: "secondary" };
+    if (status === "DRAFT") return { key: "DRAFT", label, description, variant: "outline" };
 
-    return { key: status, label: docStatusLabel(status) || status, variant: "outline" };
+    return { key: status, label, description, variant: "outline" };
 };
 
 export function DocumentList({ 
@@ -216,103 +228,110 @@ export function DocumentList({
             </div>
           ) : (
             <div className="border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>เลขที่</TableHead>
-                    <TableHead>วันที่</TableHead>
-                    <TableHead>ลูกค้า</TableHead>
-                    <TableHead>สถานะ</TableHead>
-                    <TableHead className="text-right">ยอดสุทธิ</TableHead>
-                    <TableHead className="text-right w-[100px]">จัดการ</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
-                    const isOffice = baseContext === 'office';
-                    const viewPath = `/app/documents/${docItem.id}`;
-                    
-                    // Determine if we have a direct edit route based on context and type
-                    const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docType);
-                    const editPath = isOffice && hasOfficeEditRoute
-                      ? (docType === 'QUOTATION'
-                        ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
-                        : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`)
-                      : null;
-
-                    return (
-                    <TableRow key={docItem.id}>
-                      <TableCell className="font-medium">{docItem.docNo}</TableCell>
-                      <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
-                      <TableCell>{docItem.customerSnapshot.name}</TableCell>
-                      <TableCell>
-                        {(() => {
-                          const displayStatus = getDocDisplayStatus(docItem);
-                          return (
-                            <Badge variant={displayStatus.variant}>{displayStatus.label}</Badge>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => router.push(viewPath)}>
-                                <Eye className="mr-2 h-4 w-4"/>
-                                ดู
-                            </DropdownMenuItem>
-                            
-                            {editPath ? (
-                                docItem.status === 'PAID' ? (
-                                    <DropdownMenuItem disabled>
-                                        <Edit className="mr-2 h-4 w-4"/>
-                                        แก้ไขไม่ได้ (บันทึกรายรับแล้ว)
-                                    </DropdownMenuItem>
-                                ) : (
-                                    <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'CANCELLED'}>
-                                        <Edit className="mr-2 h-4 w-4"/>
-                                        แก้ไข
-                                    </DropdownMenuItem>
-                                )
-                            ) : (
-                                <DropdownMenuItem disabled>
-                                    <Edit className="mr-2 h-4 w-4"/>
-                                    {isOffice ? "ไม่สามารถแก้ไขประเภทนี้ได้" : "ไม่สามารถแก้ไขจากหน้านี้ได้"}
-                                </DropdownMenuItem>
-                            )}
-
-                            <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || docItem.status === 'PAID'}>
-                              <XCircle className="mr-2 h-4 w-4"/>
-                              ยกเลิก
-                            </DropdownMenuItem>
-                            {isUserAdmin && (
-                              <DropdownMenuItem
-                                onSelect={(e) => { e.preventDefault(); handleDeleteRequest(docItem); }}
-                                className="text-destructive focus:text-destructive"
-                                disabled={docItem.status === 'PAID'}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                ลบ
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  )}) : (
+              <TooltipProvider>
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24">
-                        {searchTerm ? "ไม่พบเอกสารที่ตรงกับคำค้นหา" : "ไม่พบเอกสาร"}
-                      </TableCell>
+                      <TableHead>เลขที่</TableHead>
+                      <TableHead>วันที่</TableHead>
+                      <TableHead>ลูกค้า</TableHead>
+                      <TableHead>สถานะ</TableHead>
+                      <TableHead className="text-right">ยอดสุทธิ</TableHead>
+                      <TableHead className="text-right w-[100px]">จัดการ</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
+                      const isOffice = baseContext === 'office';
+                      const viewPath = `/app/documents/${docItem.id}`;
+                      
+                      const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docType);
+                      const editPath = isOffice && hasOfficeEditRoute
+                        ? (docType === 'QUOTATION'
+                          ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
+                          : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`)
+                        : null;
+
+                      const displayStatus = getDocDisplayStatus(docItem);
+
+                      return (
+                      <TableRow key={docItem.id}>
+                        <TableCell className="font-medium">{docItem.docNo}</TableCell>
+                        <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell>{docItem.customerSnapshot.name}</TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge variant={displayStatus.variant} className="cursor-help">
+                                {displayStatus.label}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{displayStatus.description}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => router.push(viewPath)}>
+                                  <Eye className="mr-2 h-4 w-4"/>
+                                  ดู
+                              </DropdownMenuItem>
+                              
+                              {editPath ? (
+                                  docItem.status === 'PAID' ? (
+                                      <DropdownMenuItem disabled>
+                                          <Edit className="mr-2 h-4 w-4"/>
+                                          แก้ไขไม่ได้ (บันทึกรายรับแล้ว)
+                                      </DropdownMenuItem>
+                                  ) : (
+                                      <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'CANCELLED'}>
+                                          <Edit className="mr-2 h-4 w-4"/>
+                                          แก้ไข
+                                      </DropdownMenuItem>
+                                  )
+                              ) : (
+                                  <DropdownMenuItem disabled>
+                                      <Edit className="mr-2 h-4 w-4"/>
+                                      {isOffice ? "ไม่สามารถแก้ไขประเภทนี้ได้" : "ไม่สามารถแก้ไขจากหน้านี้ได้"}
+                                  </DropdownMenuItem>
+                              )}
+
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || docItem.status === 'PAID'}>
+                                <XCircle className="mr-2 h-4 w-4"/>
+                                ยกเลิก
+                              </DropdownMenuItem>
+                              {isUserAdmin && (
+                                <DropdownMenuItem
+                                  onSelect={(e) => { e.preventDefault(); handleDeleteRequest(docItem); }}
+                                  className="text-destructive focus:text-destructive"
+                                  disabled={docItem.status === 'PAID'}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  ลบ
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )}) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center h-24">
+                          {searchTerm ? "ไม่พบเอกสารที่ตรงกับคำค้นหา" : "ไม่พบเอกสาร"}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TooltipProvider>
             </div>
           )}
         </CardContent>

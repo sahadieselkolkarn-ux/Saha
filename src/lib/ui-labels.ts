@@ -30,15 +30,16 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 };
 
 const DOC_STATUS_LABELS: Record<string, string> = {
-    DRAFT: 'ฉบับร่าง',
-    PAID: 'จ่ายแล้ว',
+    DRAFT: 'ฉบับร่าง (ยังไม่ส่งตรวจ)',
+    PAID: 'รับเงินแล้ว',
     CANCELLED: 'ยกเลิก',
     WAITING_CUSTOMER_PICKUP: 'รอลูกค้ารับ',
     SUBMITTED: 'ส่งแล้ว',
-    APPROVED: 'อนุมัติแล้ว',
-    UNPAID: 'ยังไม่จ่าย',
-    PENDING_REVIEW: "รอตรวจสอบรายการขาย",
-    REJECTED: "ตีกลับ",
+    APPROVED: 'ตรวจสอบแล้ว',
+    UNPAID: 'ยังไม่จ่าย (เครดิต)',
+    PENDING_REVIEW: "รอตรวจสอบโดยฝ่ายบัญชี",
+    REJECTED: "ตีกลับเพื่อแก้ไข",
+    PARTIAL: "รับเงินบางส่วน",
 };
 
 const PAY_TYPE_LABELS: Record<string, string> = {
