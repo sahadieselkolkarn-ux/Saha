@@ -166,7 +166,6 @@ export default function AccountingInboxPage() {
     }
     
     try {
-      // STEP 1: Transaction for Accounting Entries and Doc Status
       await runTransaction(db, async (transaction) => {
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
@@ -213,7 +212,6 @@ export default function AccountingInboxPage() {
           customerNameSnapshot: confirmingDoc.customerSnapshot.name,
         });
 
-        // Set status to PAID for Office UI visibility
         transaction.update(docRef, { 
             arStatus: 'PAID',
             status: 'PAID',
@@ -232,7 +230,6 @@ export default function AccountingInboxPage() {
 
       if (process.env.NODE_ENV === 'development') console.debug("[ConfirmCash] Transaction OK");
 
-      // STEP 2: Archive Job
       if (confirmingDoc.jobId) {
           try {
               const salesDocInfo = {
@@ -245,7 +242,7 @@ export default function AccountingInboxPage() {
               if (process.env.NODE_ENV === 'development') console.debug("[ConfirmCash] Job Archived OK");
           } catch (archiveError: any) {
               console.error("Archive failed but accounting was recorded:", archiveError);
-              setConfirmError(`บันทึกบัญชีสำเร็จ แต่การปิดงานขัดข้อง: ${archiveError.message || archiveError.toString()}. กรุณาลองกดปิดงานอีกครั้งเพื่อย้ายงานเข้าคลังประวัติ`);
+              setConfirmError(`บันทึกบัญชีสำเร็จ แต่การปิดงานขัดข้อง: ${archiveError.message || archiveError.toString()}. กรุณาลองใหม่อีกครั้งเพื่อปิดงาน`);
               setIsSubmitting(false);
               toast({ variant: 'destructive', title: "คำเตือน", description: "บันทึกบัญชีเรียบร้อย แต่ย้ายงานเข้าประวัติไม่สำเร็จ กรุณาลองใหม่อีกครั้งเพื่อปิดงาน" });
               return; 
@@ -302,7 +299,6 @@ export default function AccountingInboxPage() {
                 customerNameSnapshot: docToProcess.customerSnapshot.name,
             });
 
-            // Set status to UNPAID for Office UI visibility
             transaction.update(docRef, { 
                 arStatus: 'UNPAID',
                 status: 'UNPAID',

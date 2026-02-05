@@ -32,7 +32,6 @@ interface DocumentListProps {
 
 const getDocDisplayStatus = (doc: Document): { key: string; label: string; description: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
     const status = String(doc.status ?? "").toUpperCase();
-    const hasRejectionInfo = doc.reviewRejectReason || doc.reviewRejectedAt || doc.reviewRejectedByName;
     const label = docStatusLabel(status) || status;
 
     let description = "สถานะเอกสารปกติ";
@@ -49,7 +48,7 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; descr
 
     if (status === "CANCELLED") return { key: "CANCELLED", label, description, variant: "destructive" };
     if (status === "PAID") return { key: "PAID", label, description, variant: "default" };
-    if (status === "REJECTED" || !!hasRejectionInfo) return { key: "REJECTED", label: docStatusLabel("REJECTED"), description, variant: "destructive" };
+    if (status === "REJECTED") return { key: "REJECTED", label, description, variant: "destructive" };
     if (status === "PENDING_REVIEW") return { key: "PENDING_REVIEW", label, description, variant: "secondary" };
     if (status === "DRAFT") return { key: "DRAFT", label, description, variant: "outline" };
 
@@ -84,7 +83,6 @@ export function DocumentList({
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
-  // Memoize the query to prevent re-registration of onSnapshot
   const stableQuery = useMemo(() => {
     if (!db) return null;
     return query(
@@ -105,7 +103,6 @@ export function DocumentList({
         setAllDocuments(docsData);
         setLoading(false);
         setError(null);
-        setIndexCreationUrl(null);
     }, (err: FirestoreError) => {
         console.error("Error fetching documents: ", err);
         setError(err);
@@ -165,6 +162,40 @@ export function DocumentList({
   const handleDeleteRequest = (doc: Document) => {
     setDocToAction(doc);
     setIsDeleteAlertOpen(true);
+  };
+
+  const confirmCancel = async () => {
+    if (!db || !docToAction) return;
+    setIsActionLoading(true);
+    try {
+      const docRef = doc(db, 'documents', docToAction.id);
+      await updateDoc(docRef, {
+        status: 'CANCELLED',
+        updatedAt: serverTimestamp()
+      });
+      toast({ title: "ยกเลิกเอกสารสำเร็จ" });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: err.message });
+    } finally {
+      setIsActionLoading(false);
+      setIsCancelAlertOpen(false);
+      setDocToAction(null);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!db || !docToAction) return;
+    setIsActionLoading(true);
+    try {
+      await deleteDoc(doc(db, 'documents', docToAction.id));
+      toast({ title: "ลบเอกสารสำเร็จ" });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: "ลบไม่สำเร็จ", description: err.message });
+    } finally {
+      setIsActionLoading(false);
+      setIsDeleteAlertOpen(false);
+      setDocToAction(null);
+    }
   };
 
   return (
@@ -236,7 +267,6 @@ export function DocumentList({
                     {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
                       const isOffice = baseContext === 'office';
                       
-                      // Determination of View Path: Specific View page or Central Router (Edit)
                       const viewPath = docItem.docType === 'DELIVERY_NOTE' 
                         ? `/app/office/documents/delivery-note/${docItem.id}`
                         : (docItem.docType === 'TAX_INVOICE'
@@ -253,8 +283,6 @@ export function DocumentList({
                         : null;
 
                       const displayStatus = getDocDisplayStatus(docItem);
-
-                      // Special case for DRAFT Delivery Notes: pressing "View" should go to Edit form to continue work.
                       const isDraftDeliveryNote = docItem.docType === 'DELIVERY_NOTE' && docItem.status === 'DRAFT';
                       const finalViewPath = isDraftDeliveryNote && editPath ? editPath : viewPath;
                       const viewLabel = isDraftDeliveryNote ? "ดู/ทำต่อ" : "ดูรายละเอียด";
@@ -342,41 +370,11 @@ export function DocumentList({
                 หน้า {currentPage + 1} จาก {totalPages}
               </span>
               <div className="flex gap-2">
-                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(0)}
-                  disabled={currentPage === 0}
-                >
-                  <ChevronsLeft className="h-4 w-4" />
-                  หน้าแรก
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}>
+                  <ChevronLeft className="h-4 w-4" /> ก่อนหน้า
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => p - 1)}
-                  disabled={currentPage === 0}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  ก่อนหน้า
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(p => p + 1)}
-                  disabled={currentPage >= totalPages - 1}
-                >
-                  ถัดไป
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(totalPages - 1)}
-                  disabled={currentPage >= totalPages - 1}
-                >
-                  หน้าสุดท้าย
-                  <ChevronsRight className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage >= totalPages - 1}>
+                  ถัดไป <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>
