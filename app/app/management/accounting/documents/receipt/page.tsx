@@ -20,6 +20,7 @@ export default function ManagementReceiptsPage() {
                 <TabsContent value="list">
                     <DocumentList
                         docType="RECEIPT"
+                        baseContext="accounting"
                     />
                 </TabsContent>
                 <TabsContent value="new">

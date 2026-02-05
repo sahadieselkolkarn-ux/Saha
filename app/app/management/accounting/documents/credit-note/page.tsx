@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -16,7 +15,7 @@ export default function ManagementCreditNotesPage() {
             </TabsList>
         </PageHeader>
         <TabsContent value="list">
-             <DocumentList docType="CREDIT_NOTE" />
+             <DocumentList docType="CREDIT_NOTE" baseContext="accounting" />
         </TabsContent>
         <TabsContent value="new">
             <CreditNoteForm />

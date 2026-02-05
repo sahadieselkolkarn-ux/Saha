@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -20,6 +19,7 @@ export default function ManagementBillingNotesPage() {
             </PageHeader>
             <DocumentList
                 docType="BILLING_NOTE"
+                baseContext="accounting"
             />
         </>
     );

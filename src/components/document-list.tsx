@@ -25,6 +25,7 @@ interface DocumentListProps {
   limit?: number;
   orderByField?: string;
   orderByDirection?: OrderByDirection;
+  baseContext?: 'office' | 'accounting';
 }
 
 const getDocDisplayStatus = (doc: Document): { key: string; label: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
@@ -46,7 +47,8 @@ export function DocumentList({
   docType,
   limit: limitProp = 10,
   orderByField = 'docNo',
-  orderByDirection = 'desc'
+  orderByDirection = 'desc',
+  baseContext = 'office'
 }: DocumentListProps) {
   const { db } = useFirebase();
   const { toast } = useToast();
@@ -227,12 +229,16 @@ export function DocumentList({
                 </TableHeader>
                 <TableBody>
                   {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
-                    const editPath = docType === 'QUOTATION'
-                      ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
-                      : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`;
-                    
-                    // Use Central Router for viewing
+                    const isOffice = baseContext === 'office';
                     const viewPath = `/app/documents/${docItem.id}`;
+                    
+                    // Determine if we have a direct edit route based on context and type
+                    const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docType);
+                    const editPath = isOffice && hasOfficeEditRoute
+                      ? (docType === 'QUOTATION'
+                        ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
+                        : `/app/office/documents/${docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`)
+                      : null;
 
                     return (
                     <TableRow key={docItem.id}>
@@ -260,17 +266,26 @@ export function DocumentList({
                                 <Eye className="mr-2 h-4 w-4"/>
                                 ดู
                             </DropdownMenuItem>
-                            {docItem.status === 'PAID' ? (
+                            
+                            {editPath ? (
+                                docItem.status === 'PAID' ? (
+                                    <DropdownMenuItem disabled>
+                                        <Edit className="mr-2 h-4 w-4"/>
+                                        แก้ไขไม่ได้ (บันทึกรายรับแล้ว)
+                                    </DropdownMenuItem>
+                                ) : (
+                                    <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'CANCELLED'}>
+                                        <Edit className="mr-2 h-4 w-4"/>
+                                        แก้ไข
+                                    </DropdownMenuItem>
+                                )
+                            ) : (
                                 <DropdownMenuItem disabled>
                                     <Edit className="mr-2 h-4 w-4"/>
-                                    แก้ไขไม่ได้ (บันทึกรายรับแล้ว)
-                                </DropdownMenuItem>
-                            ) : (
-                                <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'CANCELLED'}>
-                                    <Edit className="mr-2 h-4 w-4"/>
-                                    แก้ไข
+                                    {isOffice ? "ไม่สามารถแก้ไขประเภทนี้ได้" : "ไม่สามารถแก้ไขจากหน้านี้ได้"}
                                 </DropdownMenuItem>
                             )}
+
                             <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || docItem.status === 'PAID'}>
                               <XCircle className="mr-2 h-4 w-4"/>
                               ยกเลิก
