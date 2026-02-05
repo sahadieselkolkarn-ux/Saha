@@ -47,7 +47,6 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { archiveAndCloseJob } from "@/firebase/jobs-archive";
-import { ensurePaymentClaimForDocument } from "@/firebase/payment-claims";
 
 interface JobListProps {
   department?: JobDepartment;
@@ -92,8 +91,8 @@ export function JobList({
   orderByField = "lastActivityAt",
   orderByDirection = "desc",
   limit: limitProp,
-  emptyTitle = "No Jobs Found",
-  emptyDescription = "There are no jobs that match the current criteria.",
+  emptyTitle = "ไม่พบรายการงาน",
+  emptyDescription = "ขณะนี้ยังไม่มีงานที่ตรงกับเงื่อนไขการค้นหา",
   children,
   hideQuotationButton = false,
   actionPreset = 'default',
@@ -279,7 +278,7 @@ export function JobList({
             setSelectedDocId(fetchedDocs[0].id);
         }
     } catch(e) {
-        toast({ variant: 'destructive', title: 'Error fetching documents' });
+        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดข้อมูลเอกสารได้' });
     } finally {
         setIsLoadingDocs(false);
     }
@@ -295,7 +294,7 @@ export function JobList({
             setSuggestedAccountId(defaultAcc.id);
         }
     } catch (e) {
-        toast({ variant: 'destructive', title: 'Error fetching accounts' });
+        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดข้อมูลบัญชีได้' });
     } finally {
         setIsLoadingAccounts(false);
     }
@@ -303,18 +302,18 @@ export function JobList({
 
   const handleCloseJob = async () => {
     if (!db || !profile || !closingJob || !selectedDocId) {
-      toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'กรุณาเลือกเอกสารขาย'});
+      toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'กรุณาเลือกเอกสารอ้างอิงให้ถูกต้อง'});
       return;
     }
 
     const selectedDoc = relatedDocs.find(d => d.id === selectedDocId);
     if (!selectedDoc) {
-      toast({ variant: 'destructive', title: 'ไม่พบเอกสาร', description: 'ไม่พบเอกสารขายที่เลือก'});
+      toast({ variant: 'destructive', title: 'ไม่พบเอกสาร', description: 'ไม่พบเอกสารขายที่เลือกในระบบ'});
       return;
     }
 
     if (paymentMode === 'PAID' && !suggestedAccountId) {
-        toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'กรุณาเลือกบัญชีที่รับเงิน'});
+        toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'กรุณาเลือกบัญชีที่รับเงินจริง'});
         return;
     }
     
@@ -353,7 +352,7 @@ export function JobList({
         toast({ title: 'ส่งมอบงานและย้ายไปที่ Inbox บัญชีสำเร็จ' });
         setClosingJob(null);
     } catch (error: any) {
-        toast({ variant: 'destructive', title: 'ปิดงานไม่สำเร็จ', description: error.message });
+        toast({ variant: 'destructive', title: 'ปิดงานไม่สำเร็จ', description: "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง" });
     } finally {
         setIsClosing(false);
     }
@@ -362,7 +361,7 @@ export function JobList({
 
   const handleAcceptJob = async (jobId: string) => {
     if (!db || !profile) {
-      toast({ variant: "destructive", title: "ไม่สามารถรับงานได้", description: "ไม่พบข้อมูลผู้ใช้" });
+      toast({ variant: "destructive", title: "ไม่สามารถรับงานได้", description: "ไม่พบข้อมูลผู้ใช้ของคุณ" });
       return;
     };
     
@@ -373,17 +372,17 @@ export function JobList({
         await runTransaction(db, async (transaction) => {
             const jobDoc = await transaction.get(jobDocRef);
             if (!jobDoc.exists()) {
-                throw new Error("ไม่พบงานที่ต้องการรับ");
+                throw new Error("ไม่พบงานที่ต้องการรับในระบบ");
             }
 
             const jobData = jobDoc.data() as Job;
 
             if (jobData.status !== 'RECEIVED') {
-                throw new Error("ไม่สามารถรับงานได้ เพราะสถานะเปลี่ยนไปแล้ว");
+                throw new Error("งานนี้ไม่ได้อยู่ในสถานะรอรับงานแล้ว");
             }
 
             if (jobData.assigneeUid) {
-                throw new Error("งานนี้ถูกผู้อื่นรับไปแล้ว");
+                throw new Error("งานนี้ถูกพนักงานท่านอื่นรับไปแล้ว");
             }
             
             if (profile.department !== jobData.department) {
@@ -407,7 +406,7 @@ export function JobList({
             });
         });
 
-        toast({ title: "รับงานสำเร็จ", description: "งานนี้ถูกมอบหมายให้คุณแล้ว" });
+        toast({ title: "รับงานสำเร็จ", description: "งานนี้อยู่ในความรับผิดชอบของคุณแล้ว" });
     } catch (error: any) {
         toast({ variant: "destructive", title: "การรับงานล้มเหลว", description: error.message });
     } finally {
@@ -431,7 +430,7 @@ export function JobList({
       const fetchedWorkers = querySnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
       setWorkers(fetchedWorkers);
     } catch (error) {
-        toast({ variant: 'destructive', title: 'Could not fetch workers' });
+        toast({ variant: 'destructive', title: 'ไม่สามารถดึงรายชื่อพนักงานได้' });
         setWorkers([]);
     } finally {
         setIsFetchingWorkers(false);
@@ -453,7 +452,7 @@ export function JobList({
         const querySnapshot = await getDocs(vendorsQuery);
         setOutsourceVendors(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OutsourceVendor)));
     } catch (error: any) {
-        toast({ variant: 'destructive', title: 'Could not fetch outsource vendors', description: error.message });
+        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดรายชื่อผู้รับเหมาได้', description: error.message });
         setOutsourceVendors([]);
     } finally {
         setIsFetchingVendors(false);
@@ -462,13 +461,13 @@ export function JobList({
   
   const handleConfirmOutsource = async () => {
     if (!db || !profile || !outsourcingJob || !selectedVendorId) {
-        toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน" });
+        toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกร้านผู้รับเหมา" });
         return;
     }
     
     const selectedVendor = outsourceVendors.find(v => v.id === selectedVendorId);
     if (!selectedVendor) {
-        toast({ variant: "destructive", title: "ไม่พบร้าน Outsource" });
+        toast({ variant: "destructive", title: "ไม่พบข้อมูลร้านผู้รับเหมา" });
         return;
     }
 
@@ -510,7 +509,7 @@ export function JobList({
     
     const selectedWorker = workers.find(w => w.uid === selectedWorkerId);
     if (!selectedWorker) {
-        toast({ variant: "destructive", title: "ไม่พบพนักงาน" });
+        toast({ variant: "destructive", title: "ไม่พบข้อมูลพนักงาน" });
         return;
     }
 
@@ -521,17 +520,17 @@ export function JobList({
         await runTransaction(db, async (transaction) => {
             const jobDoc = await transaction.get(jobDocRef);
             if (!jobDoc.exists()) {
-                throw new Error("ไม่พบงานที่ต้องการมอบหมาย");
+                throw new Error("ไม่พบข้อมูลงานในระบบ");
             }
 
             const jobData = jobDoc.data() as Job;
 
             if (jobData.status !== 'RECEIVED') {
-                throw new Error("ไม่สามารถมอบหมายงานได้ เพราะสถานะเปลี่ยนไปแล้ว");
+                throw new Error("งานนี้ไม่ได้อยู่ในสถานะรอรับงานแล้ว");
             }
 
             if (jobData.assigneeUid) {
-                throw new Error("งานนี้ถูกผู้อื่นรับไปแล้ว");
+                throw new Error("งานนี้ถูกพนักงานท่านอื่นรับไปแล้ว");
             }
 
             transaction.update(jobDocRef, {
@@ -551,7 +550,7 @@ export function JobList({
             });
         });
 
-        toast({ title: "มอบหมายงานสำเร็จ", description: `งานได้ถูกมอบหมายให้ ${selectedWorker.displayName}` });
+        toast({ title: "มอบหมายงานสำเร็จ", description: `งานถูกมอบหมายให้ ${selectedWorker.displayName} เรียบร้อยแล้ว` });
         setAssigningJob(null);
     } catch (error: any) {
         toast({ variant: "destructive", title: "การมอบหมายงานล้มเหลว", description: error.message });
@@ -648,7 +647,7 @@ export function JobList({
         <Card className="text-center py-12">
             <CardHeader className="items-center">
                 <AlertCircle className="h-10 w-10 text-destructive mb-4" />
-                <CardTitle>Error Loading Jobs</CardTitle>
+                <CardTitle>ไม่สามารถโหลดข้อมูลงานได้</CardTitle>
                 <CardDescription>{error.message}</CardDescription>
             </CardHeader>
         </Card>
@@ -659,8 +658,8 @@ export function JobList({
      return (
         <Card className="text-center py-12">
             <CardHeader>
-                <CardTitle>{searchTerm ? 'No jobs match your search' : emptyTitle}</CardTitle>
-                <CardDescription>{searchTerm ? 'Try a different search term.' : emptyDescription}</CardDescription>
+                <CardTitle>{searchTerm ? 'ไม่พบงานที่ตรงกับการค้นหา' : emptyTitle}</CardTitle>
+                <CardDescription>{searchTerm ? 'กรุณาลองระบุคำค้นหาอื่น' : emptyDescription}</CardDescription>
             </CardHeader>
             {children && <CardContent>{children}</CardContent>}
         </Card>
@@ -676,7 +675,7 @@ export function JobList({
             {job.photos && job.photos.length > 0 ? (
                 <Image
                     src={job.photos[0]}
-                    alt={job.description || "Job image"}
+                    alt={job.description || "รูปภาพประกอบงาน"}
                     fill
                     className="object-cover"
                 />
@@ -695,7 +694,7 @@ export function JobList({
               {deptLabel(job.department)}
               {job.assigneeName && <span className="font-medium"> • {job.assigneeName}</span>}
               <br />
-              Last update: {safeFormat(job.lastActivityAt, 'PP')}
+              อัปเดตล่าสุด: {safeFormat(job.lastActivityAt, 'PP')}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
@@ -791,7 +790,7 @@ export function JobList({
             <DialogHeader>
                 <DialogTitle>มอบหมายงาน</DialogTitle>
                 <DialogDescription>
-                    เลือกพนักงานเพื่อรับผิดชอบงานนี้
+                    เลือกพนักงานเพื่อรับผิดชอบงานซ่อมนี้
                 </DialogDescription>
             </DialogHeader>
             {isFetchingWorkers ? (
@@ -814,7 +813,7 @@ export function JobList({
                     </Select>
                 </div>
             ) : (
-                <p className="py-4 text-muted-foreground">ไม่พบพนักงานในแผนกนี้</p>
+                <p className="py-4 text-center text-muted-foreground">ไม่พบรายชื่อพนักงานที่มีสถานะปกติในแผนกนี้</p>
             )}
             <DialogFooter>
                 <Button variant="outline" onClick={() => setAssigningJob(null)}>ยกเลิก</Button>
@@ -830,7 +829,7 @@ export function JobList({
             <AlertDialogHeader>
                 <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
                 <AlertDialogDescription>
-                    กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานนี้
+                    กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมนี้
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -855,7 +854,7 @@ export function JobList({
             <DialogHeader>
                 <DialogTitle>ส่งมอบงานให้ลูกค้า</DialogTitle>
                 <DialogDescription>
-                    ขั้นตอนนี้จะเป็นการส่งรายการขายให้ฝ่ายบัญชี (พี่ถิน) ตรวจสอบและปิดงานซ่อม
+                    ขั้นตอนนี้จะเป็นการส่งรายการขายให้ฝ่ายบัญชีตรวจสอบและยืนยันเพื่อปิดงานซ่อม
                 </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -948,7 +947,7 @@ export function JobList({
             <DialogHeader>
                 <DialogTitle>มอบหมายผู้รับเหมา/งานนอก</DialogTitle>
                 <DialogDescription>
-                    เลือกรายชื่อผู้รับเหมา และกรอกหมายเหตุ
+                    เลือกรายชื่อผู้รับเหมา และกรอกรายละเอียดการส่งงาน
                 </DialogDescription>
             </DialogHeader>
             {isFetchingVendors ? (
@@ -961,7 +960,7 @@ export function JobList({
                         <Label htmlFor="outsource-vendor">เลือกผู้รับเหมา/ร้านนอก</Label>
                         <Select onValueChange={setSelectedVendorId} value={selectedVendorId || ""}>
                             <SelectTrigger id="outsource-vendor">
-                                <SelectValue placeholder="เลือกรายชื่อ..." />
+                                <SelectValue placeholder="เลือกรายชื่อผู้รับเหมา..." />
                             </SelectTrigger>
                             <SelectContent>
                                 {outsourceVendors.map(vendor => (
@@ -973,13 +972,13 @@ export function JobList({
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="outsource-notes">หมายเหตุ</Label>
-                        <Textarea id="outsource-notes" value={outsourceNotes} onChange={e => setOutsourceNotes(e.target.value)} placeholder="รายละเอียดเพิ่มเติม เช่น วันนัดรับ..." />
+                        <Label htmlFor="outsource-notes">หมายเหตุการส่งงาน</Label>
+                        <Textarea id="outsource-notes" value={outsourceNotes} onChange={e => setOutsourceNotes(e.target.value)} placeholder="เช่น งานด่วน, รอรับวันไหน, อาการเพิ่มเติม..." />
                     </div>
                 </div>
             ) : (
                 <div className="py-6 text-center space-y-4">
-                    <p className="text-sm text-muted-foreground">ไม่พบรายชื่อผู้รับเหมาในระบบ</p>
+                    <p className="text-sm text-muted-foreground">ยังไม่มีรายชื่อผู้รับเหมาในระบบ</p>
                     <Button asChild variant="outline" size="sm">
                         <Link href="/app/office/list-management/outsource">
                             <PlusCircle className="mr-2 h-4 w-4" />

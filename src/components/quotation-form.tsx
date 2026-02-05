@@ -30,7 +30,7 @@ import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/l
 import { safeFormat } from "@/lib/date-utils";
 
 const lineItemSchema = z.object({
-  description: z.string().min(1, "ต้องกรอกรายละเอียด"),
+  description: z.string().min(1, "ต้องกรอกรายละเอียดรายการ"),
   quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
   unitPrice: z.coerce.number().min(0, "ราคาต่อหน่วยห้ามติดลบ"),
   total: z.coerce.number(),
@@ -114,7 +114,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง" });
       setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
@@ -200,12 +200,50 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     form.setValue("grandTotal", grandTotal, { shouldValidate: true });
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
+  const handleFetchFromQuotation = () => {
+    const quotation = quotations.find(q => q.id === selectedQuotationId);
+    if (!quotation) {
+      toast({ variant: 'destructive', title: "กรุณาเลือกใบเสนอราคา" });
+      return;
+    }
+  
+    const itemsFromQuotation = (quotation.items || []).map((item: any) => {
+      const qty = Number(item.quantity ?? 1);
+      const price = Number(item.unitPrice ?? 0);
+      const total = Number(item.total ?? (qty * price));
+      return {
+        description: String(item.description ?? ''),
+        quantity: qty,
+        unitPrice: price,
+        total,
+      };
+    });
+  
+    if (itemsFromQuotation.length === 0) {
+      toast({ variant: 'destructive', title: "ใบเสนอราคาไม่มีรายการ", description: `เลขที่ ${quotation.docNo}` });
+      return;
+    }
+  
+    replace(itemsFromQuotation);
+    setReferencedQuotationId(selectedQuotationId);
+  
+    form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
+    form.setValue('isVat', quotation.withTax, { shouldDirty: true, shouldValidate: true });
+  
+    form.trigger(['items', 'discountAmount', 'isVat']);
+  
+    toast({
+      title: "ดึงข้อมูลสำเร็จ",
+      description: `ดึง ${itemsFromQuotation.length} รายการ จากใบเสนอราคาเลขที่ ${quotation.docNo}`,
+    });
+  };
+
   const onSubmit = async (data: QuotationFormData) => {
     if (isCancelled) return;
 
     let customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
-      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณากรอกข้อมูลลูกค้าและร้านค้าให้ครบถ้วน" });
       return;
     }
 
@@ -253,7 +291,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             router.push(`/app/documents/${docId}`);
         }
     } catch (error: any) {
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง" });
     }
   };
   
@@ -305,7 +343,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                             <PopoverTrigger asChild>
                             <FormControl>
                                 <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
-                                <span className="truncate">{displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "ค้นหาชื่อ หรือเบอร์โทรลูกค้า..."}</span>
+                                <span className="truncate">{displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}</span>
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </FormControl>

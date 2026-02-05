@@ -59,7 +59,7 @@ export default function AccountingInboxPage() {
 
     const unsubDocs = onSnapshot(docsQuery, 
       (snap) => { setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>))); setLoading(false); },
-      (err) => { toast({ variant: 'destructive', title: "Error loading documents", description: err.message }); setLoading(false); }
+      (err) => { toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการโหลดข้อมูลเอกสาร", description: err.message }); setLoading(false); }
     );
     const unsubAccounts = onSnapshot(accountsQuery, 
       (snap) => setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)))
@@ -171,15 +171,13 @@ export default function AccountingInboxPage() {
               salesDocNo: confirmingDoc.docNo,
               paymentStatusAtClose: 'PAID' as const
           };
-          // archiveAndCloseJob handles its own transaction/batches internally, 
-          // called after main idempotency check
           await archiveAndCloseJob(db, confirmingDoc.jobId, confirmingDoc.docDate, profile, salesDocInfo);
       }
 
       toast({ title: "ยืนยันการรับเงินและปิดงานสำเร็จ" });
       setConfirmingDoc(null);
     } catch(e: any) {
-      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+      toast({ variant: 'destructive', title: "ไม่สามารถยืนยันได้", description: e.message });
     } finally {
       setIsSubmitting(false);
     }
@@ -240,7 +238,7 @@ export default function AccountingInboxPage() {
 
         toast({ title: 'ยืนยันรายการขายเครดิตและปิดงานสำเร็จ' });
     } catch (e: any) {
-        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการยืนยันรายการ", description: e.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -261,17 +259,17 @@ export default function AccountingInboxPage() {
       toast({ title: "บันทึกข้อโต้แย้งและตีกลับสำเร็จ" });
       setDisputingDoc(null);
     } catch(e: any) {
-      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการบันทึก", description: e.message });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>สำหรับฝ่ายบริหารเท่านั้น</CardDescription></CardHeader></Card>;
+  if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>หน้าจอนี้สำหรับฝ่ายบริหารและบัญชีเท่านั้น</CardDescription></CardHeader></Card>;
 
   return (
     <>
-      <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="พี่ถินตรวจสอบความถูกต้องของบิลก่อนลงบัญชีและปิดงาน" />
+      <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลก่อนลงบัญชีและปิดงาน" />
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <TabsList>
@@ -287,7 +285,7 @@ export default function AccountingInboxPage() {
           <CardContent className="pt-6">
             <TabsContent value="receive" className="mt-0">
               <Table>
-                <TableHeader><TableRow><TableHead>วันที่</TableHead> Pel<TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตรวจสอบ</TableCell></TableRow>

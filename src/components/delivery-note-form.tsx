@@ -35,7 +35,7 @@ import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
 
 const lineItemSchema = z.object({
-  description: z.string().min(1, "กรุณากรอกรายละเอียด"),
+  description: z.string().min(1, "กรุณากรอกรายละเอียดรายการ"),
   quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
   unitPrice: z.coerce.number().min(0, "ราคาต่อหน่วยห้ามติดลบ"),
   total: z.coerce.number(),
@@ -156,7 +156,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง" });
       setIsLoadingCustomers(false);
     });
 
@@ -337,7 +337,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const executeSave = async (data: DeliveryNoteFormData, submitForReview: boolean) => {
     const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
-      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณากรอกข้อมูลลูกค้าและร้านค้าให้ครบถ้วน" });
       return;
     }
     
@@ -394,7 +394,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             await updateDoc(docRef, sanitizeForFirestore({ 
                 ...documentDataPayload, 
                 status: targetStatus,
-                updatedAt: serverTimestamp() 
+                updatedAt: serverTimestamp(),
+                dispute: { isDisputed: false, reason: "" } // Clear dispute when re-submitting
             }));
         } else {
             const result = await createDocument(
@@ -412,7 +413,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "ไม่สามารถสร้างใบส่งของได้", description: error.message });
+        toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: error.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -534,6 +535,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                       </ScrollArea>
                                   </PopoverContent>
                               </Popover>
+                              <FormMessage />
                               </FormItem>
                           )}
                       />

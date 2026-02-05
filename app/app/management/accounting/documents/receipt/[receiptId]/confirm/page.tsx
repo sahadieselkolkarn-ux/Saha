@@ -29,16 +29,16 @@ const allocationSchema = z.object({
   invoiceId: z.string(),
   invoiceDocNo: z.string(),
   grossRemaining: z.coerce.number(),
-  netCashApplied: z.coerce.number().min(0),
+  netCashApplied: z.coerce.number().min(0, "ยอดเงินห้ามติดลบ"),
   withholdingPercent: z.coerce.number().min(0).max(100).optional(),
   withholdingAmount: z.coerce.number().min(0).optional(),
   grossApplied: z.coerce.number().min(0),
 });
 
 const confirmReceiptSchema = z.object({
-  accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
+  accountId: z.string().min(1, "กรุณาเลือกบัญชีที่รับเงิน"),
   paymentMethod: z.enum(["CASH", "TRANSFER"]),
-  paymentDate: z.string().min(1, "กรุณาเลือกวันที่"),
+  paymentDate: z.string().min(1, "กรุณาเลือกวันที่รับเงินจริง"),
   netReceivedTotal: z.coerce.number().min(0.01, "ยอดรับสุทธิต้องมากกว่า 0"),
   allocations: z.array(allocationSchema),
 }).refine(
@@ -47,13 +47,13 @@ const confirmReceiptSchema = z.object({
     return Math.abs(totalNetApplied - data.netReceivedTotal) < 0.01;
   },
   {
-    message: "ยอด Net Cash Applied รวมต้องเท่ากับยอดรับสุทธิ",
+    message: "ยอดเงินที่จัดสรรรวมต้องเท่ากับยอดรับสุทธิ",
     path: ["netReceivedTotal"],
   }
 ).refine(
     (data) => data.allocations.every(alloc => alloc.grossApplied <= alloc.grossRemaining + 0.01), 
     {
-        message: "ยอดที่จัดสรร (Gross Applied) เกินยอดค้างชำระของ Invoice",
+        message: "มียอดจัดสรรเกินยอดค้างชำระของบิลอ้างอิง",
         path: ["allocations"],
     }
 );
@@ -98,12 +98,12 @@ function ConfirmReceiptPageContent() {
         const receiptSnap = await getDoc(receiptRef);
 
         if (!receiptSnap.exists() || receiptSnap.data().docType !== 'RECEIPT') {
-          throw new Error("ไม่พบใบเสร็จรับเงิน");
+          throw new Error("ไม่พบข้อมูลใบเสร็จรับเงินที่ต้องการ");
         }
 
         const receiptData = { id: receiptSnap.id, ...receiptSnap.data() } as WithId<DocumentType>;
         if (receiptData.status === 'CONFIRMED' || receiptData.receiptStatus === 'CONFIRMED') {
-          setError("ใบเสร็จนี้ถูกยืนยันการรับเงินไปแล้ว");
+          setError("ใบเสร็จนี้ถูกยืนยันการรับเงินไปก่อนหน้านี้แล้ว");
           setIsLoading(false);
           return;
         }
@@ -153,7 +153,7 @@ function ConfirmReceiptPageContent() {
         });
 
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || "เกิดข้อผิดพลาดในการโหลดข้อมูล");
       } finally {
         setIsLoading(false);
       }
@@ -260,11 +260,10 @@ function ConfirmReceiptPageContent() {
             const receiptRef = doc(db, 'documents', receipt.id);
             const receiptSnap = await transaction.get(receiptRef);
             
-            if (!receiptSnap.exists()) throw new Error("ไม่พบใบเสร็จรับเงิน");
+            if (!receiptSnap.exists()) throw new Error("ไม่พบใบเสร็จในระบบ");
             
-            // Idempotency check
             if (receiptSnap.data().status === 'CONFIRMED' || receiptSnap.data().receiptStatus === 'CONFIRMED' || receiptSnap.data().accountingEntryId) {
-                throw new Error("ใบเสร็จนี้ถูกยืนยันไปก่อนหน้านี้แล้ว");
+                throw new Error("รายการนี้ถูกยืนยันไปก่อนหน้านี้แล้ว");
             }
 
             const arPaymentId = `ARPAY_${receipt.id}`;
@@ -273,7 +272,6 @@ function ConfirmReceiptPageContent() {
             const entryId = `RECEIPT_${receipt.id}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
 
-            // 1. Create AR Payment record
             transaction.set(arPaymentRef, {
                 id: arPaymentId,
                 receiptId: receipt.id,
@@ -291,7 +289,6 @@ function ConfirmReceiptPageContent() {
                 createdAt: serverTimestamp(),
             });
             
-            // 2. Create Accounting Entry
             transaction.set(entryRef, {
                 entryType: 'RECEIPT',
                 entryDate: data.paymentDate,
@@ -304,7 +301,6 @@ function ConfirmReceiptPageContent() {
                 createdAt: serverTimestamp(),
             });
             
-            // 3. Update Receipt status
             transaction.update(receiptRef, {
                 status: 'CONFIRMED',
                 receiptStatus: 'CONFIRMED',
@@ -320,7 +316,6 @@ function ConfirmReceiptPageContent() {
                 updatedAt: serverTimestamp(),
             });
             
-            // 4. Update related Invoices and Obligations
             for (const alloc of data.allocations) {
                 if (alloc.grossApplied > 0) {
                     const ob = obligations[alloc.invoiceId];
@@ -356,14 +351,14 @@ function ConfirmReceiptPageContent() {
         router.push('/app/management/accounting/inbox');
 
     } catch (err: any) {
-        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: err.message });
+        toast({ variant: 'destructive', title: "ไม่สามารถยืนยันได้", description: err.message });
     } finally {
         setIsLoading(false);
     }
   };
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>;
-  if (error) return <PageHeader title="ผิดพลาด" description={error} />;
+  if (error) return <PageHeader title="เกิดข้อผิดพลาด" description={error} />;
 
   return (
     <>
@@ -372,14 +367,14 @@ function ConfirmReceiptPageContent() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
-                    <Button type="submit" disabled={isLoading}><Save/> ยืนยัน</Button>
+                    <Button type="submit" disabled={isLoading}><Save/> ยืนยันข้อมูล</Button>
                 </div>
                 
                 <Card>
                     <CardHeader><CardTitle className="text-base">1. สรุปยอดรับเงิน</CardTitle></CardHeader>
                     <CardContent className="grid md:grid-cols-3 gap-4">
-                        <FormField name="paymentDate" control={form.control} render={({ field }) => (<FormItem><FormLabel>วันที่รับเงิน</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage /></FormItem>)} />
-                        <FormField name="paymentMethod" control={form.control} render={({ field }) => (<FormItem><FormLabel>ช่องทาง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอน</SelectItem></SelectContent></Select></FormItem>)} />
+                        <FormField name="paymentDate" control={form.control} render={({ field }) => (<FormItem><FormLabel>วันที่รับเงินจริง</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="paymentMethod" control={form.control} render={({ field }) => (<FormItem><FormLabel>ช่องทางการรับ</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอนเงิน</SelectItem></SelectContent></Select></FormItem>)} />
                         <FormField name="accountId" control={form.control} render={({ field }) => (<FormItem><FormLabel>เข้าบัญชี</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl><SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                         <div className="md:col-span-3">
                             <FormField name="netReceivedTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดรับสุทธิ (Net)</FormLabel><FormControl><Input type="number" {...field} className="text-lg font-bold" /></FormControl><FormMessage /></FormItem>)} />
@@ -389,12 +384,12 @@ function ConfirmReceiptPageContent() {
 
                 <Card>
                     <CardHeader className="flex flex-row justify-between items-center">
-                        <CardTitle className="text-base">2. จัดสรรยอดเงิน</CardTitle>
+                        <CardTitle className="text-base">2. จัดสรรยอดเงินตามบิล</CardTitle>
                         <Button type="button" variant="secondary" onClick={handleAutoAllocate}><Calculator/> จัดสรรอัตโนมัติ</Button>
                     </CardHeader>
                     <CardContent>
                         <Table>
-                            <TableHeader><TableRow><TableHead>Invoice</TableHead><TableHead className="text-right">ยอดค้าง</TableHead><TableHead className="w-40 text-right">Net Cash Applied</TableHead><TableHead className="w-28 text-right">WHT %</TableHead><TableHead className="w-36 text-right">WHT Amt</TableHead><TableHead className="w-40 text-right">Gross Applied</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow><TableHead>เลขที่ Invoice</TableHead><TableHead className="text-right">ยอดค้าง</TableHead><TableHead className="w-40 text-right">ยอดรับครั้งนี้ (Net)</TableHead><TableHead className="w-28 text-right">หัก WHT (%)</TableHead><TableHead className="w-36 text-right">ยอด WHT (บาท)</TableHead><TableHead className="w-40 text-right">ยอดตัดหนี้รวม (Gross)</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {fields.map((field, index) => (
                                     <TableRow key={field.id}>
@@ -409,7 +404,7 @@ function ConfirmReceiptPageContent() {
                             </TableBody>
                             <TableFooter>
                                 <TableRow>
-                                    <TableCell colSpan={4}>ยอดที่ยังไม่ได้จัดสรร:</TableCell>
+                                    <TableCell colSpan={4}>ยอดเงินคงเหลือที่ยังไม่ได้จัดสรร:</TableCell>
                                     <TableCell colSpan={2} className={cn("text-right font-bold", Math.abs(totals.remainingToAllocate) > 0.01 ? 'text-destructive' : 'text-green-600')}>{formatCurrency(totals.remainingToAllocate)}</TableCell>
                                 </TableRow>
                             </TableFooter>

@@ -30,7 +30,7 @@ const receiptFormSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   sourceDocId: z.string().min(1, "กรุณาเลือกเอกสารอ้างอิง"),
   paymentDate: z.string().min(1, "กรุณาเลือกวันที่"),
-  paymentMethod: z.enum(["CASH", "TRANSFER"], { required_error: "กรุณาเลือกช่องทาง" }),
+  paymentMethod: z.enum(["CASH", "TRANSFER"], { required_error: "กรุณาเลือกช่องทางการชำระเงิน" }),
   accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
   amount: z.coerce.number().min(0.01, "ยอดเงินต้องมากกว่า 0"),
   notes: z.string().optional(),
@@ -137,7 +137,7 @@ export function ReceiptForm() {
     const customer = customers.find(c => c.id === data.customerId);
     const sourceDoc = sourceDocs.find(d => d.id === data.sourceDocId);
     if (!db || !customer || !storeSettings || !profile || !sourceDoc) {
-      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกข้อมูลให้ครบถ้วนก่อนบันทึก" });
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกข้อมูลลูกค้าและเอกสารอ้างอิงให้ครบถ้วนก่อนบันทึก" });
       return;
     }
     
@@ -176,11 +176,11 @@ export function ReceiptForm() {
           updatedAt: serverTimestamp()
       });
 
-      toast({ title: "ออกใบเสร็จรับเงินสำเร็จ", description: `เลขที่: ${docNo}` });
+      toast({ title: "ออกใบเสร็จรับเงินสำเร็จ", description: `เลขที่ใบเสร็จ: ${docNo}` });
       
       router.push(`/app/management/accounting/documents/receipt/${docId}/confirm`);
     } catch (error: any) {
-      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถออกใบเสร็จได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" });
     }
   };
 

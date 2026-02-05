@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, Suspense, useEffect, useRef, useState } from "react";
@@ -63,8 +62,8 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         : document.customerSnapshot.name;
         
     const displayCustomerAddress = isTaxDoc
-        ? document.customerSnapshot.taxAddress || 'N/A'
-        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'N/A');
+        ? document.customerSnapshot.taxAddress || 'ไม่มีข้อมูลที่อยู่'
+        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีข้อมูลที่อยู่');
 
     return (
         <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none print:bg-white flex flex-col print:min-h-[277mm] print:pb-4">
@@ -215,7 +214,7 @@ function DocumentPageContent() {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-destructive">
                 <AlertCircle className="w-16 h-16" />
-                <PageHeader title="Error Loading Document" description={error.message} />
+                <PageHeader title="เกิดข้อผิดพลาด" description="ไม่สามารถโหลดข้อมูลเอกสารได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" />
             </div>
         );
     }
@@ -224,7 +223,7 @@ function DocumentPageContent() {
          return (
             <div className="flex flex-col items-center justify-center h-full gap-4">
                 <AlertCircle className="w-16 h-16 text-muted-foreground" />
-                <PageHeader title="Document Not Found" description="The requested document does not exist." />
+                <PageHeader title="ไม่พบเอกสาร" description="เอกสารที่คุณต้องการเข้าถึงไม่มีอยู่ในระบบ หรือถูกลบไปแล้ว" />
             </div>
         );
     }
@@ -293,7 +292,7 @@ function DocumentPageContent() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>เลือกรูปแบบการพิมพ์ใบกำกับภาษี</AlertDialogTitle>
                         <AlertDialogDescription>
-                            กรุณาเลือกจำนวนสำเนาที่ต้องการพิมพ์
+                            กรุณาเลือกจำนวนสำเนาที่ต้องการพิมพ์เพื่อใช้ในการยื่นภาษีและเป็นหลักฐาน
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="py-4">
@@ -304,7 +303,7 @@ function DocumentPageContent() {
                             </div>
                             <div className="flex items-center space-x-2">
                                 <RadioGroupItem value="2" id="c2" />
-                                <Label htmlFor="c2">ต้นฉบับ 1 ใบ + สำเนา 2 ใบ</Label>
+                                <Label htmlFor="c2">ต้นฉบับ 1 ใบ + สำเนา 2 ใบ (สำหรับออฟฟิศและบัญชี)</Label>
                             </div>
                         </RadioGroup>
                     </div>

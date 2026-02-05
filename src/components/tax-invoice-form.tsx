@@ -43,7 +43,7 @@ import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
 
 const lineItemSchema = z.object({
-  description: z.string().min(1, "กรุณากรอกรายละเอียด"),
+  description: z.string().min(1, "กรุณากรอกรายละเอียดรายการ"),
   quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
   unitPrice: z.coerce.number().min(0, "ราคาต่อหน่วยห้ามติดลบ"),
   total: z.coerce.number(),
@@ -161,7 +161,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง" });
       setIsLoadingCustomers(false);
     });
 
@@ -323,7 +323,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const executeSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
     const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
-      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถสร้างเอกสารได้" });
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถบันทึกได้เนื่องจากข้อมูลลูกค้าหรือข้อมูลร้านค้าไม่สมบูรณ์" });
       return;
     }
     
@@ -380,7 +380,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             await updateDoc(docRef, sanitizeForFirestore({ 
                 ...documentDataPayload, 
                 status: targetStatus,
-                updatedAt: serverTimestamp() 
+                updatedAt: serverTimestamp(),
+                dispute: { isDisputed: false, reason: "" } // Clear dispute on re-submission
             }));
         } else {
             const result = await createDocument(
@@ -398,7 +399,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         router.push('/app/office/documents/tax-invoice');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง" });
     } finally {
         setIsSubmitting(false);
     }
@@ -438,7 +439,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         setShowDnCancelDialog(false);
         await executeSave(pendingData, isReviewSubmission);
     } catch(e: any) {
-        toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: e.message });
+        toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: "เกิดข้อผิดพลาดในการยกเลิกใบเดิม กรุณาลองใหม่อีกครั้ง" });
     }
   };
 
