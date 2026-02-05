@@ -50,9 +50,9 @@ import { cn } from "@/lib/utils";
 
 const transactionSchema = z.object({
   type: z.enum(["IN", "OUT"]),
-  amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
-  category: z.string().min(1, "Please select a category"),
-  description: z.string().min(1, "Please provide a description"),
+  amount: z.coerce.number().min(0.01, "จำนวนเงินต้องมากกว่า 0"),
+  category: z.string().min(1, "กรุณาเลือกหรือระบุหมวดหมู่"),
+  description: z.string().min(1, "กรุณาระบุรายละเอียดรายการ"),
 });
 
 const closeSessionSchema = z.object({
@@ -108,32 +108,32 @@ function AddTransactionDialog({ sessionId, onAdd }: { sessionId: string, onAdd: 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm"><PlusCircle className="mr-2 h-4 w-4" /> เพิ่มรายการ</Button>
+        <Button size="sm" className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> บันทึกรายการรับ/จ่าย</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>เพิ่มรายการเงินสด</DialogTitle>
-          <DialogDescription>บันทึกรายการรับเข้าหรือจ่ายออกสำหรับรอบนี้</DialogDescription>
+          <DialogTitle>บันทึกรายการเงินสด</DialogTitle>
+          <DialogDescription>บันทึกเงินสดรับเข้าหรือจ่ายออกที่เกิดขึ้นจริงในรอบนี้</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="type" render={({ field }) => (
-                <FormItem><FormLabel>ประเภท</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="IN">รับเข้า (+)</SelectItem><SelectItem value="OUT">จ่ายออก (-)</SelectItem></SelectContent></Select></FormItem>
+                <FormItem><FormLabel>ประเภทรายการ</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="IN">เงินรับเข้า (+)</SelectItem><SelectItem value="OUT">เงินจ่ายออก (-)</SelectItem></SelectContent></Select></FormItem>
               )} />
               <FormField control={form.control} name="amount" render={({ field }) => (
-                <FormItem><FormLabel>จำนวนเงิน</FormLabel><FormControl><Input type="number" step="0.01" {...field}/></FormControl><FormMessage/></FormItem>
+                <FormItem><FormLabel>จำนวนเงิน (บาท)</FormLabel><FormControl><Input type="number" step="0.01" {...field}/></FormControl><FormMessage/></FormItem>
               )} />
             </div>
             <FormField control={form.control} name="category" render={({ field }) => (
-              <FormItem><FormLabel>หมวดหมู่</FormLabel><FormControl><Input {...field}/></FormControl></FormItem>
+              <FormItem><FormLabel>หมวดหมู่</FormLabel><FormControl><Input placeholder="เช่น ค่าอะไหล่, รับเงินจากลูกค้า" {...field}/></FormControl></FormItem>
             )} />
             <FormField control={form.control} name="description" render={({ field }) => (
-              <FormItem><FormLabel>รายละเอียด</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>
+              <FormItem><FormLabel>รายละเอียดเพิ่มเติม</FormLabel><FormControl><Textarea placeholder="ระบุเลขที่บิล หรือชื่อลูกค้า..." {...field}/></FormControl></FormItem>
             )} />
             
             <div className="space-y-2">
-              <Label>รูปบิล/หลักฐาน</Label>
+              <Label>รูปถ่ายบิล/สลิป (ถ้ามี)</Label>
               <div className="flex flex-wrap gap-2">
                 {previews.map((src, i) => (
                   <div key={i} className="relative w-20 h-20 border rounded-md overflow-hidden">
@@ -151,7 +151,7 @@ function AddTransactionDialog({ sessionId, onAdd }: { sessionId: string, onAdd: 
             </div>
 
             <DialogFooter>
-              <Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}บันทึกรายการ</Button>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}บันทึกข้อมูล</Button>
             </DialogFooter>
           </form>
         </Form>
@@ -326,30 +326,33 @@ export default function OfficeCashDrawerPage() {
 
   return (
     <>
-      <PageHeader title="เงินสดหน้าร้าน" description="จัดการเงินสดรายวันแบบปิดรอบคืนเงินทุกครั้ง" />
+      <PageHeader title="เงินสดหน้าร้าน" description="ระบบบันทึกเงินสดรับ-จ่าย สำหรับใช้วันที่ฝ่ายบริหารไม่อยู่" />
 
       {!activeSession ? (
         <Card className="max-w-lg mx-auto">
           <CardHeader>
-            <CardTitle>เปิดรอบการทำงานใหม่</CardTitle>
-            <CardDescription>กรอกจำนวนเงินทอนเริ่มต้นเพื่อเริ่มบันทึกรายการ</CardDescription>
+            <CardTitle>เปิดใช้งานเงินสดหน้าร้าน</CardTitle>
+            <CardDescription className="text-destructive font-medium">
+              * ใช้เฉพาะกรณีที่ฝ่ายบัญชีไม่อยู่ เงินสดทั้งหมดต้องนับส่งคืนเมื่อปิดรอบงาน
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label htmlFor="openingAmount">เงินทอนเริ่มต้น (บาท)</Label>
+              <Label htmlFor="openingAmount" className="text-base">เงินทอนเริ่มต้น (บาท)</Label>
               <Input 
                 id="openingAmount" 
                 type="number" 
                 value={openingAmount || ''} 
                 onChange={(e) => setOpeningAmount(Number(e.target.value))}
                 placeholder="0.00"
+                className="text-lg"
               />
             </div>
           </CardContent>
           <CardFooter>
-            <Button onClick={handleOpenSession} disabled={isOpening} className="w-full">
-              {isOpening && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              เริ่มเปิดรอบ (Open Session)
+            <Button onClick={handleOpenSession} disabled={isOpening} className="w-full h-12 text-lg">
+              {isOpening && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+              เปิดรอบการทำงาน (Open Session)
             </Button>
           </CardFooter>
         </Card>
@@ -357,19 +360,19 @@ export default function OfficeCashDrawerPage() {
         <div className="grid gap-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="bg-primary/5 border-primary/20">
-              <CardHeader className="pb-2"><CardDescription>ยอดเงินที่ควรมีในลิ้นชัก</CardDescription></CardHeader>
+              <CardHeader className="pb-2"><CardDescription>ยอดเงินที่ควรมีในลิ้นชัก (รวมเงินทอน)</CardDescription></CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-primary">{formatCurrency(activeSession.expectedAmount)}</div>
-                <div className="text-xs text-muted-foreground mt-1">เริ่มจาก: {formatCurrency(activeSession.openingAmount)}</div>
+                <div className="text-xs text-muted-foreground mt-1">เงินทอนตั้งต้น: {formatCurrency(activeSession.openingAmount)}</div>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2"><CardDescription>สถานะปัจจุบัน</CardDescription></CardHeader>
               <CardContent className="flex items-center justify-between">
-                <Badge className="text-sm px-3 py-1">{cashDrawerStatusLabel(activeSession.status)}</Badge>
+                <Badge className="text-sm px-3 py-1 bg-green-100 text-green-800 border-green-200">{cashDrawerStatusLabel(activeSession.status)}</Badge>
                 <div className="text-right">
                   <div className="text-sm font-medium">{activeSession.openedByName}</div>
-                  <div className="text-xs text-muted-foreground">{safeFormat(activeSession.openedAt, "HH:mm")}</div>
+                  <div className="text-xs text-muted-foreground">เริ่มกะ: {safeFormat(activeSession.openedAt, "HH:mm")}</div>
                 </div>
               </CardContent>
             </Card>
@@ -378,35 +381,37 @@ export default function OfficeCashDrawerPage() {
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full text-destructive border-destructive hover:bg-destructive/10">
-                    <CheckCircle2 className="mr-2 h-4 w-4" /> ปิดรอบ (End Session)
+                    <CheckCircle2 className="mr-2 h-4 w-4" /> ปิดรอบและคืนเงิน (End Session)
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>ปิดรอบการทำงาน</DialogTitle>
-                    <DialogDescription>นับเงินสดที่มีอยู่ในลิ้นชักจริง และกรอกยอดรวมเพื่อกระทบยอด</DialogDescription>
+                    <DialogTitle>ปิดรอบและสรุปยอดเงินคืน</DialogTitle>
+                    <DialogDescription className="text-destructive font-medium">
+                      กรุณานับเงินสดจริงในมือให้เรียบร้อยก่อนปิด ระบบจะไม่อนุญาตให้แก้ไขข้อมูลใดๆ หลังจากนี้
+                    </DialogDescription>
                   </DialogHeader>
                   <div className="py-4 space-y-4">
-                    <div className="p-4 bg-muted rounded-md text-center">
-                      <p className="text-sm text-muted-foreground">ยอดเงินที่ควรมี (Expected)</p>
+                    <div className="p-4 bg-muted rounded-md text-center border-2 border-dashed">
+                      <p className="text-sm text-muted-foreground">ยอดเงินที่ควรมี (ตามบันทึก)</p>
                       <p className="text-2xl font-bold">{formatCurrency(activeSession.expectedAmount)} บาท</p>
                     </div>
                     <div className="space-y-2">
-                      <Label>นับเงินสดได้จริง (บาท)</Label>
-                      <Input type="number" placeholder="0.00" id="countedAmount" />
+                      <Label className="text-base">นับเงินสดได้จริงทั้งหมด (บาท)</Label>
+                      <Input type="number" placeholder="0.00" id="countedAmount" className="text-lg h-12" />
                     </div>
                     <div className="space-y-2">
-                      <Label>หมายเหตุเพิ่มเติม (ถ้ามี)</Label>
-                      <Textarea id="closingNotes" />
+                      <Label>หมายเหตุการปิดรอบ (ถ้ามี)</Label>
+                      <Textarea id="closingNotes" placeholder="ระบุเหตุผลหากเงินขาดหรือเกิน..." />
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => {}}>ยกเลิก</Button>
+                    <Button variant="outline" onClick={() => {}} className="w-full sm:w-auto">ยกเลิก</Button>
                     <Button onClick={() => {
                       const counted = Number((document.getElementById('countedAmount') as HTMLInputElement).value);
                       const notes = (document.getElementById('closingNotes') as HTMLTextAreaElement).value;
                       handleCloseSession({ countedAmount: counted, notes });
-                    }} disabled={isClosing}>
+                    }} disabled={isClosing} className="w-full sm:w-auto">
                       {isClosing && <Loader2 className="mr-2 animate-spin" />} ยืนยันการปิดรอบ
                     </Button>
                   </DialogFooter>
@@ -416,42 +421,43 @@ export default function OfficeCashDrawerPage() {
           </div>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>รายการเงินสดรอบปัจจุบัน</CardTitle>
-              <Badge variant="outline">{transactions.length} รายการ</Badge>
+            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
+              <CardTitle className="text-lg">รายการรับ-จ่ายในรอบปัจจุบัน</CardTitle>
+              <Badge variant="secondary" className="font-normal">{transactions.length} รายการ</Badge>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="pl-6">เวลา</TableHead>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="pl-6 w-24">เวลา</TableHead>
                     <TableHead>รายการ/รายละเอียด</TableHead>
-                    <TableHead>หมวดหมู่</TableHead>
-                    <TableHead className="text-right pr-6">จำนวน</TableHead>
+                    <TableHead className="hidden sm:table-cell">หมวดหมู่</TableHead>
+                    <TableHead className="text-right pr-6">จำนวนเงิน</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {transactions.length === 0 ? (
-                    <TableRow><TableCell colSpan={4} className="text-center h-24 text-muted-foreground">ยังไม่มีรายการบันทึก</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={4} className="text-center h-32 text-muted-foreground">ยังไม่มีรายการบันทึกในรอบนี้</TableCell></TableRow>
                   ) : (
                     transactions.map((t) => (
-                      <TableRow key={t.id}>
+                      <TableRow key={t.id} className="hover:bg-muted/20">
                         <TableCell className="pl-6 text-muted-foreground text-xs">{safeFormat(t.createdAt, "HH:mm")}</TableCell>
                         <TableCell>
                           <div className="font-medium flex items-center gap-2">
                             {t.type === 'IN' ? <ArrowDownCircle className="h-3 w-3 text-green-600"/> : <ArrowUpCircle className="h-3 w-3 text-destructive"/>}
                             {t.description}
                           </div>
+                          <div className="sm:hidden text-[10px] text-muted-foreground mt-0.5">{t.category}</div>
                           {t.photos && t.photos.length > 0 && (
-                            <div className="flex gap-1 mt-1">
+                            <div className="flex gap-1 mt-1.5">
                               {t.photos.map((url: string, i: number) => (
                                 <Dialog key={i}>
                                   <DialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 p-0 border"><ImageIcon className="h-3 w-3"/></Button>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 p-0 border bg-background shadow-sm"><ImageIcon className="h-3.5 w-3.5"/></Button>
                                   </DialogTrigger>
                                   <DialogContent className="max-w-2xl">
                                     <div className="relative aspect-video">
-                                      <Image src={url} alt="receipt" fill className="object-contain" />
+                                      <Image src={url} alt="หลักฐาน" fill className="object-contain" />
                                     </div>
                                   </DialogContent>
                                 </Dialog>
@@ -459,7 +465,7 @@ export default function OfficeCashDrawerPage() {
                             </div>
                           )}
                         </TableCell>
-                        <TableCell><span className="text-xs bg-muted px-1.5 py-0.5 rounded">{t.category}</span></TableCell>
+                        <TableCell className="hidden sm:table-cell"><span className="text-xs bg-muted px-2 py-0.5 rounded border">{t.category}</span></TableCell>
                         <TableCell className={cn("text-right pr-6 font-bold", t.type === 'IN' ? 'text-green-600' : 'text-destructive')}>
                           {t.type === 'IN' ? '+' : '-'}{formatCurrency(t.amount)}
                         </TableCell>
@@ -475,47 +481,55 @@ export default function OfficeCashDrawerPage() {
 
       {/* History Section */}
       <div className="mt-12 space-y-4">
-        <h3 className="text-lg font-bold flex items-center gap-2 text-muted-foreground"><History className="h-5 w-5"/> ประวัติรอบการทำงานล่าสุด</h3>
+        <div className="flex items-center justify-between">
+            <h3 className="text-lg font-bold flex items-center gap-2 text-muted-foreground"><History className="h-5 w-5"/> ประวัติรอบการทำงานล่าสุด</h3>
+        </div>
         <div className="grid gap-4">
-          {history.map((s) => (
-            <Card key={s.id} className={cn(s.status === 'CLOSED' && "border-amber-200")}>
-              <CardContent className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="flex items-center gap-4">
-                  <div className={cn("p-2 rounded-full", s.status === 'LOCKED' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
-                    {s.status === 'LOCKED' ? <Lock className="h-5 w-5" /> : <Unlock className="h-5 w-5" />}
-                  </div>
-                  <div>
-                    <div className="font-bold flex items-center gap-2">
-                      วันที่ {safeFormat(s.openedAt, "dd/MM/yyyy")}
-                      <Badge variant={s.status === 'LOCKED' ? 'default' : 'secondary'}>{cashDrawerStatusLabel(s.status)}</Badge>
+          {history.length === 0 ? (
+              <p className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">ยังไม่มีประวัติการปิดรอบ</p>
+          ) : (
+            history.map((s) => (
+                <Card key={s.id} className={cn(s.status === 'CLOSED' ? "border-amber-300 bg-amber-50/20" : "border-muted shadow-none")}>
+                <CardContent className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div className="flex items-center gap-4">
+                    <div className={cn("p-2 rounded-full", s.status === 'LOCKED' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700')}>
+                        {s.status === 'LOCKED' ? <Lock className="h-5 w-5" /> : <Unlock className="h-5 w-5" />}
                     </div>
-                    <div className="text-xs text-muted-foreground">ผู้เปิด: {s.openedByName} • ปิดโดย: {s.closedByName || '-'}</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 md:flex md:gap-8 w-full md:w-auto text-sm">
-                  <div className="text-center md:text-right">
-                    <div className="text-muted-foreground text-[10px] uppercase">ยอดที่ควรมี</div>
-                    <div className="font-semibold">{formatCurrency(s.expectedAmount)}</div>
-                  </div>
-                  <div className="text-center md:text-right">
-                    <div className="text-muted-foreground text-[10px] uppercase">นับได้จริง</div>
-                    <div className="font-semibold">{formatCurrency(s.countedAmount || 0)}</div>
-                  </div>
-                  <div className="text-center md:text-right">
-                    <div className="text-muted-foreground text-[10px] uppercase">ส่วนต่าง</div>
-                    <div className={cn("font-bold", (s.difference || 0) !== 0 ? 'text-destructive' : 'text-green-600')}>
-                      {formatCurrency(s.difference || 0)}
+                    <div>
+                        <div className="font-bold flex items-center gap-2">
+                        รอบวันที่ {safeFormat(s.openedAt, "dd/MM/yyyy")}
+                        <Badge variant={s.status === 'LOCKED' ? 'default' : 'secondary'} className={cn(s.status === 'LOCKED' ? 'bg-green-600' : 'bg-amber-500 text-white')}>
+                            {cashDrawerStatusLabel(s.status)}
+                        </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">ผู้เปิด: {s.openedByName} • ปิดกะ: {s.closedByName || '-'}</div>
                     </div>
-                  </div>
-                  <div className="col-span-2 md:col-span-1 pt-2 md:pt-0">
+                    </div>
+                    <div className="grid grid-cols-2 md:flex md:gap-8 w-full md:w-auto text-sm border-t md:border-0 pt-3 md:pt-0">
+                    <div className="text-center md:text-right">
+                        <div className="text-muted-foreground text-[10px] uppercase tracking-wider">ยอดควรมี</div>
+                        <div className="font-semibold">{formatCurrency(s.expectedAmount)}</div>
+                    </div>
+                    <div className="text-center md:text-right border-l md:border-0">
+                        <div className="text-muted-foreground text-[10px] uppercase tracking-wider">นับได้จริง</div>
+                        <div className="font-semibold">{formatCurrency(s.countedAmount || 0)}</div>
+                    </div>
+                    <div className="text-center md:text-right col-span-2 md:col-span-1 pt-2 md:pt-0">
+                        <div className="text-muted-foreground text-[10px] uppercase tracking-wider">ส่วนต่าง</div>
+                        <div className={cn("font-bold", (s.difference || 0) !== 0 ? 'text-destructive' : 'text-green-600')}>
+                        {formatCurrency(s.difference || 0)}
+                        </div>
+                    </div>
                     {s.status === 'CLOSED' && isMgmt && (
-                      <Button size="sm" onClick={() => handleLockSession(s.id)}>ตรวจสอบแล้ว/ล็อก</Button>
+                        <div className="col-span-2 md:col-span-1 pt-2 md:pt-0">
+                            <Button size="sm" onClick={() => handleLockSession(s.id)} className="w-full">ยืนยันเงินคืน/ล็อก</Button>
+                        </div>
                     )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    </div>
+                </CardContent>
+                </Card>
+            ))
+          )}
         </div>
       </div>
     </>

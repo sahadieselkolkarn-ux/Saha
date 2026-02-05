@@ -2,8 +2,8 @@ const DEPARTMENT_LABELS: Record<string, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
-    COMMONRAIL: "แผนกปั๊มหัวฉีดคอมมอนเรล",
-    MECHANIC: "แผนกปั๊มหัวฉีดแมคคานิค",
+    COMMONRAIL: "แผนกคอมมอนเรล",
+    MECHANIC: "แผนกแมคคานิค",
     OUTSOURCE: "งานนอก",
 };
 
@@ -77,9 +77,9 @@ const VENDOR_TYPE_LABELS: Record<string, string> = {
 };
 
 const CASH_DRAWER_STATUS_LABELS: Record<string, string> = {
-    OPEN: "กำลังใช้งาน (เปิด)",
-    CLOSED: "รอตรวจสอบ (ปิด)",
-    LOCKED: "เสร็จสมบูรณ์ (ล็อก)",
+    OPEN: "กำลังใช้งานเงินสดหน้าร้าน",
+    CLOSED: "ปิดรอบแล้ว (รอนำส่งเงินคืน)",
+    LOCKED: "ตรวจสอบแล้ว (คืนเงินเรียบร้อย)",
 };
 
 export function cashDrawerStatusLabel(status: string | undefined): string {
