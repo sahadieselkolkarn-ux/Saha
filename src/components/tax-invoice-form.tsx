@@ -334,7 +334,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       docDate: data.issueDate,
       jobId: data.jobId,
       customerSnapshot: { ...customerSnapshot },
-      carSnapshot: (job || docToEdit?.jobId) ? { licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, details: job?.description || docToEdit?.carSnapshot?.details } : {},
+      carSnapshot: (job || docToEdit?.jobId) ? { 
+          licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, 
+          details: job?.description || docToEdit?.carSnapshot?.details 
+      } : {},
       storeSnapshot: { ...storeSettings },
       items: data.items,
       subtotal: data.subtotal,
@@ -368,7 +371,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         if (isEditing && editDocId) {
             docId = editDocId;
             const docRef = doc(db, 'documents', docId);
-            await updateDoc(docRef, sanitizeForFirestore({ ...documentDataPayload, status: targetStatus, updatedAt: serverTimestamp() }));
+            await updateDoc(docRef, sanitizeForFirestore({ 
+                ...documentDataPayload, 
+                status: targetStatus,
+                updatedAt: serverTimestamp() 
+            }));
         } else {
             const result = await createDocument(
                 db,
@@ -612,10 +619,16 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                   <TableCell>{index + 1}</TableCell>
                                   <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="Service or product" disabled={isLocked}/>)}/></TableCell>
                                   <TableCell>
-                                      <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => ( <Input type="number" inputMode="decimal" placeholder="—" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }} onChange={(e) => { const newQuantity = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(newQuantity); const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0; form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true }); }} disabled={isLocked} /> )}/>
+                                      <FormField
+                                          control={form.control}
+                                          name={`items.${index}.quantity`}
+                                          render={({ field }) => ( <Input type="number" inputMode="decimal" placeholder="—" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }} onChange={(e) => { const newQuantity = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(newQuantity); const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0; form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true }); }} disabled={isLocked} /> )}/>
                                   </TableCell>
                                   <TableCell>
-                                      <FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => ( <Input type="number" inputMode="decimal" placeholder="0.00" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }} onChange={(e) => { const newPrice = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(newPrice); const quantity = form.getValues(`items.${index}.quantity`) || 0; form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true }); }} disabled={isLocked} /> )}/>
+                                      <FormField
+                                          control={form.control}
+                                          name={`items.${index}.unitPrice`}
+                                          render={({ field }) => ( <Input type="number" inputMode="decimal" placeholder="0.00" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }} onChange={(e) => { const newPrice = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(newPrice); const quantity = form.getValues(`items.${index}.quantity`) || 0; form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true }); }} disabled={isLocked} /> )}/>
                                   </TableCell>
                                   <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
                                   <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>

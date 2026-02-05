@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase/client-provider";
-import { collection, query, onSnapshot, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, updateDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, where, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, updateDoc, runTransaction } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 
@@ -95,54 +95,72 @@ export default function AccountingInboxPage() {
   const handleConfirmCashPayment = async () => {
     if (!db || !profile || !confirmingDoc || !selectedAccountId) return;
     setIsSubmitting(true);
+    
     try {
-      const batch = writeBatch(db);
-      
-      const arRef = doc(collection(db, 'accountingObligations'));
-      batch.set(arRef, {
-        type: 'AR', 
-        status: 'PAID', 
-        sourceDocType: confirmingDoc.docType, 
-        sourceDocId: confirmingDoc.id, 
-        sourceDocNo: confirmingDoc.docNo,
-        amountTotal: confirmingDoc.grandTotal, 
-        amountPaid: confirmingDoc.grandTotal, 
-        balance: 0,
-        createdAt: serverTimestamp(), 
-        updatedAt: serverTimestamp(), 
-        paidOffDate: confirmingDoc.docDate,
-        customerNameSnapshot: confirmingDoc.customerSnapshot.name,
+      await runTransaction(db, async (transaction) => {
+        const docRef = doc(db, 'documents', confirmingDoc.id);
+        const docSnap = await transaction.get(docRef);
+        
+        if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
+        const docData = docSnap.data();
+        
+        if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.accountingEntryId) {
+          throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
+        }
+
+        const entryId = `SALE_${confirmingDoc.id}`;
+        const entryRef = doc(db, 'accountingEntries', entryId);
+        const arId = `AR_OBL_${confirmingDoc.id}`;
+        const arRef = doc(db, 'accountingObligations', arId);
+
+        // 1. Create entry (Idempotent by SALE_{id})
+        transaction.set(entryRef, {
+          entryType: 'CASH_IN', 
+          entryDate: confirmingDoc.docDate, 
+          amount: confirmingDoc.grandTotal, 
+          accountId: selectedAccountId,
+          paymentMethod: 'CASH', 
+          description: `รับเงินสดจาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
+          sourceDocId: confirmingDoc.id, 
+          sourceDocNo: confirmingDoc.docNo, 
+          sourceDocType: confirmingDoc.docType,
+          customerNameSnapshot: confirmingDoc.customerSnapshot.name, 
+          jobId: confirmingDoc.jobId,
+          createdAt: serverTimestamp(),
+        });
+
+        // 2. Create AR obligation marked as PAID
+        transaction.set(arRef, {
+          type: 'AR', 
+          status: 'PAID', 
+          sourceDocType: confirmingDoc.docType, 
+          sourceDocId: confirmingDoc.id, 
+          sourceDocNo: confirmingDoc.docNo,
+          amountTotal: confirmingDoc.grandTotal, 
+          amountPaid: confirmingDoc.grandTotal, 
+          balance: 0,
+          createdAt: serverTimestamp(), 
+          updatedAt: serverTimestamp(), 
+          paidOffDate: confirmingDoc.docDate,
+          customerNameSnapshot: confirmingDoc.customerSnapshot.name,
+        });
+
+        // 3. Update doc status
+        transaction.update(docRef, { 
+            arStatus: 'PAID',
+            status: 'APPROVED', // Change from PENDING_REVIEW to APPROVED
+            paymentSummary: {
+                paidTotal: confirmingDoc.grandTotal,
+                balance: 0,
+                paymentStatus: 'PAID'
+            },
+            accountingEntryId: entryId,
+            arObligationId: arId,
+            updatedAt: serverTimestamp()
+        });
       });
 
-      const entryRef = doc(collection(db, "accountingEntries"));
-      batch.set(entryRef, {
-        entryType: 'CASH_IN', 
-        entryDate: confirmingDoc.docDate, 
-        amount: confirmingDoc.grandTotal, 
-        accountId: selectedAccountId,
-        paymentMethod: 'CASH', 
-        description: `รับเงินสดจาก ${confirmingDoc.customerSnapshot.name} (เอกสาร: ${confirmingDoc.docNo})`,
-        sourceDocId: confirmingDoc.id, 
-        sourceDocNo: confirmingDoc.docNo, 
-        sourceDocType: confirmingDoc.docType,
-        customerNameSnapshot: confirmingDoc.customerSnapshot.name, 
-        jobId: confirmingDoc.jobId,
-        createdAt: serverTimestamp(),
-      });
-
-      batch.update(doc(db, 'documents', confirmingDoc.id), { 
-          arStatus: 'PAID',
-          status: 'PAID',
-          paymentSummary: {
-              paidTotal: confirmingDoc.grandTotal,
-              balance: 0,
-              paymentStatus: 'PAID'
-          },
-          updatedAt: serverTimestamp()
-      });
-      
-      await batch.commit();
-
+      // 4. Archive job after transaction success
       if (confirmingDoc.jobId) {
           const salesDocInfo = {
               salesDocType: confirmingDoc.docType,
@@ -165,30 +183,48 @@ export default function AccountingInboxPage() {
   const handleCreateAR = async (docToProcess: WithId<DocumentType>) => {
     if (!db || !profile) return;
     setIsSubmitting(true);
+    
     try {
-        const batch = writeBatch(db);
-        const arRef = doc(collection(db, 'accountingObligations'));
-        batch.set(arRef, {
-            type: 'AR', 
-            status: 'UNPAID', 
-            sourceDocType: docToProcess.docType, 
-            sourceDocId: docToProcess.id, 
-            sourceDocNo: docToProcess.docNo,
-            amountTotal: docToProcess.grandTotal, 
-            amountPaid: 0, 
-            balance: docToProcess.grandTotal,
-            createdAt: serverTimestamp(), 
-            updatedAt: serverTimestamp(), 
-            dueDate: docToProcess.dueDate || null,
-            customerNameSnapshot: docToProcess.customerSnapshot.name,
-        });
-        batch.update(doc(db, 'documents', docToProcess.id), { 
-            arStatus: 'UNPAID',
-            status: 'APPROVED',
-            updatedAt: serverTimestamp()
-        });
-        await batch.commit();
+        await runTransaction(db, async (transaction) => {
+            const docRef = doc(db, 'documents', docToProcess.id);
+            const docSnap = await transaction.get(docRef);
+            
+            if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
+            const docData = docSnap.data();
+            
+            if (docData.arStatus !== 'PENDING' || docData.status === 'APPROVED' || docData.arObligationId) {
+                throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
+            }
 
+            const arId = `AR_OBL_${docToProcess.id}`;
+            const arRef = doc(db, 'accountingObligations', arId);
+
+            // 1. Create AR obligation (Idempotent by AR_OBL_{id})
+            transaction.set(arRef, {
+                type: 'AR', 
+                status: 'UNPAID', 
+                sourceDocType: docToProcess.docType, 
+                sourceDocId: docToProcess.id, 
+                sourceDocNo: docToProcess.docNo,
+                amountTotal: docToProcess.grandTotal, 
+                amountPaid: 0, 
+                balance: docToProcess.grandTotal,
+                createdAt: serverTimestamp(), 
+                updatedAt: serverTimestamp(), 
+                dueDate: docToProcess.dueDate || null,
+                customerNameSnapshot: docToProcess.customerSnapshot.name,
+            });
+
+            // 2. Update doc status
+            transaction.update(docRef, { 
+                arStatus: 'UNPAID',
+                status: 'APPROVED',
+                arObligationId: arId,
+                updatedAt: serverTimestamp()
+            });
+        });
+
+        // 3. Archive job after transaction success
         if (docToProcess.jobId) {
             const salesDocInfo = {
                 salesDocType: docToProcess.docType,
