@@ -211,12 +211,10 @@ function AppDashboardPage() {
       const mEnd = endOfMonth(mStart);
       const interval = { start: mStart, end: mEnd };
 
-      // Output VAT (from Sales Invoices)
       const salesVat = documents
         .filter(d => d.docType === 'TAX_INVOICE' && d.status !== 'CANCELLED' && isWithinInterval(parseISO(d.docDate), interval))
         .reduce((sum, d) => sum + (d.vatAmount || 0), 0);
 
-      // Input VAT (from Purchase Documents)
       const purchaseVat = purchaseDocs
         .filter(p => p.status !== 'CANCELLED' && isWithinInterval(parseISO(p.docDate), interval))
         .reduce((sum, p) => sum + (p.vatAmount || 0), 0);
@@ -298,8 +296,8 @@ function AppDashboardPage() {
       kpis: [
         { label: "งานเข้าใหม่", value: currentInflow.length, trend: getTrend(currentInflow.length, prevInflow.length), desc: "งานที่เปิดใหม่ในช่วงเวลานี้", link: "/app/jobs" },
         { label: "งานซ่อมเสร็จ", value: currentOutflow.length, trend: getTrend(currentOutflow.length, prevOutflow.length), desc: "งานที่ส่งมอบในช่วงเวลานี้", link: "/app/jobs" },
-        { label: "งานคงค้างทั้งหมด", value: backlog.length, desc: "งานที่ยังอยู่ระหว่างดำเนินการ", link: "/app/jobs", isNeutral: true },
-        { label: "เงินหมุนเวียนสุทธิ", value: currentCashIn - currentCashOut, trend: getTrend(currentCashIn - currentCashOut, prevCashIn - prevCashOut), desc: "รับ-จ่ายสุทธิในช่วงเวลานี้", link: "/app/management/accounting/cashbook", isCurrency: true },
+        { label: "งานคงค้าง", value: backlog.length, desc: "งานที่ยังอยู่ระหว่างดำเนินการ", link: "/app/jobs", isNeutral: true },
+        { label: "เงินหมุนเวียน", value: currentCashIn - currentCashOut, trend: getTrend(currentCashIn - currentCashOut, prevCashIn - prevCashOut), desc: "รับ-จ่ายสุทธิในช่วงเวลานี้", link: "/app/management/accounting/cashbook", isCurrency: true },
       ],
       fin: [
         { label: "เงินรับเข้า", value: currentCashIn, trend: getTrend(currentCashIn, prevCashIn), link: "/app/management/accounting/cashbook?tab=in" },
@@ -362,171 +360,202 @@ function AppDashboardPage() {
         </div>
       </PageHeader>
 
-      {/* KPI Cards */}
+      {/* --- Row 1: KPI Cards --- */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.kpis.map((kpi, i) => (
-          <Card key={i} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => router.push(kpi.link)}>
+          <Card key={i} className="h-[130px] flex flex-col hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => router.push(kpi.link)}>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
               <CardTitle className="text-sm font-medium">{kpi.label}</CardTitle>
               {!kpi.isNeutral && <TrendIndicator value={kpi.trend!} />}
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-1">
               <div className="text-2xl font-bold">
                 {kpi.isCurrency ? formatCurrency(kpi.value) : kpi.value.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{kpi.desc}</p>
+              <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1">{kpi.desc}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Row 1: Small/Medium Charts */}
+      {/* --- Row 2: Trends (3 Columns) --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <Card className="h-full flex flex-col">
           <CardHeader>
             <CardTitle>ปริมาณงาน (6 เดือน)</CardTitle>
-            <CardDescription>งานเข้า (Inflow) และงานออก (Outflow)</CardDescription>
+            <CardDescription>เปรียบเทียบงานเข้าและงานเสร็จ</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 min-h-[240px]">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={stats.last6Months}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" fontSize={12} />
-                <YAxis fontSize={12} />
-                <Tooltip cursor={{fill: 'transparent'}} />
-                <Legend iconType="circle" />
-                <Bar dataKey="Inflow" name="งานเข้า" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Outflow" name="งานออก" fill="hsl(var(--chart-4))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card className="h-full flex flex-col">
-          <CardHeader>
-            <CardTitle>วิเคราะห์งานค้าง</CardTitle>
-            <CardDescription>สัดส่วนงานค้างแยกตามแผนกในขณะนี้</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 min-h-[240px] flex flex-col justify-center">
-            <div className="h-[180px]">
+          <CardContent className="flex-1">
+            <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={stats.deptStats} dataKey="count" nameKey="label" innerRadius={50} outerRadius={75} paddingAngle={5}>
-                    {stats.deptStats.map((_, i) => <Cell key={i} fill={`hsl(var(--chart-${(i % 5) + 1}))`} />)}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[10px]">
-              {stats.deptStats.map((d, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: `hsl(var(--chart-${(i % 5) + 1}))` }} />
-                  <span className="truncate">{d.label}: {d.count} งาน</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="h-full flex flex-col">
-          <CardHeader>
-            <CardTitle>งานใหม่แยกตามแผนก</CardTitle>
-            <CardDescription>ปริมาณการเปิดงานใหม่ในช่วงเวลาที่เลือก</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 min-h-[240px]">
-            {stats.currentInflowByDept.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={stats.currentInflowByDept} layout="vertical">
-                  <XAxis type="number" hide />
-                  <YAxis dataKey="name" type="category" width={100} fontSize={11} />
+                <BarChart data={stats.last6Months}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" fontSize={12} />
+                  <YAxis fontSize={12} />
                   <Tooltip cursor={{fill: 'transparent'}} />
-                  <Bar dataKey="value" name="งานใหม่" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  <Legend iconType="circle" />
+                  <Bar dataKey="Inflow" name="งานเข้า" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Outflow" name="งานเสร็จ" fill="hsl(var(--chart-4))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground italic">ไม่มีงานใหม่</div>
-            )}
+            </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Row 2: Wide Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="h-full flex flex-col">
           <CardHeader>
             <CardTitle>วิเคราะห์ภาษีซื้อ-ขาย (6 เดือน)</CardTitle>
-            <CardDescription>เปรียบเทียบภาษีขายจากใบกำกับภาษี และภาษีซื้อจากบิลอะไหล่</CardDescription>
+            <CardDescription>สรุป VAT ขายและ VAT ซื้อ</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 min-h-[320px]">
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={stats.vatTrendData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={(v) => `${v / 1000}k`} />
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
-                <Legend verticalAlign="top" height={36} />
-                <Bar dataKey="ภาษีขาย" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="ภาษีซื้อ" fill="hsl(var(--chart-5))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent className="flex-1">
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.vatTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" fontSize={12} />
+                  <YAxis tickFormatter={(v) => `${v / 1000}k`} fontSize={12} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                  <Legend verticalAlign="bottom" iconType="circle" />
+                  <Bar dataKey="ภาษีขาย" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="ภาษีซื้อ" fill="hsl(var(--chart-5))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 
         <Card className="h-full flex flex-col">
           <CardHeader>
             <CardTitle>กระแสเงินสด (6 เดือน)</CardTitle>
-            <CardDescription>แนวโน้มการรับเงินและจ่ายเงินรวมทุกบัญชี</CardDescription>
+            <CardDescription>ภาพรวมเงินเข้า–ออก</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 min-h-[320px]">
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={stats.cashFlowData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" />
-                <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} />
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
-                <Legend verticalAlign="top" height={36} />
-                <Line type="monotone" dataKey="เงินรับเข้า" stroke="hsl(var(--chart-2))" strokeWidth={3} dot={{ r: 4 }} />
-                <Line type="monotone" dataKey="เงินจ่ายออก" stroke="hsl(var(--chart-5))" strokeWidth={3} dot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
+          <CardContent className="flex-1">
+            <div className="h-[280px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={stats.cashFlowData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="name" fontSize={12} />
+                  <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} fontSize={12} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                  <Legend verticalAlign="bottom" iconType="circle" />
+                  <Line type="monotone" dataKey="เงินรับเข้า" stroke="hsl(var(--chart-2))" strokeWidth={3} dot={{ r: 4 }} />
+                  <Line type="monotone" dataKey="เงินจ่ายออก" stroke="hsl(var(--chart-5))" strokeWidth={3} dot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Row 3: Acquisition & Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="h-full flex flex-col lg:col-span-1">
+      {/* --- Row 3: Breakdowns (3 Columns) --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <Card className="h-full flex flex-col">
           <CardHeader>
-            <CardTitle>แหล่งที่มาของลูกค้า</CardTitle>
-            <CardDescription>ลูกค้ารู้จักร้านผ่านช่องทางใด (ในงวดนี้)</CardDescription>
+            <CardTitle>งานใหม่แยกตามแผนก</CardTitle>
+            <CardDescription>ปริมาณงานเปิดใหม่ในงวดนี้</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1">
+            <div className="h-[240px]">
+              {stats.currentInflowByDept.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.currentInflowByDept} layout="vertical">
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" width={100} fontSize={11} />
+                    <Tooltip cursor={{fill: 'transparent'}} />
+                    <Bar dataKey="value" name="งานใหม่" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground italic">ไม่มีข้อมูล</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full flex flex-col">
+          <CardHeader>
+            <CardTitle>วิเคราะห์งานค้าง</CardTitle>
+            <CardDescription>งานค้างแยกตามแผนกและระยะเวลา</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-center">
-            <div className="h-[200px]">
+            <div className="h-[180px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={stats.acquisitionData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={80} paddingAngle={5}>
-                    {stats.acquisitionData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  <Pie data={stats.deptStats} dataKey="count" nameKey="label" innerRadius={50} outerRadius={70} paddingAngle={5}>
+                    {stats.deptStats.map((_, i) => <Cell key={i} fill={`hsl(var(--chart-${(i % 5) + 1}))`} />)}
                   </Pie>
-                  <Tooltip formatter={(v: any) => [`${v} ราย`, 'จำนวน']} />
+                  <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-4 space-y-1">
-              {stats.acquisitionData.map((d, i) => (
-                <div key={i} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
-                    {d.name}
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+              {stats.deptStats.map((d, i) => (
+                <div key={i} className="flex items-center justify-between border-b border-muted pb-0.5">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: `hsl(var(--chart-${(i % 5) + 1}))` }} />
+                    <span className="truncate">{d.label}</span>
                   </div>
-                  <span className="font-medium">{d.value} ราย</span>
+                  <span className="font-bold ml-1">{d.count}</span>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="h-full flex flex-col lg:col-span-2">
+        <Card className="h-full flex flex-col">
+          <CardHeader>
+            <CardTitle>แหล่งที่มาของลูกค้า</CardTitle>
+            <CardDescription>ลูกค้าเข้ามาจากช่องทางใดในงวดนี้</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1 flex flex-col justify-center">
+            <div className="h-[180px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={stats.acquisitionData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={70} paddingAngle={5}>
+                    {stats.acquisitionData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v: any) => [`${v} ราย`, 'จำนวน']} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+              {stats.acquisitionData.map((d, i) => (
+                <div key={i} className="flex items-center justify-between border-b border-muted pb-0.5">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
+                    <span className="truncate">{d.name}</span>
+                  </div>
+                  <span className="font-bold ml-1">{d.value}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* --- Row 4: Summary & Alerts (2 Columns) --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="h-full flex flex-col min-h-[260px]">
+          <CardHeader>
+            <CardTitle>สรุปสถานะการเงิน (Financial Snapshot)</CardTitle>
+            <CardDescription>ข้อมูลลูกหนี้ เจ้าหนี้ และกระแสเงินสดปัจจุบัน</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-1">
+            <div className="grid grid-cols-2 gap-4 h-full content-center">
+              {stats.fin.map((item, i) => (
+                <div key={i} className="p-3 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer" onClick={() => router.push(item.link)}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">{item.label}</span>
+                    {item.trend !== undefined && <TrendIndicator value={item.trend} />}
+                  </div>
+                  <div className="text-lg font-bold">{formatCurrency(item.value)}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full flex flex-col min-h-[260px]">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-primary" />
@@ -534,16 +563,16 @@ function AppDashboardPage() {
             </CardTitle>
             <CardDescription>รายการเร่งด่วนที่ฝ่ายบริหารและบัญชีควรตรวจสอบ</CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 space-y-3">
+          <CardContent className="flex-1 space-y-2">
             {stats.alerts.length > 0 ? stats.alerts.map((alert, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => router.push(alert.link)}>
+              <div key={i} className="flex items-center justify-between p-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => router.push(alert.link)}>
                 <div className="flex items-center gap-3">
-                  <div className={cn("p-2 rounded-full", alert.variant === "destructive" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
+                  <div className={cn("p-1.5 rounded-full", alert.variant === "destructive" ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary")}>
                     <alert.icon className="h-4 w-4" />
                   </div>
-                  <span className="text-sm font-medium">{alert.label}</span>
+                  <span className="text-xs font-medium">{alert.label}</span>
                 </div>
-                <Badge variant={alert.variant === "destructive" ? "destructive" : "secondary"}>{alert.count}</Badge>
+                <Badge variant={alert.variant === "destructive" ? "destructive" : "secondary"} className="h-5">{alert.count}</Badge>
               </div>
             )) : (
               <div className="flex h-full items-center justify-center text-muted-foreground italic text-sm py-10">ไม่พบรายการเร่งด่วน</div>
@@ -551,27 +580,6 @@ function AppDashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Row 4: Detailed Financial Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle>สรุปสถานะการเงิน (Financial Snapshot)</CardTitle>
-          <CardDescription>ข้อมูลลูกหนี้ เจ้าหนี้ และกระแสเงินสดปัจจุบัน</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {stats.fin.map((item, i) => (
-              <div key={i} className="p-4 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer" onClick={() => router.push(item.link)}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">{item.label}</span>
-                  {item.trend !== undefined && <TrendIndicator value={item.trend} />}
-                </div>
-                <div className="text-lg font-bold">{formatCurrency(item.value)}</div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
