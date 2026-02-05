@@ -1,16 +1,15 @@
 "use client";
 
-import { useMemo, useState, Suspense } from "react";
+import { useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { doc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, Trash2, Ban, Loader2, FileText, User, Calendar, CreditCard, ExternalLink } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, CreditCard, ExternalLink } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -19,17 +18,6 @@ import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 
 const getStatusVariant = (status: string) => {
   switch (status) {
@@ -55,44 +43,11 @@ function DeliveryNoteDetailPageContent() {
     const router = useRouter();
     const { db } = useFirebase();
     const { profile } = useAuth();
-    const { toast } = useToast();
-    const [isActionLoading, setIsActionLoading] = useState(false);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
-    const isAdmin = profile?.role === 'ADMIN';
     const isCancelled = document?.status === 'CANCELLED';
-
-    const handleCancel = async () => {
-        if (!db || !docId) return;
-        setIsActionLoading(true);
-        try {
-            await updateDoc(doc(db, 'documents', docId as string), {
-                status: 'CANCELLED',
-                updatedAt: serverTimestamp(),
-                notes: (document?.notes || "") + "\n[System] ยกเลิกเอกสารโดย " + profile?.displayName
-            });
-            toast({ title: "ยกเลิกใบส่งของชั่วคราวสำเร็จ" });
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
-        } finally {
-            setIsActionLoading(false);
-        }
-    };
-
-    const handleDelete = async () => {
-        if (!db || !docId || !isAdmin) return;
-        setIsActionLoading(true);
-        try {
-            await deleteDoc(doc(db, 'documents', docId as string));
-            toast({ title: "ลบเอกสารสำเร็จ" });
-            router.push('/app/office/documents/delivery-note');
-        } catch (e: any) {
-            toast({ variant: 'destructive', title: "ลบไม่สำเร็จ", description: e.message });
-            setIsActionLoading(false);
-        }
-    };
 
     if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
     
@@ -117,45 +72,6 @@ function DeliveryNoteDetailPageContent() {
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
                 </Button>
                 <div className="flex flex-wrap gap-2">
-                    {isAdmin && (
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="destructive" size="sm" disabled={isActionLoading}><Trash2 className="mr-2 h-4 w-4"/> ลบ</Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>ยืนยันการลบถาวร?</AlertDialogTitle>
-                                    <AlertDialogDescription>การกระทำนี้จะลบข้อมูลออกจากฐานข้อมูลทันทีและไม่สามารถกู้คืนได้ เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถทำได้</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">ยืนยันการลบ</AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                    )}
-                    {!isCancelled && (
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="outline" size="sm" disabled={isActionLoading} className="text-destructive border-destructive hover:bg-destructive/10">
-                                    <Ban className="mr-2 h-4 w-4"/> ยกเลิกเอกสาร
-                                </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>ยืนยันการยกเลิก?</AlertDialogTitle>
-                                    <AlertDialogDescription>เอกสารที่ยกเลิกแล้วจะไม่สามารถแก้ไขได้อีก แต่จะยังคงอยู่ในระบบเพื่อการตรวจสอบ</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>ปิด</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleCancel}>
-                                        {isActionLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
-                                        ยืนยันการยกเลิก
-                                    </AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                    )}
                     <Button variant="default" size="sm" onClick={() => router.push(`/app/office/documents/${docId}?print=1&autoprint=1`)}>
                         <Printer className="mr-2 h-4 w-4"/> พิมพ์ (PDF)
                     </Button>
