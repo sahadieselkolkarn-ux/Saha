@@ -270,9 +270,11 @@ export function DocumentList({
                       // Determination of View Path: Specific View page or Central Router (Edit)
                       const viewPath = docItem.docType === 'DELIVERY_NOTE' 
                         ? `/app/office/documents/delivery-note/${docItem.id}`
-                        : (docItem.docType === 'QUOTATION' 
-                            ? `/app/office/documents/quotation/${docItem.id}` 
-                            : `/app/documents/${docItem.id}`);
+                        : (docItem.docType === 'TAX_INVOICE'
+                            ? `/app/office/documents/tax-invoice/${docItem.id}`
+                            : (docItem.docType === 'QUOTATION' 
+                                ? `/app/office/documents/quotation/${docItem.id}` 
+                                : `/app/documents/${docItem.id}`));
                       
                       const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docType);
                       const editPath = isOffice && hasOfficeEditRoute
