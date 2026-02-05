@@ -52,6 +52,7 @@ export default function AccountingInboxPage() {
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const [confirmingDoc, setConfirmingDoc] = useState<WithId<DocumentType> | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [disputingDoc, setDisputingDoc] = useState<WithId<DocumentType> | null>(null);
   const [disputeReason, setDisputeReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -112,45 +113,23 @@ export default function AccountingInboxPage() {
     return () => { unsubDocs(); unsubAccounts(); };
   }, [hasPermission, docsQuery, accountsQuery]);
   
-  // Helper to get fallback account
   const getInitialAccountId = (doc: DocumentType, availableAccounts: AccountingAccount[]) => {
     if (availableAccounts.length === 0) return "";
-    
-    // 1. Check suggested account from Office
     if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
         return doc.suggestedAccountId;
     }
-    
-    // 2. Try first CASH account
     const cashAccount = availableAccounts.find(a => a.type === 'CASH');
     if (cashAccount) return cashAccount.id;
-    
-    // 3. Fallback to first available account
     return availableAccounts[0].id;
   };
 
   const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
+    setConfirmError(null);
     setConfirmingDoc(doc);
     const initialId = getInitialAccountId(doc, accounts);
     setSelectedAccountId(initialId);
     setSelectedPaymentMethod(doc.suggestedPaymentMethod || 'CASH');
-    
-    if (process.env.NODE_ENV === 'development') {
-        console.debug("[ConfirmDialog] Opening for:", doc.docNo, {
-            suggested: doc.suggestedAccountId,
-            selected: initialId,
-            accountsCount: accounts.length
-        });
-    }
   };
-
-  // Keep effect for when accounts finish loading AFTER dialog is already open
-  useEffect(() => {
-    if (confirmingDoc && accounts.length > 0 && !selectedAccountId) {
-        const initialId = getInitialAccountId(confirmingDoc, accounts);
-        setSelectedAccountId(initialId);
-    }
-  }, [confirmingDoc, accounts, selectedAccountId]);
 
   const filteredDocs = useMemo(() => {
     const filteredByTab = documents.filter(doc => {
@@ -173,9 +152,21 @@ export default function AccountingInboxPage() {
 
   const handleConfirmCashPayment = async () => {
     if (!db || !profile || !confirmingDoc || !selectedAccountId) return;
+    
+    setConfirmError(null);
     setIsSubmitting(true);
     
+    if (process.env.NODE_ENV === 'development') {
+        console.debug("[ConfirmCash] Starting...", {
+            docId: confirmingDoc.id,
+            docNo: confirmingDoc.docNo,
+            accountId: selectedAccountId,
+            method: selectedPaymentMethod
+        });
+    }
+    
     try {
+      // STEP 1: Transaction for Accounting Entries and Doc Status
       await runTransaction(db, async (transaction) => {
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
@@ -238,20 +229,39 @@ export default function AccountingInboxPage() {
         });
       });
 
+      if (process.env.NODE_ENV === 'development') console.debug("[ConfirmCash] Transaction OK");
+
+      // STEP 2: Archive Job (Separate block to handle partial failures)
       if (confirmingDoc.jobId) {
-          const salesDocInfo = {
-              salesDocType: confirmingDoc.docType,
-              salesDocId: confirmingDoc.id,
-              salesDocNo: confirmingDoc.docNo,
-              paymentStatusAtClose: 'PAID' as const
-          };
-          await archiveAndCloseJob(db, confirmingDoc.jobId, confirmingDoc.docDate, profile, salesDocInfo);
+          try {
+              const salesDocInfo = {
+                  salesDocType: confirmingDoc.docType,
+                  salesDocId: confirmingDoc.id,
+                  salesDocNo: confirmingDoc.docNo,
+                  paymentStatusAtClose: 'PAID' as const
+              };
+              await archiveAndCloseJob(db, confirmingDoc.jobId, confirmingDoc.docDate, profile, salesDocInfo);
+              if (process.env.NODE_ENV === 'development') console.debug("[ConfirmCash] Job Archived OK");
+          } catch (archiveError: any) {
+              console.error("Archive failed but accounting was recorded:", archiveError);
+              setConfirmError(`บันทึกบัญชีสำเร็จ แต่การปิดงานขัดข้อง: ${archiveError.message || archiveError.toString()}. กรุณาลองกดปิดงานอีกครั้งเพื่อย้ายงานเข้าคลังประวัติ`);
+              setIsSubmitting(false);
+              toast({ variant: 'destructive', title: "คำเตือน", description: "บันทึกบัญชีเรียบร้อย แต่ย้ายงานเข้าประวัติไม่สำเร็จ กรุณาลองใหม่อีกครั้งเพื่อปิดงาน" });
+              return; // Stay in dialog so they can see the error
+          }
       }
 
       toast({ title: "ยืนยันการรับเงินและปิดงานสำเร็จ" });
       setConfirmingDoc(null);
+      setConfirmError(null);
     } catch(e: any) {
-      toast({ variant: 'destructive', title: "ไม่สามารถยืนยันได้", description: e.message });
+      console.error("Confirm cash failed", e);
+      setConfirmError(`ยืนยันไม่สำเร็จ: ${e.code || ''} ${e.message || e.toString()}`);
+      toast({ 
+        variant: 'destructive', 
+        title: "เกิดข้อผิดพลาด", 
+        description: e.message || "ไม่สามารถดำเนินการยืนยันรายการได้" 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -457,14 +467,27 @@ export default function AccountingInboxPage() {
         </Card>
       </Tabs>
 
-      <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && setConfirmingDoc(null)}>
-        <DialogContent>
+      <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && !isSubmitting && setConfirmingDoc(null)}>
+        <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
             <DialogDescription className="text-destructive font-bold">
                 เมื่อยืนยันแล้ว จะไม่สามารถแก้ไขบิลนี้ได้อีก และระบบจะลงบัญชีรายรับถาวร
             </DialogDescription>
           </DialogHeader>
+          
+          {confirmError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>ยืนยันไม่สำเร็จ</AlertTitle>
+              <AlertDescription className="text-xs">
+                {confirmError}
+                <br />
+                กรุณาตรวจสอบสิทธิ์การเขียนข้อมูลบัญชี และลองใหม่อีกครั้ง
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="py-4 space-y-4">
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center">
                 <p className="text-sm text-muted-foreground">ยอดเงินรวมสุทธิ</p>
@@ -483,7 +506,7 @@ export default function AccountingInboxPage() {
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label>ช่องทางที่รับ</Label>
-                        <Select value={selectedPaymentMethod} onValueChange={(v: any) => setSelectedPaymentMethod(v)}>
+                        <Select value={selectedPaymentMethod} onValueChange={(v: any) => setSelectedPaymentMethod(v)} disabled={isSubmitting}>
                             <SelectTrigger><SelectValue/></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="CASH">เงินสด</SelectItem>
@@ -493,7 +516,7 @@ export default function AccountingInboxPage() {
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
-                        <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                        <Select value={selectedAccountId} onValueChange={setSelectedAccountId} disabled={isSubmitting}>
                             <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
                             <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}</SelectContent>
                         </Select>
