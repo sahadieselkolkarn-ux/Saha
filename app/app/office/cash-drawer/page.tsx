@@ -45,6 +45,16 @@ import { cashDrawerStatusLabel } from "@/lib/ui-labels";
 import { safeFormat } from "@/lib/date-utils";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // --- Types & Schemas ---
 
@@ -175,6 +185,9 @@ export default function OfficeCashDrawerPage() {
   const [openingAmount, setOpeningAmount] = useState<number>(0);
   const [isOpening, setIsOpening] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [closingData, setClosingData] = useState<CloseSessionFormData | null>(null);
 
   const isMgmt = profile?.department === 'MANAGEMENT' || profile?.role === 'ADMIN';
 
@@ -283,23 +296,25 @@ export default function OfficeCashDrawerPage() {
     }
   };
 
-  const handleCloseSession = async (data: CloseSessionFormData) => {
-    if (!db || !profile || !activeSession) return;
+  const handleCloseSessionExecute = async () => {
+    if (!db || !profile || !activeSession || !closingData) return;
     setIsClosing(true);
     try {
       const sessionRef = doc(db, "cashDrawerSessions", activeSession.id);
-      const diff = data.countedAmount - activeSession.expectedAmount;
+      const diff = closingData.countedAmount - activeSession.expectedAmount;
       
       await updateDoc(sessionRef, {
         status: 'CLOSED',
-        countedAmount: data.countedAmount,
+        countedAmount: closingData.countedAmount,
         difference: diff,
         closedAt: serverTimestamp(),
         closedByUid: profile.uid,
         closedByName: profile.displayName,
-        notes: data.notes || "",
+        notes: closingData.notes || "",
       });
       toast({ title: 'ปิดรอบเรียบร้อย', description: 'กรุณาส่งเงินทั้งหมดคืนฝ่ายบริหาร' });
+      setShowCloseConfirm(false);
+      setClosingData(null);
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Error', description: e.message });
     } finally {
@@ -333,7 +348,7 @@ export default function OfficeCashDrawerPage() {
           <CardHeader>
             <CardTitle>เปิดใช้งานเงินสดหน้าร้าน</CardTitle>
             <CardDescription className="text-destructive font-medium">
-              * ใช้เฉพาะกรณีที่ฝ่ายบัญชีไม่อยู่ เงินสดทั้งหมดต้องนับส่งคืนเมื่อปิดรอบงาน
+              * ใช้เฉพาะกรณีที่ฝ่ายบัญชีไม่อยู่ เงินสดที่ได้รับต้องนำส่งคืนทั้งหมดเมื่อปิดรอบ
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
@@ -387,8 +402,8 @@ export default function OfficeCashDrawerPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>ปิดรอบและสรุปยอดเงินคืน</DialogTitle>
-                    <DialogDescription className="text-destructive font-medium">
-                      กรุณานับเงินสดจริงในมือให้เรียบร้อยก่อนปิด ระบบจะไม่อนุญาตให้แก้ไขข้อมูลใดๆ หลังจากนี้
+                    <DialogDescription className="text-destructive font-bold">
+                      กรุณานับเงินสดจริงในมือให้เรียบร้อยก่อนปิด ระบบจะไม่อนุญาตให้แก้ไขข้อมูลใดๆ หลังจากปิดรอบแล้ว
                     </DialogDescription>
                   </DialogHeader>
                   <div className="py-4 space-y-4">
@@ -410,9 +425,10 @@ export default function OfficeCashDrawerPage() {
                     <Button onClick={() => {
                       const counted = Number((document.getElementById('countedAmount') as HTMLInputElement).value);
                       const notes = (document.getElementById('closingNotes') as HTMLTextAreaElement).value;
-                      handleCloseSession({ countedAmount: counted, notes });
+                      setClosingData({ countedAmount: counted, notes });
+                      setShowCloseConfirm(true);
                     }} disabled={isClosing} className="w-full sm:w-auto">
-                      {isClosing && <Loader2 className="mr-2 animate-spin" />} ยืนยันการปิดรอบ
+                      ยืนยันปิดรอบ
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -532,6 +548,23 @@ export default function OfficeCashDrawerPage() {
           )}
         </div>
       </div>
+
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการปิดรอบและคืนเงิน?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      เมื่อปิดรอบแล้ว <span className="font-bold text-destructive">คุณจะไม่สามารถแก้ไขรายการรับ-จ่ายในรอบนี้ได้อีก</span> และระบบจะสรุปยอดส่วนต่างเพื่อนำส่งฝ่ายบริหารทันที
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isClosing}>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleCloseSessionExecute} disabled={isClosing}>
+                      {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} ตกลง ปิดรอบ
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

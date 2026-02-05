@@ -24,6 +24,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
@@ -107,6 +117,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
+  const [showReviewConfirm, setShowReviewConfirm] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<DeliveryNoteFormData | null>(null);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -420,8 +432,13 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   };
 
   const handleSave = async (data: DeliveryNoteFormData, submitForReview: boolean) => {
-    setIsReviewSubmission(submitForReview);
-    await executeSave(data, submitForReview);
+    if (submitForReview) {
+        setPendingFormData(data);
+        setIsReviewSubmission(true);
+        setShowReviewConfirm(true);
+        return;
+    }
+    await executeSave(data, false);
   };
 
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer || isLoadingDocToEdit;
@@ -752,6 +769,21 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
           </form>
         </Form>
       </div>
+
+      <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      เมื่อส่งเรื่องให้ฝ่ายบัญชีตรวจสอบแล้ว <span className="font-bold text-destructive">คุณจะไม่สามารถแก้ไขเอกสารนี้ได้อีก</span> จนกว่าฝ่ายบัญชีจะกดยืนยันรายการหรือตีกลับมาให้แก้ไข
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => { if(pendingFormData) executeSave(pendingFormData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

@@ -24,6 +24,16 @@ import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
 import { archiveAndCloseJob } from '@/firebase/jobs-archive';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -45,16 +55,17 @@ export default function AccountingInboxPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
+  
+  const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
 
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
 
-  // Memoize queries to prevent unnecessary re-subscriptions
   const docsQuery = useMemo(() => {
     if (!db) return null;
     return query(
       collection(db, "documents"), 
       where("arStatus", "==", "PENDING"),
-      limit(200) // Show top 200 pending items
+      limit(200)
     );
   }, [db]);
 
@@ -256,6 +267,7 @@ export default function AccountingInboxPage() {
         }
 
         toast({ title: 'ยืนยันรายการขายเครดิตและปิดงานสำเร็จ' });
+        setArDocToConfirm(null);
     } catch (e: any) {
         toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการยืนยันรายการ", description: e.message });
     } finally {
@@ -367,7 +379,7 @@ export default function AccountingInboxPage() {
                                         <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onSelect={() => handleCreateAR(doc)} disabled={isSubmitting}>
+                                        <DropdownMenuItem onSelect={() => setArDocToConfirm(doc)} disabled={isSubmitting}>
                                             <HandCoins className="mr-2 h-4 w-4"/> ยืนยันเครดิตและปิดงาน
                                         </DropdownMenuItem>
                                         <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
@@ -390,7 +402,9 @@ export default function AccountingInboxPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
-            <DialogDescription>สำหรับเอกสารเลขที่: {confirmingDoc?.docNo} - เมื่อยืนยันแล้ว ระบบจะลงบัญชีรายรับและปิดงานซ่อมนี้ทันที</DialogDescription>
+            <DialogDescription className="text-destructive font-bold">
+                เมื่อยืนยันแล้ว จะไม่สามารถแก้ไขบิลนี้ได้อีก และระบบจะลงบัญชีรายรับถาวร
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center">
@@ -422,10 +436,28 @@ export default function AccountingInboxPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || !selectedAccountId}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันการรับเงิน</Button>
+            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || !selectedAccountId}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันและปิดงาน</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!arDocToConfirm} onOpenChange={(open) => !open && setArDocToConfirm(null)}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันรายการขายเครดิต?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      ต้องการยืนยันรายการลูกหนี้ค้างชำระ (Credit) สำหรับเอกสารเลขที่ {arDocToConfirm?.docNo} หรือไม่?
+                      เมื่อยืนยันแล้ว <span className="font-bold text-destructive">จะเริ่มตั้งหนี้และไม่สามารถแก้ไขบิลได้อีก</span>
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isSubmitting}>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => arDocToConfirm && handleCreateAR(arDocToConfirm)} disabled={isSubmitting}>
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} ยืนยันและตั้งหนี้
+                  </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={!!disputingDoc} onOpenChange={(open) => !open && setDisputingDoc(null)}>
         <DialogContent>

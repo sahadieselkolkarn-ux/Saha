@@ -113,6 +113,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [existingDn, setExistingDn] = useState<DocumentType | null>(null);
   const [showDnCancelDialog, setShowDnCancelDialog] = useState(false);
+  const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
 
@@ -406,24 +407,31 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   };
 
   const handleSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
-    if (!isEditing && data.jobId && db && submitForReview) {
-        const q = query(
-            collection(db, "documents"), 
-            where("jobId", "==", data.jobId), 
-            where("docType", "==", "DELIVERY_NOTE")
-        );
-        const snap = await getDocs(q);
-        const activeDn = snap.docs.find(d => d.data().status !== 'CANCELLED');
+    if (submitForReview) {
+        setPendingData(data);
+        setIsReviewSubmission(true);
         
-        if (activeDn) {
-            setExistingDn({ id: activeDn.id, ...activeDn.data() } as DocumentType);
-            setPendingData(data);
-            setIsReviewSubmission(true);
-            setShowDnCancelDialog(true);
-            return;
+        // Check for existing DN first
+        if (!isEditing && data.jobId && db) {
+            const q = query(
+                collection(db, "documents"), 
+                where("jobId", "==", data.jobId), 
+                where("docType", "==", "DELIVERY_NOTE")
+            );
+            const snap = await getDocs(q);
+            const activeDn = snap.docs.find(d => d.data().status !== 'CANCELLED');
+            
+            if (activeDn) {
+                setExistingDn({ id: activeDn.id, ...activeDn.data() } as DocumentType);
+                setShowDnCancelDialog(true);
+                return;
+            }
         }
+        
+        setShowReviewConfirm(true);
+        return;
     }
-    await executeSave(data, submitForReview);
+    await executeSave(data, false);
   };
 
   const handleConfirmCancelAndSave = async () => {
@@ -437,7 +445,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         });
         toast({ title: "ยกเลิกใบส่งของชั่วคราวเดิมเรียบร้อย" });
         setShowDnCancelDialog(false);
-        await executeSave(pendingData, isReviewSubmission);
+        setShowReviewConfirm(true); // Now show the final review confirm
     } catch(e: any) {
         toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: "เกิดข้อผิดพลาดในการยกเลิกใบเดิม กรุณาลองใหม่อีกครั้ง" });
     }
@@ -751,12 +759,27 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                  <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); if(pendingData) executeSave(pendingData, isReviewSubmission); }} disabled={isSubmitting}>
+                  <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); setShowReviewConfirm(true); }} disabled={isSubmitting}>
                       ไม่ยกเลิก (ออกคู่กัน)
                   </Button>
                   <AlertDialogAction onClick={handleConfirmCancelAndSave} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "ยกเลิกใบเดิมและบันทึก"}
+                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "ยกเลิกใบเดิมและไปต่อ"}
                   </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      เมื่อส่งเรื่องให้ฝ่ายบัญชีตรวจสอบแล้ว <span className="font-bold text-destructive">คุณจะไม่สามารถแก้ไขเอกสารนี้ได้อีก</span> จนกว่าฝ่ายบัญชีจะกดยืนยันรายการหรือตีกลับมาให้แก้ไข
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => { if(pendingData) executeSave(pendingData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>

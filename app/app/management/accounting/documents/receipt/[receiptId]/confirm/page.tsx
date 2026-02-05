@@ -24,6 +24,16 @@ import type { Document as DocumentType, AccountingAccount, AccountingObligation 
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { safeFormat } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const allocationSchema = z.object({
   invoiceId: z.string(),
@@ -76,6 +86,9 @@ function ConfirmReceiptPageContent() {
   const [invoices, setInvoices] = useState<WithId<DocumentType>[]>([]);
   const [obligations, setObligations] = useState<Record<string, WithId<AccountingObligation>>>({});
   const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
+  
+  const [showFinalConfirm, setShowFinalConfirm] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<ConfirmReceiptFormData | null>(null);
 
   const form = useForm<ConfirmReceiptFormData>({
     resolver: zodResolver(confirmReceiptSchema),
@@ -252,7 +265,7 @@ function ConfirmReceiptPageContent() {
     return { totalNetApplied, totalWht, totalGrossApplied, remainingToAllocate };
   }, [watchedAllocations, form]);
 
-  const onSubmit = async (data: ConfirmReceiptFormData) => {
+  const executeSubmit = async (data: ConfirmReceiptFormData) => {
     if (!db || !profile || !receipt) return;
     setIsLoading(true);
     try {
@@ -357,6 +370,11 @@ function ConfirmReceiptPageContent() {
     }
   };
 
+  const handlePreSubmit = (data: ConfirmReceiptFormData) => {
+      setPendingFormData(data);
+      setShowFinalConfirm(true);
+  }
+
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>;
   if (error) return <PageHeader title="เกิดข้อผิดพลาด" description={error} />;
 
@@ -364,7 +382,7 @@ function ConfirmReceiptPageContent() {
     <>
         <PageHeader title="ยืนยันรับเงินเข้าบัญชี" description={`สำหรับใบเสร็จเลขที่: ${receipt?.docNo}`} />
         <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(handlePreSubmit)} className="space-y-6">
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
                     <Button type="submit" disabled={isLoading}><Save/> ยืนยันข้อมูล</Button>
@@ -413,6 +431,23 @@ function ConfirmReceiptPageContent() {
                 </Card>
             </form>
         </Form>
+
+        <AlertDialog open={showFinalConfirm} onOpenChange={setShowFinalConfirm}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>ยืนยันข้อมูลการรับเงินและจัดสรรหนี้?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        เมื่อยืนยันแล้ว ระบบจะ <span className="font-bold text-destructive">ลงบัญชีรายรับและปรับยอดลูกหนี้ทันที</span> โดยไม่สามารถแก้ไขได้อีก
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => pendingFormData && executeSubmit(pendingFormData)} disabled={isLoading}>
+                        {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} ตกลง ยืนยันข้อมูล
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
     </>
   );
 }
