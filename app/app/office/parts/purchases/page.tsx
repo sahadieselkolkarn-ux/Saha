@@ -13,8 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, PlusCircle, Search, MoreHorizontal, Eye, Edit, Trash2, HelpCircle } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { PurchaseDoc } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
@@ -141,6 +141,9 @@ export default function PurchaseDocsListPage() {
                 ) : filteredDocs.length > 0 ? (
                   filteredDocs.map(purchaseDoc => {
                     const statusInfo = getStatusDisplay(purchaseDoc.status);
+                    const canEdit = ['DRAFT', 'REJECTED', 'PENDING_REVIEW'].includes(purchaseDoc.status);
+                    const canDelete = isAdmin && ['DRAFT', 'REJECTED', 'CANCELLED', 'PENDING_REVIEW'].includes(purchaseDoc.status);
+
                     return (
                       <TableRow key={purchaseDoc.id}>
                         <TableCell>{safeFormat(new Date(purchaseDoc.docDate), 'dd/MM/yy')}</TableCell>
@@ -172,13 +175,13 @@ export default function PurchaseDocsListPage() {
                                   <Link href={`/app/office/parts/purchases/${purchaseDoc.id}`}><Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด</Link>
                               </DropdownMenuItem>
                               
-                              {(purchaseDoc.status === 'DRAFT' || purchaseDoc.status === 'REJECTED') && (
+                              {canEdit && (
                                 <DropdownMenuItem asChild>
                                     <Link href={`/app/office/parts/purchases/new?editDocId=${purchaseDoc.id}`}><Edit className="mr-2 h-4 w-4"/> แก้ไข</Link>
                                 </DropdownMenuItem>
                               )}
 
-                              {isAdmin && (purchaseDoc.status === 'DRAFT' || purchaseDoc.status === 'REJECTED' || purchaseDoc.status === 'CANCELLED') && (
+                              {canDelete && (
                                 <>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDocToDelete(purchaseDoc)}>
