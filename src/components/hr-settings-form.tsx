@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, collection, query, where, getDocs, limit, writeBatch, serverTimestamp } from "firebase/firestore";
 
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
@@ -32,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Save, Edit, X } from "lucide-react";
+import { Loader2, Save, Edit, X, Trash2, database } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Separator } from "./ui/separator";
@@ -161,6 +161,7 @@ export function HRSettingsForm() {
   const { toast } = useToast();
   const { profile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
@@ -290,6 +291,55 @@ export function HRSettingsForm() {
         title: "เกิดข้อผิดพลาด",
         description: error.message,
       });
+    }
+  };
+
+  const handleCleanupTokens = async () => {
+    if (!db || !isUserAdmin) return;
+    
+    setIsCleaningUp(true);
+    let totalDeleted = 0;
+    
+    try {
+      // Deleting in batches of 500 until no more tokens match the criteria
+      // Criteria: isActive == true (unused) OR expiresAtMs < current time (expired)
+      const now = Date.now();
+      
+      const performDelete = async (): Promise<number> => {
+        // Since we can't easily do a multi-property OR in a simple query without an index, 
+        // we'll primarily target unused tokens which are the bulk of the issue.
+        const q = query(
+          collection(db, "kioskTokens"), 
+          where("isActive", "==", true), 
+          limit(500)
+        );
+        
+        const snap = await getDocs(q);
+        if (snap.empty) return 0;
+        
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        
+        return snap.size;
+      };
+
+      let deletedInThisPass = 0;
+      do {
+        deletedInThisPass = await performDelete();
+        totalDeleted += deletedInThisPass;
+        // Optional: add a small delay to avoid hitting rate limits if there are huge amounts
+        if (deletedInThisPass > 0) await new Promise(r => setTimeout(r, 200));
+      } while (deletedInThisPass === 500 && totalDeleted < 5000); // Limit to 5000 per click for safety
+
+      toast({ 
+        title: "ล้างข้อมูลสำเร็จ", 
+        description: `ลบ Token ที่ไม่ได้ใช้งานออกทั้งหมด ${totalDeleted} รายการ` 
+      });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+    } finally {
+      setIsCleaningUp(false);
     }
   };
 
@@ -425,14 +475,45 @@ export function HRSettingsForm() {
             </Card>
             
             {isUserAdmin && (
-              <Card>
-                  <CardHeader>
-                      <CardTitle>Admin Controls</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                      <InfoRow label="โหมดแก้ไขย้อนหลัง (Backfill Mode)" value={settings?.backfillMode ? "เปิด" : "ปิด"} />
-                  </CardContent>
-              </Card>
+              <>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Admin Controls</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <InfoRow label="โหมดแก้ไขย้อนหลัง (Backfill Mode)" value={settings?.backfillMode ? "เปิด" : "ปิด"} />
+                    </CardContent>
+                </Card>
+
+                <Card className="border-destructive/50 bg-destructive/5">
+                    <CardHeader>
+                        <CardTitle className="text-destructive flex items-center gap-2">
+                            <Trash2 className="h-5 w-5" />
+                            การจัดการฐานข้อมูล (Database Maintenance)
+                        </CardTitle>
+                        <CardDescription>
+                            ลบข้อมูลส่วนเกินเพื่อเพิ่มประสิทธิภาพระบบ
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <p className="text-sm font-bold">ล้างข้อมูล Token ลงเวลาที่ไม่ได้ใช้</p>
+                                <p className="text-xs text-muted-foreground">ลบ Token สแกนเวลาที่ค้างอยู่ในระบบ (ที่ไม่ได้ถูกใช้งานหรือหมดอายุแล้ว) เพื่อลดขนาดฐานข้อมูล</p>
+                            </div>
+                            <Button 
+                                variant="destructive" 
+                                size="sm" 
+                                onClick={handleCleanupTokens} 
+                                disabled={isCleaningUp}
+                            >
+                                {isCleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
+                                {isCleaningUp ? "กำลังล้างข้อมูล..." : "ล้างข้อมูล Token"}
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+              </>
             )}
         </div>
     );
