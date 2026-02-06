@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone } from "lucide-react";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -809,7 +809,20 @@ const handlePartsReady = async () => {
           <Card>
             <CardHeader><CardTitle>รายละเอียดใบงาน</CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <div><h4 className="font-semibold text-base">ลูกค้า</h4><p>{job.customerSnapshot.name} ({job.customerSnapshot.phone})</p></div>
+              <div>
+                <h4 className="font-semibold text-base">ลูกค้า</h4>
+                <p>
+                  {job.customerSnapshot.name} (
+                  <a 
+                    href={`tel:${job.customerSnapshot.phone}`} 
+                    className="text-primary hover:underline underline-offset-4 font-medium inline-flex items-center gap-1"
+                  >
+                    <Phone className="h-3 w-3" />
+                    {job.customerSnapshot.phone}
+                  </a>
+                  )
+                </p>
+              </div>
               <div><h4 className="font-semibold text-base">แผนก</h4><p>{job.department}</p></div>
               {job.assigneeName && (
                   <div><h4 className="font-semibold text-base">ผู้รับผิดชอบ</h4><p>{job.assigneeName}</p></div>
@@ -1010,7 +1023,7 @@ const handlePartsReady = async () => {
                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
                                 {activity.photos.map((url, i) => (
                                     <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                                        <Image src={url} alt={`Activity photo ${i+1}`} width={100} height={100} className="rounded-md object-cover w-full aspect-square" />
+                                        <Image src={url} alt={`Activity photo ${i+1}`} width={100} height={100} className="rounded-md font-medium object-cover w-full aspect-square" />
                                     </a>
                                 ))}
                             </div>
