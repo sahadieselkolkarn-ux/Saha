@@ -12,6 +12,7 @@ import { QrDisplay } from "@/components/qr-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function KioskPage() {
   const { db } = useFirebase();
@@ -30,7 +31,12 @@ export default function KioskPage() {
   // Use a stable kiosk ID from local storage
   const kioskId = useMemo(() => {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('kiosk_device_id');
+    let id = localStorage.getItem('kiosk_device_id');
+    if (!id) {
+      id = 'kiosk_' + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem('kiosk_device_id', id);
+    }
+    return id;
   }, []);
 
   const rotateToken = useCallback(async (isManual: boolean = false) => {
@@ -39,7 +45,7 @@ export default function KioskPage() {
 
     setIsLoading(true);
     try {
-      const result = await generateKioskToken(db);
+      await generateKioskToken(db);
       // Data will be updated via onSnapshot
     } catch (error: any) {
       console.error("Kiosk rotation failed:", error);
