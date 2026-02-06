@@ -32,19 +32,19 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Loader2, Calendar as CalendarIcon, Send, Trash2 } from 'lucide-react';
 
 const leaveRequestSchema = z.object({
-  leaveType: z.enum(LEAVE_TYPES, { required_error: 'Please select a leave type.' }),
+  leaveType: z.enum(LEAVE_TYPES, { required_error: 'กรุณาเลือกประเภทการลา' }),
   dateRange: z.object({
-    from: z.date({ required_error: 'Start date is required.' }),
+    from: z.date({ required_error: 'กรุณาเลือกวันเริ่มลา' }),
     to: z.date().optional(),
   }),
-  reason: z.string().min(1, 'Reason is required.'),
+  reason: z.string().min(1, 'กรุณาระบุเหตุผลการลา'),
 }).refine(data => {
     if (data.dateRange.from && data.dateRange.to) {
         return !isBefore(data.dateRange.to, data.dateRange.from);
     }
     return true;
 }, {
-    message: 'End date cannot be before start date.',
+    message: 'วันที่สิ้นสุดต้องไม่มาก่อนวันเริ่มลา',
     path: ['dateRange', 'to'],
 });
 
@@ -61,7 +61,7 @@ export default function MyLeavesPage() {
   const [isOverLimitConfirmOpen, setIsOverLimitConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
-  const employeeLeaveTypes = LEAVE_TYPES.filter(t => t === 'SICK' || t === 'BUSINESS');
+  const employeeLeaveTypes = LEAVE_TYPES.filter(t => t === 'SICK' || t === 'BUSINESS' || t === 'VACATION');
 
   const form = useForm<LeaveFormData>({
     resolver: zodResolver(leaveRequestSchema),
@@ -75,6 +75,7 @@ export default function MyLeavesPage() {
 
   const leavesQuery = useMemo(() => {
     if (!db || !profile) return null;
+    // Query central hrLeaves collection by userId
     return query(
       collection(db, 'hrLeaves'),
       where('userId', '==', profile.uid),
@@ -94,6 +95,7 @@ export default function MyLeavesPage() {
     const days = differenceInCalendarDays(endDate, from) + 1;
 
     try {
+      // Create document in central hrLeaves collection
       await addDoc(collection(db, 'hrLeaves'), {
         userId: profile.uid,
         userName: profile.displayName,
@@ -102,15 +104,16 @@ export default function MyLeavesPage() {
         endDate: format(endDate, 'yyyy-MM-dd'),
         days,
         reason,
-        status: 'SUBMITTED',
+        status: 'SUBMITTED', // Set status to SUBMITTED (รออนุมัติ)
         year: getYear(from),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      toast({ title: 'Leave request submitted successfully.' });
-      form.reset({ reason: '', dateRange: undefined, leaveType: undefined });
+      
+      toast({ title: 'ส่งใบลาสำเร็จ', description: 'คำขอของคุณถูกส่งไปรอการพิจารณาแล้ว' });
+      form.reset({ reason: '', dateRange: { from: undefined, to: undefined } as any, leaveType: undefined });
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Submission Failed', description: error.message });
+      toast({ variant: 'destructive', title: 'ส่งใบลาไม่สำเร็จ', description: error.message });
     } finally {
       setIsSubmitting(false);
     }
@@ -152,9 +155,9 @@ export default function MyLeavesPage() {
         status: 'CANCELLED',
         updatedAt: serverTimestamp()
       });
-      toast({ title: "Leave request cancelled." });
+      toast({ title: "ยกเลิกคำขอลาเรียบร้อย" });
     } catch (error: any) {
-      toast({ variant: 'destructive', title: 'Cancellation Failed', description: error.message });
+      toast({ variant: 'destructive', title: 'ไม่สามารถยกเลิกได้', description: error.message });
     } finally {
       setCancellingId(null);
     }
@@ -179,8 +182,8 @@ export default function MyLeavesPage() {
         <div className="md:col-span-1">
           <Card>
             <CardHeader>
-              <CardTitle>ยื่นใบลา</CardTitle>
-              <CardDescription>กรอกข้อมูลด้านล่างเพื่อส่งใบลา</CardDescription>
+              <CardTitle>ยื่นใบลาใหม่</CardTitle>
+              <CardDescription>กรอกข้อมูลเพื่อส่งคำขอลาไปยังแผนกบุคคล</CardDescription>
             </CardHeader>
             <CardContent>
               <Form {...form}>
@@ -212,7 +215,7 @@ export default function MyLeavesPage() {
                     name="dateRange"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>วันที่ลา</FormLabel>
+                        <FormLabel>ช่วงวันที่ต้องการลา</FormLabel>
                         <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -227,14 +230,14 @@ export default function MyLeavesPage() {
                                 {field.value?.from ? (
                                   field.value.to ? (
                                     <>
-                                      {format(field.value.from, "LLL dd, y")} -{" "}
-                                      {format(field.value.to, "LLL dd, y")}
+                                      {format(field.value.from, "dd/MM/yyyy")} -{" "}
+                                      {format(field.value.to, "dd/MM/yyyy")}
                                     </>
                                   ) : (
-                                    format(field.value.from, "LLL dd, y")
+                                    format(field.value.from, "dd/MM/yyyy")
                                   )
                                 ) : (
-                                  <span>เลือกวันที่</span>
+                                  <span>เลือกวันที่...</span>
                                 )}
                               </Button>
                             </FormControl>
@@ -252,7 +255,7 @@ export default function MyLeavesPage() {
                               />
                               <div className="p-3 border-t flex justify-end">
                                 <Button size="sm" type="button" onClick={() => setIsCalendarOpen(false)}>
-                                  OK
+                                  ตกลง
                                 </Button>
                               </div>
                             </div>
@@ -267,17 +270,17 @@ export default function MyLeavesPage() {
                     name="reason"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>เหตุผล</FormLabel>
+                        <FormLabel>เหตุผลการลา</FormLabel>
                         <FormControl>
-                          <Textarea placeholder="ระบุเหตุผลการลา..." {...field} />
+                          <Textarea placeholder="ระบุเหตุผล เช่น ลาป่วยมีใบรับรองแพทย์, ลากิจไปทำธุระครอบครัว..." {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  <Button type="submit" disabled={isSubmitting || isLoading}>
+                  <Button type="submit" className="w-full" disabled={isSubmitting || isLoading}>
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4"/>}
-                    ส่งใบลา
+                    ส่งคำขอลา
                   </Button>
                 </form>
               </Form>
@@ -287,18 +290,18 @@ export default function MyLeavesPage() {
         <div className="md:col-span-2">
             <Card>
                 <CardHeader>
-                    <CardTitle>ประวัติการลา</CardTitle>
-                    <CardDescription>รายการใบลาของคุณทั้งหมด</CardDescription>
+                    <CardTitle>ประวัติการลาของฉัน</CardTitle>
+                    <CardDescription>รายการใบลาที่ยื่นในระบบทั้งหมด (เรียงตามล่าสุด)</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader>
                             <TableRow>
-                                <TableHead>วันที่</TableHead>
+                                <TableHead>วันที่ลา</TableHead>
                                 <TableHead>ประเภท</TableHead>
-                                <TableHead>จำนวนวัน</TableHead>
+                                <TableHead className="text-center">วัน</TableHead>
                                 <TableHead>สถานะ</TableHead>
-                                <TableHead className="text-right">Actions</TableHead>
+                                <TableHead className="text-right">จัดการ</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -312,10 +315,11 @@ export default function MyLeavesPage() {
                                 myLeaves.map((leave) => (
                                     <TableRow key={leave.id}>
                                         <TableCell className="font-medium">
-                                          {format(new Date(leave.startDate), 'dd/MM/yy')} - {format(new Date(leave.endDate), 'dd/MM/yy')}
+                                          {format(new Date(leave.startDate), 'dd/MM/yy')} 
+                                          {leave.endDate !== leave.startDate && ` - ${format(new Date(leave.endDate), 'dd/MM/yy')}`}
                                         </TableCell>
                                         <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
-                                        <TableCell>{leave.days}</TableCell>
+                                        <TableCell className="text-center">{leave.days}</TableCell>
                                         <TableCell>
                                             <Badge variant={getStatusVariant(leave.status)}>{leaveStatusLabel(leave.status)}</Badge>
                                         </TableCell>
@@ -323,21 +327,21 @@ export default function MyLeavesPage() {
                                         {leave.status === 'SUBMITTED' && (
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild>
-                                                    <Button variant="ghost" size="icon" disabled={!!cancellingId}>
+                                                    <Button variant="ghost" size="icon" disabled={!!cancellingId} title="ยกเลิกใบลา">
                                                         {cancellingId === leave.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-destructive" />}
                                                     </Button>
                                                 </AlertDialogTrigger>
                                                 <AlertDialogContent>
                                                 <AlertDialogHeader>
-                                                    <AlertDialogTitle>Are you sure you want to cancel?</AlertDialogTitle>
+                                                    <AlertDialogTitle>ยืนยันการยกเลิกคำขอลา?</AlertDialogTitle>
                                                     <AlertDialogDescription>
-                                                        This will cancel your leave request. This action cannot be undone.
+                                                        คุณต้องการยกเลิกใบลาประเภท {leaveTypeLabel(leave.leaveType)} วันที่ {format(new Date(leave.startDate), 'dd/MM/yyyy')} ใช่หรือไม่?
                                                     </AlertDialogDescription>
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
-                                                    <AlertDialogCancel>Close</AlertDialogCancel>
+                                                    <AlertDialogCancel>ปิด</AlertDialogCancel>
                                                     <AlertDialogAction onClick={() => handleCancel(leave.id)} className="bg-destructive hover:bg-destructive/90">
-                                                        Confirm Cancel
+                                                        ยืนยันยกเลิก
                                                     </AlertDialogAction>
                                                 </AlertDialogFooter>
                                                 </AlertDialogContent>
@@ -348,7 +352,7 @@ export default function MyLeavesPage() {
                                 ))
                             ) : (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic">
                                         ยังไม่มีประวัติการลา
                                     </TableCell>
                                 </TableRow>
@@ -362,15 +366,15 @@ export default function MyLeavesPage() {
        <AlertDialog open={isOverLimitConfirmOpen} onOpenChange={setIsOverLimitConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>การลาของคุณเกินสิทธิ์</AlertDialogTitle>
+            <AlertDialogTitle>จำนวนวันลาของคุณเกินสิทธิ์ที่กำหนด</AlertDialogTitle>
             <AlertDialogDescription>
-              การลาของคุณเกินสิทธิ์ที่ได้รับแล้ว ต้องการทำรายการต่อหรือไม่? (ผู้จัดการจะได้รับการแจ้งเตือน)
+              การลาครั้งนี้จะทำให้วันลาสะสมเกินจำนวนวันที่บริษัทกำหนด คุณต้องการยืนยันการส่งใบลาต่อหรือไม่? (ทางบริษัทอาจมีการหักเงินเดือนตามนโยบาย)
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingLeaveData(null)}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmOverLimit} disabled={isSubmitting}>
-              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "ดำเนินการต่อ"}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "ยืนยันส่งใบลา"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
