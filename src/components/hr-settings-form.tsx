@@ -345,15 +345,16 @@ export function HRSettingsForm() {
       do {
         deletedInThisPass = await performDelete();
         totalDeleted += deletedInThisPass;
+        // Small delay to avoid hitting write rate limits too hard
         if (deletedInThisPass > 0) await new Promise(r => setTimeout(r, 200));
-      } while (deletedInThisPass === 500 && totalDeleted < 5000);
+      } while (deletedInThisPass === 500 && totalDeleted < 20000); // Increased limit to 20k
 
       toast({ 
         title: "ล้างข้อมูลสำเร็จ", 
         description: `ลบ Token ที่ไม่ได้ใช้งานออกทั้งหมด ${totalDeleted} รายการ` 
       });
       // Refresh count after cleanup
-      fetchUnusedTokenCount();
+      await fetchUnusedTokenCount();
     } catch (e: any) {
       toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
     } finally {

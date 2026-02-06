@@ -186,7 +186,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if true;
       allow update: if signedIn();
-      allow delete: if false;
+      allow delete: if isAdmin(); // FIX: Allow Admin to delete tokens
     }
     
     match /hrHolidays/{id} {
