@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { LEAVE_TYPES, type LeaveType, type LeaveStatus } from '@/lib/constants';
 import type { LeaveRequest, HRSettings } from '@/lib/types';
-import { leaveTypeLabel } from '@/lib/ui-labels';
+import { leaveTypeLabel, leaveStatusLabel } from '@/lib/ui-labels';
 
 import { PageHeader } from '@/components/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -317,7 +317,7 @@ export default function MyLeavesPage() {
                                         <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
                                         <TableCell>{leave.days}</TableCell>
                                         <TableCell>
-                                            <Badge variant={getStatusVariant(leave.status)}>{leave.status}</Badge>
+                                            <Badge variant={getStatusVariant(leave.status)}>{leaveStatusLabel(leave.status)}</Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
                                         {leave.status === 'SUBMITTED' && (

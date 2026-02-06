@@ -26,7 +26,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
     RECEIPT: "ใบเสร็จรับเงิน",
     BILLING_NOTE: "ใบวางบิล",
     CREDIT_NOTE: "ใบลดหนี้",
-    WITHHOLDING_TAX: "หนังสือหัก ณ ที่จ่าย",
+    WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
 };
 
 const DOC_STATUS_LABELS: Record<string, string> = {
@@ -56,10 +56,10 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 };
 
 const LEAVE_STATUS_LABELS: Record<string, string> = {
-    SUBMITTED: "ส่งแล้ว",
+    SUBMITTED: "รออนุมัติ",
     APPROVED: "อนุมัติแล้ว",
     REJECTED: "ไม่อนุมัติ",
-    CANCELLED: "ยกเลิกแล้ว",
+    CANCELLED: "ยกเลิก",
 };
 
 const NEW_PAYSLIP_STATUS_LABELS: Record<string, string> = {
