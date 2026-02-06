@@ -30,11 +30,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, AlertCircle, Edit, CalendarDays, ExternalLink, Search, ChevronDown } from "lucide-react";
+import { Loader2, AlertCircle, Edit, CalendarDays, ExternalLink, Search, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import type { WithId } from "@/firebase/firestore/use-collection";
 
 interface AttendanceDailySummary {
   date: Date;
@@ -180,17 +181,20 @@ export default function ManagementHRAttendanceSummaryPage() {
         daily.rawOut = lastOut;
 
         if (!firstIn) {
-          // Logic for ABSENT: only show if day is in past OR if today and after work end time
+          // --- ABSENT Logic Update ---
           if (!isToday) {
+            // Past days: Absent if no record
             totalAbsent += 1;
             daily.status = 'ABSENT';
           } else {
-            const workEndLimit = set(now, { hours: workEndHour, minutes: workEndMinute });
-            if (isAfter(now, workEndLimit)) {
+            // Today: Only mark as ABSENT after 23:50
+            const absentTriggerTime = set(now, { hours: 23, minutes: 50, seconds: 0 });
+            if (isAfter(now, absentTriggerTime)) {
               totalAbsent += 1;
               daily.status = 'ABSENT';
             } else {
-              daily.status = 'NO_DATA'; // Still within work hours
+              // Before 23:50 today: Not absent yet
+              daily.status = 'NO_DATA'; 
             }
           }
           return daily;
@@ -293,13 +297,16 @@ export default function ManagementHRAttendanceSummaryPage() {
     return summaryData.filter(s => s.userName.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [summaryData, searchQuery]);
 
-  const getStatusBadge = (status: AttendanceDailySummary['status'], leaveType?: string) => {
+  const getStatusBadge = (status: AttendanceDailySummary['status'], date: Date, leaveType?: string) => {
+    const isToday = dfFormat(date, 'yyyy-MM-dd') === dfFormat(new Date(), 'yyyy-MM-dd');
+    
     switch (status) {
-      case 'PRESENT': return <Badge variant="default">Present</Badge>;
-      case 'LATE': return <Badge variant="destructive">Late</Badge>;
-      case 'ABSENT': return <Badge variant="destructive">Absent</Badge>;
-      case 'LEAVE': return <Badge variant="secondary">{leaveType || 'Leave'}</Badge>;
-      case 'NO_DATA': return <Badge variant="outline">No Data</Badge>;
+      case 'PRESENT': return <Badge variant="default">Present (ปกติ)</Badge>;
+      case 'LATE': return <Badge variant="destructive">Late (สาย)</Badge>;
+      case 'ABSENT': return <Badge variant="destructive">Absent (ขาดงาน)</Badge>;
+      case 'LEAVE': return <Badge variant="secondary">{leaveType || 'Leave'} (ลา)</Badge>;
+      case 'NO_DATA': 
+        return isToday ? <Badge variant="outline" className="bg-amber-50">รอการลงเวลา</Badge> : <Badge variant="outline">No Data</Badge>;
       case 'FUTURE': return <span className="text-muted-foreground text-xs">-</span>;
       default: return <span className="text-muted-foreground text-xs">{status}</span>
     }
@@ -377,7 +384,7 @@ export default function ManagementHRAttendanceSummaryPage() {
                                   {summary.dailySummaries.map(day => (
                                     <TableRow key={day.date.toISOString()}>
                                       <TableCell>{dfFormat(day.date, 'dd/MM')}</TableCell>
-                                      <TableCell>{getStatusBadge(day.status, day.leaveType)}</TableCell>
+                                      <TableCell>{getStatusBadge(day.status, day.date, day.leaveType)}</TableCell>
                                       <TableCell>{safeFormat(day.rawIn, 'HH:mm')}</TableCell>
                                       <TableCell>{safeFormat(day.rawOut, 'HH:mm')}</TableCell>
                                       <TableCell className="text-right">
