@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, CreditCard, ExternalLink } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, CreditCard, ExternalLink, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
