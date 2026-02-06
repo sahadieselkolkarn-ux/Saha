@@ -28,23 +28,18 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
+/**
+ * STOPPED: Kiosk token creation is temporarily disabled to prevent DB bloat.
+ * Return a dummy token without committing to Firestore.
+ */
 export async function generateKioskToken(db: Firestore, previousTokenId?: string | null) {
-  const batch = writeBatch(db);
-
-  // Create a new token
-  const newTokenId = generateToken();
-  const newTokenRef = doc(db, "kioskTokens", newTokenId);
+  console.warn("Kiosk token creation is temporarily disabled.");
   
+  // Return dummy values so callers don't crash
+  const dummyTokenId = "DISABLED_BY_ADMIN";
   const nowMs = Date.now();
   const expiresAtMs = nowMs + TOKEN_TTL_MS;
 
-  batch.set(newTokenRef, {
-    id: newTokenId,
-    createdAtMs: nowMs,
-    expiresAtMs: expiresAtMs,
-    isActive: true,
-  });
-
-  await withTimeout(batch.commit(), 8000, "kioskTokens batch.commit");
-  return { newTokenId, expiresAtMs };
+  // We skip the writeBatch and commit entirely.
+  return { newTokenId: dummyTokenId, expiresAtMs };
 }

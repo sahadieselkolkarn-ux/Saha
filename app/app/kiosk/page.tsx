@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -11,7 +12,8 @@ import { PageHeader } from "@/components/page-header";
 import { QrDisplay } from "@/components/qr-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function KioskPage() {
   const { db, auth } = useFirebase();
@@ -24,7 +26,12 @@ export default function KioskPage() {
   const [countdown, setCountdown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
+  // KIOSK FEATURE FLAG - Set to false to stop generation
+  const KIOSK_ENABLED = false;
+
   const generateNewToken = useCallback(async (isManual: boolean = false) => {
+    if (!KIOSK_ENABLED) return; // Stop if disabled
+    
     if (!db || !auth) return;
     if (authLoading || !profile) {
       if (isManual) {
@@ -53,9 +60,6 @@ export default function KioskPage() {
         }
       }
 
-      // Test read to confirm connection
-      await getDoc(doc(db, 'users', profile.uid));
-
       const { newTokenId, expiresAtMs: newExpiresAtMs } = await generateKioskToken(db);
       
       setCurrentToken(newTokenId);
@@ -75,17 +79,17 @@ export default function KioskPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [db, auth, toast, isLoading, authLoading, profile]);
+  }, [db, auth, toast, isLoading, authLoading, profile, KIOSK_ENABLED]);
 
   // Initial token generation
   useEffect(() => {
-    if (!db || authLoading || !profile) return;
+    if (!db || authLoading || !profile || !KIOSK_ENABLED) return;
     generateNewToken();
-  }, [db, authLoading, profile, generateNewToken]);
+  }, [db, authLoading, profile, generateNewToken, KIOSK_ENABLED]);
 
   // Countdown and auto-refresh timer
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || !KIOSK_ENABLED) return;
 
     const intervalId = setInterval(() => {
         if (expiresAtMs) {
@@ -100,7 +104,7 @@ export default function KioskPage() {
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [isLoading, expiresAtMs, generateNewToken]);
+  }, [isLoading, expiresAtMs, generateNewToken, KIOSK_ENABLED]);
 
 
   return (
@@ -110,36 +114,60 @@ export default function KioskPage() {
         description="Scan this QR Code to record your working time. / ให้พนักงานสแกน QR Code นี้เพื่อบันทึกเวลาทำงาน" 
       />
       <div className="flex flex-col items-center justify-center mt-8 gap-6">
-        <Card className="w-full max-w-sm text-center">
-          <CardHeader>
-            <CardTitle className="text-2xl font-headline">Scan to Clock In/Out</CardTitle>
-            <CardDescription>
-                Scan QR Code to open the clock-in page on your mobile.
+        
+        {!KIOSK_ENABLED ? (
+          <Card className="w-full max-w-md border-amber-200 bg-amber-50">
+            <CardHeader className="text-center">
+              <div className="flex justify-center mb-4">
+                <AlertTriangle className="h-12 w-12 text-amber-500" />
+              </div>
+              <CardTitle className="text-xl text-amber-900">ปิดปรับปรุงชั่วคราว</CardTitle>
+              <CardDescription className="text-amber-700">
+                ระบบลงเวลาผ่าน QR Code ปิดให้บริการชั่วคราว 
                 <br />
-                สแกน QR Code เพื่อเปิดหน้าลงเวลาบนมือถือ
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-4">
-            <QrDisplay data={qrData} key={currentToken || 'initial'} />
-            <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
-              {isLoading && !qrData ? ( // Show only on initial load
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Generating new code...</span>
-                </div>
-              ) : (
-                <>
-                  <span>Code refreshes in: {countdown}s</span>
-                  {currentToken && <p className="text-xs font-mono break-all px-4">TOKEN: {currentToken}</p>}
-                </>
-              )}
-              <Button onClick={() => generateNewToken(true)} variant="outline" size="sm" disabled={isLoading}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh Code / สร้างโค้ดใหม่
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                เพื่อปรับปรุงฐานข้อมูล
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center pb-8">
+              <p className="text-sm text-amber-800">
+                พนักงานสามารถลงเวลาผ่านช่องทางสำรองที่กำหนดไว้ 
+                <br />
+                หรือติดต่อหัวหน้างานเพื่อบันทึกเวลาด้วยตนเอง
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="w-full max-w-sm text-center">
+            <CardHeader>
+              <CardTitle className="text-2xl font-headline">Scan to Clock In/Out</CardTitle>
+              <CardDescription>
+                  Scan QR Code to open the clock-in page on your mobile.
+                  <br />
+                  สแกน QR Code เพื่อเปิดหน้าลงเวลาบนมือถือ
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-4">
+              <QrDisplay data={qrData} key={currentToken || 'initial'} />
+              <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                {isLoading && !qrData ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Generating new code...</span>
+                  </div>
+                ) : (
+                  <>
+                    <span>Code refreshes in: {countdown}s</span>
+                    {currentToken && <p className="text-xs font-mono break-all px-4">TOKEN: {currentToken}</p>}
+                  </>
+                )}
+                <Button onClick={() => generateNewToken(true)} variant="outline" size="sm" disabled={isLoading}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Refresh Code / สร้างโค้ดใหม่
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </>
   );
