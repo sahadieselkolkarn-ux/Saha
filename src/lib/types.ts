@@ -38,6 +38,7 @@ export interface UserProfile {
     type: 'IN' | 'OUT';
     timestamp: Timestamp;
   };
+  lastAttendanceDateKey?: string; // YYYY-MM-DD
 }
 
 export interface Customer {
