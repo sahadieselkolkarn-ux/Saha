@@ -16,12 +16,6 @@ import { sanitizeForFirestore } from '@/lib/utils';
 /**
  * Moves a job and its activities subcollection to an annual archive collection.
  * This is done in a transaction for the main documents and batched writes for subcollections.
- * @param db The Firestore instance.
- * @param jobId The ID of the job to archive.
- * @param closedDate The 'YYYY-MM-DD' string for when the job is closed.
- * @param userProfile The profile of the user performing the action.
- * @param salesDocInfo Information about the sales document used to close the job.
- * @returns An object with the archive collection name and the job ID.
  */
 export async function archiveAndCloseJob(
   db: Firestore,
@@ -35,8 +29,6 @@ export async function archiveAndCloseJob(
   const archiveColName = archiveCollectionNameByYear(year);
   const archiveCol = collection(db, archiveColName);
   const archiveRef = doc(archiveCol, jobId);
-  const activitiesRef = collection(db, 'jobs', jobId, 'activities');
-  const archiveActivitiesRef = collection(db, archiveColName, jobId, 'activities');
 
   // 1. Transaction to move the main job document
   await runTransaction(db, async (transaction) => {
@@ -63,12 +55,23 @@ export async function archiveAndCloseJob(
     transaction.delete(jobRef);
   });
 
-  // 2. Move the activities subcollection after the transaction succeeds
+  // 2. Move activities subcollection
+  await moveJobActivities(db, jobId, archiveColName);
+  
+  return { archiveCollection: archiveColName, archiveJobId: jobId };
+}
+
+/**
+ * Moves ONLY the activities subcollection from active jobs to archive.
+ */
+export async function moveJobActivities(db: Firestore, jobId: string, targetCollectionName: string) {
+  const activitiesRef = collection(db, 'jobs', jobId, 'activities');
+  const archiveActivitiesRef = collection(db, targetCollectionName, jobId, 'activities');
+
   try {
     const activitiesSnapshot = await getDocs(activitiesRef);
     if (activitiesSnapshot.empty) {
-      console.log(`No activities subcollection to move for job ${jobId}.`);
-      return { archiveCollection: archiveColName, archiveJobId: jobId };
+      return;
     }
 
     let writeBatchCount = 0;
@@ -100,10 +103,6 @@ export async function archiveAndCloseJob(
       await deleteBatch.commit();
     }
   } catch (error) {
-    console.error(`Failed to move activities for job ${jobId}. The main job document was archived, but activities may remain in the original location.`, error);
-    // We don't re-throw here, as the main operation was successful.
-    // A background process could be used to clean up orphaned activity collections if this becomes an issue.
+    console.error(`Failed to move activities for job ${jobId}.`, error);
   }
-  
-  return { archiveCollection: archiveColName, archiveJobId: jobId };
 }

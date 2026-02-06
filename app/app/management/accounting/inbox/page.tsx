@@ -20,10 +20,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase/firestore/use-collection";
-import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
+import type { Document as DocumentType, AccountingAccount, Job } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
-import { archiveAndCloseJob } from '@/firebase/jobs-archive';
+import { moveJobActivities } from '@/firebase/jobs-archive';
+import { getYearFromDateOnly, archiveCollectionNameByYear } from '@/lib/archive-utils';
+import { sanitizeForFirestore } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -156,16 +158,12 @@ export default function AccountingInboxPage() {
     setConfirmError(null);
     setIsSubmitting(true);
     
-    if (process.env.NODE_ENV === 'development') {
-        console.debug("[ConfirmCash] Starting...", {
-            docId: confirmingDoc.id,
-            docNo: confirmingDoc.docNo,
-            accountId: selectedAccountId,
-            method: selectedPaymentMethod
-        });
-    }
-    
     try {
+      const jobId = confirmingDoc.jobId;
+      const closedDate = confirmingDoc.docDate;
+      const year = getYearFromDateOnly(closedDate);
+      const archiveColName = archiveCollectionNameByYear(year);
+
       await runTransaction(db, async (transaction) => {
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
@@ -173,8 +171,18 @@ export default function AccountingInboxPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data();
         
-        if (docData.arStatus !== 'PENDING' || docData.status === 'PAID' || docData.accountingEntryId) {
+        if (docData.arStatus !== 'PENDING' || docData.status === 'PAID') {
           throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
+        }
+
+        let jobData: Job | null = null;
+        let jobRef = null;
+        if (jobId) {
+            jobRef = doc(db, 'jobs', jobId);
+            const jobSnap = await transaction.get(jobRef);
+            if (jobSnap.exists()) {
+                jobData = { id: jobSnap.id, ...jobSnap.data() } as Job;
+            }
         }
 
         const entryId = `SALE_${confirmingDoc.id}`;
@@ -182,10 +190,9 @@ export default function AccountingInboxPage() {
         const arId = `AR_${confirmingDoc.id}`;
         const arRef = doc(db, 'accountingObligations', arId);
 
-        // Deterministic fields to avoid undefined
         const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
-        const jobIdFallback = confirmingDoc.jobId || null;
 
+        // Set Accounting Entry
         transaction.set(entryRef, {
           entryType: 'CASH_IN', 
           entryDate: confirmingDoc.docDate, 
@@ -197,10 +204,11 @@ export default function AccountingInboxPage() {
           sourceDocNo: confirmingDoc.docNo, 
           sourceDocType: confirmingDoc.docType,
           customerNameSnapshot: customerName, 
-          jobId: jobIdFallback,
+          jobId: jobId || null,
           createdAt: serverTimestamp(),
         });
 
+        // Set Obligation
         transaction.set(arRef, {
           type: 'AR', 
           status: 'PAID', 
@@ -214,9 +222,35 @@ export default function AccountingInboxPage() {
           updatedAt: serverTimestamp(), 
           paidOffDate: confirmingDoc.docDate,
           customerNameSnapshot: customerName,
-          jobId: jobIdFallback,
+          jobId: jobId || null,
         });
 
+        // Archive Job if exists
+        if (jobData && jobRef) {
+            const archiveRef = doc(db, archiveColName, jobData.id);
+            const salesDocInfo = {
+                salesDocType: confirmingDoc.docType,
+                salesDocId: confirmingDoc.id,
+                salesDocNo: confirmingDoc.docNo,
+                paymentStatusAtClose: 'PAID' as const
+            };
+            const archivedJobData = {
+                ...jobData,
+                status: 'CLOSED',
+                isArchived: true,
+                archivedAt: serverTimestamp(),
+                archivedAtDate: closedDate,
+                closedDate: closedDate,
+                closedByName: profile.displayName,
+                closedByUid: profile.uid,
+                originalJobId: jobData.id,
+                ...salesDocInfo,
+            };
+            transaction.set(archiveRef, sanitizeForFirestore(archivedJobData), { merge: true });
+            transaction.delete(jobRef);
+        }
+
+        // Update Original Document
         transaction.update(docRef, { 
             arStatus: 'PAID',
             status: 'PAID',
@@ -233,25 +267,9 @@ export default function AccountingInboxPage() {
         });
       });
 
-      if (process.env.NODE_ENV === 'development') console.debug("[ConfirmCash] Transaction OK");
-
-      if (confirmingDoc.jobId) {
-          try {
-              const salesDocInfo = {
-                  salesDocType: confirmingDoc.docType,
-                  salesDocId: confirmingDoc.id,
-                  salesDocNo: confirmingDoc.docNo,
-                  paymentStatusAtClose: 'PAID' as const
-              };
-              await archiveAndCloseJob(db, confirmingDoc.jobId, confirmingDoc.docDate, profile, salesDocInfo);
-              if (process.env.NODE_ENV === 'development') console.debug("[ConfirmCash] Job Archived OK");
-          } catch (archiveError: any) {
-              console.error("Archive failed but accounting was recorded:", archiveError);
-              setConfirmError(`บันทึกบัญชีสำเร็จ แต่การปิดงานขัดข้อง: ${archiveError.message || archiveError.toString()}. กรุณาลองใหม่อีกครั้งเพื่อปิดงาน`);
-              setIsSubmitting(false);
-              toast({ variant: 'destructive', title: "คำเตือน", description: "บันทึกบัญชีเรียบร้อย แต่ย้ายงานเข้าประวัติไม่สำเร็จ กรุณาลองใหม่อีกครั้งเพื่อปิดงาน" });
-              return; 
-          }
+      // Move Activities after main transaction
+      if (jobId) {
+          await moveJobActivities(db, jobId, archiveColName);
       }
 
       toast({ title: "ยืนยันการรับเงินและปิดงานสำเร็จ" });
@@ -259,7 +277,7 @@ export default function AccountingInboxPage() {
       setConfirmError(null);
     } catch(e: any) {
       console.error("Confirm cash failed", e);
-      setConfirmError(`ยืนยันไม่สำเร็จ: ${e.code || ''} ${e.message || e.toString()}`);
+      setConfirmError(`ยืนยันไม่สำเร็จ: ${e.message || e.toString()}`);
       toast({ 
         variant: 'destructive', 
         title: "เกิดข้อผิดพลาด", 
@@ -275,6 +293,11 @@ export default function AccountingInboxPage() {
     setIsSubmitting(true);
     
     try {
+        const jobId = docToProcess.jobId;
+        const closedDate = docToProcess.docDate;
+        const year = getYearFromDateOnly(closedDate);
+        const archiveColName = archiveCollectionNameByYear(year);
+
         await runTransaction(db, async (transaction) => {
             const docRef = doc(db, 'documents', docToProcess.id);
             const docSnap = await transaction.get(docRef);
@@ -282,16 +305,23 @@ export default function AccountingInboxPage() {
             if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
             const docData = docSnap.data();
             
-            if (docData.arStatus !== 'PENDING' || docData.status === 'UNPAID' || docData.arObligationId) {
+            if (docData.arStatus !== 'PENDING' || docData.status === 'UNPAID') {
                 throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
+            }
+
+            let jobData: Job | null = null;
+            let jobRef = null;
+            if (jobId) {
+                jobRef = doc(db, 'jobs', jobId);
+                const jobSnap = await transaction.get(jobRef);
+                if (jobSnap.exists()) {
+                    jobData = { id: jobSnap.id, ...jobSnap.data() } as Job;
+                }
             }
 
             const arId = `AR_${docToProcess.id}`;
             const arRef = doc(db, 'accountingObligations', arId);
-
-            // Deterministic fields to avoid undefined
             const customerName = docToProcess.customerSnapshot?.name || 'Unknown';
-            const jobIdFallback = docToProcess.jobId || null;
 
             transaction.set(arRef, {
                 type: 'AR', 
@@ -306,8 +336,33 @@ export default function AccountingInboxPage() {
                 updatedAt: serverTimestamp(), 
                 dueDate: docToProcess.dueDate || null,
                 customerNameSnapshot: customerName,
-                jobId: jobIdFallback,
+                jobId: jobId || null,
             });
+
+            // Archive Job if exists
+            if (jobData && jobRef) {
+                const archiveRef = doc(db, archiveColName, jobData.id);
+                const salesDocInfo = {
+                    salesDocType: docToProcess.docType,
+                    salesDocId: docToProcess.id,
+                    salesDocNo: docToProcess.docNo,
+                    paymentStatusAtClose: 'UNPAID' as const
+                };
+                const archivedJobData = {
+                    ...jobData,
+                    status: 'CLOSED',
+                    isArchived: true,
+                    archivedAt: serverTimestamp(),
+                    archivedAtDate: closedDate,
+                    closedDate: closedDate,
+                    closedByName: profile.displayName,
+                    closedByUid: profile.uid,
+                    originalJobId: jobData.id,
+                    ...salesDocInfo,
+                };
+                transaction.set(archiveRef, sanitizeForFirestore(archivedJobData), { merge: true });
+                transaction.delete(jobRef);
+            }
 
             transaction.update(docRef, { 
                 arStatus: 'UNPAID',
@@ -317,14 +372,9 @@ export default function AccountingInboxPage() {
             });
         });
 
-        if (docToProcess.jobId) {
-            const salesDocInfo = {
-                salesDocType: docToProcess.docType,
-                salesDocId: docToProcess.id,
-                salesDocNo: docToProcess.docNo,
-                paymentStatusAtClose: 'UNPAID' as const
-            };
-            await archiveAndCloseJob(db, docToProcess.jobId, docToProcess.docDate, profile, salesDocInfo);
+        // Move Activities after main transaction
+        if (jobId) {
+            await moveJobActivities(db, jobId, archiveColName);
         }
 
         toast({ title: 'ยืนยันรายการขายเครดิตและปิดงานสำเร็จ' });
