@@ -11,6 +11,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import type { HRSettings } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import {
