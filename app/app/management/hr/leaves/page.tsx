@@ -24,8 +24,15 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Loader2, CheckCircle, XCircle, ShieldAlert, MoreHorizontal, Trash2, Edit } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
-import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,10 +44,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+import { LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
+import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus } from "@/lib/types";
 import { leaveStatusLabel, leaveTypeLabel } from "@/lib/ui-labels";
-import { Input } from "@/components/ui/input";
 
 const editLeaveSchema = z.object({
   leaveType: z.enum(LEAVE_TYPES),
