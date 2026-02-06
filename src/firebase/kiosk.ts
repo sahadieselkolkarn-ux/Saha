@@ -1,45 +1,43 @@
-
 "use client";
 
 import {
-  collection,
   doc,
-  writeBatch,
+  setDoc,
+  serverTimestamp,
   type Firestore,
 } from "firebase/firestore";
-import { TOKEN_TTL_MS } from "@/lib/constants";
 
-// Helper to generate a random string for the token
-function generateToken(length: number = 20): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+const TOKEN_TTL_MS = 300000; // 5 minutes
+
+function getOrCreateKioskId(): string {
+  if (typeof window === 'undefined') return 'server_default';
+  let kioskId = localStorage.getItem('kiosk_device_id');
+  if (!kioskId) {
+    kioskId = 'kiosk_' + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('kiosk_device_id', kioskId);
   }
-  return result;
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms)
-    ),
-  ]);
+  return kioskId;
 }
 
 /**
- * STOPPED: Kiosk token creation is temporarily disabled to prevent DB bloat.
- * Return a dummy token without committing to Firestore.
+ * Generates or rotates a kiosk token within a single document per device.
  */
-export async function generateKioskToken(db: Firestore, previousTokenId?: string | null) {
-  console.warn("Kiosk token creation is temporarily disabled.");
+export async function generateKioskToken(db: Firestore) {
+  const kioskId = getOrCreateKioskId();
+  const tokenRef = doc(db, "kioskTokens", kioskId);
   
-  // Return dummy values so callers don't crash
-  const dummyTokenId = "DISABLED_BY_ADMIN";
+  const currentToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   const nowMs = Date.now();
   const expiresAtMs = nowMs + TOKEN_TTL_MS;
 
-  // We skip the writeBatch and commit entirely.
-  return { newTokenId: dummyTokenId, expiresAtMs };
+  await setDoc(tokenRef, {
+    kioskId,
+    currentToken,
+    expiresAtMs,
+    isActive: true,
+    updatedAt: serverTimestamp(),
+    updatedAtMs: nowMs
+  }, { merge: true });
+
+  return { kioskId, currentToken, expiresAtMs };
 }
