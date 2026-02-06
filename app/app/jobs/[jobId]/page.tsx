@@ -106,6 +106,10 @@ function JobDetailsPageContent() {
   const [isEditOfficeNoteDialogOpen, setIsEditOfficeNoteDialogOpen] = useState(false);
   const [officeNoteToEdit, setOfficeNoteToEdit] = useState("");
   const [isUpdatingOfficeNote, setIsUpdatingOfficeNote] = useState(false);
+
+  const [isEditVehicleDialogOpen, setIsEditVehicleDialogOpen] = useState(false);
+  const [vehicleEditData, setVehicleEditData] = useState<any>({});
+  const [isUpdatingVehicle, setIsUpdatingVehicle] = useState(false);
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
@@ -286,6 +290,52 @@ function JobDetailsPageContent() {
       toast({ variant: "destructive", title: "Update Failed", description: error.message });
     } finally {
         setIsUpdatingOfficeNote(false);
+    }
+  };
+
+  const handleOpenEditVehicleDialog = () => {
+    if (job?.department === 'CAR_SERVICE') {
+        setVehicleEditData(job.carServiceDetails || {});
+    } else if (job?.department === 'COMMONRAIL') {
+        setVehicleEditData(job.commonrailDetails || {});
+    } else if (job?.department === 'MECHANIC') {
+        setVehicleEditData(job.mechanicDetails || {});
+    }
+    setIsEditVehicleDialogOpen(true);
+  };
+
+  const handleUpdateVehicleDetails = async () => {
+    if (!db || !job || !profile) return;
+    
+    setIsUpdatingVehicle(true);
+    
+    try {
+      const batch = writeBatch(db);
+      const jobDocRef = doc(db, "jobs", job.id);
+      const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
+
+      const fieldName = job.department === 'CAR_SERVICE' ? 'carServiceDetails' : 
+                       job.department === 'COMMONRAIL' ? 'commonrailDetails' : 'mechanicDetails';
+
+      batch.update(jobDocRef, {
+        [fieldName]: vehicleEditData,
+        lastActivityAt: serverTimestamp(),
+      });
+      batch.set(activityDocRef, {
+          text: `แก้ไขรายละเอียดรถ/ชิ้นส่วน`,
+          userName: profile.displayName,
+          userId: profile.uid,
+          createdAt: serverTimestamp(),
+      });
+      
+      await batch.commit();
+
+      toast({ title: "อัปเดตรายละเอียดสำเร็จ" });
+      setIsEditVehicleDialogOpen(false);
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Update Failed", description: error.message });
+    } finally {
+        setIsUpdatingVehicle(false);
     }
   };
 
@@ -779,7 +829,19 @@ const handlePartsReady = async () => {
                 <p className="whitespace-pre-wrap pt-1">{job.description}</p>
               </div>
               
-              {job && <JobVehicleDetails job={job} />}
+              {job && (
+                <div className="border-t pt-4">
+                    <div className="flex items-center gap-4 mb-2">
+                        <h4 className="font-semibold text-base">รายละเอียดรถ/ชิ้นส่วน</h4>
+                        {isOfficeOrAdminOrMgmt && (
+                            <Button onClick={handleOpenEditVehicleDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}>
+                                <Edit className="h-3 w-3 mr-1"/> แก้ไข
+                            </Button>
+                        )}
+                    </div>
+                    <JobVehicleDetails job={job} />
+                </div>
+              )}
 
                <div className="flex gap-2 pt-4 border-t">
                   {isUserAdmin && (
@@ -1130,6 +1192,57 @@ const handlePartsReady = async () => {
         </DialogContent>
     </Dialog>
 
+    <Dialog open={isEditVehicleDialogOpen} onOpenChange={setIsEditVehicleDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>แก้ไขรายละเอียดรถ/ชิ้นส่วน</DialogTitle>
+                <DialogDescription>
+                    แก้ไขข้อมูลทางเทคนิคของรถหรือชิ้นส่วนที่นำมาซ่อม
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                {job.department === 'CAR_SERVICE' ? (
+                    <>
+                        <div className="grid gap-2">
+                            <Label htmlFor="brand">ยี่ห้อรถ</Label>
+                            <Input id="brand" value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="model">รุ่นรถ</Label>
+                            <Input id="model" value={vehicleEditData.model || ""} onChange={e => setVehicleEditData({...vehicleEditData, model: e.target.value})} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="licensePlate">ทะเบียนรถ</Label>
+                            <Input id="licensePlate" value={vehicleEditData.licensePlate || ""} onChange={e => setVehicleEditData({...vehicleEditData, licensePlate: e.target.value})} />
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="grid gap-2">
+                            <Label htmlFor="brand">ยี่ห้อ</Label>
+                            <Input id="brand" value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="partNumber">เลขอะไหล่ (Part Number)</Label>
+                            <Input id="partNumber" value={vehicleEditData.partNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, partNumber: e.target.value})} />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label htmlFor="registrationNumber">เลขทะเบียนชิ้นส่วน</Label>
+                            <Input id="registrationNumber" value={vehicleEditData.registrationNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, registrationNumber: e.target.value})} />
+                        </div>
+                    </>
+                )}
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEditVehicleDialogOpen(false)} disabled={isUpdatingVehicle}>ยกเลิก</Button>
+                <Button onClick={handleUpdateVehicleDetails} disabled={isUpdatingVehicle}>
+                    {isUpdatingVehicle && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    บันทึก
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
       <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}>
         <DialogContent
             onInteractOutside={(e) => {if (isReassigning) e.preventDefault()}}
@@ -1146,7 +1259,7 @@ const handlePartsReady = async () => {
             ) : (
                 <div className="py-4">
                     <Label htmlFor="worker-select">พนักงานใหม่</Label>
-                    <Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}>
+                    <Select value={reassignWorkerId || ""} onValueChange={reassignWorkerId => setReassignWorkerId(reassignWorkerId)}>
                         <SelectTrigger id="worker-select">
                             <SelectValue placeholder="เลือกพนักงาน..." />
                         </SelectTrigger>
