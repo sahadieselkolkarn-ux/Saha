@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
+import * as z from "zod";
 import { addDoc, collection, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { format, differenceInCalendarDays, getYear, isBefore, startOfToday, subMonths } from 'date-fns';
 
@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Loader2, Calendar as CalendarIcon, Send, Trash2 } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, Send, Trash2, AlertCircle, ExternalLink } from 'lucide-react';
 
 const leaveRequestSchema = z.object({
   leaveType: z.enum(LEAVE_TYPES, { required_error: 'กรุณาเลือกประเภทการลา' }),
@@ -60,6 +60,7 @@ export default function MyLeavesPage() {
   const [pendingLeaveData, setPendingLeaveData] = useState<LeaveFormData | null>(null);
   const [isOverLimitConfirmOpen, setIsOverLimitConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const employeeLeaveTypes = LEAVE_TYPES.filter(t => t === 'SICK' || t === 'BUSINESS' || t === 'VACATION');
 
@@ -73,17 +74,29 @@ export default function MyLeavesPage() {
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
 
+  const userId = profile?.uid;
+
   const leavesQuery = useMemo(() => {
-    if (!db || !profile) return null;
-    // Query central hrLeaves collection by userId
+    if (!db || !userId) return null;
     return query(
       collection(db, 'hrLeaves'),
-      where('userId', '==', profile.uid),
+      where('userId', '==', userId),
       orderBy('createdAt', 'desc')
     );
-  }, [db, profile]);
+  }, [db, userId]);
 
-  const { data: myLeaves, isLoading: leavesLoading } = useCollection<LeaveRequest>(leavesQuery);
+  const { data: myLeaves, isLoading: leavesLoading, error } = useCollection<LeaveRequest>(leavesQuery);
+
+  useEffect(() => {
+    if (error?.message?.includes('requires an index')) {
+        const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) {
+            setIndexCreationUrl(urlMatch[0]);
+        }
+    } else {
+        setIndexCreationUrl(null);
+    }
+  }, [error]);
 
   const submitToFirestore = async (data: LeaveFormData) => {
     if (!db || !profile || !data.dateRange.from) return;
@@ -95,7 +108,6 @@ export default function MyLeavesPage() {
     const days = differenceInCalendarDays(endDate, from) + 1;
 
     try {
-      // Create document in central hrLeaves collection
       await addDoc(collection(db, 'hrLeaves'), {
         userId: profile.uid,
         userName: profile.displayName,
@@ -104,7 +116,7 @@ export default function MyLeavesPage() {
         endDate: format(endDate, 'yyyy-MM-dd'),
         days,
         reason,
-        status: 'SUBMITTED', // Set status to SUBMITTED (รออนุมัติ)
+        status: 'SUBMITTED',
         year: getYear(from),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -174,6 +186,88 @@ export default function MyLeavesPage() {
   }
 
   const isLoading = leavesLoading || isLoadingSettings;
+
+  const renderHistoryContent = () => {
+    if (isLoading) {
+      return (
+        <TableRow>
+          <TableCell colSpan={5} className="h-24 text-center">
+            <Loader2 className="mx-auto animate-spin text-muted-foreground" />
+          </TableCell>
+        </TableRow>
+      );
+    }
+
+    if (indexCreationUrl) {
+      return (
+        <TableRow>
+          <TableCell colSpan={5} className="text-center p-8">
+            <div className="flex flex-col items-center gap-4 bg-muted/50 p-6 rounded-lg border border-dashed">
+              <AlertCircle className="h-10 w-10 text-destructive" />
+              <h3 className="font-semibold text-lg">ต้องสร้างดัชนี (Index) ก่อน</h3>
+              <p className="text-muted-foreground text-sm max-w-md">
+                ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงประวัติการลาของคุณ กรุณากดปุ่มด้านล่างเพื่อสร้าง Index (ใช้เวลา 2-3 นาที)
+              </p>
+              <Button asChild>
+                <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index / Create Index
+                </a>
+              </Button>
+            </div>
+          </TableCell>
+        </TableRow>
+      );
+    }
+
+    if (myLeaves && myLeaves.length > 0) {
+      return myLeaves.map((leave) => (
+        <TableRow key={leave.id}>
+          <TableCell className="font-medium">
+            {format(new Date(leave.startDate), 'dd/MM/yy')} 
+            {leave.endDate !== leave.startDate && ` - ${format(new Date(leave.endDate), 'dd/MM/yy')}`}
+          </TableCell>
+          <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
+          <TableCell className="text-center">{leave.days}</TableCell>
+          <TableCell>
+            <Badge variant={getStatusVariant(leave.status)}>{leaveStatusLabel(leave.status)}</Badge>
+          </TableCell>
+          <TableCell className="text-right">
+            {leave.status === 'SUBMITTED' && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" disabled={!!cancellingId} title="ยกเลิกใบลา">
+                    {cancellingId === leave.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-destructive" />}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>ยืนยันการยกเลิกคำขอลา?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      คุณต้องการยกเลิกใบลาประเภท {leaveTypeLabel(leave.leaveType)} วันที่ {format(new Date(leave.startDate), 'dd/MM/yyyy')} ใช่หรือไม่?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>ปิด</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => handleCancel(leave.id)} className="bg-destructive hover:bg-destructive/90">
+                      ยืนยันยกเลิก
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
+          </TableCell>
+        </TableRow>
+      ));
+    }
+
+    return (
+      <TableRow>
+        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic">
+          ยังไม่มีประวัติการลา
+        </TableCell>
+      </TableRow>
+    );
+  };
 
   return (
     <>
@@ -305,58 +399,7 @@ export default function MyLeavesPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? (
-                                <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center">
-                                        <Loader2 className="mx-auto animate-spin text-muted-foreground" />
-                                    </TableCell>
-                                </TableRow>
-                            ) : myLeaves && myLeaves.length > 0 ? (
-                                myLeaves.map((leave) => (
-                                    <TableRow key={leave.id}>
-                                        <TableCell className="font-medium">
-                                          {format(new Date(leave.startDate), 'dd/MM/yy')} 
-                                          {leave.endDate !== leave.startDate && ` - ${format(new Date(leave.endDate), 'dd/MM/yy')}`}
-                                        </TableCell>
-                                        <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
-                                        <TableCell className="text-center">{leave.days}</TableCell>
-                                        <TableCell>
-                                            <Badge variant={getStatusVariant(leave.status)}>{leaveStatusLabel(leave.status)}</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                        {leave.status === 'SUBMITTED' && (
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <Button variant="ghost" size="icon" disabled={!!cancellingId} title="ยกเลิกใบลา">
-                                                        {cancellingId === leave.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-destructive" />}
-                                                    </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                    <AlertDialogTitle>ยืนยันการยกเลิกคำขอลา?</AlertDialogTitle>
-                                                    <AlertDialogDescription>
-                                                        คุณต้องการยกเลิกใบลาประเภท {leaveTypeLabel(leave.leaveType)} วันที่ {format(new Date(leave.startDate), 'dd/MM/yyyy')} ใช่หรือไม่?
-                                                    </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                    <AlertDialogCancel>ปิด</AlertDialogCancel>
-                                                    <AlertDialogAction onClick={() => handleCancel(leave.id)} className="bg-destructive hover:bg-destructive/90">
-                                                        ยืนยันยกเลิก
-                                                    </AlertDialogAction>
-                                                </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
-                                        )}
-                                        </TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic">
-                                        ยังไม่มีประวัติการลา
-                                    </TableCell>
-                                </TableRow>
-                            )}
+                            {renderHistoryContent()}
                         </TableBody>
                     </Table>
                 </CardContent>
