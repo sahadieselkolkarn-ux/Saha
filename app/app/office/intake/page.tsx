@@ -22,10 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { JOB_DEPARTMENTS, ACQUISITION_SOURCES } from "@/lib/constants";
+import { JOB_DEPARTMENTS } from "@/lib/constants";
 import { Loader2, Camera, X, ChevronsUpDown, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -35,8 +32,6 @@ const intakeSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   department: z.enum(JOB_DEPARTMENTS, { required_error: "กรุณาเลือกแผนก" }),
   description: z.string().min(1, "กรุณากรอกรายละเอียดงาน"),
-  isNewCustomer: z.boolean().default(false),
-  acquisitionSource: z.enum(ACQUISITION_SOURCES).optional(),
   carServiceDetails: z.object({
     brand: z.string().optional(),
     model: z.string().optional(),
@@ -52,14 +47,6 @@ const intakeSchema = z.object({
     partNumber: z.string().optional(),
     registrationNumber: z.string().optional(),
   }).optional(),
-}).superRefine((data, ctx) => {
-  if (data.isNewCustomer && !data.acquisitionSource) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "กรุณาระบุช่องทางที่ลูกค้ารู้จักร้าน",
-      path: ["acquisitionSource"],
-    });
-  }
 });
 
 export default function IntakePage() {
@@ -79,7 +66,6 @@ export default function IntakePage() {
     defaultValues: {
       customerId: "",
       description: "",
-      isNewCustomer: false,
       carServiceDetails: { brand: '', model: '', licensePlate: '' },
       commonrailDetails: { brand: '', partNumber: '', registrationNumber: '' },
       mechanicDetails: { brand: '', partNumber: '', registrationNumber: '' },
@@ -87,7 +73,6 @@ export default function IntakePage() {
   });
 
   const selectedDepartment = form.watch("department");
-  const isNewCustomer = form.watch("isNewCustomer");
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) {
@@ -176,8 +161,8 @@ export default function IntakePage() {
               id: selectedCustomer.id 
             },
             status: "RECEIVED",
-            customerType: values.isNewCustomer ? 'NEW' : 'EXISTING',
-            customerAcquisitionSource: values.isNewCustomer ? values.acquisitionSource : 'EXISTING',
+            customerType: 'EXISTING',
+            customerAcquisitionSource: selectedCustomer.acquisitionSource || 'EXISTING',
             photos: photoURLs,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -198,7 +183,7 @@ export default function IntakePage() {
         
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.set(activityDocRef, {
-            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)} (${values.isNewCustomer ? 'ลูกค้าใหม่' : 'ลูกค้าเดิม'})`,
+            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)}`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
@@ -235,7 +220,7 @@ export default function IntakePage() {
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl mx-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6">
                 <FormField
                   name="customerId"
                   control={form.control}
@@ -315,78 +300,7 @@ export default function IntakePage() {
                     );
                   }}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="isNewCustomer"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>ลูกค้าใหม่</FormLabel>
-                        <FormDescription className="text-[10px]">
-                          ติ๊กเมื่อเป็นลูกค้าที่ไม่เคยมีในระบบมาก่อน
-                        </FormDescription>
-                      </div>
-                    </FormItem>
-                  )}
-                />
               </div>
-
-              {isNewCustomer && (
-                <Card className="bg-primary/5 border-primary/20">
-                  <CardContent className="pt-6">
-                    <FormField
-                      control={form.control}
-                      name="acquisitionSource"
-                      render={({ field }) => (
-                        <FormItem className="space-y-3">
-                          <FormLabel className="font-bold text-primary">ลูกค้ารู้จักร้านจากช่องทางไหน?</FormLabel>
-                          <FormDescription className="text-xs">ข้อมูลนี้ใช้สำหรับทำสถิติแหล่งที่มาลูกค้าในหน้าแดชบอร์ด</FormDescription>
-                          <FormControl>
-                            <RadioGroup
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                              className="grid grid-cols-2 sm:grid-cols-3 gap-4"
-                            >
-                              <FormItem className="flex items-center space-x-2 space-y-0">
-                                <FormControl><RadioGroupItem value="REFERRAL" /></FormControl>
-                                <Label className="font-normal cursor-pointer">ลูกค้าแนะนำ</Label>
-                              </FormItem>
-                              <FormItem className="flex items-center space-x-2 space-y-0">
-                                <FormControl><RadioGroupItem value="GOOGLE" /></FormControl>
-                                <Label className="font-normal cursor-pointer">Google</Label>
-                              </FormItem>
-                              <FormItem className="flex items-center space-x-2 space-y-0">
-                                <FormControl><RadioGroupItem value="FACEBOOK" /></FormControl>
-                                <Label className="font-normal cursor-pointer">Facebook</Label>
-                              </FormItem>
-                              <FormItem className="flex items-center space-x-2 space-y-0">
-                                <FormControl><RadioGroupItem value="TIKTOK" /></FormControl>
-                                <Label className="font-normal cursor-pointer">Tiktok</Label>
-                              </FormItem>
-                              <FormItem className="flex items-center space-x-2 space-y-0">
-                                <FormControl><RadioGroupItem value="YOUTUBE" /></FormControl>
-                                <Label className="font-normal cursor-pointer">Youtube</Label>
-                              </FormItem>
-                              <FormItem className="flex items-center space-x-2 space-y-0">
-                                <FormControl><RadioGroupItem value="OTHER" /></FormControl>
-                                <Label className="font-normal cursor-pointer">อื่นๆ</Label>
-                              </FormItem>
-                            </RadioGroup>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </CardContent>
-                </Card>
-              )}
 
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
