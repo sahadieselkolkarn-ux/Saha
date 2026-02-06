@@ -202,7 +202,7 @@ function AppDashboardPage() {
       const cin = entries.filter(e => (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') && isWithinInterval(toDateSafe(e.entryDate)!, interval)).reduce((s, e) => s + e.amount, 0);
       const cout = entries.filter(e => e.entryType === 'CASH_OUT' && isWithinInterval(toDateSafe(e.entryDate)!, interval)).reduce((s, e) => s + e.amount, 0);
       
-      return { name: format(mStart, "MMM yy"), "เงินเข้า": cin, "เงินออก": cout, Net: cin - cout };
+      return { name: format(mStart, "MMM yy"), "เงินรับเข้า": cin, "เงินจ่ายออก": cout, Net: cin - cout };
     });
 
     // 5. VAT Trend (6 Months)
