@@ -87,7 +87,7 @@ service cloud.firestore {
       match /transactions/{transId} {
         allow read: if signedIn();
         allow create: if isOfficeOrMgmt();
-        allow update, delete: if isAdmin();
+        allow update, delete: if isMgmt();
       }
     }
 
@@ -113,20 +113,21 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create: if signedIn();
       allow update: if signedIn() && (isOfficeOrMgmt() || request.resource.data.photos == resource.data.photos);
-      allow delete: if isAdmin();
+      allow delete: if isMgmt();
       match /activities/{activityId} {
         allow read: if signedIn();
         allow create: if signedIn();
-        allow update, delete: if isAdmin();
+        allow update, delete: if isMgmt();
       }
     }
     
-    match /jobsArchive_{year}/{jobId} {
-        allow read: if signedIn();
-        allow create, update, delete: if isMgmt();
+    // Archive Collections (jobsArchive_2024, jobsArchive_2025, etc.)
+    match /{collectionName}/{jobId} {
+        allow read: if signedIn() && collectionName.startsWith('jobsArchive_');
+        allow create, update, delete: if isMgmt() && collectionName.startsWith('jobsArchive_');
         match /activities/{activityId} {
-            allow read: if signedIn();
-            allow write: if isMgmt();
+            allow read: if signedIn() && collectionName.startsWith('jobsArchive_');
+            allow write: if isMgmt() && collectionName.startsWith('jobsArchive_');
         }
     }
 
@@ -136,7 +137,7 @@ service cloud.firestore {
       allow update: if 
          (
          (signedIn()
-          && (resource.data.status in ['DRAFT', 'PENDING_REVIEW'])
+          && (resource.data.status in ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'UNPAID', 'PARTIAL'])
           && request.resource.data.docNo == resource.data.docNo
          )
          || isAccountingAllowed()
@@ -169,13 +170,13 @@ service cloud.firestore {
     match /accountingEntries/{id} {
       allow create: if isAccountingAllowed();
       allow read: if isAccountingAllowed();
-      allow update, delete: if isAdmin();
+      allow update, delete: if isMgmt();
     }
     match /accountingObligations/{id} {
       allow create: if signedIn(); 
       allow read: if signedIn();
       allow update: if isAccountingAllowed();
-      allow delete: if isAdmin();
+      allow delete: if isMgmt();
     }
     match /billingRuns/{monthId} {
         allow read, write: if isAccountingAllowed();
