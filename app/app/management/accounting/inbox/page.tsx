@@ -63,7 +63,7 @@ export default function AccountingInboxPage() {
   
   const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
 
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
 
   const docsQuery = useMemo(() => {
     if (!db) return null;

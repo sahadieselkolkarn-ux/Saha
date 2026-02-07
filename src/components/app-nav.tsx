@@ -26,8 +26,8 @@ const departmentNames: Record<Department, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
-    COMMONRAIL: "แผนกปั๊มหัวฉีดคอมมอนเรล",
-    MECHANIC: "แผนกปั๊มหัวฉีดแมคคานิค",
+    COMMONRAIL: "แผนกคอมมอนเรล",
+    MECHANIC: "แผนกแมคคานิค",
     OUTSOURCE: "งานนอก",
 };
 
@@ -228,7 +228,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
         OUTSOURCE: Package,
     };
     const Icon = icons[department];
-    const canSeeAccounting = profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT';
+    const canSeeAccounting = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
 
     return (
         <Collapsible defaultOpen={isOpen}>
