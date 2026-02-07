@@ -21,22 +21,17 @@ function RouterInner() {
   useEffect(() => {
     if (document && !isLoading) {
       const type = document.docType;
-      
-      // Preserve existing query parameters but remove editDocId to prevent conflicts if we're adding it
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete('editDocId');
-      const extraParams = params.toString() ? `&${params.toString()}` : "";
-      const baseParams = params.toString() ? `?${params.toString()}` : "";
+      const baseParams = searchParams.toString() ? `?${searchParams.toString()}` : "";
       
       switch (type) {
         case 'QUOTATION':
-          router.replace(`/app/office/documents/quotation/new?editDocId=${document.id}${extraParams}`);
+          router.replace(`/app/office/documents/quotation/${document.id}${baseParams}`);
           break;
         case 'DELIVERY_NOTE':
-          router.replace(`/app/office/documents/delivery-note/new?editDocId=${document.id}${extraParams}`);
+          router.replace(`/app/office/documents/delivery-note/${document.id}${baseParams}`);
           break;
         case 'TAX_INVOICE':
-          router.replace(`/app/office/documents/tax-invoice/new?editDocId=${document.id}${extraParams}`);
+          router.replace(`/app/office/documents/tax-invoice/${document.id}${baseParams}`);
           break;
         case 'BILLING_NOTE':
           router.replace(`/app/management/accounting/documents/billing-note${baseParams}`);

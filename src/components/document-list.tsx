@@ -283,9 +283,6 @@ export function DocumentList({
                         : null;
 
                       const displayStatus = getDocDisplayStatus(docItem);
-                      const isDraftDeliveryNote = docItem.docType === 'DELIVERY_NOTE' && docItem.status === 'DRAFT';
-                      const finalViewPath = isDraftDeliveryNote && editPath ? editPath : viewPath;
-                      const viewLabel = isDraftDeliveryNote ? "ดู/ทำต่อ" : "ดูรายละเอียด";
 
                       return (
                       <TableRow key={docItem.id}>
@@ -313,9 +310,9 @@ export function DocumentList({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => router.push(finalViewPath)}>
+                              <DropdownMenuItem onSelect={() => router.push(viewPath)}>
                                   <Eye className="mr-2 h-4 w-4"/>
-                                  {viewLabel}
+                                  ดูรายละเอียด
                               </DropdownMenuItem>
                               
                               {editPath && (
@@ -409,7 +406,7 @@ export function DocumentList({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90" disabled={isActionLoading}>
+            <AlertDialogAction onClick={confirmDelete} disabled={isActionLoading}>
               {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการลบ'}
             </AlertDialogAction>
           </AlertDialogFooter>
