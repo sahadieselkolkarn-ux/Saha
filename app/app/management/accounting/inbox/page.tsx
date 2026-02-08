@@ -62,6 +62,7 @@ export default function AccountingInboxPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
   
   const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
+  const [showAccountChangeConfirm, setShowAccountChangeConfirm] = useState(false);
 
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
 
@@ -157,6 +158,7 @@ export default function AccountingInboxPage() {
     
     setConfirmError(null);
     setIsSubmitting(true);
+    setShowAccountChangeConfirm(false);
     
     try {
       const jobId = confirmingDoc.jobId;
@@ -288,6 +290,15 @@ export default function AccountingInboxPage() {
     }
   };
 
+  const preConfirmPayment = () => {
+    const isAccountChanged = confirmingDoc?.suggestedAccountId && selectedAccountId !== confirmingDoc.suggestedAccountId;
+    if (isAccountChanged) {
+      setShowAccountChangeConfirm(true);
+    } else {
+      handleConfirmCashPayment();
+    }
+  };
+
   const handleCreateAR = async (docToProcess: WithId<DocumentType>) => {
     if (!db || !profile) return;
     setIsSubmitting(true);
@@ -408,6 +419,9 @@ export default function AccountingInboxPage() {
   };
 
   if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>หน้าจอนี้สำหรับฝ่ายบริหารและบัญชีเท่านั้น</CardDescription></CardHeader></Card>;
+
+  const targetAccount = accounts.find(a => a.id === selectedAccountId);
+  const suggestedAccount = accounts.find(a => a.id === confirmingDoc?.suggestedAccountId);
 
   return (
     <>
@@ -589,7 +603,7 @@ export default function AccountingInboxPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
             <Button 
-                onClick={handleConfirmCashPayment} 
+                onClick={preConfirmPayment} 
                 disabled={isSubmitting || !selectedAccountId || accounts.length === 0}
             >
                 {isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันและปิดงาน
@@ -597,6 +611,23 @@ export default function AccountingInboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={showAccountChangeConfirm} onOpenChange={setShowAccountChangeConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการเปลี่ยนบัญชีรับเงิน</AlertDialogTitle>
+            <AlertDialogDescription>
+              ออฟฟิศระบุบัญชีเดิมเป็น <span className="font-semibold">"{suggestedAccount?.name || 'ไม่ได้ระบุ'}"</span>
+              <br />
+              คุณต้องการเปลี่ยนเป็นบัญชี <span className="font-bold text-primary">"{targetAccount?.name}"</span> ใช่หรือไม่?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>กลับไปแก้ไข</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmCashPayment}>ใช่, ยืนยันเปลี่ยนบัญชี</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!arDocToConfirm} onOpenChange={(open) => !open && setArDocToConfirm(null)}>
           <AlertDialogContent>
