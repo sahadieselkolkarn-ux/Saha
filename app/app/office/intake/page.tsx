@@ -149,6 +149,9 @@ export default function IntakePage() {
             photoURLs.push(url);
         }
 
+        const marketingSource = selectedCustomer.acquisitionSource || 'EXISTING';
+        const isActuallyNew = marketingSource !== 'EXISTING' && marketingSource !== 'NONE';
+
         const jobData = {
             id: jobId,
             customerId: values.customerId,
@@ -161,8 +164,8 @@ export default function IntakePage() {
               id: selectedCustomer.id 
             },
             status: "RECEIVED",
-            customerType: 'EXISTING',
-            customerAcquisitionSource: selectedCustomer.acquisitionSource || 'EXISTING',
+            customerType: isActuallyNew ? 'NEW' : 'EXISTING',
+            customerAcquisitionSource: marketingSource,
             photos: photoURLs,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),

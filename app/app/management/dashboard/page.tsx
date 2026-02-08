@@ -239,8 +239,8 @@ function AppDashboardPage() {
     };
 
     currentInflow.forEach(j => {
-      if (j.customerType === 'NEW') {
-        const src = j.customerAcquisitionSource;
+      const src = j.customerAcquisitionSource;
+      if (src && src !== 'EXISTING' && src !== 'NONE') {
         if (src === 'REFERRAL') acqCounts.REFERRAL++;
         else if (src === 'GOOGLE') acqCounts.GOOGLE++;
         else if (src === 'FACEBOOK') acqCounts.FACEBOOK++;
