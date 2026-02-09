@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -6,6 +7,7 @@ import { useFirebase } from "@/firebase/client-provider";
 import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
+import { format } from "date-fns";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink } from "lucide-react";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import type { Document as DocumentType, AccountingAccount, Job } from "@/lib/types";
@@ -60,9 +62,9 @@ export default function AccountingInboxPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
+  const [selectedPaymentDate, setSelectedPaymentDate] = useState("");
   
   const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
-  const [showAccountChangeConfirm, setShowAccountChangeConfirm] = useState(false);
 
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
 
@@ -132,6 +134,7 @@ export default function AccountingInboxPage() {
     const initialId = getInitialAccountId(doc, accounts);
     setSelectedAccountId(initialId);
     setSelectedPaymentMethod(doc.suggestedPaymentMethod || 'CASH');
+    setSelectedPaymentDate(doc.docDate || format(new Date(), "yyyy-MM-dd"));
   };
 
   const filteredDocs = useMemo(() => {
@@ -158,11 +161,10 @@ export default function AccountingInboxPage() {
     
     setConfirmError(null);
     setIsSubmitting(true);
-    setShowAccountChangeConfirm(false);
     
     try {
       const jobId = confirmingDoc.jobId;
-      const closedDate = confirmingDoc.docDate;
+      const closedDate = selectedPaymentDate; // Use accounting's confirmed date
       const year = getYearFromDateOnly(closedDate);
       const archiveColName = archiveCollectionNameByYear(year);
 
@@ -194,10 +196,10 @@ export default function AccountingInboxPage() {
 
         const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
 
-        // Set Accounting Entry
+        // Set Accounting Entry with correct accounting data
         transaction.set(entryRef, {
           entryType: 'CASH_IN', 
-          entryDate: confirmingDoc.docDate, 
+          entryDate: closedDate, 
           amount: confirmingDoc.grandTotal, 
           accountId: selectedAccountId,
           paymentMethod: selectedPaymentMethod, 
@@ -222,7 +224,7 @@ export default function AccountingInboxPage() {
           balance: 0,
           createdAt: serverTimestamp(), 
           updatedAt: serverTimestamp(), 
-          paidOffDate: confirmingDoc.docDate,
+          paidOffDate: closedDate,
           customerNameSnapshot: customerName,
           jobId: jobId || null,
         });
@@ -265,6 +267,7 @@ export default function AccountingInboxPage() {
             arObligationId: arId,
             receivedAccountId: selectedAccountId,
             paymentMethod: selectedPaymentMethod,
+            paymentDate: closedDate,
             updatedAt: serverTimestamp()
         });
       });
@@ -287,15 +290,6 @@ export default function AccountingInboxPage() {
       });
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const preConfirmPayment = () => {
-    const isAccountChanged = confirmingDoc?.suggestedAccountId && selectedAccountId !== confirmingDoc.suggestedAccountId;
-    if (isAccountChanged) {
-      setShowAccountChangeConfirm(true);
-    } else {
-      handleConfirmCashPayment();
     }
   };
 
@@ -420,9 +414,6 @@ export default function AccountingInboxPage() {
 
   if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>หน้าจอนี้สำหรับฝ่ายบริหารและบัญชีเท่านั้น</CardDescription></CardHeader></Card>;
 
-  const targetAccount = accounts.find(a => a.id === selectedAccountId);
-  const suggestedAccount = accounts.find(a => a.id === confirmingDoc?.suggestedAccountId);
-
   return (
     <>
       <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลก่อนลงบัญชีและปิดงาน" />
@@ -540,11 +531,11 @@ export default function AccountingInboxPage() {
       </Tabs>
 
       <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && !isSubmitting && setConfirmingDoc(null)}>
-        <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()}>
+        <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()} className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
             <DialogDescription className="text-destructive font-bold">
-                เมื่อยืนยันแล้ว จะไม่สามารถแก้ไขบิลนี้ได้อีก และระบบจะลงบัญชีรายรับถาวร
+                ฝ่ายบัญชีสามารถแก้ไขวันที่และบัญชีที่ถูกต้องได้ก่อนกดยืนยัน ข้อมูลนี้จะถูกบันทึกลงสมุดบัญชีถาวร
             </DialogDescription>
           </DialogHeader>
           
@@ -554,28 +545,27 @@ export default function AccountingInboxPage() {
               <AlertTitle>ยืนยันไม่สำเร็จ</AlertTitle>
               <AlertDescription className="text-xs">
                 {confirmError}
-                <br />
-                กรุณาตรวจสอบสิทธิ์การเขียนข้อมูลบัญชี และลองใหม่อีกครั้ง
               </AlertDescription>
             </Alert>
           )}
 
-          <div className="py-4 space-y-4">
+          <div className="py-4 space-y-6">
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center">
                 <p className="text-sm text-muted-foreground">ยอดเงินรวมสุทธิ</p>
-                <p className="text-2xl font-bold text-primary">{formatCurrency(confirmingDoc?.grandTotal ?? 0)} บาท</p>
+                <p className="text-3xl font-bold text-primary">{formatCurrency(confirmingDoc?.grandTotal ?? 0)} บาท</p>
               </div>
 
-              {accounts.length === 0 ? (
-                <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>ไม่พบบัญชีรับเงิน</AlertTitle>
-                    <AlertDescription>
-                        ยังไม่มีบัญชีรับเงินในระบบ กรุณาไปเพิ่มในเมนู ‘บัญชีเงินสด/ธนาคาร’ ก่อน
-                    </AlertDescription>
-                </Alert>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label className="flex items-center gap-2"><Calendar className="h-3 w-3"/> วันที่เงินเข้าจริง</Label>
+                        <Input 
+                            type="date" 
+                            value={selectedPaymentDate} 
+                            onChange={(e) => setSelectedPaymentDate(e.target.value)}
+                            disabled={isSubmitting}
+                        />
+                    </div>
                     <div className="space-y-2">
                         <Label>ช่องทางที่รับ</Label>
                         <Select value={selectedPaymentMethod} onValueChange={(v: any) => setSelectedPaymentMethod(v)} disabled={isSubmitting}>
@@ -586,48 +576,44 @@ export default function AccountingInboxPage() {
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
-                        <Select value={selectedAccountId} onValueChange={setSelectedAccountId} disabled={isSubmitting}>
-                            <SelectTrigger><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger>
-                            <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
                 </div>
-              )}
 
-              {confirmingDoc?.suggestedAccountId && confirmingDoc.suggestedAccountId !== selectedAccountId && accounts.length > 0 && (
-                  <p className="text-[10px] text-amber-600 font-medium italic">* ออฟฟิศระบุมาเป็นบัญชีอื่น</p>
-              )}
+                <div className="space-y-2">
+                    <Label htmlFor="account">เข้าบัญชีที่รับเงิน (บัญชีสามารถแก้ไขได้)</Label>
+                    {accounts.length === 0 ? (
+                        <div className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3"/> กรุณาเพิ่มบัญชีในเมนูตั้งค่า</div>
+                    ) : (
+                        <Select value={selectedAccountId} onValueChange={setSelectedAccountId} disabled={isSubmitting}>
+                            <SelectTrigger><SelectValue placeholder="เลือกบัญชีที่ถูกต้อง..."/></SelectTrigger>
+                            <SelectContent>
+                                {accounts.map(acc => (
+                                    <SelectItem key={acc.id} value={acc.id}>
+                                        {acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                    {confirmingDoc?.suggestedAccountId && confirmingDoc.suggestedAccountId !== selectedAccountId && (
+                        <p className="text-[10px] text-amber-600 font-medium italic">
+                            * ข้อความเดิมจากออฟฟิศ: {accounts.find(a => a.id === confirmingDoc.suggestedAccountId)?.name || 'ไม่ได้ระบุ'}
+                        </p>
+                    )}
+                </div>
+              </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
             <Button 
-                onClick={preConfirmPayment} 
-                disabled={isSubmitting || !selectedAccountId || accounts.length === 0}
+                onClick={handleConfirmCashPayment} 
+                disabled={isSubmitting || !selectedAccountId || !selectedPaymentDate || accounts.length === 0}
+                className="bg-green-600 hover:bg-green-700 text-white"
             >
-                {isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันและปิดงาน
+                {isSubmitting ? <Loader2 className="mr-2 animate-spin" /> : <CheckCircle className="mr-2" />}ยืนยันข้อมูลและลงบัญชี
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={showAccountChangeConfirm} onOpenChange={setShowAccountChangeConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการเปลี่ยนบัญชีรับเงิน</AlertDialogTitle>
-            <AlertDialogDescription>
-              ออฟฟิศระบุบัญชีเดิมเป็น <span className="font-semibold">"{suggestedAccount?.name || 'ไม่ได้ระบุ'}"</span>
-              <br />
-              คุณต้องการเปลี่ยนเป็นบัญชี <span className="font-bold text-primary">"{targetAccount?.name}"</span> ใช่หรือไม่?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>กลับไปแก้ไข</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmCashPayment}>ใช่, ยืนยันเปลี่ยนบัญชี</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={!!arDocToConfirm} onOpenChange={(open) => !open && setArDocToConfirm(null)}>
           <AlertDialogContent>
