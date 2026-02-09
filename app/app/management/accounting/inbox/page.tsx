@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -69,21 +68,21 @@ export default function AccountingInboxPage() {
   const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
 
   const docsQuery = useMemo(() => {
-    if (!db) return null;
+    if (!db || !hasPermission) return null;
     return query(
       collection(db, "documents"), 
       where("arStatus", "==", "PENDING"),
       limit(200)
     );
-  }, [db]);
+  }, [db, hasPermission]);
 
   const accountsQuery = useMemo(() => {
-    if (!db) return null;
+    if (!db || !hasPermission) return null;
     return query(
       collection(db, "accountingAccounts"), 
       where("isActive", "==", true)
     );
-  }, [db]);
+  }, [db, hasPermission]);
 
   useEffect(() => {
     if (!hasPermission || !docsQuery || !accountsQuery) {
@@ -98,7 +97,7 @@ export default function AccountingInboxPage() {
         setIndexCreationUrl(null);
       },
       (err: FirestoreError) => { 
-        console.error(err);
+        console.error("Firestore error in docsQuery:", err);
         if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
             if (urlMatch) setIndexCreationUrl(urlMatch[0]);
@@ -112,6 +111,9 @@ export default function AccountingInboxPage() {
           const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>));
           data.sort((a, b) => a.name.localeCompare(b.name, 'th'));
           setAccounts(data);
+      },
+      (err: FirestoreError) => {
+          console.error("Firestore error in accountsQuery:", err);
       }
     );
 
@@ -448,7 +450,7 @@ export default function AccountingInboxPage() {
           <CardContent className="pt-6">
             <TabsContent value="receive" className="mt-0">
               <Table>
-                <TableHeader><TableRow><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>วันที่</TableHead> <TableHead>ลูกค้า</TableHead><TableHead>เอกสาร</TableHead><TableHead>ยอดเงิน</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตรวจสอบ</TableCell></TableRow>

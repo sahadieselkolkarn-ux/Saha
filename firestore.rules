@@ -41,6 +41,7 @@ service cloud.firestore {
     }
     
     function isAccountingAllowed() {
+      // Allow access if user is in Office or has Management/Admin/Manager role
       return isOfficeOrMgmt();
     }
     
