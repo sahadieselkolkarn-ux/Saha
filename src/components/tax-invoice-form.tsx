@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle, AlertCircle, Send, FileSearch, FileStack } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -118,11 +118,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
 
-  // Special Selection Linkage
   const [selectedLinkDoc, setSelectedLinkDoc] = useState<DocumentType | null>(null);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
 
-  // New Selection States
   const [isQtSearchOpen, setIsQtSearchOpen] = useState(false);
   const [qtSearchQuery, setQtSearchQuery] = useState("");
   const [allQuotations, setAllQuotations] = useState<DocumentType[]>([]);
@@ -180,7 +178,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
       setIsLoadingCustomers(false);
     });
 
@@ -227,13 +225,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       } else {
         form.setValue('items', [defaultItem]);
       }
+      form.setValue('jobId', jobId || undefined);
       form.setValue('customerId', job.customerId);
       form.setValue('receiverName', job.customerSnapshot.name ?? '');
     }
      if (profile) {
       form.setValue('senderName', profile.displayName ?? '');
     }
-  }, [job, docToEdit, profile, form]);
+  }, [job, docToEdit, profile, form, jobId]);
 
   const filteredCustomers = useMemo(() => {
     const list = Array.isArray(customers) ? customers : [];
@@ -270,7 +269,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
-    // Check for special statuses
     if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
         setSelectedLinkDoc(sourceDoc);
         setShowLinkConfirm(true);
@@ -388,25 +386,25 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             );
             const snap = await getDocs(q);
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-            items.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+            items.sort((a,b) => {
+                const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+                return tb - ta;
+            });
             setAllQuotations(items);
         } else {
-            const qDn = query(
-                collection(db, "documents"),
-                where("docType", "==", "DELIVERY_NOTE"),
-                limit(1000)
-            );
-            const qTi = query(
-                collection(db, "documents"),
-                where("docType", "==", "TAX_INVOICE"),
-                limit(1000)
-            );
+            const qDn = query(collection(db, "documents"), where("docType", "==", "DELIVERY_NOTE"), limit(500));
+            const qTi = query(collection(db, "documents"), where("docType", "==", "TAX_INVOICE"), limit(500));
             const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
             const bills = [
                 ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
                 ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
             ].filter(d => d.status !== 'CANCELLED');
-            bills.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+            bills.sort((a,b) => {
+                const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+                return tb - ta;
+            });
             setAllBills(bills);
         }
     } catch (e: any) {
@@ -420,7 +418,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const executeSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
     const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
-      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ไม่สามารถบันทึกได้เนื่องจากข้อมูลลูกค้าหรือข้อมูลร้านค้าไม่สมบูรณ์" });
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "ข้อมูลลูกค้าหรือร้านค้าไม่สมบูรณ์" });
       return;
     }
     
@@ -496,7 +494,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         router.push('/app/office/documents/tax-invoice');
 
     } catch (error: any) {
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง" });
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถบันทึกข้อมูลได้" });
     } finally {
         setIsSubmitting(false);
     }
@@ -615,10 +613,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                               <FormControl>
                                   <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} />
                               </FormControl>
-                              <div className="space-y-1 leading-none">
-                                  <FormLabel>บันทึกย้อนหลัง (Backfill)</FormLabel>
-                                  <FormMessage/>
-                              </div>
+                              <div className="space-y-1 leading-none"><FormLabel>บันทึกย้อนหลัง (Backfill)</FormLabel></div>
                               </FormItem>
                           )}
                       />
@@ -626,7 +621,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   <div className="grid grid-cols-2 gap-4">
                       <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่เอกสาร</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                       {form.watch('isBackfill') && (
-                          <FormField control={form.control} name="manualDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่เอกสารเดิม</FormLabel><FormControl><Input placeholder="เช่น INV2024-0001" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                          <FormField control={form.control} name="manualDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่เอกสารเดิม</FormLabel><FormControl><Input placeholder="INV2024-0001" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                       )}
                   </div>
               </CardContent>
@@ -651,16 +646,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                 </FormControl>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                    <div className="p-2 border-b">
-                                        <Input autoFocus placeholder="พิมพ์ชื่อหรือเบอร์โทร..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
-                                    </div>
+                                    <div className="p-2 border-b"><Input autoFocus placeholder="พิมพ์ชื่อหรือเบอร์โทร..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} /></div>
                                     <ScrollArea className="h-fit max-h-60">
                                         {filteredCustomers.map((c) => (
                                             <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 text-left">
-                                                <div className="flex flex-col">
-                                                    <span>{c.name}</span>
-                                                    <span className="text-[10px] text-muted-foreground">{c.phone}</span>
-                                                </div>
+                                                <div className="flex flex-col"><span>{c.name}</span><span className="text-[10px] text-muted-foreground">{c.phone}</span></div>
                                             </Button>
                                             ))}
                                     </ScrollArea>
@@ -701,7 +691,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                 <FormItem><FormLabel>รูปแบบรับ</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">เงินโอน</SelectItem></SelectContent></Select></FormItem>
                             )} />
                             <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
-                                <FormItem><FormLabel>บัญชีที่รับเงิน</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select></FormItem>
+                                <FormItem><FormLabel>บัญชีที่รับเงิน</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select></FormItem>
                             )} />
                         </div>
                     )}
@@ -731,11 +721,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                   {isSearchingQt ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>กำลังโหลด...</div> : 
                                    getFilteredDocs(allQuotations, qtSearchQuery).map(q => (
                                       <Button key={q.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(q)}>
-                                          <div className="flex flex-col">
-                                              <span className="font-semibold">{q.docNo}</span>
-                                              <span className="text-[10px] text-muted-foreground">{q.customerSnapshot?.name} • {q.customerSnapshot?.phone}</span>
-                                              <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span>
-                                          </div>
+                                          <div className="flex flex-col"><span className="font-semibold">{q.docNo}</span><span className="text-[10px] text-muted-foreground">{q.customerSnapshot?.name} • {q.customerSnapshot?.phone}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span></div>
                                       </Button>
                                   ))}
                               </ScrollArea>
@@ -754,38 +740,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                       <TabsTrigger value="DELIVERY_NOTE" className="flex-1 text-[10px]">ใบส่งของชั่วคราว</TabsTrigger>
                                       <TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับภาษี</TabsTrigger>
                                   </TabsList>
-                                  <div className="p-2 border-b">
-                                      <Input 
-                                          placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." 
-                                          value={billSearchQuery} 
-                                          onChange={e => setBillSearchQuery(e.target.value)} 
-                                          autoFocus
-                                      />
-                                  </div>
+                                  <div className="p-2 border-b"><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} autoFocus /></div>
                                   <ScrollArea className="h-60">
-                                      {isSearchingBills ? (
-                                          <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>
-                                      ) : getFilteredDocs(allBills, billSearchQuery, billSearchType).length > 0 ? (
-                                          getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (
-                                              <Button 
-                                                  key={d.id} 
-                                                  variant="ghost" 
-                                                  className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
-                                                  onClick={() => handleFetchFromDoc(d)}
-                                              >
-                                                  <div className="flex flex-col">
-                                                      <span className="font-semibold">{d.docNo}</span>
-                                                      <span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span>
-                                                      <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
-                                                      <div className="mt-1">
-                                                          <Badge variant="outline" className="text-[8px] uppercase">{d.status}</Badge>
-                                                      </div>
-                                                  </div>
-                                              </Button>
-                                          ))
-                                      ) : (
-                                          <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>
-                                      )}
+                                      {isSearchingBills ? (<div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>) : 
+                                       getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (
+                                          <Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(d)}>
+                                              <div className="flex flex-col"><span className="font-semibold">{d.docNo}</span><span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span><div className="mt-1"><Badge variant="outline" className="text-[8px] uppercase">{d.status}</Badge></div></div>
+                                          </Button>
+                                      ))}
                                   </ScrollArea>
                               </Tabs>
                           </PopoverContent>
@@ -800,8 +762,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                               <TableRow key={field.id}>
                                   <TableCell>{index + 1}</TableCell>
                                   <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="ชื่อรายการสินค้าหรือบริการ" disabled={isLocked}/>)}/></TableCell>
-                                  <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => ( <Input type="number" step="any" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`), { shouldValidate: true }); }} disabled={isLocked} /> )}/></TableCell>
-                                  <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => ( <Input type="number" step="any" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`), { shouldValidate: true }); }} disabled={isLocked} /> )}/></TableCell>
+                                  <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => ( <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`), { shouldValidate: true }); }} disabled={isLocked} /> )}/></TableCell>
+                                  <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => ( <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`), { shouldValidate: true }); }} disabled={isLocked} /> )}/></TableCell>
                                   <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
                                   <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
                               </TableRow>
@@ -826,7 +788,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
               <div className="space-y-4 p-6 border rounded-lg bg-muted/30">
                   <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div>
                   <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">ส่วนลด</span>
-                      <FormField control={form.control} name="discountAmount" render={({ field }) => ( <Input type="number" step="any" className="w-32 text-right bg-background" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))} disabled={isLocked} /> )}/>
+                      <FormField control={form.control} name="discountAmount" render={({ field }) => ( <Input type="number" className="w-32 text-right bg-background" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))} disabled={isLocked} /> )}/>
                   </div>
                   <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div>
                   <div className="flex justify-between items-center text-sm">
@@ -858,10 +820,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle></AlertDialogHeader>
-              <AlertDialogFooter>
-                  <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => { if(pendingData) executeSave(pendingData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction>
-              </AlertDialogFooter>
+              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingData) executeSave(pendingData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
 
@@ -873,7 +832,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                       {selectedLinkDoc?.status === 'PAID' ? (
                           <>รายการนี้ <span className="font-bold text-green-600">ได้รับเงินเรียบร้อยแล้ว</span> คุณต้องการบันทึกลงใน Job นี้และปิดงานทันทีใช่หรือไม่?</>
                       ) : (
-                          <>บิลตัวนี้ <span className="font-bold text-amber-600">ถูกส่งไปตรวจสอบที่แผนกบัญชีแล้ว</span> คุณต้องการบันทึกบิลนี้ใส่ใน Job นี้ ใช่หรือไม่ (ไม่ต้องกดส่งตรวจสอบซ้ำ)?</>
+                          <>บิลตัวนี้ <span className="font-bold text-amber-600">ถูกส่งไปตรวจสอบที่แผนกบัญชีแล้ว</span> คุณต้องการบันทึกบิลนี้ใส่ใน Job นี้ ใช่หรือไม่?</>
                       )}
                   </AlertDialogDescription>
               </AlertDialogHeader>

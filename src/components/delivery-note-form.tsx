@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle, Send, FileSearch, FileStack } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -119,11 +119,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<DeliveryNoteFormData | null>(null);
 
-  // Special Selection Linkage
   const [selectedLinkDoc, setSelectedLinkDoc] = useState<DocumentType | null>(null);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
 
-  // New Selection States
   const [isQtSearchOpen, setIsQtSearchOpen] = useState(false);
   const [qtSearchQuery, setQtSearchQuery] = useState("");
   const [allQuotations, setAllQuotations] = useState<DocumentType[]>([]);
@@ -183,7 +181,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
       setIsLoadingCustomers(false);
     });
 
@@ -230,6 +228,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
           setReferencedQuotationId(docToEdit.referencesDocIds[0]);
       }
     } else if (job) {
+        form.setValue('jobId', jobId || undefined);
         form.setValue('customerId', job.customerId);
         form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
         form.setValue('receiverName', job.customerSnapshot?.name || '');
@@ -237,7 +236,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     if (profile) {
         form.setValue('senderName', profile.displayName || '');
     }
-  }, [job, docToEdit, profile, form]);
+  }, [job, docToEdit, profile, form, jobId]);
 
   const filteredCustomers = useMemo(() => {
     const list = Array.isArray(customers) ? customers : [];
@@ -281,7 +280,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   }, [watchedItems, watchedDiscount, form]);
 
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
-    // Check for special statuses (PAID or PENDING_REVIEW)
     if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
         setSelectedLinkDoc(sourceDoc);
         setShowLinkConfirm(true);
@@ -337,7 +335,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   };
 
   const handleConfirmLinkDoc = async () => {
-    if (!db || !profile || !selectedLinkDoc || !currentJobId) {
+    const activeJobId = jobId || currentJobId;
+    if (!db || !profile || !selectedLinkDoc || !activeJobId) {
         toast({ variant: 'destructive', title: 'ไม่สามารถเชื่อมโยงได้', description: 'ต้องระบุงานซ่อมที่ต้องการเชื่อมโยงก่อน' });
         return;
     }
@@ -352,13 +351,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         } as any;
 
         if (selectedLinkDoc.status === 'PAID') {
-            await archiveAndCloseJob(db, currentJobId, selectedLinkDoc.docDate, profile, salesDocInfo);
+            await archiveAndCloseJob(db, activeJobId, selectedLinkDoc.docDate, profile, salesDocInfo);
             toast({ title: 'เชื่อมโยงบิลและปิดงานสำเร็จ' });
         } else {
-            // PENDING_REVIEW logic: Just link and move to WAITING_CUSTOMER_PICKUP if not already
             const batch = writeBatch(db);
-            const jobRef = doc(db, 'jobs', currentJobId);
-            const activityRef = doc(collection(db, 'jobs', currentJobId, 'activities'));
+            const jobRef = doc(db, 'jobs', activeJobId);
+            const activityRef = doc(collection(db, 'jobs', activeJobId, 'activities'));
             
             batch.update(jobRef, {
                 ...salesDocInfo,
@@ -398,25 +396,25 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             );
             const snap = await getDocs(q);
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-            items.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+            items.sort((a,b) => {
+                const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+                return tb - ta;
+            });
             setAllQuotations(items);
         } else {
-            const qDn = query(
-                collection(db, "documents"),
-                where("docType", "==", "DELIVERY_NOTE"),
-                limit(1000)
-            );
-            const qTi = query(
-                collection(db, "documents"),
-                where("docType", "==", "TAX_INVOICE"),
-                limit(1000)
-            );
+            const qDn = query(collection(db, "documents"), where("docType", "==", "DELIVERY_NOTE"), limit(500));
+            const qTi = query(collection(db, "documents"), where("docType", "==", "TAX_INVOICE"), limit(500));
             const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
             const bills = [
                 ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
                 ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
             ].filter(d => d.status !== 'CANCELLED');
-            bills.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+            bills.sort((a,b) => {
+                const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+                const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+                return tb - ta;
+            });
             setAllBills(bills);
         }
     } catch (e: any) {
@@ -561,9 +559,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>เอกสารถูกยกเลิก</AlertTitle>
-            <AlertDescription>
-              เอกสารนี้ถูกยืนยันรายการขายแล้ว จึงไม่สามารถแก้ไขได้
-            </AlertDescription>
+            <AlertDescription>เอกสารนี้ถูกยืนยันรายการขายแล้ว จึงไม่สามารถแก้ไขได้</AlertDescription>
           </Alert>
         )}
         <Form {...form}>
@@ -584,7 +580,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                     type="button"
                     onClick={() => form.handleSubmit((data) => handleSave(data, true))()}
                     disabled={isFormLoading || isLocked || docToEdit?.status === 'PENDING_REVIEW'}
-                    title="ส่งเอกสารนี้ไปให้ฝ่ายบัญชีตรวจสอบและยืนยันก่อนปิดงาน"
                 >
                     {isSubmitting && isReviewSubmission ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                     ส่งบัญชีตรวจสอบ
@@ -715,7 +710,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                             {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
-                                    <FormDescription className="text-[10px]">บัญชีนี้เป็นข้อมูลที่ออฟฟิศระบุให้ฝ่ายบัญชีตรวจสอบภายหลัง สามารถแก้ไขได้ตอนยืนยัน</FormDescription>
                                     <FormMessage />
                                 </FormItem>
                             )} />
@@ -727,7 +721,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                               <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
                               <div className="space-y-1 leading-none">
                                   <FormLabel className="cursor-pointer">ต้องออกใบวางบิลรวม</FormLabel>
-                                  <FormDescription>ติ๊กเฉพาะกรณีลูกค้ารายนี้ต้องออกใบวางบิลรวมภายหลัง (ลูกค้าเครดิต)</FormDescription>
                               </div>
                           </FormItem>
                       )} />
@@ -747,24 +740,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                             </PopoverTrigger>
                             <PopoverContent className="w-80 p-0" align="start">
                                 <div className="p-2 border-b">
-                                    <Input 
-                                        placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." 
-                                        value={qtSearchQuery} 
-                                        onChange={e => setQtSearchQuery(e.target.value)} 
-                                        autoFocus
-                                    />
+                                    <Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={qtSearchQuery} onChange={e => setQtSearchQuery(e.target.value)} autoFocus />
                                 </div>
                                 <ScrollArea className="h-60">
                                     {isSearchingQt ? (
-                                        <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังค้นหา...</div>
+                                        <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>
                                     ) : getFilteredDocs(allQuotations, qtSearchQuery).length > 0 ? (
                                         getFilteredDocs(allQuotations, qtSearchQuery).map(q => (
-                                            <Button 
-                                                key={q.id} 
-                                                variant="ghost" 
-                                                className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
-                                                onClick={() => handleFetchFromDoc(q)}
-                                            >
+                                            <Button key={q.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(q)}>
                                                 <div className="flex flex-col">
                                                     <span className="font-semibold">{q.docNo}</span>
                                                     <span className="text-[10px] text-muted-foreground">{q.customerSnapshot?.name} • {q.customerSnapshot?.phone}</span>
@@ -772,9 +755,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                                 </div>
                                             </Button>
                                         ))
-                                    ) : (
-                                        <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>
-                                    )}
+                                    ) : (<p className="p-4 text-center text-sm text-muted-foreground">ไม่พบใบเสนอราคา</p>)}
                                 </ScrollArea>
                             </PopoverContent>
                         </Popover>
@@ -792,37 +773,23 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                         <TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับภาษี</TabsTrigger>
                                     </TabsList>
                                     <div className="p-2 border-b">
-                                        <Input 
-                                            placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." 
-                                            value={billSearchQuery} 
-                                            onChange={e => setBillSearchQuery(e.target.value)} 
-                                            autoFocus
-                                        />
+                                        <Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} autoFocus />
                                     </div>
                                     <ScrollArea className="h-60">
                                         {isSearchingBills ? (
                                             <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>
                                         ) : getFilteredDocs(allBills, billSearchQuery, billSearchType).length > 0 ? (
                                             getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (
-                                                <Button 
-                                                    key={d.id} 
-                                                    variant="ghost" 
-                                                    className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
-                                                    onClick={() => handleFetchFromDoc(d)}
-                                                >
+                                                <Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(d)}>
                                                     <div className="flex flex-col">
                                                         <span className="font-semibold">{d.docNo}</span>
                                                         <span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span>
                                                         <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
-                                                        <div className="mt-1">
-                                                            <Badge variant="outline" className="text-[8px] uppercase">{d.status}</Badge>
-                                                        </div>
+                                                        <div className="mt-1"><Badge variant="outline" className="text-[8px] uppercase">{d.status}</Badge></div>
                                                     </div>
                                                 </Button>
                                             ))
-                                        ) : (
-                                            <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>
-                                        )}
+                                        ) : (<p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>)}
                                     </ScrollArea>
                                 </Tabs>
                             </PopoverContent>
@@ -837,52 +804,24 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                 {fields.map((field, index) => (
                                     <TableRow key={field.id}>
                                         <TableCell className="text-center">{index + 1}</TableCell>
-                                        <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} placeholder="ชื่อสินค้าหรือบริการ" disabled={isLocked} />)}/></TableCell>
+                                        <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} disabled={isLocked} />)}/></TableCell>
                                         <TableCell>
-                                            <FormField
-                                                control={form.control}
-                                                name={`items.${index}.quantity`}
-                                                render={({ field }) => (
-                                                <Input
-                                                    type="number"
-                                                    inputMode="decimal"
-                                                    placeholder="0"
-                                                    className="text-right"
-                                                    value={(field.value ?? 0) === 0 ? "" : field.value}
-                                                    onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                                    onChange={(e) => {
-                                                        const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
-                                                        field.onChange(newQuantity);
-                                                        const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
-                                                        form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
-                                                    }}
-                                                    disabled={isLocked}
-                                                />
-                                                )}
-                                            />
+                                            <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
+                                                <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => {
+                                                    const v = e.target.value === '' ? 0 : Number(e.target.value);
+                                                    field.onChange(v);
+                                                    form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`), { shouldValidate: true });
+                                                }} disabled={isLocked} />
+                                            )}/>
                                         </TableCell>
                                         <TableCell>
-                                            <FormField
-                                                control={form.control}
-                                                name={`items.${index}.unitPrice`}
-                                                render={({ field }) => (
-                                                <Input
-                                                    type="number"
-                                                    inputMode="decimal"
-                                                    placeholder="0.00"
-                                                    className="text-right"
-                                                    value={(field.value ?? 0) === 0 ? "" : field.value}
-                                                    onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                                    onChange={(e) => {
-                                                        const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
-                                                        field.onChange(newPrice);
-                                                        const quantity = form.getValues(`items.${index}.quantity`) || 0;
-                                                        form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
-                                                    }}
-                                                    disabled={isLocked}
-                                                />
-                                                )}
-                                            />
+                                            <FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (
+                                                <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => {
+                                                    const v = e.target.value === '' ? 0 : Number(e.target.value);
+                                                    field.onChange(v);
+                                                    form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`), { shouldValidate: true });
+                                                }} disabled={isLocked} />
+                                            )}/>
                                         </TableCell>
                                         <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
                                         <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
@@ -898,41 +837,21 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               <Card>
                   <CardHeader><CardTitle className="text-base">4. หมายเหตุ และรายละเอียดส่งมอบ</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
-                      <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="เช่น เงื่อนไขการรับประกัน, เลขอะไหล่ที่เปลี่ยน..." rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                      <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="ระบุรายละเอียดเพิ่มเติม..." rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่ออกใบส่งของ</FormLabel><FormControl><Input type="date" {...field} disabled={isLocked} /></FormControl></FormItem>)} />
-                          <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด (บาท)</FormLabel><FormControl>
-                              <Input
-                                    type="number"
-                                    inputMode="decimal"
-                                    placeholder="0.00"
-                                    className="text-right"
-                                    value={(field.value ?? 0) === 0 ? "" : field.value}
-                                    onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                    onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-                                    disabled={isLocked}
-                                />
-                          </FormControl></FormItem>)} />
+                          <FormField control={form.control} name="discountAmount" render={({ field }) => (<FormItem><FormLabel>ส่วนลด (บาท)</FormLabel><FormControl><Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))} disabled={isLocked} /></FormControl></FormItem>)} />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ (ฝ่ายร้าน)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
+                          <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                           <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ (ลูกค้า)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                       </div>
                   </CardContent>
                   <CardFooter className="flex-col items-end gap-2">
-                      <div className="flex justify-between w-full max-w-xs">
-                          <span className="text-muted-foreground">ยอดรวม:</span>
-                          <span className="font-medium">{formatCurrency(form.watch('subtotal'))}</span>
-                      </div>
-                      <div className="flex justify-between w-full max-w-xs">
-                          <span className="text-muted-foreground text-destructive">ส่วนลด:</span>
-                          <span className="font-medium text-destructive">- {formatCurrency(form.watch('discountAmount'))}</span>
-                      </div>
+                      <div className="flex justify-between w-full max-w-xs"><span className="text-muted-foreground">ยอดรวม:</span><span className="font-medium">{formatCurrency(form.watch('subtotal'))}</span></div>
+                      <div className="flex justify-between w-full max-w-xs"><span className="text-muted-foreground text-destructive">ส่วนลด:</span><span className="font-medium text-destructive">- {formatCurrency(form.watch('discountAmount'))}</span></div>
                       <Separator className="my-1 w-full max-w-xs" />
-                      <div className="flex justify-between w-full max-w-xs text-lg font-bold text-primary">
-                          <span>ยอดสุทธิ:</span>
-                          <span>{formatCurrency(form.watch('grandTotal'))}</span>
-                      </div>
+                      <div className="flex justify-between w-full max-w-xs text-lg font-bold text-primary"><span>ยอดสุทธิ:</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div>
                   </CardFooter>
               </Card>
           </form>
@@ -941,16 +860,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
       <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
           <AlertDialogContent>
-              <AlertDialogHeader>
-                  <AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                      เมื่อส่งเรื่องให้ฝ่ายบัญชีตรวจสอบแล้ว <span className="font-bold text-destructive">คุณจะไม่สามารถแก้ไขเอกสารนี้ได้อีก</span> จนกว่าฝ่ายบัญชีจะกดยืนยันรายการหรือตีกลับมาให้แก้ไข
-                  </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                  <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => { if(pendingFormData) executeSave(pendingFormData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction>
-              </AlertDialogFooter>
+              <AlertDialogHeader><AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle><AlertDialogDescription>เมื่อส่งแล้วจะไม่สามารถแก้ไขเอกสารนี้ได้อีกจนกว่าฝ่ายบัญชีจะตรวจสอบ</AlertDialogDescription></AlertDialogHeader>
+              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingFormData) executeSave(pendingFormData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
 
@@ -962,7 +873,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                       {selectedLinkDoc?.status === 'PAID' ? (
                           <>รายการนี้ <span className="font-bold text-green-600">ได้รับเงินเรียบร้อยแล้ว</span> คุณต้องการบันทึกลงใน Job นี้และปิดงานทันทีใช่หรือไม่?</>
                       ) : (
-                          <>บิลตัวนี้ <span className="font-bold text-amber-600">ถูกส่งไปตรวจสอบที่แผนกบัญชีแล้ว</span> คุณต้องการบันทึกบิลนี้ใส่ใน Job นี้ ใช่หรือไม่ (ไม่ต้องกดส่งตรวจสอบซ้ำ)?</>
+                          <>บิลตัวนี้ <span className="font-bold text-amber-600">ถูกส่งไปตรวจสอบที่แผนกบัญชีแล้ว</span> คุณต้องการบันทึกบิลนี้ใส่ใน Job นี้ ใช่หรือไม่?</>
                       )}
                   </AlertDialogDescription>
               </AlertDialogHeader>
