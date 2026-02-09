@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch, limit } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle, Send } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle, Send, FileSearch } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -106,9 +106,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
-  const [selectedQuotationId, setSelectedQuotationId] = useState('');
   const [referencedQuotationId, setReferencedQuotationId] = useState<string | null>(null);
-  const [quotationUsages, setQuotationUsages] = useState<number>(0);
   
   const [jobsReadyToBill, setJobsReadyToBill] = useState<Job[]>([]);
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
@@ -119,6 +117,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<DeliveryNoteFormData | null>(null);
+
+  // New Selection States
+  const [isQtSearchOpen, setIsQtSearchOpen] = useState(false);
+  const [qtSearchQuery, setQtSearchQuery] = useState("");
+  const [allQuotations, setAllQuotations] = useState<DocumentType[]>([]);
+  const [isSearchingQt, setIsSearchingQt] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -197,39 +201,22 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   useEffect(() => {
     if (!db || !currentJobId) {
         setQuotations([]);
-        setSelectedQuotationId('');
         return;
     }
     
     const q = query(
         collection(db, "documents"),
-        where("jobId", "==", currentJobId)
+        where("jobId", "==", currentJobId),
+        where("docType", "==", "QUOTATION")
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allCustomerDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType));
-      const fetchedQuotations = allCustomerDocs.filter(doc => doc.docType === 'QUOTATION' && doc.status !== 'CANCELLED');
-      
+      const fetchedQuotations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
       fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
       setQuotations(fetchedQuotations);
-      if (fetchedQuotations.length > 0) {
-          setSelectedQuotationId(fetchedQuotations[0].id);
-      }
     });
     return () => unsubscribe();
-
   }, [db, currentJobId]);
 
-  useEffect(() => {
-    if (!db || !selectedQuotationId) {
-      setQuotationUsages(0);
-      return;
-    }
-    const q = query(collection(db, "documents"), where("referencesDocIds", "array-contains", selectedQuotationId));
-    getDocs(q).then(snap => {
-      setQuotationUsages(snap.size);
-    });
-  }, [db, selectedQuotationId]);
-  
   useEffect(() => {
     if (docToEdit) {
       form.reset({
@@ -301,13 +288,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     form.setValue("grandTotal", grandTotal, { shouldValidate: true });
   }, [watchedItems, watchedDiscount, form]);
 
-  const handleFetchFromQuotation = () => {
-    const quotation = quotations.find(q => q.id === selectedQuotationId);
-    if (!quotation) {
-      toast({ variant: 'destructive', title: "กรุณาเลือกใบเสนอราคา" });
-      return;
-    }
-  
+  const handleFetchFromQuotation = async (quotation: DocumentType) => {
     const itemsFromQuotation = (quotation.items || []).map((item: any) => {
       const qty = Number(item.quantity ?? 1);
       const price = Number(item.unitPrice ?? 0);
@@ -326,16 +307,62 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     }
   
     replace(itemsFromQuotation);
-    setReferencedQuotationId(selectedQuotationId);
+    setReferencedQuotationId(quotation.id);
   
     form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
     form.trigger(['items', 'discountAmount']);
+    
+    // If not linked to this job, update the job detail (if jobId exists)
+    if (currentJobId && quotation.jobId !== currentJobId && db && profile) {
+        try {
+            const batch = writeBatch(db);
+            const activityRef = doc(collection(db, 'jobs', currentJobId, 'activities'));
+            batch.set(activityRef, {
+                text: `อ้างอิงใบเสนอราคาข้ามใบงาน: ${quotation.docNo}`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp(),
+            });
+            await batch.commit();
+        } catch (e) {
+            console.error("Failed to log cross-job quotation usage", e);
+        }
+    }
   
     toast({
       title: "ดึงข้อมูลสำเร็จ",
       description: `ดึง ${itemsFromQuotation.length} รายการ จากใบเสนอราคาเลขที่ ${quotation.docNo}`,
     });
+    setIsQtSearchOpen(false);
   };
+
+  const loadAllQuotations = async () => {
+    if (!db || !selectedCustomerId) {
+        toast({ variant: 'destructive', title: "กรุณาเลือกลูกค้าก่อนค้นหาใบเสนอราคา" });
+        return;
+    }
+    setIsSearchingQt(true);
+    try {
+        const q = query(
+            collection(db, "documents"),
+            where("customerId", "==", selectedCustomerId),
+            where("docType", "==", "QUOTATION"),
+            orderBy("createdAt", "desc"),
+            limit(50)
+        );
+        const snap = await getDocs(q);
+        setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED'));
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "ค้นหาล้มเหลว", description: e.message });
+    } finally {
+        setIsSearchingQt(false);
+    }
+  };
+
+  const filteredAllQuotations = useMemo(() => {
+    if (!qtSearchQuery) return allQuotations;
+    return allQuotations.filter(q => q.docNo.toLowerCase().includes(qtSearchQuery.toLowerCase()));
+  }, [allQuotations, qtSearchQuery]);
 
   const handleSelectJob = (job: Job) => {
     form.setValue('jobId', job.id);
@@ -407,7 +434,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 ...documentDataPayload, 
                 status: targetStatus,
                 updatedAt: serverTimestamp(),
-                dispute: { isDisputed: false, reason: "" } // Clear dispute when re-submitting
+                dispute: { isDisputed: false, reason: "" } 
             }));
         } else {
             const result = await createDocument(
@@ -632,33 +659,68 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             </div>
 
             <Card>
-                <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <CardTitle className="text-base">3. รายการสินค้า/บริการ</CardTitle>
-                    {currentJobId && quotations.length > 0 && (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <Select value={selectedQuotationId} onValueChange={setSelectedQuotationId} disabled={isLocked}>
-                            <SelectTrigger className="w-full sm:w-[280px]">
-                                <SelectValue placeholder="เลือกใบเสนอราคา..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {quotations.map(q => (
-                                    <SelectItem key={q.id} value={q.id}>
-                                        {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                          <Button type="button" variant="outline" size="sm" onClick={handleFetchFromQuotation} disabled={!selectedQuotationId || isLocked}><FileDown className="mr-2 h-4 w-4" /> ดึงรายการ</Button>
-                        </div>
-                        {quotationUsages > 0 && (
-                          <div className="flex items-center gap-1 text-xs text-amber-600 font-medium bg-amber-50 p-1.5 rounded border border-amber-100">
-                            <AlertTriangle className="h-3 w-3" />
-                            ใบเสนอราคานี้เคยถูกนำไปออกเอกสารแล้ว {quotationUsages} ครั้ง
-                          </div>
+                <CardHeader className="flex flex-row items-center gap-4 py-3">
+                    <CardTitle className="text-base whitespace-nowrap">3. รายการสินค้า/บริการ</CardTitle>
+                    <div className="flex gap-2">
+                        {/* 1. Pick from current Job's quotations if available */}
+                        {quotations.length > 0 && (
+                            <Select onValueChange={(id) => {
+                                const q = quotations.find(qt => qt.id === id);
+                                if (q) handleFetchFromQuotation(q);
+                            }}>
+                                <SelectTrigger className="h-8 w-[200px] text-xs">
+                                    <SelectValue placeholder="เลือกใบเสนอราคาของงานนี้" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {quotations.map(q => (
+                                        <SelectItem key={q.id} value={q.id}>
+                                            {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         )}
-                      </div>
-                    )}
+                        
+                        {/* 2. Generic Search Button */}
+                        <Popover open={isQtSearchOpen} onOpenChange={setIsQtSearchOpen}>
+                            <PopoverTrigger asChild>
+                                <Button type="button" variant="outline" size="sm" className="h-8" onClick={loadAllQuotations} disabled={isLocked}>
+                                    <FileSearch className="mr-2 h-3 w-3" /> เลือกจากใบเสนอราคา
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-0" align="start">
+                                <div className="p-2 border-b">
+                                    <Input 
+                                        placeholder="พิมพ์เลขที่ใบเสนอราคา..." 
+                                        value={qtSearchQuery} 
+                                        onChange={e => setQtSearchQuery(e.target.value)} 
+                                        autoFocus
+                                    />
+                                </div>
+                                <ScrollArea className="h-60">
+                                    {isSearchingQt ? (
+                                        <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังค้นหา...</div>
+                                    ) : filteredAllQuotations.length > 0 ? (
+                                        filteredAllQuotations.map(q => (
+                                            <Button 
+                                                key={q.id} 
+                                                variant="ghost" 
+                                                className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
+                                                onClick={() => handleFetchFromQuotation(q)}
+                                            >
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold">{q.docNo}</span>
+                                                    <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span>
+                                                </div>
+                                            </Button>
+                                        ))
+                                    ) : (
+                                        <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบใบเสนอราคา</p>
+                                    )}
+                                </ScrollArea>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="border rounded-md overflow-x-auto">
