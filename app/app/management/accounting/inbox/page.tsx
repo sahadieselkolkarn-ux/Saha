@@ -1,9 +1,11 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase/client-provider";
 import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
 import { format } from "date-fns";
@@ -18,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info } from "lucide-react";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
@@ -40,7 +42,7 @@ const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", {
 
 export default function AccountingInboxPage() {
   const { profile } = useAuth();
-  const { db } = useFirebase();
+  const { db, firebaseApp } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -56,6 +58,8 @@ export default function AccountingInboxPage() {
   const [disputingDoc, setDisputingDoc] = useState<WithId<DocumentType> | null>(null);
   const [disputeReason, setDisputeReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [closingJobId, setClosingJobId] = useState<string | null>(null);
+  const [failedClosingJobId, setFailedClosingJobId] = useState<string | null>(null);
 
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
@@ -159,7 +163,34 @@ export default function AccountingInboxPage() {
     );
   }, [documents, activeTab, searchTerm]);
 
-  // HOTFIX P0-2A: Only perform accounting confirmation. Job closure is handled separately.
+  const callCloseJobFunction = async (jobId: string) => {
+    if (!firebaseApp) return;
+    const functions = getFunctions(firebaseApp);
+    const closeJob = httpsCallable(functions, 'closeJobAfterAccounting');
+    
+    setClosingJobId(jobId);
+    setFailedClosingJobId(null);
+    
+    try {
+      const result: any = await closeJob({ jobId });
+      if (result.data?.ok) {
+        toast({ title: "ปิดงานสำเร็จ", description: "ใบงานถูกย้ายเข้าประวัติเรียบร้อยแล้ว" });
+      } else {
+        throw new Error(result.data?.error || "Unknown error");
+      }
+    } catch (e: any) {
+      console.error("Close job function failed:", e);
+      setFailedClosingJobId(jobId);
+      toast({ 
+        variant: "destructive", 
+        title: "ปิดงานไม่สำเร็จ", 
+        description: "บันทึกบัญชีแล้ว แต่ไม่สามารถย้ายงานเข้าประวัติได้ กรุณากดลองอีกครั้งหรือแจ้งแอดมิน" 
+      });
+    } finally {
+      setClosingJobId(null);
+    }
+  };
+
   const handleConfirmCashPayment = async () => {
     if (!db || !profile || !confirmingDoc || !selectedAccountId) return;
     
@@ -172,7 +203,6 @@ export default function AccountingInboxPage() {
     const closedDate = selectedPaymentDate;
 
     try {
-      // PHASE 1 ONLY: Accounting Transaction
       await runTransaction(db, async (transaction) => {
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
@@ -180,7 +210,6 @@ export default function AccountingInboxPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data();
         
-        // Idempotency check
         if (docData.arStatus === 'PAID' || docData.status === 'PAID' || docData.accountingEntryId) {
           throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
         }
@@ -239,10 +268,12 @@ export default function AccountingInboxPage() {
         });
       });
 
-      toast({ 
-        title: "ลงบัญชีรายรับสำเร็จ", 
-        description: jobId ? "บันทึกข้อมูลบัญชีแล้ว กรุณาแจ้ง Admin เพื่อปิดจ๊อบงานย้ายเข้าประวัติภายหลัง" : "บันทึกข้อมูลบัญชีเรียบร้อย"
-      });
+      toast({ title: "ลงบัญชีรายรับสำเร็จ" });
+      
+      if (jobId) {
+        // Phase 2: Server-side Close
+        callCloseJobFunction(jobId);
+      }
       
       setConfirmingDoc(null);
       setIsSubmitting(false);
@@ -253,7 +284,6 @@ export default function AccountingInboxPage() {
     }
   };
 
-  // HOTFIX P0-2A: Only perform accounting confirmation. Job closure is handled separately.
   const handleCreateAR = async (docToProcess: WithId<DocumentType>) => {
     if (!db || !profile) return;
     setIsSubmitting(true);
@@ -262,7 +292,6 @@ export default function AccountingInboxPage() {
     const jobId = docToProcess.jobId;
 
     try {
-        // PHASE 1 ONLY: Accounting Transaction
         await runTransaction(db, async (transaction) => {
             const docRef = doc(db, 'documents', docToProcess.id);
             const docSnap = await transaction.get(docRef);
@@ -302,10 +331,11 @@ export default function AccountingInboxPage() {
             });
         });
 
-        toast({ 
-          title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ', 
-          description: jobId ? "บันทึกข้อมูลบัญชีแล้ว กรุณาแจ้ง Admin เพื่อปิดจ๊อบงานย้ายเข้าประวัติภายหลัง" : "บันทึกข้อมูลบัญชีเรียบร้อย"
-        });
+        toast({ title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ' });
+        
+        if (jobId) {
+          callCloseJobFunction(jobId);
+        }
         
         setArDocToConfirm(null);
         setIsSubmitting(false);
@@ -342,13 +372,19 @@ export default function AccountingInboxPage() {
     <>
       <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลเพื่อลงสมุดบัญชีรายวัน" />
       
-      <Alert className="mb-6 bg-blue-50 border-blue-200">
-        <Info className="h-4 w-4 text-blue-600" />
-        <AlertTitle className="text-blue-800 font-bold">ประกาศสำคัญ: ปรับปรุงระบบปิดงาน</AlertTitle>
-        <AlertDescription className="text-blue-700 text-xs">
-          เพื่อป้องกันข้อมูลสูญหาย การกดยืนยันในหน้านี้จะทำการ <strong>"ลงบันทึกบัญชีเท่านั้น"</strong> โดยใบงานซ่อม (Job) จะยังคงค้างอยู่ในระบบเพื่อให้ Admin ตรวจสอบและปิดงานเข้าประวัติในขั้นตอนสุดท้ายแยกต่างหาก
-        </AlertDescription>
-      </Alert>
+      {failedClosingJobId && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>พบรายการปิดงานไม่สำเร็จ</AlertTitle>
+          <AlertDescription className="flex items-center justify-between">
+            <span>ระบบบันทึกบัญชีแล้ว แต่ไม่สามารถย้ายงาน (ID: {failedClosingJobId.substring(0,8)}...) เข้าประวัติได้</span>
+            <Button size="sm" variant="outline" onClick={() => callCloseJobFunction(failedClosingJobId)} disabled={!!closingJobId}>
+              {closingJobId === failedClosingJobId ? <Loader2 className="animate-spin h-3 w-3 mr-1"/> : <RefreshCw className="h-3 w-3 mr-1"/>}
+              ลองปิดงานอีกครั้ง
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {indexCreationUrl && (
         <Alert variant="destructive" className="mb-6">
@@ -409,19 +445,23 @@ export default function AccountingInboxPage() {
                           <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600 font-bold">
-                                <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงิน
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {closingJobId === doc.jobId ? (
+                            <Badge variant="outline" className="animate-pulse"><Loader2 className="h-3 w-3 mr-1 animate-spin"/> ปิดจ๊อบ...</Badge>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600 font-bold">
+                                  <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงิน
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                  <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -460,19 +500,23 @@ export default function AccountingInboxPage() {
                           <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => setArDocToConfirm(doc)} disabled={isSubmitting} className="font-bold text-amber-600 focus:text-amber-600">
-                                <HandCoins className="mr-2 h-4 w-4"/> ยืนยันตั้งลูกหนี้
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {closingJobId === doc.jobId ? (
+                            <Badge variant="outline" className="animate-pulse"><Loader2 className="h-3 w-3 mr-1 animate-spin"/> ปิดจ๊อบ...</Badge>
+                          ) : (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => setArDocToConfirm(doc)} disabled={isSubmitting} className="font-bold text-amber-600 focus:text-amber-600">
+                                  <HandCoins className="mr-2 h-4 w-4"/> ยืนยันตั้งลูกหนี้
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                  <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
