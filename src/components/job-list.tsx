@@ -46,8 +46,6 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { archiveAndCloseJob } from "@/firebase/jobs-archive";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface JobListProps {
   department?: JobDepartment;
@@ -115,7 +113,6 @@ export function JobList({
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
   const [billingJob, setBillingJob] = useState<Job | null>(null);
   
-  // Managers and Admins have same privileges as Officers
   const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
   const isOfficer = isOfficeOrAdmin;
 
@@ -127,9 +124,9 @@ export function JobList({
   const [jobForPartsReady, setJobForPartsReady] = useState<Job | null>(null);
   const [isActionLoading, setIsActionLoading] = useState(false);
 
-  // State for the closing dialog
+  // State for the closing dialog (Submit to Review flow)
   const [closingJob, setClosingJob] = useState<Job | null>(null);
-  const [isClosing, setIsClosing] = useState(false);
+  const [isSubmittingToReview, setIsSubmittingToReview] = useState(false);
   const [relatedDocs, setRelatedDocs] = useState<DocumentType[]>([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [accountingAccounts, setAccountingAccounts] = useState<AccountingAccount[]>([]);
@@ -322,29 +319,31 @@ export function JobList({
         return;
     }
     
-    setIsClosing(true);
+    setIsSubmittingToReview(true);
     try {
+        const batch = writeBatch(db);
         const docRefToUpdate = doc(db, 'documents', selectedDoc.id);
+        const jobRef = doc(db, 'jobs', closingJob.id);
+        const activityRef = doc(collection(db, 'jobs', closingJob.id, 'activities'));
         
-        if (paymentMode === 'PAID') {
-            await updateDoc(docRefToUpdate, {
-                status: 'PENDING_REVIEW',
-                arStatus: 'PENDING',
-                paymentTerms: 'CASH',
-                receivedAccountId: suggestedAccountId,
-                paymentMethod: paymentMethod,
-                updatedAt: serverTimestamp()
-            });
-        } else {
-            await updateDoc(docRefToUpdate, {
-                status: 'PENDING_REVIEW',
-                arStatus: 'PENDING',
-                paymentTerms: 'CREDIT',
-                dueDate: creditDueDate || null,
-                updatedAt: serverTimestamp()
-            });
-        }
+        // 1. Update Document status to PENDING_REVIEW
+        const docUpdate: any = {
+            status: 'PENDING_REVIEW',
+            arStatus: 'PENDING',
+            updatedAt: serverTimestamp()
+        };
 
+        if (paymentMode === 'PAID') {
+            docUpdate.paymentTerms = 'CASH';
+            docUpdate.receivedAccountId = suggestedAccountId;
+            docUpdate.paymentMethod = paymentMethod;
+        } else {
+            docUpdate.paymentTerms = 'CREDIT';
+            docUpdate.dueDate = creditDueDate || null;
+        }
+        batch.update(docRefToUpdate, docUpdate);
+
+        // 2. Update Job status to WAITING_CUSTOMER_PICKUP
         const salesDocInfo = {
             salesDocType: selectedDoc.docType,
             salesDocId: selectedDoc.id,
@@ -352,14 +351,30 @@ export function JobList({
             paymentStatusAtClose: paymentMode
         };
 
-        await archiveAndCloseJob(db, closingJob.id, pickupDate, profile, salesDocInfo);
+        batch.update(jobRef, {
+            ...salesDocInfo,
+            status: 'WAITING_CUSTOMER_PICKUP',
+            pickupDate: pickupDate,
+            lastActivityAt: serverTimestamp(),
+        });
 
-        toast({ title: 'ส่งมอบงานและย้ายไปที่ Inbox บัญชีสำเร็จ' });
+        // 3. Add activity log
+        batch.set(activityRef, {
+            text: `ส่งตรวจสอบรายการขาย (${selectedDoc.docNo}) และเตรียมส่งมอบงาน. แผนกบัญชีสามารถตรวจสอบและกดยืนยันเพื่อปิดงานได้`,
+            userName: profile.displayName,
+            userId: profile.uid,
+            createdAt: serverTimestamp(),
+        });
+
+        await batch.commit();
+
+        toast({ title: 'ส่งตรวจสอบรายการขายสำเร็จ', description: 'ส่งรายการไปที่ Inbox บัญชีเรียบร้อยแล้ว' });
         setClosingJob(null);
     } catch (error: any) {
-        toast({ variant: 'destructive', title: 'ปิดงานไม่สำเร็จ', description: "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง" });
+        console.error("Submit review failed:", error);
+        toast({ variant: 'destructive', title: 'ส่งตรวจสอบไม่สำเร็จ', description: "เกิดข้อผิดพลาดในการบันทึกข้อมูล" });
     } finally {
-        setIsClosing(false);
+        setIsSubmittingToReview(false);
     }
   }
 
@@ -390,7 +405,6 @@ export function JobList({
                 throw new Error("งานนี้ถูกพนักงานท่านอื่นรับไปแล้ว");
             }
             
-            // Managers can accept jobs for any department
             if (profile.role !== 'MANAGER' && profile.role !== 'ADMIN' && profile.department !== jobData.department) {
                 throw new Error("คุณไม่ได้อยู่ในแผนกที่รับผิดชอบงานนี้");
             }
@@ -880,7 +894,7 @@ export function JobList({
             <DialogHeader>
                 <DialogTitle>ส่งมอบงานให้ลูกค้า</DialogTitle>
                 <DialogDescription>
-                    ขั้นตอนนี้จะเป็นการส่งรายการขายให้ฝ่ายบัญชีตรวจสอบและยืนยันเพื่อปิดงานซ่อม
+                    ขั้นตอนนี้เป็นการส่งรายการตรวจสอบบิลไปที่แผนกบัญชีเพื่อเตรียมการรับเงิน
                 </DialogDescription>
             </DialogHeader>
             <div className="py-4 space-y-4">
@@ -898,7 +912,7 @@ export function JobList({
                                 ))}
                                 </SelectContent>
                             </Select>
-                        ) : <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md mt-1">ไม่พบเอกสารขาย กรุณาออกบิลก่อนปิดงาน</p>
+                        ) : <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md mt-1">ไม่พบเอกสารขาย กรุณาออกบิลก่อนส่งตรวจสอบ</p>
                     )}
                 </div>
                 <div>
@@ -944,10 +958,10 @@ export function JobList({
                 </div>
             </div>
             <DialogFooter>
-                <Button variant="outline" onClick={() => setClosingJob(null)} disabled={isClosing}>ยกเลิก</Button>
-                <Button onClick={handleCloseJob} disabled={isClosing || isLoadingDocs || !selectedDocId}>
-                    {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    ส่งบัญชีตรวจสอบและปิดงาน
+                <Button variant="outline" onClick={() => setClosingJob(null)} disabled={isSubmittingToReview}>ยกเลิก</Button>
+                <Button onClick={handleCloseJob} disabled={isSubmittingToReview || isLoadingDocs || !selectedDocId}>
+                    {isSubmittingToReview && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    ส่งบัญชีตรวจสอบ
                 </Button>
             </DialogFooter>
         </DialogContent>
