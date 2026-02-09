@@ -170,38 +170,43 @@ export function DocumentList({
     try {
       const docRef = doc(db, 'documents', docToAction.id);
       
+      // 1. Update document status to CANCELLED
       await updateDoc(docRef, {
         status: 'CANCELLED',
         updatedAt: serverTimestamp()
       });
 
+      // 2. Reset the associated Job
       if (docToAction.jobId) {
         const jobRef = doc(db, 'jobs', docToAction.jobId);
         const jobSnap = await getDoc(jobRef);
+        
+        // Only reset if the job is still active (not archived)
         if (jobSnap.exists()) {
-          const jobData = jobSnap.data();
-          if (jobData.salesDocId === docToAction.id || !jobData.salesDocId) {
-            await updateDoc(jobRef, {
-              status: 'DONE',
-              salesDocId: deleteField(),
-              salesDocNo: deleteField(),
-              salesDocType: deleteField(),
-              lastActivityAt: serverTimestamp(),
-            });
+          // Reset Job status to DONE and clear ALL sales doc references
+          // Regardless of whether salesDocId matches docToAction.id to ensure the job isn't stuck
+          await updateDoc(jobRef, {
+            status: 'DONE',
+            salesDocId: deleteField(),
+            salesDocNo: deleteField(),
+            salesDocType: deleteField(),
+            lastActivityAt: serverTimestamp(),
+          });
 
-            const activityRef = doc(collection(db, 'jobs', docToAction.jobId, 'activities'));
-            await setDoc(activityRef, {
-              text: `ยกเลิกเอกสาร ${docToAction.docType} (${docToAction.docNo}): ย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล" (DONE)`,
-              userName: profile?.displayName || 'System',
-              userId: profile?.uid || 'system',
-              createdAt: serverTimestamp(),
-            });
-          }
+          // Log the reversion in job activities
+          const activityRef = doc(collection(db, 'jobs', docToAction.jobId, 'activities'));
+          await setDoc(activityRef, {
+            text: `ยกเลิกเอกสาร ${docToAction.docType} (${docToAction.docNo}): ระบบย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล" (DONE) เพื่อให้ออกบิลใหม่ได้`,
+            userName: profile?.displayName || 'System',
+            userId: profile?.uid || 'system',
+            createdAt: serverTimestamp(),
+          });
         }
       }
 
       toast({ title: "ยกเลิกเอกสารและย้อนสถานะใบงานสำเร็จ" });
     } catch (err: any) {
+      console.error("Cancellation failed:", err);
       toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: err.message });
     } finally {
       setIsActionLoading(false);
