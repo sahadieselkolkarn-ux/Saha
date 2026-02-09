@@ -23,10 +23,10 @@ export function RequireDepartment({
       return;
     }
     
-    if (!profile) return; // Still loading or profile doesn't exist
+    if (!profile) return;
 
-    // Admins are always allowed access
-    if (profile.role === 'ADMIN') {
+    // Admins and Managers are always allowed access to any department-restricted area
+    if (profile.role === 'ADMIN' || profile.role === 'MANAGER') {
       return;
     }
 
@@ -38,12 +38,11 @@ export function RequireDepartment({
     
     // Check if user's department is in the allowed list
     if (!allow.includes(userDept)) {
-      router.replace("/app"); // Redirect to a safe default page
+      router.replace("/app");
       return;
     }
   }, [user, profile, loading, router, allow]);
 
-  // Render a loading state while checking
   if (loading || !profile) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -53,10 +52,9 @@ export function RequireDepartment({
   }
 
   // Final check before rendering children
-  if (profile.role === 'ADMIN' || (profile.department && allow.includes(profile.department))) {
+  if (profile.role === 'ADMIN' || profile.role === 'MANAGER' || (profile.department && allow.includes(profile.department))) {
     return <>{children}</>;
   }
 
-  // Render nothing while redirecting
   return null;
 }

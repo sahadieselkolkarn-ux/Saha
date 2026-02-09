@@ -37,11 +37,11 @@ service cloud.firestore {
     }
     
     function isOfficeOrMgmt() {
+      // Allows anyone in Office dept, anyone in Management dept, or anyone with Admin/Manager roles
       return isMgmt() || (signedIn() && (dept() == "OFFICE" || role() == "ADMIN" || role() == "MANAGER"));
     }
     
     function isAccountingAllowed() {
-      // Both Office and Management (including Manager/Admin) can manage accounting documents and entries
       return isOfficeOrMgmt();
     }
     

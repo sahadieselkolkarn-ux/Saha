@@ -14,17 +14,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search, Badge } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -113,7 +112,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [existingDn, setExistingDn] = useState<DocumentType | null>(null);
-  const [setShowDnCancelDialog, setSetShowDnCancelDialog] = useState(false);
+  const [showDnCancelDialog, setShowDnCancelDialog] = useState(false);
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
@@ -504,7 +503,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             
             if (activeDn) {
                 setExistingDn({ id: activeDn.id, ...activeDn.data() } as DocumentType);
-                setSetShowDnCancelDialog(true);
+                setShowDnCancelDialog(true);
                 return;
             }
         }
@@ -525,7 +524,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             notes: (existingDn.notes || "") + "\n[System] ยกเลิกเพื่อออกใบกำกับภาษีแทน",
         });
         toast({ title: "ยกเลิกใบส่งของชั่วคราวเดิมเรียบร้อย" });
-        setSetShowDnCancelDialog(false);
+        setShowDnCancelDialog(false);
         setShowReviewConfirm(true);
     } catch(e: any) {
         toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: "เกิดข้อผิดพลาด" });
@@ -679,7 +678,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                 <FormItem><FormLabel>รูปแบบรับ</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">เงินโอน</SelectItem></SelectContent></Select></FormItem>
                             )} />
                             <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
-                                <FormItem><FormLabel>บัญชีที่รับเงิน</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select></FormItem>
+                                <FormItem><FormLabel>บัญชีที่รับเงิน</FormLabel><Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
+                                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
+                                </Select></FormItem>
                             )} />
                         </div>
                     )}
@@ -706,7 +708,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                           <PopoverContent className="w-80 p-0" align="start">
                               <div className="p-2 border-b"><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={qtSearchQuery} onChange={e=>setQtSearchQuery(e.target.value)} /></div>
                               <ScrollArea className="h-60">
-                                  {isSearchingQt ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>กำลังโหลด...</div> : 
+                                  {isSearchingQt ? <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div> : 
                                    getFilteredDocs(allQuotations, qtSearchQuery).map(q => (
                                       <Button key={q.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(q)}>
                                           <div className="flex flex-col"><span className="font-semibold">{q.docNo}</span><span className="text-[10px] text-muted-foreground">{q.customerSnapshot?.name} • {q.customerSnapshot?.phone}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span></div>
@@ -785,14 +787,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         </form>
       </Form>
 
-      <AlertDialog open={setShowDnCancelDialog} onOpenChange={setSetShowDnCancelDialog}>
+      <AlertDialog open={showDnCancelDialog} onOpenChange={setShowDnCancelDialog}>
           <AlertDialogContent>
               <AlertDialogHeader>
                   <AlertDialogTitle>พบใบส่งของชั่วคราวเดิม</AlertDialogTitle>
                   <AlertDialogDescription>งานซ่อมนี้มีใบส่งของชั่วคราวเลขที่ <span className="font-bold">{existingDn?.docNo}</span> อยู่แล้ว ต้องการยกเลิกใบเดิมเพื่อใช้ใบกำกับภาษีนี้แทนหรือไม่?</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                  <Button variant="secondary" onClick={() => { setSetShowDnCancelDialog(false); setShowReviewConfirm(true); }}>ไม่ยกเลิก (ออกคู่กัน)</Button>
+                  <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); setShowReviewConfirm(true); }}>ไม่ยกเลิก (ออกคู่กัน)</Button>
                   <AlertDialogAction onClick={handleConfirmCancelAndSave} className="bg-destructive hover:bg-destructive/90">ยกเลิกใบเดิมและไปต่อ</AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>

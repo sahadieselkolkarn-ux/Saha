@@ -125,10 +125,12 @@ function JobDetailsPageContent() {
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
   const isUserAdmin = profile?.role === 'ADMIN';
-  const isOfficeOrAdminOrMgmt = profile?.role === 'ADMIN' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
+  const isManager = profile?.role === 'MANAGER';
+  // Allowed to edit if Admin, Manager (regardless of dept), or in Office/Management departments
+  const isOfficeOrAdminOrMgmt = isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived;
-  const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
+  const isOfficeOrAdmin = isOfficeOrAdminOrMgmt;
 
   useEffect(() => {
     if (!db || !jobId) return;
@@ -567,8 +569,8 @@ function JobDetailsPageContent() {
   }
 
   const handleTransferJob = async () => {
-    if (!isUserAdmin) {
-        toast({ variant: "destructive", title: "ไม่มีสิทธิ์", description: "เฉพาะแอดมินเท่านั้นที่สามารถโอนย้ายแผนกได้" });
+    if (!isOfficeOrAdminOrMgmt) {
+        toast({ variant: "destructive", title: "ไม่มีสิทธิ์", description: "เฉพาะผู้จัดการหรือแอดมินเท่านั้นที่สามารถโอนย้ายแผนกได้" });
         return;
     }
     if (!transferDepartment || !job || !db || !profile) return;
@@ -588,7 +590,7 @@ function JobDetailsPageContent() {
             lastActivityAt: serverTimestamp(),
         });
 
-        const activityText = `แอดมินเปลี่ยนแผนกหลักของงานเป็น ${transferDepartment} และคืนงานเข้าคิวแผนก. หมายเหตุ: ${transferNote || 'ไม่มี'}`;
+        const activityText = `แอดมิน/ผู้จัดการเปลี่ยนแผนกหลักของงานเป็น ${transferDepartment} และคืนงานเข้าคิวแผนก. หมายเหตุ: ${transferNote || 'ไม่มี'}`;
         batch.set(doc(activitiesColRef), {
             text: activityText,
             userName: profile.displayName,
@@ -652,7 +654,7 @@ function JobDetailsPageContent() {
         lastActivityAt: serverTimestamp(),
       });
 
-      const activityText = `แอดมินเปลี่ยนพนักงานซ่อม จาก ${job.assigneeName || 'ยังไม่ได้มอบหมาย'} เป็น ${newWorker.displayName}`;
+      const activityText = `แอดมิน/ผู้จัดการเปลี่ยนพนักงานซ่อม จาก ${job.assigneeName || 'ยังไม่ได้มอบหมาย'} เป็น ${newWorker.displayName}`;
       batch.set(activityDocRef, {
         text: activityText,
         userName: profile.displayName,
@@ -859,12 +861,12 @@ const handlePartsReady = async () => {
               )}
 
                <div className="flex gap-2 pt-4 border-t">
-                  {isUserAdmin && (
+                  {isOfficeOrAdminOrMgmt && (
                       <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>
                           เปลี่ยนแปลงแผนก
                       </Button>
                   )}
-                  {isUserAdmin && job.assigneeUid && (
+                  {isOfficeOrAdminOrMgmt && job.assigneeUid && (
                       <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}>
                           <UserCheck className="mr-2 h-4 w-4" /> เปลี่ยนพนักงานซ่อม
                       </Button>

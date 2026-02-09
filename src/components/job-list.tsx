@@ -115,8 +115,10 @@ export function JobList({
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
   const [billingJob, setBillingJob] = useState<Job | null>(null);
   
-  const isOfficer = profile?.role === 'OFFICER';
-  const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN';
+  // Managers and Admins have same privileges as Officers
+  const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
+  const isOfficer = isOfficeOrAdmin;
+
   const [assigningJob, setAssigningJob] = useState<Job | null>(null);
   const [workers, setWorkers] = useState<UserProfile[]>([]);
   const [isFetchingWorkers, setIsFetchingWorkers] = useState(false);
@@ -388,7 +390,8 @@ export function JobList({
                 throw new Error("งานนี้ถูกพนักงานท่านอื่นรับไปแล้ว");
             }
             
-            if (profile.department !== jobData.department) {
+            // Managers can accept jobs for any department
+            if (profile.role !== 'MANAGER' && profile.role !== 'ADMIN' && profile.department !== jobData.department) {
                 throw new Error("คุณไม่ได้อยู่ในแผนกที่รับผิดชอบงานนี้");
             }
 
@@ -449,8 +452,6 @@ export function JobList({
     setIsLegacyOutsource(false);
 
     try {
-        // Step 1: Try new Vendors system
-        // IMPORTANT: We use a simple query and filter on client to avoid composite index requirements
         const vendorsQuery = query(
             collection(db, "vendors"),
             orderBy("companyName", "asc")
@@ -468,11 +469,10 @@ export function JobList({
                 fetchedFromNewSystem = true;
             }
         } catch (e) {
-            console.warn("New vendors system query failed (likely missing index), falling back to legacy or client filtering:", e);
+            console.warn("New vendors system query failed, falling back:", e);
         }
         
         if (!fetchedFromNewSystem) {
-            // Step 2: Fallback to legacy outsourceVendors collection
             const legacyQuery = query(
                 collection(db, "outsourceVendors"),
                 where("isActive", "==", true),
@@ -491,7 +491,7 @@ export function JobList({
         }
     } catch (error: any) {
         console.error("Error fetching outsource vendors:", error);
-        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดรายชื่อผู้รับเหมาได้', description: "กรุณาลองใหม่อีกครั้ง หรือติดต่อผู้ดูแลระบบ" });
+        toast({ variant: 'destructive', title: 'ไม่สามารถโหลดรายชื่อผู้รับเหมาได้', description: "กรุณาลองใหม่อีกครั้ง" });
         setOutsourceVendors([]);
     } finally {
         setIsFetchingVendors(false);
@@ -640,19 +640,8 @@ export function JobList({
                 <CardTitle>ดัชนีกำลังถูกสร้าง (Index is Building)</CardTitle>
                 <CardDescription className="max-w-xl mx-auto">
                     ฐานข้อมูลกำลังเตรียมพร้อมสำหรับการแสดงผลนี้ อาจใช้เวลา 2-3 นาที
-                    หน้านี้จะพยายามโหลดข้อมูลใหม่โดยอัตโนมัติใน 10 วินาที หรือคุณสามารถลองรีเฟรชหน้านี้อีกครั้งในภายหลัง
                 </CardDescription>
             </CardHeader>
-            {indexCreationUrl && (
-                <CardContent>
-                    <Button asChild variant="outline">
-                        <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="mr-2 h-4 w-4" />
-                            ตรวจสอบสถานะ
-                        </a>
-                    </Button>
-                </CardContent>
-            )}
         </Card>
     );
   }
@@ -664,9 +653,7 @@ export function JobList({
                 <AlertCircle className="h-10 w-10 text-destructive mb-4" />
                 <CardTitle>ต้องสร้างดัชนี (Index) ก่อน</CardTitle>
                 <CardDescription className="max-w-xl mx-auto">
-                    ฐานข้อมูลต้องการดัชนี (Index) เพื่อกรองและเรียงข้อมูลงานตามที่คุณต้องการ
-                    กรุณากดปุ่มด้านล่างเพื่อเปิดหน้าสร้างใน Firebase Console (อาจใช้เวลา 2-3 นาที)
-                    เมื่อสร้างเสร็จแล้ว ให้กลับมารีเฟรชหน้านี้อีกครั้ง
+                    ฐานข้อมูลต้องการ Index เพื่อกรองและเรียงข้อมูล
                 </CardDescription>
             </CardHeader>
             <CardContent>

@@ -65,7 +65,11 @@ export default function AccountingInboxPage() {
   
   const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
 
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
+  // Broaden permissions: Admin, Manager, or Accounting/Management departments
+  const hasPermission = useMemo(() => {
+    if (!profile) return false;
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
+  }, [profile]);
 
   const docsQuery = useMemo(() => {
     if (!db || !hasPermission) return null;
@@ -418,10 +422,10 @@ export default function AccountingInboxPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
           <AlertDescription className="flex flex-col gap-2">
-            <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงข้อมูล กรุณากดสร้างดัชนีตามลิงก์ด้านล่าง (ใช้เวลา 2-3 นาที)</span>
+            <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงข้อมูล กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
             <Button asChild variant="outline" size="sm" className="w-fit">
               <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index ใน Firebase Console
+                <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index
               </a>
             </Button>
           </AlertDescription>
@@ -474,7 +478,7 @@ export default function AccountingInboxPage() {
           <DialogHeader>
             <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
             <DialogDescription className="text-destructive font-bold">
-                ฝ่ายบัญชีสามารถแก้ไขวันที่และบัญชีที่ถูกต้องได้ก่อนกดยืนยัน ข้อมูลนี้จะถูกบันทึกลงสมุดบัญชีถาวร
+                บัญชี/ผู้จัดการ สามารถแก้ไขข้อมูลให้ถูกต้องก่อนบันทึกถาวร
             </DialogDescription>
           </DialogHeader>
           
@@ -482,9 +486,7 @@ export default function AccountingInboxPage() {
             <Alert variant="destructive" className="mb-4">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>ยืนยันไม่สำเร็จ</AlertTitle>
-              <AlertDescription className="text-xs">
-                {confirmError}
-              </AlertDescription>
+              <AlertDescription className="text-xs">{confirmError}</AlertDescription>
             </Alert>
           )}
 
@@ -498,12 +500,7 @@ export default function AccountingInboxPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label className="flex items-center gap-2"><Calendar className="h-3 w-3"/> วันที่เงินเข้าจริง</Label>
-                        <Input 
-                            type="date" 
-                            value={selectedPaymentDate} 
-                            onChange={(e) => setSelectedPaymentDate(e.target.value)}
-                            disabled={isSubmitting}
-                        />
+                        <Input type="date" value={selectedPaymentDate} onChange={(e) => setSelectedPaymentDate(e.target.value)} disabled={isSubmitting} />
                     </div>
                     <div className="space-y-2">
                         <Label>ช่องทางที่รับ</Label>
@@ -518,36 +515,23 @@ export default function AccountingInboxPage() {
                 </div>
 
                 <div className="space-y-2">
-                    <Label htmlFor="account">เข้าบัญชีที่รับเงิน (บัญชีสามารถแก้ไขได้)</Label>
-                    {accounts.length === 0 ? (
-                        <div className="text-xs text-destructive flex items-center gap-1"><AlertCircle className="h-3 w-3"/> กรุณาเพิ่มบัญชีในเมนูตั้งค่า</div>
-                    ) : (
-                        <Select value={selectedAccountId} onValueChange={setSelectedAccountId} disabled={isSubmitting}>
-                            <SelectTrigger><SelectValue placeholder="เลือกบัญชีที่ถูกต้อง..."/></SelectTrigger>
-                            <SelectContent>
-                                {accounts.map(acc => (
-                                    <SelectItem key={acc.id} value={acc.id}>
-                                        {acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                    {confirmingDoc?.suggestedAccountId && confirmingDoc.suggestedAccountId !== selectedAccountId && (
-                        <p className="text-[10px] text-amber-600 font-medium italic">
-                            * ข้อความเดิมจากออฟฟิศ: {accounts.find(a => a.id === confirmingDoc.suggestedAccountId)?.name || 'ไม่ได้ระบุ'}
-                        </p>
-                    )}
+                    <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
+                    <Select value={selectedAccountId} onValueChange={setSelectedAccountId} disabled={isSubmitting}>
+                        <SelectTrigger><SelectValue placeholder="เลือกบัญชีที่ถูกต้อง..."/></SelectTrigger>
+                        <SelectContent>
+                            {accounts.map(acc => (
+                                <SelectItem key={acc.id} value={acc.id}>
+                                    {acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
               </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button 
-                onClick={handleConfirmCashPayment} 
-                disabled={isSubmitting || !selectedAccountId || !selectedPaymentDate || accounts.length === 0}
-                className="bg-green-600 hover:bg-green-700 text-white"
-            >
+            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || !selectedAccountId || !selectedPaymentDate || accounts.length === 0} className="bg-green-600 hover:bg-green-700 text-white">
                 {isSubmitting ? <Loader2 className="mr-2 animate-spin" /> : <CheckCircle className="mr-2" />}ยืนยันข้อมูลและลงบัญชี
             </Button>
           </DialogFooter>
@@ -559,8 +543,7 @@ export default function AccountingInboxPage() {
               <AlertDialogHeader>
                   <AlertDialogTitle>ยืนยันรายการขายเครดิต?</AlertDialogTitle>
                   <AlertDialogDescription>
-                      ต้องการยืนยันรายการลูกหนี้ค้างชำระ (Credit) สำหรับเอกสารเลขที่ {arDocToConfirm?.docNo} หรือไม่?
-                      เมื่อยืนยันแล้ว <span className="font-bold text-destructive">จะเริ่มตั้งหนี้และไม่สามารถแก้ไขบิลได้อีก</span>
+                      ต้องการยืนยันรายการลูกหนี้ค้างชำระสำหรับเอกสารเลขที่ {arDocToConfirm?.docNo} หรือไม่?
                   </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -579,8 +562,8 @@ export default function AccountingInboxPage() {
             <DialogDescription>สำหรับเอกสารเลขที่: {disputingDoc?.docNo}</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-2">
-            <Label htmlFor="reason">ระบุเหตุผลที่ไม่ถูกต้อง (จะปรากฏให้ฝ่ายออฟฟิศเห็น)</Label>
-            <Textarea id="reason" placeholder="เช่น ยอดเงินไม่ตรงกับสลิปโอนเงิน, เลือกประเภทลูกค้าผิด..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} />
+            <Label htmlFor="reason">ระบุเหตุผลที่ไม่ถูกต้อง</Label>
+            <Textarea id="reason" placeholder="เช่น ยอดเงินไม่ตรง, เลือกประเภทลูกค้าผิด..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDisputingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
