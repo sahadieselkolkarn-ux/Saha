@@ -153,6 +153,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     },
   });
 
+  const currentJobId = form.watch('jobId');
   const selectedCustomerId = form.watch('customerId');
   const watchedPaymentTerms = form.watch('paymentTerms');
   
@@ -303,6 +304,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   
     form.setValue('discountAmount', Number(sourceDoc.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
     form.setValue('isVat', sourceDoc.docType === 'TAX_INVOICE' ? true : (sourceDoc.withTax ?? true), { shouldDirty: true, shouldValidate: true });
+    form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
+    form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
     
     // Cross job linking
     if (jobId && sourceDoc.jobId !== jobId && db && profile) {
@@ -321,27 +324,34 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         }
     }
   
-    form.trigger(['items', 'discountAmount', 'isVat']);
+    form.trigger(['items', 'discountAmount', 'isVat', 'customerId']);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงจาก ${sourceDoc.docType} เลขที่ ${sourceDoc.docNo}` });
     setIsQtSearchOpen(false);
     setIsDnSearchOpen(false);
   };
 
   const loadAllDocs = async (type: DocType) => {
-    if (!db || !selectedCustomerId) {
-        toast({ variant: 'destructive', title: "กรุณาเลือกลูกค้าก่อนค้นหา" });
-        return;
-    }
+    if (!db) return;
     if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingDn(true);
     
     try {
-        const q = query(
-            collection(db, "documents"),
-            where("customerId", "==", selectedCustomerId),
-            where("docType", "==", type),
-            orderBy("createdAt", "desc"),
-            limit(50)
-        );
+        let q;
+        if (selectedCustomerId) {
+            q = query(
+                collection(db, "documents"),
+                where("customerId", "==", selectedCustomerId),
+                where("docType", "==", type),
+                orderBy("createdAt", "desc"),
+                limit(50)
+            );
+        } else {
+            q = query(
+                collection(db, "documents"),
+                where("docType", "==", type),
+                orderBy("createdAt", "desc"),
+                limit(50)
+            );
+        }
         const snap = await getDocs(q);
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
         if (type === 'QUOTATION') setAllQuotations(data); else setAllDeliveryNotes(data);
@@ -421,7 +431,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 'TAX_INVOICE',
                 documentDataPayload,
                 profile,
-                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
+                data.jobId ? 'WAITING_APPROVE' : undefined,
                 options
             );
             docId = result.docId;
@@ -485,6 +495,16 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const isFormLoading = form.formState.isSubmitting || isLoading;
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
   const isCustomerSelectionDisabled = isLocked || !!jobId || (isEditing && !!docToEdit?.customerId);
+
+  const getFilteredDocs = (docs: DocumentType[], queryStr: string) => {
+    const q = queryStr.toLowerCase().trim();
+    if (!q) return docs;
+    return docs.filter(d => 
+        d.docNo.toLowerCase().includes(q) ||
+        (d.customerSnapshot?.name || "").toLowerCase().includes(q) ||
+        (d.customerSnapshot?.phone || "").includes(q)
+    );
+  };
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;
@@ -641,12 +661,16 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                               </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-80 p-0" align="start">
-                              <div className="p-2 border-b"><Input placeholder="ค้นเลขที่ใบเสนอราคา..." value={qtSearchQuery} onChange={e=>setQtSearchQuery(e.target.value)} /></div>
+                              <div className="p-2 border-b"><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={qtSearchQuery} onChange={e=>setQtSearchQuery(e.target.value)} /></div>
                               <ScrollArea className="h-60">
                                   {isSearchingQt ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>กำลังโหลด...</div> : 
-                                   allQuotations.filter(q => q.docNo.toLowerCase().includes(qtSearchQuery.toLowerCase())).map(q => (
+                                   getFilteredDocs(allQuotations, qtSearchQuery).map(q => (
                                       <Button key={q.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(q)}>
-                                          <div className="flex flex-col"><span className="font-semibold">{q.docNo}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span></div>
+                                          <div className="flex flex-col">
+                                              <span className="font-semibold">{q.docNo}</span>
+                                              <span className="text-[10px] text-muted-foreground">{q.customerSnapshot?.name} • {q.customerSnapshot?.phone}</span>
+                                              <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span>
+                                          </div>
                                       </Button>
                                   ))}
                               </ScrollArea>
@@ -660,12 +684,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                               </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-80 p-0" align="start">
-                              <div className="p-2 border-b"><Input placeholder="ค้นเลขที่ใบส่งของ..." value={dnSearchQuery} onChange={e=>setDnSearchQuery(e.target.value)} /></div>
+                              <div className="p-2 border-b"><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={dnSearchQuery} onChange={e=>setDnSearchQuery(e.target.value)} /></div>
                               <ScrollArea className="h-60">
                                   {isSearchingDn ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>กำลังโหลด...</div> : 
-                                   allDeliveryNotes.filter(d => d.docNo.toLowerCase().includes(dnSearchQuery.toLowerCase())).map(d => (
+                                   getFilteredDocs(allDeliveryNotes, dnSearchQuery).map(d => (
                                       <Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(d)}>
-                                          <div className="flex flex-col"><span className="font-semibold">{d.docNo}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span></div>
+                                          <div className="flex flex-col"><span className="font-semibold">{d.docNo}</span><span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span></div>
                                       </Button>
                                   ))}
                               </ScrollArea>
