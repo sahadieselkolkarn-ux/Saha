@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, limit, getDoc, deleteField } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, limit, getDoc, deleteField, setDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
@@ -12,15 +12,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, ExternalLink } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { safeFormat } from '@/lib/date-utils';
 import type { Document, DocType } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface DocumentListProps {
   docType: DocType;
@@ -170,19 +170,16 @@ export function DocumentList({
     try {
       const docRef = doc(db, 'documents', docToAction.id);
       
-      // Update the document to cancelled
       await updateDoc(docRef, {
         status: 'CANCELLED',
         updatedAt: serverTimestamp()
       });
 
-      // If document is linked to an active job, revert job status to DONE
       if (docToAction.jobId) {
         const jobRef = doc(db, 'jobs', docToAction.jobId);
         const jobSnap = await getDoc(jobRef);
         if (jobSnap.exists()) {
           const jobData = jobSnap.data();
-          // Only revert if this doc was the one currently closing/linked to the job
           if (jobData.salesDocId === docToAction.id || !jobData.salesDocId) {
             await updateDoc(jobRef, {
               status: 'DONE',
@@ -192,10 +189,9 @@ export function DocumentList({
               lastActivityAt: serverTimestamp(),
             });
 
-            // Add activity to Job
             const activityRef = doc(collection(db, 'jobs', docToAction.jobId, 'activities'));
             await setDoc(activityRef, {
-              text: `ยกเลิกเอกสาร ${docToAction.docType} (${docToAction.docNo}): ย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล"`,
+              text: `ยกเลิกเอกสาร ${docToAction.docType} (${docToAction.docNo}): ย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล" (DONE)`,
               userName: profile?.displayName || 'System',
               userId: profile?.uid || 'system',
               createdAt: serverTimestamp(),
@@ -204,7 +200,7 @@ export function DocumentList({
         }
       }
 
-      toast({ title: "ยกเลิกเอกสารและอัปเดตใบงานสำเร็จ" });
+      toast({ title: "ยกเลิกเอกสารและย้อนสถานะใบงานสำเร็จ" });
     } catch (err: any) {
       toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: err.message });
     } finally {
@@ -238,7 +234,7 @@ export function DocumentList({
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
               <AlertDescription className="flex flex-col gap-2">
-                <span>ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับเอกสาร กรุณากดสร้างดัชนีตามลิงก์ด้านล่าง (ใช้เวลา 2-3 นาที)</span>
+                <span>ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับเอกสาร กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
                 <Button asChild variant="outline" size="sm" className="w-fit">
                   <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index ใน Firebase Console
@@ -251,22 +247,13 @@ export function DocumentList({
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="ค้นหาจากเลขที่, ชื่อลูกค้า, เบอร์โทร, ทะเบียนรถ, หรือรหัสงาน..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+              <Input placeholder="ค้นหาบิล, ชื่อลูกค้า, ทะเบียนรถ..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="กรองตามสถานะ..." />
-              </SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="กรองตามสถานะ..." /></SelectTrigger>
               <SelectContent>
                 {uniqueStatuses.map(status => (
-                    <SelectItem key={status} value={status}>
-                        {status === "ALL" ? "ทุกสถานะ" : docStatusLabel(status) || status}
-                    </SelectItem>
+                    <SelectItem key={status} value={status}>{status === "ALL" ? "ทุกสถานะ" : docStatusLabel(status) || status}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -274,116 +261,38 @@ export function DocumentList({
           
           {loading ? (
             <div className="flex justify-center items-center h-48"><Loader2 className="animate-spin h-8 w-8" /></div>
-          ) : error && !indexCreationUrl ? (
-            <div className="text-center text-destructive flex flex-col items-center gap-2 h-48 justify-center">
-              <AlertCircle />
-              <p>เกิดข้อผิดพลาดในการโหลดเอกสาร</p>
-              <p className="text-xs">{error.message}</p>
-            </div>
           ) : (
             <div className="border rounded-md">
               <TooltipProvider>
                 <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>เลขที่</TableHead>
-                      <TableHead>วันที่</TableHead>
-                      <TableHead>ลูกค้า</TableHead>
-                      <TableHead>สถานะ</TableHead>
-                      <TableHead className="text-right">ยอดสุทธิ</TableHead>
-                      <TableHead className="text-right w-[100px]">จัดการ</TableHead>
-                    </TableRow>
-                  </TableHeader>
+                  <TableHeader><TableRow><TableHead>เลขที่</TableHead><TableHead>วันที่</TableHead><TableHead>ลูกค้า</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">ยอดสุทธิ</TableHead><TableHead className="text-right w-[100px]">จัดการ</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
-                      const isOffice = baseContext === 'office';
-                      
-                      const viewPath = docItem.docType === 'DELIVERY_NOTE' 
-                        ? `/app/office/documents/delivery-note/${docItem.id}`
-                        : (docItem.docType === 'TAX_INVOICE'
-                            ? `/app/office/documents/tax-invoice/${docItem.id}`
-                            : (docItem.docType === 'QUOTATION' 
-                                ? `/app/office/documents/quotation/${docItem.id}` 
-                                : `/app/documents/${docItem.id}`));
-                      
-                      const hasOfficeEditRoute = ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docItem.docType);
-                      const editPath = isOffice && hasOfficeEditRoute
-                        ? (docItem.docType === 'QUOTATION'
-                          ? `/app/office/documents/quotation/new?editDocId=${docItem.id}`
-                          : `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`)
-                        : null;
-
                       const displayStatus = getDocDisplayStatus(docItem);
+                      const viewPath = docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : (docItem.docType === 'TAX_INVOICE' ? `/app/office/documents/tax-invoice/${docItem.id}` : `/app/documents/${docItem.id}`);
+                      const editPath = baseContext === 'office' && ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docItem.docType) ? `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}` : null;
 
                       return (
                       <TableRow key={docItem.id}>
                         <TableCell className="font-medium">{docItem.docNo}</TableCell>
                         <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
                         <TableCell>{docItem.customerSnapshot.name}</TableCell>
-                        <TableCell>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Badge variant={displayStatus.variant} className="cursor-help">
-                                {displayStatus.label}
-                              </Badge>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{displayStatus.description}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TableCell>
-                        <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell><Tooltip><TooltipTrigger asChild><Badge variant={displayStatus.variant} className="cursor-help">{displayStatus.label}</Badge></TooltipTrigger><TooltipContent><p>{displayStatus.description}</p></TooltipContent></Tooltip></TableCell>
+                        <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onSelect={() => router.push(viewPath)}>
-                                  <Eye className="mr-2 h-4 w-4"/>
-                                  ดูรายละเอียด
-                              </DropdownMenuItem>
-                              
-                              {editPath && (
-                                  docItem.status === 'PAID' ? (
-                                      <DropdownMenuItem disabled>
-                                          <Edit className="mr-2 h-4 w-4"/>
-                                          แก้ไขไม่ได้ (รับเงินแล้ว)
-                                      </DropdownMenuItem>
-                                  ) : (
-                                      <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'CANCELLED'}>
-                                          <Edit className="mr-2 h-4 w-4"/>
-                                          แก้ไข
-                                      </DropdownMenuItem>
-                                  )
-                              )}
-
-                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || docItem.status === 'PAID'}>
-                                <XCircle className="mr-2 h-4 w-4"/>
-                                ยกเลิก
-                              </DropdownMenuItem>
-                              {isUserAdmin && (
-                                <DropdownMenuItem
-                                  onSelect={(e) => { e.preventDefault(); handleDeleteRequest(docItem); }}
-                                  className="text-destructive focus:text-destructive"
-                                  disabled={docItem.status === 'PAID'}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  ลบ
-                                </DropdownMenuItem>
-                              )}
+                              <DropdownMenuItem onSelect={() => router.push(viewPath)}><Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด</DropdownMenuItem>
+                              {editPath && <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'PAID' && !isUserAdmin}> <Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>}
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || (docItem.status === 'PAID' && !isUserAdmin)}> <XCircle className="mr-2 h-4 w-4"/> ยกเลิก</DropdownMenuItem>
+                              {isUserAdmin && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteRequest(docItem); }} className="text-destructive focus:text-destructive"> <Trash2 className="mr-2 h-4 w-4" /> ลบ</DropdownMenuItem>}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     )}) : (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center h-24">
-                          {searchTerm ? "ไม่พบเอกสารที่ตรงกับคำค้นหา" : "ไม่พบเอกสาร"}
-                        </TableCell>
-                      </TableRow>
+                      <TableRow><TableCell colSpan={6} className="text-center h-24">{searchTerm ? "ไม่พบเอกสารที่ตรงกับคำค้นหา" : "ไม่พบเอกสาร"}</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -394,16 +303,10 @@ export function DocumentList({
          {totalPages > 1 && (
           <CardFooter>
             <div className="flex w-full justify-between items-center">
-              <span className="text-sm text-muted-foreground">
-                หน้า {currentPage + 1} จาก {totalPages}
-              </span>
+              <span className="text-sm text-muted-foreground">หน้า {currentPage + 1} จาก {totalPages}</span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}>
-                  <ChevronLeft className="h-4 w-4" /> ก่อนหน้า
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage >= totalPages - 1}>
-                  ถัดไป <ChevronRight className="h-4 w-4" />
-                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}><ChevronLeft className="h-4 w-4" /> ก่อนหน้า</Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage >= totalPages - 1}>ถัดไป <ChevronRight className="h-4 w-4" /></Button>
               </div>
             </div>
           </CardFooter>
@@ -413,33 +316,22 @@ export function DocumentList({
       <AlertDialog open={isCancelAlertOpen} onOpenChange={setIsCancelAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการยกเลิก</AlertDialogTitle>
-            <AlertDialogDescription>
-              คุณต้องการยกเลิกเอกสารเลขที่ {docToAction?.docNo} ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้ และหากเป็นบิลของงานซ่อม สถานะใบงานจะถูกย้อนกลับเพื่อให้ท่านออกบิลใหม่ได้
-            </AlertDialogDescription>
+            <AlertDialogTitle>ยืนยันการยกเลิกเอกสาร</AlertDialogTitle>
+            <AlertDialogDescription>การยกเลิกนี้จะย้อนสถานะใบงานกลับไปเป็น "งานเสร็จรอทำบิล" เพื่อให้ออกบิลใหม่ได้ คุณต้องการดำเนินการต่อหรือไม่?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCancel} disabled={isActionLoading}>
-              {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการยกเลิก'}
-            </AlertDialogAction>
+            <AlertDialogAction onClick={confirmCancel} disabled={isActionLoading}>{isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการยกเลิก'}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
-            <AlertDialogDescription>
-              คุณต้องการลบเอกสารเลขที่ {docToAction?.docNo} ใช่หรือไม่? การกระทำนี้จะลบข้อมูลอย่างถาวร
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle><AlertDialogDescription>คุณต้องการลบเอกสารนี้อย่างถาวรใช่หรือไม่?</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} disabled={isActionLoading}>
-              {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการลบ'}
-            </AlertDialogAction>
+            <AlertDialogAction onClick={confirmDelete} disabled={isActionLoading}>{isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการลบ'}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

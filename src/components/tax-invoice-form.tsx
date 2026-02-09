@@ -159,7 +159,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     },
   });
 
-  const currentJobId = form.watch('jobId');
   const selectedCustomerId = form.watch('customerId');
   const watchedPaymentTerms = form.watch('paymentTerms');
   
@@ -169,7 +168,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   }, [db, selectedCustomerId]);
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
   
-  const isLocked = isEditing && docToEdit?.status === 'PAID';
+  const isLocked = isEditing && docToEdit?.status === 'PAID' && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
 
   useEffect(() => {
     if (!db) return;
@@ -286,7 +285,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       return;
     }
   
-    // Pull the data into the form first
     replace(itemsFromDoc);
     if (sourceDoc.docType === 'QUOTATION') {
         setReferencedQuotationId(sourceDoc.id);
@@ -298,7 +296,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
     form.trigger(['items', 'discountAmount', 'isVat', 'customerId']);
 
-    // Check if it needs special linking confirmation
     if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
         setSelectedLinkDoc(sourceDoc);
         setShowLinkConfirm(true);
@@ -731,7 +728,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                       <TabsTrigger value="DELIVERY_NOTE" className="flex-1 text-[10px]">ใบส่งของชั่วคราว</TabsTrigger>
                                       <TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับภาษี</TabsTrigger>
                                   </TabsList>
-                                  <div className="p-2 border-b"><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} autoFocus /></div>
+                                  <div className="p-2 border-b"><div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} className="pl-8" autoFocus /></div></div>
                                   <ScrollArea className="h-60">
                                       {isSearchingBills ? (<div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>) : 
                                        getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (
@@ -747,17 +744,10 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
               </CardHeader>
               <CardContent>
                   <Table>
-                      <TableHeader><TableRow><TableHead className="w-12">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="text-right">ยอดรวม</TableHead><TableHead/></TableRow></TableHeader>
+                      <TableHeader><TableRow><TableHead className="w-12 text-center">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="text-right">ยอดรวม</TableHead><TableHead/></TableRow></TableHeader>
                       <TableBody>
                           {fields.map((field, index) => (
-                              <TableRow key={field.id}>
-                                  <TableCell>{index + 1}</TableCell>
-                                  <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="ชื่อรายการสินค้าหรือบริการ" disabled={isLocked}/>)}/></TableCell>
-                                  <TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => ( <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`), { shouldValidate: true }); }} disabled={isLocked} /> )}/></TableCell>
-                                  <TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => ( <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`), { shouldValidate: true }); }} disabled={isLocked} /> )}/></TableCell>
-                                  <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
-                                  <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
-                              </TableRow>
+                              <TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="ชื่อรายการสินค้าหรือบริการ" disabled={isLocked}/>)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`), { shouldValidate: true }); }} disabled={isLocked} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`), { shouldValidate: true }); }} disabled={isLocked} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>
                           ))}
                       </TableBody>
                   </Table>

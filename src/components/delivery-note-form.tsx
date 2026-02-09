@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch, limit, Timestamp } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch, limit, Timestamp, getDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -172,7 +172,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
   
-  const isLocked = isEditing && docToEdit?.status === 'PAID';
+  const isLocked = isEditing && docToEdit?.status === 'PAID' && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
 
   useEffect(() => {
     if (!db) return;
@@ -249,6 +249,16 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       return name.includes(q) || phone.includes(q);
     });
   }, [customers, customerSearch]);
+
+  const filteredJobs = useMemo(() => {
+    const q = jobSearch.toLowerCase().trim();
+    if (!q) return jobsReadyToBill;
+    return jobsReadyToBill.filter(j => 
+        j.customerSnapshot.name.toLowerCase().includes(q) ||
+        j.customerSnapshot.phone.includes(q) ||
+        j.description.toLowerCase().includes(q)
+    );
+  }, [jobsReadyToBill, jobSearch]);
 
   const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
@@ -730,11 +740,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                     ) : getFilteredDocs(allQuotations, qtSearchQuery).length > 0 ? (
                                         getFilteredDocs(allQuotations, qtSearchQuery).map(q => (
                                             <Button key={q.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(q)}>
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold">{q.docNo}</span>
-                                                    <span className="text-[10px] text-muted-foreground">{q.customerSnapshot?.name} • {q.customerSnapshot?.phone}</span>
-                                                    <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span>
-                                                </div>
+                                                <div className="flex flex-col"><span className="font-semibold">{q.docNo}</span><span className="text-[10px] text-muted-foreground">{q.customerSnapshot?.name} • {q.customerSnapshot?.phone}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(q.docDate), 'dd/MM/yy')} • ฿{formatCurrency(q.grandTotal)}</span></div>
                                             </Button>
                                         ))
                                     ) : (<p className="p-4 text-center text-sm text-muted-foreground">ไม่พบใบเสนอราคา</p>)}
@@ -755,21 +761,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                         <TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับภาษี</TabsTrigger>
                                     </TabsList>
                                     <div className="p-2 border-b">
-                                        <Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} autoFocus />
+                                        <div className="relative"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} className="pl-8" autoFocus /></div>
                                     </div>
                                     <ScrollArea className="h-60">
                                         {isSearchingBills ? (
                                             <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>
                                         ) : getFilteredDocs(allBills, billSearchQuery, billSearchType).length > 0 ? (
                                             getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (
-                                                <Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(d)}>
-                                                    <div className="flex flex-col">
-                                                        <span className="font-semibold">{d.docNo}</span>
-                                                        <span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span>
-                                                        <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
-                                                        <div className="mt-1"><Badge variant="outline" className="text-[8px] uppercase">{d.status}</Badge></div>
-                                                    </div>
-                                                </Button>
+                                                <Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(d)}><div className="flex flex-col"><span className="font-semibold">{d.docNo}</span><span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span><div className="mt-1"><Badge variant="outline" className="text-[8px] uppercase">{d.status}</Badge></div></div></Button>
                                             ))
                                         ) : (<p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>)}
                                     </ScrollArea>
@@ -784,30 +783,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                             <TableHeader><TableRow><TableHead className="w-12 text-center">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"/></TableRow></TableHeader>
                             <TableBody>
                                 {fields.map((field, index) => (
-                                    <TableRow key={field.id}>
-                                        <TableCell className="text-center">{index + 1}</TableCell>
-                                        <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} disabled={isLocked} />)}/></TableCell>
-                                        <TableCell>
-                                            <FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (
-                                                <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => {
-                                                    const v = e.target.value === '' ? 0 : Number(e.target.value);
-                                                    field.onChange(v);
-                                                    form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`), { shouldValidate: true });
-                                                }} disabled={isLocked} />
-                                            )}/>
-                                        </TableCell>
-                                        <TableCell>
-                                            <FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (
-                                                <Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => {
-                                                    const v = e.target.value === '' ? 0 : Number(e.target.value);
-                                                    field.onChange(v);
-                                                    form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`), { shouldValidate: true });
-                                                }} disabled={isLocked} />
-                                            )}/>
-                                        </TableCell>
-                                        <TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell>
-                                        <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell>
-                                    </TableRow>
+                                    <TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} disabled={isLocked} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`), { shouldValidate: true }); }} disabled={isLocked} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`), { shouldValidate: true }); }} disabled={isLocked} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>
                                 ))}
                             </TableBody>
                         </Table>

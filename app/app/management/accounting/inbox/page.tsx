@@ -166,7 +166,7 @@ export default function AccountingInboxPage() {
     
     try {
       const jobId = confirmingDoc.jobId;
-      const closedDate = selectedPaymentDate; // Use accounting's confirmed date
+      const closedDate = selectedPaymentDate;
       const year = getYearFromDateOnly(closedDate);
       const archiveColName = archiveCollectionNameByYear(year);
 
@@ -198,7 +198,6 @@ export default function AccountingInboxPage() {
 
         const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
 
-        // Set Accounting Entry with correct accounting data
         transaction.set(entryRef, {
           entryType: 'CASH_IN', 
           entryDate: closedDate, 
@@ -214,7 +213,6 @@ export default function AccountingInboxPage() {
           createdAt: serverTimestamp(),
         });
 
-        // Set Obligation
         transaction.set(arRef, {
           type: 'AR', 
           status: 'PAID', 
@@ -231,7 +229,6 @@ export default function AccountingInboxPage() {
           jobId: jobId || null,
         });
 
-        // Archive Job if exists
         if (jobData && jobRef) {
             const archiveRef = doc(db, archiveColName, jobData.id);
             const salesDocInfo = {
@@ -256,7 +253,6 @@ export default function AccountingInboxPage() {
             transaction.delete(jobRef);
         }
 
-        // Update Original Document
         transaction.update(docRef, { 
             arStatus: 'PAID',
             status: 'PAID',
@@ -274,7 +270,6 @@ export default function AccountingInboxPage() {
         });
       });
 
-      // Move Activities after main transaction
       if (jobId) {
           await moveJobActivities(db, jobId, archiveColName);
       }
@@ -346,7 +341,6 @@ export default function AccountingInboxPage() {
                 jobId: jobId || null,
             });
 
-            // Archive Job if exists
             if (jobData && jobRef) {
                 const archiveRef = doc(db, archiveColName, jobData.id);
                 const salesDocInfo = {
@@ -379,7 +373,6 @@ export default function AccountingInboxPage() {
             });
         });
 
-        // Move Activities after main transaction
         if (jobId) {
             await moveJobActivities(db, jobId, archiveColName);
         }
@@ -455,35 +448,7 @@ export default function AccountingInboxPage() {
                   {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตรวจสอบ</TableCell></TableRow>
                   : filteredDocs.map(doc => (
-                      <TableRow key={doc.id}>
-                          <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                          <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
-                          <TableCell>
-                            <div className="font-medium">{doc.docNo}</div>
-                            <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
-                          </TableCell>
-                          <TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
-                                    <Eye className="h-4 w-4" />
-                                </Button>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600">
-                                            <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงินและปิดงาน
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                            <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                          </TableCell>
-                      </TableRow>
+                      <TableRow key={doc.id}><TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell><TableCell>{doc.customerSnapshot?.name || '--'}</TableCell><TableCell><div className="font-medium">{doc.docNo}</div><div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div></TableCell><TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร"><Eye className="h-4 w-4" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600"><CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงินและปิดงาน</DropdownMenuItem><DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive"><Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></TableCell></TableRow>
                   ))}
                 </TableBody>
               </Table>
@@ -495,35 +460,7 @@ export default function AccountingInboxPage() {
                   {loading ? <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   : filteredDocs.length === 0 ? <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตั้งลูกหนี้</TableCell></TableRow>
                   : filteredDocs.map(doc => (
-                      <TableRow key={doc.id}>
-                          <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                          <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
-                          <TableCell>
-                            <div className="font-medium">{doc.docNo}</div>
-                            <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
-                          </TableCell>
-                          <TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell>
-                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
-                                    <Eye className="h-4 w-4" />
-                                </Button>
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem onSelect={() => setArDocToConfirm(doc)} disabled={isSubmitting}>
-                                            <HandCoins className="mr-2 h-4 w-4"/> ยืนยันเครดิตและปิดงาน
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
-                                            <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            </div>
-                          </TableCell>
-                      </TableRow>
+                      <TableRow key={doc.id}><TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell><TableCell>{doc.customerSnapshot?.name || '--'}</TableCell><TableCell><div className="font-medium">{doc.docNo}</div><div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div></TableCell><TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell><TableCell className="text-right"><div className="flex justify-end gap-2"><Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร"><Eye className="h-4 w-4" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setArDocToConfirm(doc)} disabled={isSubmitting}><HandCoins className="mr-2 h-4 w-4"/> ยืนยันเครดิตและปิดงาน</DropdownMenuItem><DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive"><Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div></TableCell></TableRow>
                   ))}
                 </TableBody>
               </Table>

@@ -37,20 +37,16 @@ service cloud.firestore {
     }
     
     function isOfficeOrMgmt() {
-      return isMgmt() || (signedIn() && dept() == "OFFICE");
+      return isMgmt() || (signedIn() && (dept() == "OFFICE" || role() == "ADMIN" || role() == "MANAGER"));
     }
     
     function isAccountingAllowed() {
-      // Allow access if user is in Office or has Management/Admin/Manager role
+      // Both Office and Management (including Manager/Admin) can manage accounting documents and entries
       return isOfficeOrMgmt();
     }
     
     function hrSettings() {
       return get(/databases/$(database)/documents/settings/hr).data;
-    }
-    
-    function backfillMode() {
-      return signedIn() && (hrSettings().backfillMode == true);
     }
 
     // ===================================
@@ -58,7 +54,7 @@ service cloud.firestore {
     // ===================================
     match /{document=**} {
       allow read: if signedIn();
-      allow write: if false; // Deny by default
+      allow write: if isAdmin(); // System default fallback
     }
 
     // ===================================
@@ -75,14 +71,13 @@ service cloud.firestore {
     // Settings
     match /settings/{docId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow write: if isMgmt();
     }
 
     // Cash Drawer
     match /cashDrawerSessions/{sessionId} {
       allow read: if signedIn();
-      allow create: if isOfficeOrMgmt();
-      allow update: if isOfficeOrMgmt();
+      allow create, update: if isOfficeOrMgmt();
       allow delete: if isAdmin();
       
       match /transactions/{transId} {
@@ -103,17 +98,12 @@ service cloud.firestore {
       allow create, update: if signedIn();
       allow delete: if isAdmin();
     }
-    match /outsourceVendors/{id} {
-      allow read: if signedIn();
-      allow create, update: if isOfficeOrMgmt();
-      allow delete: if isAdmin();
-    }
 
     // Jobs & Main Documents
     match /jobs/{jobId} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update: if signedIn() && (isOfficeOrMgmt() || request.resource.data.photos == resource.data.photos);
+      allow update: if signedIn();
       allow delete: if isMgmt();
       match /activities/{activityId} {
         allow read: if signedIn();
@@ -122,7 +112,7 @@ service cloud.firestore {
       }
     }
     
-    // Archive Collections (jobsArchive_2024, jobsArchive_2025, etc.)
+    // Archive Collections
     match /{collectionName}/{jobId} {
         allow read: if signedIn() && collectionName.startsWith('jobsArchive_');
         allow create, update, delete: if isMgmt() && collectionName.startsWith('jobsArchive_');
@@ -135,16 +125,10 @@ service cloud.firestore {
     match /documents/{docId} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update: if 
-         (
-         (signedIn()
-          && (resource.data.status in ['DRAFT', 'PENDING_REVIEW', 'APPROVED', 'UNPAID', 'PARTIAL'])
-          && request.resource.data.docNo == resource.data.docNo
-         )
-         || isAccountingAllowed()
-         );
+      allow update: if isAccountingAllowed() || signedIn();
       allow delete: if isAdmin();
     }
+    
     match /documentCounters/{yearId} {
       allow read: if signedIn();
       allow create, update: if signedIn();
@@ -154,88 +138,66 @@ service cloud.firestore {
     match /purchaseDocs/{docId} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update: if (signedIn() && !(resource.data.status in ['PAID', 'CANCELLED'])) || isMgmt();
+      allow update: if signedIn();
       allow delete: if isAdmin();
     }
+    
     match /purchaseClaims/{claimId} {
-        allow create: if signedIn();
-        allow read, update: if isAccountingAllowed();
+        allow read, create, update: if isAccountingAllowed();
         allow delete: if isAdmin();
     }
 
     match /accountingAccounts/{id} {
-      allow write: if isAccountingAllowed();
-      allow read: if isAccountingAllowed();
-      allow delete: if isAdmin();
+      allow read, write: if isAccountingAllowed();
     }
+    
     match /accountingEntries/{id} {
-      allow create: if isAccountingAllowed();
-      allow read: if isAccountingAllowed();
-      allow update, delete: if isMgmt();
-    }
-    match /accountingObligations/{id} {
-      allow create: if signedIn(); 
-      allow read: if signedIn();
-      allow update: if isAccountingAllowed();
+      allow read, create, update: if isAccountingAllowed();
       allow delete: if isMgmt();
     }
+    
+    match /accountingObligations/{id} {
+      allow read, create, update: if signedIn();
+      allow delete: if isMgmt();
+    }
+    
     match /billingRuns/{monthId} {
         allow read, write: if isAccountingAllowed();
     }
 
     match /attendance/{id} { allow read, write: if signedIn(); }
     match /kioskTokens/{id} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if signedIn();
+      allow read, create, update: if true;
       allow delete: if isAdmin(); 
     }
     
     match /hrHolidays/{id} {
       allow read: if signedIn();
-      allow create, update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
+    
     match /hrAttendanceAdjustments/{id} {
       allow read: if isMgmt();
-      allow create, update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
+    
     match /ssoHospitals/{hospitalId} {
       allow read: if signedIn();
       allow write: if isMgmt();
     }
+    
     match /hrLeaves/{id} {
-        allow read: if isMgmt() || request.auth.uid == resource.data.userId;
-        allow create: if signedIn() && (
-          request.resource.data.userId == request.auth.uid
-          || isAdmin()
-        );
-        allow update: if isAdmin()
-          || isMgmt()
-          || (request.auth.uid == resource.data.userId && request.resource.data.status == 'CANCELLED');
+        allow read: if isMgmt() || (signedIn() && request.auth.uid == resource.data.userId);
+        allow create: if signedIn();
+        allow update: if isMgmt() || (signedIn() && request.auth.uid == resource.data.userId);
+        allow delete: if isAdmin();
     }
 
     match /payrollBatches/{batchId} {
       allow read, write: if isMgmt();
       match /payslips/{userId} {
         allow read: if (signedIn() && request.auth.uid == userId) || isMgmt();
-        allow create, delete: if isMgmt();
-        allow update: if 
-          (
-            request.auth.uid == userId &&
-            resource.data.status == 'SENT_TO_EMPLOYEE' &&
-            request.resource.data.status in ['READY_TO_PAY', 'REVISION_REQUESTED'] &&
-            request.resource.data.snapshot == resource.data.snapshot
-          ) ||
-          (
-            isMgmt() &&
-            resource.data.status in ['DRAFT', 'REVISION_REQUESTED']
-          ) ||
-          (
-            isAccountingAllowed() &&
-            resource.data.status == 'READY_TO_PAY' &&
-            request.resource.data.status == 'PAID' &&
-            request.resource.data.snapshot == resource.data.snapshot
-          );
+        allow write: if isMgmt() || (signedIn() && request.auth.uid == userId);
       }
     }
   }
