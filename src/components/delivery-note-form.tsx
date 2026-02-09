@@ -335,7 +335,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   };
 
   const handleConfirmLinkDoc = async () => {
-    const activeJobId = jobId || currentJobId;
+    // Explicitly check for job ID from props first, then form state
+    const activeJobId = jobId || form.getValues('jobId');
+    
     if (!db || !profile || !selectedLinkDoc || !activeJobId) {
         toast({ variant: 'destructive', title: 'ไม่สามารถเชื่อมโยงได้', description: 'ต้องระบุงานซ่อมที่ต้องการเชื่อมโยงก่อน' });
         return;
@@ -351,7 +353,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         } as any;
 
         if (selectedLinkDoc.status === 'PAID') {
-            // This now atomically updates the document's jobId inside the transaction
             await archiveAndCloseJob(db, activeJobId, selectedLinkDoc.docDate, profile, salesDocInfo);
             toast({ title: 'เชื่อมโยงบิลและปิดงานสำเร็จ' });
         } else {
@@ -365,7 +366,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 status: 'WAITING_CUSTOMER_PICKUP',
                 lastActivityAt: serverTimestamp(),
             });
-            // Link the document to this job
+            // Link the document to this job explicitly
             batch.update(docRef, {
                 jobId: activeJobId,
                 updatedAt: serverTimestamp()
@@ -414,8 +415,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             items.sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt));
             setAllQuotations(items);
         } else {
-            const qDn = query(collection(db, "documents"), where("docType", "==", "DELIVERY_NOTE"), limit(500));
-            const qTi = query(collection(db, "documents"), where("docType", "==", "TAX_INVOICE"), limit(500));
+            const qDn = query(collection(db, "documents"), where("docType", "==", "DELIVERY_NOTE"), limit(1000));
+            const qTi = query(collection(db, "documents"), where("docType", "==", "TAX_INVOICE"), limit(1000));
             const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
             const bills = [
                 ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
@@ -647,7 +648,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                       </Button>
                                   </FormControl>
                                   </PopoverTrigger>
-                                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                                       <div className="p-2 border-b">
                                           <Input placeholder="ค้นหาชื่อ หรือเบอร์โทร..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                       </div>
@@ -887,7 +888,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               <AlertDialogFooter>
                   <AlertDialogCancel onClick={() => { setSelectedLinkDoc(null); }}>ยกเลิก</AlertDialogCancel>
                   <AlertDialogAction onClick={handleConfirmLinkDoc} disabled={isSubmitting}>
-                      {isSubmitting && <Loader2 className="mr-2 animate-spin"/>} ใช่, เชื่อมโยงและดำเนินการต่อ
+                      {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>} ใช่, เชื่อมโยงและดำเนินการต่อ
                   </AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
