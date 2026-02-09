@@ -47,6 +47,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { archiveAndCloseJob } from "@/firebase/jobs-archive";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface JobListProps {
   department?: JobDepartment;
@@ -139,6 +140,7 @@ export function JobList({
   const [pickupDate, setPickupDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentNotes, setPaymentNotes] = useState('');
   
+  // State for outsourcing
   const [outsourcingJob, setOutsourcingJob] = useState<Job | null>(null);
   const [outsourceVendors, setOutsourceVendors] = useState<{id: string, name: string}[]>([]);
   const [isFetchingVendors, setIsFetchingVendors] = useState(false);
