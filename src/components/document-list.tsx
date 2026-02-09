@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, limit, getDoc, deleteField } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/auth-context";
@@ -169,11 +169,42 @@ export function DocumentList({
     setIsActionLoading(true);
     try {
       const docRef = doc(db, 'documents', docToAction.id);
+      
+      // Update the document to cancelled
       await updateDoc(docRef, {
         status: 'CANCELLED',
         updatedAt: serverTimestamp()
       });
-      toast({ title: "ยกเลิกเอกสารสำเร็จ" });
+
+      // If document is linked to an active job, revert job status to DONE
+      if (docToAction.jobId) {
+        const jobRef = doc(db, 'jobs', docToAction.jobId);
+        const jobSnap = await getDoc(jobRef);
+        if (jobSnap.exists()) {
+          const jobData = jobSnap.data();
+          // Only revert if this doc was the one currently closing/linked to the job
+          if (jobData.salesDocId === docToAction.id || !jobData.salesDocId) {
+            await updateDoc(jobRef, {
+              status: 'DONE',
+              salesDocId: deleteField(),
+              salesDocNo: deleteField(),
+              salesDocType: deleteField(),
+              lastActivityAt: serverTimestamp(),
+            });
+
+            // Add activity to Job
+            const activityRef = doc(collection(db, 'jobs', docToAction.jobId, 'activities'));
+            await setDoc(activityRef, {
+              text: `ยกเลิกเอกสาร ${docToAction.docType} (${docToAction.docNo}): ย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล"`,
+              userName: profile?.displayName || 'System',
+              userId: profile?.uid || 'system',
+              createdAt: serverTimestamp(),
+            });
+          }
+        }
+      }
+
+      toast({ title: "ยกเลิกเอกสารและอัปเดตใบงานสำเร็จ" });
     } catch (err: any) {
       toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: err.message });
     } finally {
@@ -384,7 +415,7 @@ export function DocumentList({
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการยกเลิก</AlertDialogTitle>
             <AlertDialogDescription>
-              คุณต้องการยกเลิกเอกสารเลขที่ {docToAction?.docNo} ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้
+              คุณต้องการยกเลิกเอกสารเลขที่ {docToAction?.docNo} ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้ และหากเป็นบิลของงานซ่อม สถานะใบงานจะถูกย้อนกลับเพื่อให้ท่านออกบิลใหม่ได้
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
