@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { ScrollArea } from "./ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -290,7 +290,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
     
-    // Cross job linking
     if (jobId && sourceDoc.jobId !== jobId && db && profile) {
         try {
             const batch = writeBatch(db);
@@ -318,27 +317,25 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingBills(true);
     
     try {
-        let q;
         if (type === 'QUOTATION') {
-            q = query(
+            const q = query(
                 collection(db, "documents"),
                 where("docType", "==", "QUOTATION"),
-                orderBy("createdAt", "desc"),
                 limit(100)
             );
             const snap = await getDocs(q);
-            setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED'));
+            const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
+            items.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            setAllQuotations(items);
         } else {
             const qDn = query(
                 collection(db, "documents"),
                 where("docType", "==", "DELIVERY_NOTE"),
-                orderBy("createdAt", "desc"),
                 limit(100)
             );
             const qTi = query(
                 collection(db, "documents"),
                 where("docType", "==", "TAX_INVOICE"),
-                orderBy("createdAt", "desc"),
                 limit(100)
             );
             const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);

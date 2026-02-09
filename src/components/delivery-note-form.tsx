@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { ScrollArea } from "./ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -301,7 +301,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
     
-    // Cross job linking log
     if (currentJobId && sourceDoc.jobId !== currentJobId && db && profile) {
         try {
             const batch = writeBatch(db);
@@ -329,27 +328,25 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingBills(true);
     
     try {
-        let q;
         if (type === 'QUOTATION') {
-            q = query(
+            const q = query(
                 collection(db, "documents"),
                 where("docType", "==", "QUOTATION"),
-                orderBy("createdAt", "desc"),
                 limit(100)
             );
             const snap = await getDocs(q);
-            setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED'));
+            const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
+            items.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            setAllQuotations(items);
         } else {
             const qDn = query(
                 collection(db, "documents"),
                 where("docType", "==", "DELIVERY_NOTE"),
-                orderBy("createdAt", "desc"),
                 limit(100)
             );
             const qTi = query(
                 collection(db, "documents"),
                 where("docType", "==", "TAX_INVOICE"),
-                orderBy("createdAt", "desc"),
                 limit(100)
             );
             const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
@@ -680,7 +677,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 <CardHeader className="flex flex-row items-center gap-4 py-3">
                     <CardTitle className="text-base whitespace-nowrap">3. รายการสินค้า/บริการ</CardTitle>
                     <div className="flex gap-2">
-                        {/* Quotation Search Button */}
                         <Popover open={isQtSearchOpen} onOpenChange={setIsQtSearchOpen}>
                             <PopoverTrigger asChild>
                                 <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('QUOTATION')} disabled={isLocked}>
@@ -721,7 +717,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                             </PopoverContent>
                         </Popover>
 
-                        {/* Consolidated Bill Search Button */}
                         <Popover open={isBillSearchOpen} onOpenChange={setIsBillSearchOpen}>
                             <PopoverTrigger asChild>
                                 <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('BILLS')} disabled={isLocked}>
