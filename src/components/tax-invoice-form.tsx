@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -113,7 +113,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [existingDn, setExistingDn] = useState<DocumentType | null>(null);
-  const [showDnCancelDialog, setShowDnCancelDialog] = useState(false);
+  const [setShowDnCancelDialog, setSetShowDnCancelDialog] = useState(false);
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
@@ -269,12 +269,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
-    if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
-        setSelectedLinkDoc(sourceDoc);
-        setShowLinkConfirm(true);
-        return;
-    }
-
     const itemsFromDoc = (sourceDoc.items || []).map((item: any) => {
       const qty = Number(item.quantity ?? 1);
       const price = Number(item.unitPrice ?? 0);
@@ -292,6 +286,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       return;
     }
   
+    // Pull the data into the form first
     replace(itemsFromDoc);
     if (sourceDoc.docType === 'QUOTATION') {
         setReferencedQuotationId(sourceDoc.id);
@@ -301,24 +296,15 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     form.setValue('isVat', true, { shouldDirty: true, shouldValidate: true });
     form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
-    
-    if (jobId && sourceDoc.jobId !== jobId && db && profile) {
-        try {
-            const batch = writeBatch(db);
-            const activityRef = doc(collection(db, 'jobs', jobId, 'activities'));
-            batch.set(activityRef, {
-                text: `ดึงข้อมูลจากเอกสารอื่น (${sourceDoc.docType}): ${sourceDoc.docNo}`,
-                userName: profile.displayName,
-                userId: profile.uid,
-                createdAt: serverTimestamp(),
-            });
-            await batch.commit();
-        } catch (e) {
-            console.error("Link error", e);
-        }
+    form.trigger(['items', 'discountAmount', 'isVat', 'customerId']);
+
+    // Check if it needs special linking confirmation
+    if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
+        setSelectedLinkDoc(sourceDoc);
+        setShowLinkConfirm(true);
+        return;
     }
   
-    form.trigger(['items', 'discountAmount', 'isVat', 'customerId']);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงจาก ${sourceDoc.docType} เลขที่ ${sourceDoc.docNo}` });
     setIsQtSearchOpen(false);
     setIsBillSearchOpen(false);
@@ -354,7 +340,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 status: 'WAITING_CUSTOMER_PICKUP',
                 lastActivityAt: serverTimestamp(),
             });
-            // Link the document to this job explicitly
             batch.update(docRef, {
                 jobId: activeJobId,
                 updatedAt: serverTimestamp()
@@ -522,7 +507,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             
             if (activeDn) {
                 setExistingDn({ id: activeDn.id, ...activeDn.data() } as DocumentType);
-                setShowDnCancelDialog(true);
+                setSetShowDnCancelDialog(true);
                 return;
             }
         }
@@ -543,7 +528,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             notes: (existingDn.notes || "") + "\n[System] ยกเลิกเพื่อออกใบกำกับภาษีแทน",
         });
         toast({ title: "ยกเลิกใบส่งของชั่วคราวเดิมเรียบร้อย" });
-        setShowDnCancelDialog(false);
+        setSetShowDnCancelDialog(false);
         setShowReviewConfirm(true);
     } catch(e: any) {
         toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: "เกิดข้อผิดพลาด" });
@@ -565,7 +550,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     return filtered.filter(d => 
         d.docNo.toLowerCase().includes(q) ||
         (d.customerSnapshot?.name || "").toLowerCase().includes(q) ||
-        (d.customerSnapshot?.phone || "").includes(q)
+        (d.customerSnapshot?.phone || "").toLowerCase().includes(q)
     );
   };
 
@@ -810,14 +795,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         </form>
       </Form>
 
-      <AlertDialog open={showDnCancelDialog} onOpenChange={setShowDnCancelDialog}>
+      <AlertDialog open={setShowDnCancelDialog} onOpenChange={setSetShowDnCancelDialog}>
           <AlertDialogContent>
               <AlertDialogHeader>
                   <AlertDialogTitle>พบใบส่งของชั่วคราวเดิม</AlertDialogTitle>
                   <AlertDialogDescription>งานซ่อมนี้มีใบส่งของชั่วคราวเลขที่ <span className="font-bold">{existingDn?.docNo}</span> อยู่แล้ว ต้องการยกเลิกใบเดิมเพื่อใช้ใบกำกับภาษีนี้แทนหรือไม่?</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                  <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); setShowReviewConfirm(true); }}>ไม่ยกเลิก (ออกคู่กัน)</Button>
+                  <Button variant="secondary" onClick={() => { setSetShowDnCancelDialog(false); setShowReviewConfirm(true); }}>ไม่ยกเลิก (ออกคู่กัน)</Button>
                   <AlertDialogAction onClick={handleConfirmCancelAndSave} className="bg-destructive hover:bg-destructive/90">ยกเลิกใบเดิมและไปต่อ</AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>

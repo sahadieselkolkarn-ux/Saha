@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch, limit } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, writeBatch, limit, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -236,7 +236,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     if (profile) {
         form.setValue('senderName', profile.displayName || '');
     }
-  }, [job, docToEdit, profile, form, jobId]);
+  }, [job, docToEdit, profile, form, jobId, customers]);
 
   const filteredCustomers = useMemo(() => {
     const list = Array.isArray(customers) ? customers : [];
@@ -250,16 +250,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     });
   }, [customers, customerSearch]);
 
-  const filteredJobs = useMemo(() => {
-    const q = jobSearch.trim().toLowerCase();
-    if (!q) return jobsReadyToBill;
-    return jobsReadyToBill.filter(j => 
-        j.customerSnapshot.name.toLowerCase().includes(q) ||
-        j.customerSnapshot.phone.includes(q) ||
-        j.description.toLowerCase().includes(q)
-    );
-  }, [jobsReadyToBill, jobSearch]);
-  
   const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "items",
@@ -280,12 +270,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   }, [watchedItems, watchedDiscount, form]);
 
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
-    if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
-        setSelectedLinkDoc(sourceDoc);
-        setShowLinkConfirm(true);
-        return;
-    }
-
     const itemsFromDoc = (sourceDoc.items || []).map((item: any) => {
       const qty = Number(item.quantity ?? 1);
       const price = Number(item.unitPrice ?? 0);
@@ -303,6 +287,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       return;
     }
   
+    // Pull the data into the form first
     replace(itemsFromDoc);
     if (sourceDoc.docType === 'QUOTATION') {
         setReferencedQuotationId(sourceDoc.id);
@@ -311,31 +296,21 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     form.setValue('discountAmount', Number(sourceDoc.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
     form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
-    
-    if (currentJobId && sourceDoc.jobId !== currentJobId && db && profile) {
-        try {
-            const batch = writeBatch(db);
-            const activityRef = doc(collection(db, 'jobs', currentJobId, 'activities'));
-            batch.set(activityRef, {
-                text: `ดึงข้อมูลจากเอกสารอื่น (${sourceDoc.docType}): ${sourceDoc.docNo}`,
-                userName: profile.displayName,
-                userId: profile.uid,
-                createdAt: serverTimestamp(),
-            });
-            await batch.commit();
-        } catch (e) {
-            console.error("Link error", e);
-        }
+    form.trigger(['items', 'discountAmount', 'customerId']);
+
+    // Check if it needs special linking confirmation
+    if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
+        setSelectedLinkDoc(sourceDoc);
+        setShowLinkConfirm(true);
+        return;
     }
   
-    form.trigger(['items', 'discountAmount', 'customerId']);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงจาก ${sourceDoc.docType} เลขที่ ${sourceDoc.docNo}` });
     setIsQtSearchOpen(false);
     setIsBillSearchOpen(false);
   };
 
   const handleConfirmLinkDoc = async () => {
-    // Explicitly check for job ID from props first, then form state
     const activeJobId = jobId || form.getValues('jobId');
     
     if (!db || !profile || !selectedLinkDoc || !activeJobId) {
@@ -366,7 +341,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 status: 'WAITING_CUSTOMER_PICKUP',
                 lastActivityAt: serverTimestamp(),
             });
-            // Link the document to this job explicitly
             batch.update(docRef, {
                 jobId: activeJobId,
                 updatedAt: serverTimestamp()
@@ -552,7 +526,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     return filtered.filter(d => 
         d.docNo.toLowerCase().includes(q) ||
         (d.customerSnapshot?.name || "").toLowerCase().includes(q) ||
-        (d.customerSnapshot?.phone || "").includes(q)
+        (d.customerSnapshot?.phone || "").toLowerCase().includes(q)
     );
   };
 
