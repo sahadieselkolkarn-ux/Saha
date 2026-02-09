@@ -171,7 +171,6 @@ export default function AccountingInboxPage() {
       return;
     }
     
-    // Explicitly specify region to match the deployment
     const functions = getFunctions(firebaseApp, 'us-central1');
     const closeJob = httpsCallable(functions, 'closeJobAfterAccounting');
     
@@ -188,11 +187,10 @@ export default function AccountingInboxPage() {
     } catch (e: any) {
       console.error("Cloud Function call failed:", e);
       setFailedClosingJobId(jobId);
-      // Inform the user that accounting is safe but job is still active
       toast({ 
         variant: "destructive", 
         title: "บันทึกบัญชีแล้ว แต่ย้ายเข้าประวัติไม่สำเร็จ", 
-        description: "กรุณาลองกด 'ลองปิดงานอีกครั้ง' หรือแจ้งแอดมิน (CORS fixed)" 
+        description: "กรุณาลองกด 'ลองปิดงานอีกครั้ง' หรือแจ้งแอดมิน" 
       });
     } finally {
       setClosingJobId(null);
@@ -279,7 +277,6 @@ export default function AccountingInboxPage() {
       toast({ title: "ลงบัญชีรายรับสำเร็จ" });
       
       if (jobId) {
-        // Trigger the safe server-side archive
         callCloseJobFunction(jobId);
       }
       
@@ -342,7 +339,6 @@ export default function AccountingInboxPage() {
         toast({ title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ' });
         
         if (jobId) {
-          // Trigger the safe server-side archive
           callCloseJobFunction(jobId);
         }
         

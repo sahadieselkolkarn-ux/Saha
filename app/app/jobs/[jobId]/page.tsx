@@ -129,7 +129,7 @@ function JobDetailsPageContent() {
   // Allowed to edit if Admin, Manager (regardless of dept), or in Office/Management departments
   const isOfficeOrAdminOrMgmt = isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
-  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived;
+  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || job?.status === 'WAITING_CUSTOMER_PICKUP';
   const isOfficeOrAdmin = isOfficeOrAdminOrMgmt;
 
   useEffect(() => {

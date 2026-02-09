@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon, PlusCircle, Settings, Send } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon, PlusCircle, Settings, Send, Clock } from "lucide-react";
 import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount, Vendor } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
@@ -709,121 +709,139 @@ export function JobList({
   return (
     <>
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {filteredJobs.map(job => (
-        <Card key={job.id} className="flex flex-col overflow-hidden">
-          <div className="relative aspect-[16/10] w-full bg-muted">
-            {job.photos && job.photos.length > 0 ? (
-                <Image
-                    src={job.photos[0]}
-                    alt={job.description || "รูปภาพประกอบงาน"}
-                    fill
-                    className="object-cover"
-                />
-            ) : (
-                <div className="flex h-full w-full items-center justify-center">
-                    <FileImage className="h-10 w-10 text-muted-foreground/50" />
-                </div>
-            )}
-          </div>
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-              <Badge variant={getStatusVariant(job.status)} className={cn("flex-shrink-0", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
+      {filteredJobs.map(job => {
+        const isBilled = !!job.salesDocId;
+        const isSubmitted = job.status === 'WAITING_CUSTOMER_PICKUP';
+        const isEffectivelyLocked = isBilled && isSubmitted;
+
+        return (
+          <Card key={job.id} className="flex flex-col overflow-hidden">
+            <div className="relative aspect-[16/10] w-full bg-muted">
+              {job.photos && job.photos.length > 0 ? (
+                  <Image
+                      src={job.photos[0]}
+                      alt={job.description || "รูปภาพประกอบงาน"}
+                      fill
+                      className="object-cover"
+                  />
+              ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                      <FileImage className="h-10 w-10 text-muted-foreground/50" />
+                  </div>
+              )}
             </div>
-            <CardDescription>
-              {deptLabel(job.department)}
-              {job.assigneeName && <span className="font-medium"> • {job.assigneeName}</span>}
-              <br />
-              อัปเดตล่าสุด: {safeFormat(job.lastActivityAt, 'PP')}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex-grow">
-            <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
-          </CardContent>
-          <CardFooter className={cn(
-            "mt-auto grid gap-2 p-4",
-            (job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin)) ? 'grid-cols-2' :
-            (actionPreset === 'waitingApprove' || (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS'))
-              ? 'grid-cols-1'
-              : (job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE' || job.status === 'WAITING_CUSTOMER_PICKUP') ? "grid-cols-2" : "grid-cols-1"
-          )}>
-            {actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS' && isOfficeOrAdmin ? (
-                <Button variant="default" className="w-full" onClick={() => setJobForPartsReady(job)}>
-                    <PackageCheck className="mr-2 h-4 w-4" />
-                    จัดอะไหล่เรียบร้อย
-                </Button>
-            ) : actionPreset === 'waitingApprove' ? (
-              <Button asChild variant="default" className="w-full">
+            <CardHeader>
+              <div className="flex justify-between items-start gap-2">
+                <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
+                <Badge variant={getStatusVariant(job.status)} className={cn("flex-shrink-0 whitespace-nowrap", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
+              </div>
+              <CardDescription>
+                {deptLabel(job.department)}
+                {job.assigneeName && <span className="font-medium"> • {job.assigneeName}</span>}
+                <br />
+                อัปเดตล่าสุด: {safeFormat(job.lastActivityAt, 'PP')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex-grow">
+              <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
+              {isBilled && (
+                <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-primary">
+                  <Receipt className="h-3 w-3" />
+                  บิล: {job.salesDocNo}
+                </div>
+              )}
+              {isSubmitted && (
+                <Badge variant="secondary" className="mt-2 w-full justify-center bg-blue-50 text-blue-700 border-blue-200">
+                  <Clock className="mr-1 h-3 w-3" /> รอตรวจสอบบัญชี
+                </Badge>
+              )}
+            </CardContent>
+            <CardFooter className={cn(
+              "mt-auto grid gap-2 p-4",
+              (job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin)) ? 'grid-cols-2' :
+              (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS') || isEffectivelyLocked
+                ? 'grid-cols-1'
+                : (job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE') ? "grid-cols-2" : "grid-cols-1"
+            )}>
+              <Button asChild variant="outline" className="w-full">
                 <Link href={`/app/jobs/${job.id}`}>
-                  <UserCheck />
-                  แจ้งผลอนุมัติ
+                  ดูรายละเอียด
                 </Link>
               </Button>
-            ) : (
-              <>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={`/app/jobs/${job.id}`}>
-                    ดูรายละเอียด
-                  </Link>
-                </Button>
-                {job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin) && (
-                  <>
-                  {job.department === 'OUTSOURCE' ? (
-                      <Button
-                          variant="default"
-                          className="w-full"
-                          onClick={() => openOutsourceDialog(job)}
-                          disabled={isAccepting !== null}
-                      >
-                          {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <Package />}
-                          มอบหมายร้านนอก
-                      </Button>
-                  ) : (
-                      <Button 
-                        variant="default" 
-                        className="w-full"
-                        onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
-                        disabled={isAccepting !== null}
-                      >
-                        {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
-                        {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
+
+              {!isEffectivelyLocked && (
+                <>
+                  {actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS' && isOfficeOrAdmin && (
+                      <Button variant="default" className="w-full" onClick={() => setJobForPartsReady(job)}>
+                          <PackageCheck className="mr-2 h-4 w-4" />
+                          จัดอะไหล่เรียบร้อย
                       </Button>
                   )}
-                  </>
-                )}
-                {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
-                  <Button asChild variant="default" className="w-full">
-                    <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                      <Receipt />
-                      ทำใบเสนอราคา
-                    </Link>
-                  </Button>
-                )}
-                {(job.status === 'DONE' || (job.status === 'WAITING_CUSTOMER_PICKUP' && isOfficeOrAdmin)) && (
-                   <Button
-                    variant="default"
-                    className="w-full"
-                    onClick={() => setBillingJob(job)}
-                  >
-                    <Receipt />
-                    ออกบิล
-                  </Button>
-                )}
-                 {job.status === 'WAITING_CUSTOMER_PICKUP' && isOfficeOrAdmin && (
-                  <Button
-                    variant="default"
-                    className="w-full"
-                    onClick={() => handleOpenCloseDialog(job)}
-                  >
-                    <Send className="mr-2 h-4 w-4" />
-                    ส่งมอบงาน
-                  </Button>
-                )}
-              </>
-            )}
-          </CardFooter>
-        </Card>
-      ))}
+                  
+                  {job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin) && (
+                    <>
+                    {job.department === 'OUTSOURCE' ? (
+                        <Button
+                            variant="default"
+                            className="w-full"
+                            onClick={() => openOutsourceDialog(job)}
+                            disabled={isAccepting !== null}
+                        >
+                            {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <Package />}
+                            มอบหมายร้านนอก
+                        </Button>
+                    ) : (
+                        <Button 
+                          variant="default" 
+                          className="w-full"
+                          onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
+                          disabled={isAccepting !== null}
+                        >
+                          {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
+                          {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
+                        </Button>
+                    )}
+                    </>
+                  )}
+
+                  {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
+                    <Button asChild variant="default" className="w-full">
+                      <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
+                        <Receipt />
+                        ทำใบเสนอราคา
+                      </Link>
+                    </Button>
+                  )}
+
+                  {job.status === 'DONE' && isOfficeOrAdmin && (
+                    <>
+                      {!isBilled ? (
+                        <Button
+                          variant="default"
+                          className="w-full"
+                          onClick={() => setBillingJob(job)}
+                        >
+                          <Receipt />
+                          ออกบิล
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="default"
+                          className="w-full"
+                          onClick={() => handleOpenCloseDialog(job)}
+                        >
+                          <Send className="mr-2 h-4 w-4" />
+                          ส่งมอบงาน
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </CardFooter>
+          </Card>
+        );
+      })}
     </div>
     <Dialog open={!!assigningJob} onOpenChange={(isOpen) => { if (!isOpen) setAssigningJob(null) }}>
         <DialogContent>
