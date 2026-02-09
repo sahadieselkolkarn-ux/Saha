@@ -69,7 +69,7 @@ export default function HRGeneratePayslipsPage() {
     const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
     const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
     
-    const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
+    const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.role === 'MANAGER' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
 
     const handleFetchEmployees = useCallback(async () => {
         if (!db || !hrSettings) {

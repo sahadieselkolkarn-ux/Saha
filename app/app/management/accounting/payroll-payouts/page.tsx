@@ -125,7 +125,7 @@ export default function PayrollPayoutsPage() {
   const [payingPayslip, setPayingPayslip] = useState<WithId<PayslipNew> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
 
   useEffect(() => {
     if (!db || !hasPermission) {

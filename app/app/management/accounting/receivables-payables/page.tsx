@@ -332,7 +332,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
   const cashOutAmount = watchedAmount - whtInfo.whtAmount;
   const balanceAfter = currentBalance - cashOutAmount;
   const isInsufficient = currentBalance < cashOutAmount;
-  const canOverride = profile?.role === 'ADMIN';
+  const canOverride = profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
   const isBlocked = isInsufficient && !canOverride;
 
   useEffect(() => {
@@ -590,7 +590,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                         {isBlocked ? (
                             <p className="text-xs">กรุณาเลือกบัญชีที่มีเงินพอ หรือติดต่อ Admin</p>
                         ) : (
-                            <p className="text-xs italic">Admin: กด "บันทึก" เพื่อยืนยันรายการติดลบ</p>
+                            <p className="text-xs italic">Admin/Manager: กด "บันทึก" เพื่อยืนยันรายการติดลบ</p>
                         )}
                     </div>
                 </div>
@@ -965,7 +965,7 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
 
 export default function ReceivablesPayablesPage() {
     const { profile, loading } = useAuth();
-    const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+    const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
 
     if (loading) {
         return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
@@ -986,7 +986,7 @@ export default function ReceivablesPayablesPage() {
     }
 
     return (
-        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}>
+        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
             <PageHeader title="ลูกหนี้/เจ้าหนี้" description="จัดการและติดตามข้อมูลลูกหนี้และเจ้าหนี้" />
             <ReceivablesPayablesContent profile={profile} />
         </Suspense>

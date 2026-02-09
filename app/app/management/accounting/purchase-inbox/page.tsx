@@ -156,7 +156,7 @@ function PurchaseInboxPageContent() {
   const [approvingClaim, setApprovingClaim] = useState<WithId<PurchaseClaim> | null>(null);
   const [rejectingClaim, setRejectingClaim] = useState<WithId<PurchaseClaim> | null>(null);
 
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
 
   useEffect(() => {
     if (!db || !hasPermission) {

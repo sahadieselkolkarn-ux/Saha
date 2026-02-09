@@ -33,7 +33,7 @@ service cloud.firestore {
     }
 
     function isMgmt() {
-      return isSystemAdmin() || (signedIn() && dept() == "MANAGEMENT") || role() == "ADMIN";
+      return isSystemAdmin() || (signedIn() && (dept() == "MANAGEMENT" || role() == "ADMIN" || role() == "MANAGER"));
     }
     
     function isOfficeOrMgmt() {
