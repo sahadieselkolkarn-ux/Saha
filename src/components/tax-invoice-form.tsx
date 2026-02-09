@@ -325,7 +325,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             );
             const snap = await getDocs(q);
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-            items.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            items.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
             setAllQuotations(items);
         } else {
             const qDn = query(
@@ -343,7 +343,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
                 ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
             ].filter(d => d.status !== 'CANCELLED');
-            bills.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            bills.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
             setAllBills(bills);
         }
     } catch (e: any) {

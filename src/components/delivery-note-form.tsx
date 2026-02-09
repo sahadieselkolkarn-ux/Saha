@@ -336,7 +336,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             );
             const snap = await getDocs(q);
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-            items.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            items.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
             setAllQuotations(items);
         } else {
             const qDn = query(
@@ -354,7 +354,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
                 ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
             ].filter(d => d.status !== 'CANCELLED');
-            bills.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            bills.sort((a,b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
             setAllBills(bills);
         }
     } catch (e: any) {
@@ -498,7 +498,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         {isLocked && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>เอกสารถูกล็อก</AlertTitle>
+            <AlertTitle>เอกสารถูกยกเลิก</AlertTitle>
             <AlertDescription>
               เอกสารนี้ถูกยืนยันรายการขายแล้ว จึงไม่สามารถแก้ไขได้
             </AlertDescription>
