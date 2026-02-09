@@ -25,6 +25,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#2A9D8F" />
         <link rel="apple-touch-icon" href="/icon-192x192.png"></link>
+        <script dangerouslySetInnerHTML={{ __html: `
+          window.addEventListener('error', (event) => {
+            if (event.message && (event.message.includes('ChunkLoadError') || event.message.includes('Loading chunk'))) {
+              console.warn('ChunkLoadError detected, reloading page...');
+              window.location.reload();
+            }
+          }, true);
+        ` }} />
       </head>
       <body>
         <Providers>
