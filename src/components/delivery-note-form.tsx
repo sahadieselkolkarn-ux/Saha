@@ -37,6 +37,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { createDocument } from "@/firebase/documents";
+import { archiveAndCloseJob } from "@/firebase/jobs-archive";
 import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { deptLabel } from "@/lib/ui-labels";
@@ -116,6 +117,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<DeliveryNoteFormData | null>(null);
+
+  // Special Selection Linkage
+  const [selectedLinkDoc, setSelectedLinkDoc] = useState<DocumentType | null>(null);
+  const [showLinkConfirm, setShowLinkConfirm] = useState(false);
 
   // New Selection States
   const [isQtSearchOpen, setIsQtSearchOpen] = useState(false);
@@ -275,6 +280,13 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   }, [watchedItems, watchedDiscount, form]);
 
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
+    // Check for special statuses (PAID or PENDING_REVIEW)
+    if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
+        setSelectedLinkDoc(sourceDoc);
+        setShowLinkConfirm(true);
+        return;
+    }
+
     const itemsFromDoc = (sourceDoc.items || []).map((item: any) => {
       const qty = Number(item.quantity ?? 1);
       const price = Number(item.unitPrice ?? 0);
@@ -321,6 +333,55 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงจาก ${sourceDoc.docType} เลขที่ ${sourceDoc.docNo}` });
     setIsQtSearchOpen(false);
     setIsBillSearchOpen(false);
+  };
+
+  const handleConfirmLinkDoc = async () => {
+    if (!db || !profile || !selectedLinkDoc || !currentJobId) {
+        toast({ variant: 'destructive', title: 'ไม่สามารถเชื่อมโยงได้', description: 'ต้องระบุงานซ่อมที่ต้องการเชื่อมโยงก่อน' });
+        return;
+    }
+
+    setIsSubmitting(true);
+    try {
+        const salesDocInfo = {
+            salesDocType: selectedLinkDoc.docType,
+            salesDocId: selectedLinkDoc.id,
+            salesDocNo: selectedLinkDoc.docNo,
+            paymentStatusAtClose: selectedLinkDoc.status === 'PAID' ? 'PAID' : 'UNPAID'
+        } as any;
+
+        if (selectedLinkDoc.status === 'PAID') {
+            await archiveAndCloseJob(db, currentJobId, selectedLinkDoc.docDate, profile, salesDocInfo);
+            toast({ title: 'เชื่อมโยงบิลและปิดงานสำเร็จ' });
+        } else {
+            // PENDING_REVIEW logic: Just link and move to WAITING_CUSTOMER_PICKUP if not already
+            const batch = writeBatch(db);
+            const jobRef = doc(db, 'jobs', currentJobId);
+            const activityRef = doc(collection(db, 'jobs', currentJobId, 'activities'));
+            
+            batch.update(jobRef, {
+                ...salesDocInfo,
+                status: 'WAITING_CUSTOMER_PICKUP',
+                lastActivityAt: serverTimestamp(),
+            });
+            batch.set(activityRef, {
+                text: `เชื่อมโยงบิลที่รอตรวจสอบ (${selectedLinkDoc.docNo}) เข้ากับงานนี้`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp(),
+            });
+            await batch.commit();
+            toast({ title: 'เชื่อมโยงบิลเรียบร้อย' });
+        }
+        
+        router.push('/app/office/jobs/management/history');
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
+    } finally {
+        setIsSubmitting(false);
+        setShowLinkConfirm(false);
+        setSelectedLinkDoc(null);
+    }
   };
 
   const loadAllDocs = async (type: DocType | 'BILLS') => {
@@ -752,6 +813,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                                         <span className="font-semibold">{d.docNo}</span>
                                                         <span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span>
                                                         <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
+                                                        <div className="mt-1">
+                                                            <Badge variant="outline" className="text-[8px] uppercase">{d.status}</Badge>
+                                                        </div>
                                                     </div>
                                                 </Button>
                                             ))
@@ -885,6 +949,27 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
               <AlertDialogFooter>
                   <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
                   <AlertDialogAction onClick={() => { if(pendingFormData) executeSave(pendingFormData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showLinkConfirm} onOpenChange={setShowLinkConfirm}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันการเชื่อมโยงเอกสารเดิม</AlertDialogTitle>
+                  <AlertDialogDescription>
+                      {selectedLinkDoc?.status === 'PAID' ? (
+                          <>รายการนี้ <span className="font-bold text-green-600">ได้รับเงินเรียบร้อยแล้ว</span> คุณต้องการบันทึกลงใน Job นี้และปิดงานทันทีใช่หรือไม่?</>
+                      ) : (
+                          <>บิลตัวนี้ <span className="font-bold text-amber-600">ถูกส่งไปตรวจสอบที่แผนกบัญชีแล้ว</span> คุณต้องการบันทึกบิลนี้ใส่ใน Job นี้ ใช่หรือไม่ (ไม่ต้องกดส่งตรวจสอบซ้ำ)?</>
+                      )}
+                  </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => { setSelectedLinkDoc(null); }}>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleConfirmLinkDoc} disabled={isSubmitting}>
+                      {isSubmitting && <Loader2 className="mr-2 animate-spin"/>} ใช่, เชื่อมโยงและดำเนินการต่อ
+                  </AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
