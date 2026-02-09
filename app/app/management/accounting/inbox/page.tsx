@@ -18,15 +18,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, RefreshCw } from "lucide-react";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase/firestore/use-collection";
-import type { Document as DocumentType, AccountingAccount, Job } from "@/lib/types";
+import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
-import { archiveAndCloseJob } from '@/firebase/jobs-archive';
-import { getYearFromDateOnly } from '@/lib/archive-utils';
-import { sanitizeForFirestore } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,8 +56,6 @@ export default function AccountingInboxPage() {
   const [disputingDoc, setDisputingDoc] = useState<WithId<DocumentType> | null>(null);
   const [disputeReason, setDisputeReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isArchiving, setIsArchiving] = useState(false);
-  const [failedArchiveJob, setFailedArchiveJob] = useState<{jobId: string, docDate: string, docNo: string, docType: string, status: 'PAID' | 'UNPAID'} | null>(null);
 
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
@@ -164,35 +159,7 @@ export default function AccountingInboxPage() {
     );
   }, [documents, activeTab, searchTerm]);
 
-  // Phase 2 Helper: Attempt to archive the job
-  const attemptJobArchive = async (jobId: string, docDate: string, docNo: string, docType: string, status: 'PAID' | 'UNPAID') => {
-    if (!db || !profile) return;
-    setIsArchiving(true);
-    setFailedArchiveJob(null);
-    
-    try {
-      const salesDocInfo = {
-        salesDocType: docType,
-        salesDocId: '', // We don't need the ID here as it's already updated in Phase 1
-        salesDocNo: docNo,
-        paymentStatusAtClose: status
-      };
-      
-      await archiveAndCloseJob(db, jobId, docDate, profile, salesDocInfo);
-      toast({ title: "ปิดจ๊อบงานและย้ายเข้าประวัติสำเร็จ" });
-    } catch (e: any) {
-      console.error("Phase 2 Job Archive failed:", e);
-      setFailedArchiveJob({ jobId, docDate, docNo, docType, status });
-      toast({ 
-        variant: 'destructive', 
-        title: "บันทึกบัญชีสำเร็จ แต่ปิดจ๊อบไม่สำเร็จ", 
-        description: "จ๊อบงานยังอยู่ในระบบ สามารถกดลองใหม่ได้จากแถบแจ้งเตือน" 
-      });
-    } finally {
-      setIsArchiving(false);
-    }
-  };
-
+  // HOTFIX P0-2A: Only perform accounting confirmation. Job closure is handled separately.
   const handleConfirmCashPayment = async () => {
     if (!db || !profile || !confirmingDoc || !selectedAccountId) return;
     
@@ -205,7 +172,7 @@ export default function AccountingInboxPage() {
     const closedDate = selectedPaymentDate;
 
     try {
-      // Phase 1: Accounting Transaction
+      // PHASE 1 ONLY: Accounting Transaction
       await runTransaction(db, async (transaction) => {
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
@@ -272,14 +239,13 @@ export default function AccountingInboxPage() {
         });
       });
 
-      toast({ title: "บันทึกบัญชีรายรับสำเร็จ" });
+      toast({ 
+        title: "ลงบัญชีรายรับสำเร็จ", 
+        description: jobId ? "บันทึกข้อมูลบัญชีแล้ว กรุณาแจ้ง Admin เพื่อปิดจ๊อบงานย้ายเข้าประวัติภายหลัง" : "บันทึกข้อมูลบัญชีเรียบร้อย"
+      });
+      
       setConfirmingDoc(null);
       setIsSubmitting(false);
-
-      // Phase 2: Job Archive
-      if (jobId) {
-        await attemptJobArchive(jobId, closedDate, confirmingDoc.docNo, confirmingDoc.docType, 'PAID');
-      }
     } catch(e: any) {
       console.error("Confirm cash failed", e);
       setConfirmError(`บันทึกไม่สำเร็จ: ${e.message || e.toString()}`);
@@ -287,16 +253,16 @@ export default function AccountingInboxPage() {
     }
   };
 
+  // HOTFIX P0-2A: Only perform accounting confirmation. Job closure is handled separately.
   const handleCreateAR = async (docToProcess: WithId<DocumentType>) => {
     if (!db || !profile) return;
     setIsSubmitting(true);
     
     const arId = `AR_${docToProcess.id}`;
     const jobId = docToProcess.jobId;
-    const closedDate = docToProcess.docDate;
 
     try {
-        // Phase 1: Accounting Transaction
+        // PHASE 1 ONLY: Accounting Transaction
         await runTransaction(db, async (transaction) => {
             const docRef = doc(db, 'documents', docToProcess.id);
             const docSnap = await transaction.get(docRef);
@@ -336,14 +302,13 @@ export default function AccountingInboxPage() {
             });
         });
 
-        toast({ title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ' });
+        toast({ 
+          title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ', 
+          description: jobId ? "บันทึกข้อมูลบัญชีแล้ว กรุณาแจ้ง Admin เพื่อปิดจ๊อบงานย้ายเข้าประวัติภายหลัง" : "บันทึกข้อมูลบัญชีเรียบร้อย"
+        });
+        
         setArDocToConfirm(null);
         setIsSubmitting(false);
-
-        // Phase 2: Job Archive
-        if (jobId) {
-            await attemptJobArchive(jobId, closedDate, docToProcess.docNo, docToProcess.docType, 'UNPAID');
-        }
     } catch (e: any) {
         toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการยืนยันรายการ", description: e.message });
         setIsSubmitting(false);
@@ -375,26 +340,15 @@ export default function AccountingInboxPage() {
 
   return (
     <>
-      <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลก่อนลงบัญชีและปิดงาน" />
+      <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลเพื่อลงสมุดบัญชีรายวัน" />
       
-      {failedArchiveJob && (
-        <Alert variant="destructive" className="mb-6 bg-destructive/10 border-destructive/20 text-destructive animate-in fade-in slide-in-from-top-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle className="font-bold">ลงบัญชีสำเร็จ แต่ปิดจ๊อบงานไม่สำเร็จ</AlertTitle>
-          <AlertDescription className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
-            <span>บิลเลขที่ {failedArchiveJob.docNo} ถูกลงบัญชีแล้ว แต่จ๊อบงาน {failedArchiveJob.jobId.substring(0,8)}... ยังไม่ถูกย้ายเข้าประวัติ</span>
-            <Button 
-              size="sm" 
-              variant="destructive" 
-              onClick={() => attemptJobArchive(failedArchiveJob.jobId, failedArchiveJob.docDate, failedArchiveJob.docNo, failedArchiveJob.docType, failedArchiveJob.status)}
-              disabled={isArchiving}
-            >
-              {isArchiving ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RefreshCw className="mr-2 h-4 w-4"/>}
-              ลองปิดจ๊อบใหม่อีกครั้ง
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
+      <Alert className="mb-6 bg-blue-50 border-blue-200">
+        <Info className="h-4 w-4 text-blue-600" />
+        <AlertTitle className="text-blue-800 font-bold">ประกาศสำคัญ: ปรับปรุงระบบปิดงาน</AlertTitle>
+        <AlertDescription className="text-blue-700 text-xs">
+          เพื่อป้องกันข้อมูลสูญหาย การกดยืนยันในหน้านี้จะทำการ <strong>"ลงบันทึกบัญชีเท่านั้น"</strong> โดยใบงานซ่อม (Job) จะยังคงค้างอยู่ในระบบเพื่อให้ Admin ตรวจสอบและปิดงานเข้าประวัติในขั้นตอนสุดท้ายแยกต่างหาก
+        </AlertDescription>
+      </Alert>
 
       {indexCreationUrl && (
         <Alert variant="destructive" className="mb-6">
@@ -447,6 +401,7 @@ export default function AccountingInboxPage() {
                       <TableCell>
                         <div className="font-medium">{doc.docNo}</div>
                         <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
+                        {doc.jobId && <Badge variant="outline" className="text-[8px] h-4 mt-1 bg-blue-50">มี Job ผูกอยู่</Badge>}
                       </TableCell>
                       <TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell>
                       <TableCell className="text-right">
@@ -497,6 +452,7 @@ export default function AccountingInboxPage() {
                       <TableCell>
                         <div className="font-medium">{doc.docNo}</div>
                         <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
+                        {doc.jobId && <Badge variant="outline" className="text-[8px] h-4 mt-1 bg-blue-50">มี Job ผูกอยู่</Badge>}
                       </TableCell>
                       <TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell>
                       <TableCell className="text-right">
@@ -533,7 +489,7 @@ export default function AccountingInboxPage() {
           <DialogHeader>
             <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
             <DialogDescription className="text-destructive font-bold">
-                ฝ่ายบัญชีตรวจสอบข้อมูลให้ถูกต้องก่อนบันทึกบัญชีรายวัน
+                บันทึกรายรับเข้าสมุดบัญชีรายวัน
             </DialogDescription>
           </DialogHeader>
           
