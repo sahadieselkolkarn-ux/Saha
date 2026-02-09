@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,8 +38,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const customerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  phone: z.string().min(1, "Phone is required"),
+  name: z.string().min(1, "กรุณากรอกชื่อลูกค้า"),
+  phone: z.string().min(1, "กรุณากรอกเบอร์โทรศัพท์"),
   detail: z.string().optional().default(""),
   useTax: z.boolean().default(false),
   taxName: z.string().optional(),
@@ -47,7 +47,7 @@ const customerSchema = z.object({
   taxId: z.string().optional(),
   acquisitionSource: z.enum(ACQUISITION_SOURCES).optional().nullable(),
 }).refine(data => !data.useTax || (data.taxName && data.taxAddress && data.taxId), {
-  message: "Tax information is required when 'Use Tax Invoice' is checked",
+  message: "กรุณากรอกข้อมูลภาษีให้ครบถ้วนเมื่อเลือก 'ต้องการใบกำกับภาษี'",
   path: ["taxName"], 
 });
 
@@ -73,12 +73,12 @@ const CustomerCard = ({ customer, onEdit, onDelete, isManagerOrAdmin, isAdmin }:
         </CardHeader>
         <CardContent className="space-y-2 text-sm pt-0">
              <div className="flex justify-between items-center border-t pt-2">
-                <span className="text-muted-foreground">Uses Tax Invoice</span>
-                <span className="font-medium">{customer.useTax ? "Yes" : "No"}</span>
+                <span className="text-muted-foreground">ใช้ใบกำกับภาษี</span>
+                <span className="font-medium">{customer.useTax ? "ใช่" : "ไม่"}</span>
             </div>
              {customer.detail && (
                 <div className="border-t pt-2">
-                    <p className="text-muted-foreground">Details:</p>
+                    <p className="text-muted-foreground">รายละเอียด:</p>
                     <p className="whitespace-pre-wrap">{customer.detail}</p>
                 </div>
             )}
@@ -154,7 +154,13 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
     if (isDialogOpen) {
       if (editingCustomer) {
         form.reset({
-            ...editingCustomer,
+            name: editingCustomer.name || "",
+            phone: editingCustomer.phone || "",
+            detail: editingCustomer.detail || "",
+            useTax: editingCustomer.useTax || false,
+            taxName: editingCustomer.taxName || "",
+            taxAddress: editingCustomer.taxAddress || "",
+            taxId: editingCustomer.taxId || "",
             acquisitionSource: editingCustomer.acquisitionSource || null
         });
       }
@@ -184,9 +190,16 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
     
     try {
         const customerDoc = doc(db, "customers", editingCustomer.id);
-        const updateData = { ...values, updatedAt: serverTimestamp() };
+        const updateData = { 
+          ...values, 
+          updatedAt: serverTimestamp(),
+          // Ensure we don't save empty strings for optional tax fields if useTax is false
+          taxName: values.useTax ? values.taxName : "",
+          taxAddress: values.useTax ? values.taxAddress : "",
+          taxId: values.useTax ? values.taxId : ""
+        };
         await updateDoc(customerDoc, updateData);
-        toast({ title: "Customer updated successfully" });
+        toast({ title: "อัปเดตข้อมูลลูกค้าสำเร็จ" });
         setIsDialogOpen(false);
     } catch (error: any) {
         toast({ variant: "destructive", title: "Update Failed", description: error.message });
@@ -206,7 +219,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
     try {
       const customerDoc = doc(db, "customers", customerToDelete);
       await deleteDoc(customerDoc)
-      toast({title: "Customer deleted successfully"});
+      toast({title: "ลบข้อมูลลูกค้าเรียบร้อยแล้ว"});
     } catch (error: any) {
       toast({variant: "destructive", title: "Deletion Failed", description: error.message});
     } finally {
@@ -226,10 +239,10 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Detail</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>ชื่อ</TableHead>
+                <TableHead>เบอร์โทร</TableHead>
+                <TableHead>รายละเอียด</TableHead>
+                <TableHead className="text-right">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -254,7 +267,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
               ) : (
                 <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        {searchTerm ? "No customers match your search." : "No customers found."}
+                        {searchTerm ? "ไม่พบข้อมูลที่ตรงกับการค้นหา" : "ยังไม่มีข้อมูลลูกค้า"}
                     </TableCell>
                 </TableRow>
               )}
@@ -265,7 +278,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
           <CardFooter>
             <div className="flex w-full justify-between items-center">
                 <span className="text-sm text-muted-foreground">
-                    Page {currentPage + 1} of {totalPages}
+                    หน้า {currentPage + 1} จาก {totalPages}
                 </span>
                 <div className="flex gap-2">
                     <Button
@@ -274,7 +287,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                         onClick={() => setCurrentPage(p => p - 1)}
                         disabled={currentPage === 0}
                     >
-                        Previous
+                        ก่อนหน้า
                     </Button>
                     <Button
                         variant="outline"
@@ -282,7 +295,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                         onClick={() => setCurrentPage(p => p + 1)}
                         disabled={currentPage >= totalPages - 1}
                     >
-                        Next
+                        ถัดไป
                     </Button>
                 </div>
             </div>
@@ -298,15 +311,15 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
         ) : (
           <Card className="text-center py-12">
             <CardHeader>
-                <CardTitle>{searchTerm ? "No Results" : "No Customers Found"}</CardTitle>
-                <CardDescription>{searchTerm ? "No customers match your search." : "Get started by adding a new customer."}</CardDescription>
+                <CardTitle>{searchTerm ? "ไม่พบผลลัพธ์" : "ยังไม่มีข้อมูลลูกค้า"}</CardTitle>
+                <CardDescription>{searchTerm ? "กรุณาลองค้นหาด้วยคำอื่น" : "เริ่มต้นด้วยการเพิ่มลูกค้าใหม่เข้าระบบ"}</CardDescription>
             </CardHeader>
         </Card>
         )}
          {totalPages > 1 && (
              <div className="flex w-full justify-between items-center mt-4">
                 <span className="text-sm text-muted-foreground">
-                    Page {currentPage + 1} of {totalPages}
+                    หน้า {currentPage + 1} จาก {totalPages}
                 </span>
                 <div className="flex gap-2">
                     <Button
@@ -315,7 +328,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                         onClick={() => setCurrentPage(p => p - 1)}
                         disabled={currentPage === 0}
                     >
-                        Previous
+                        ก่อนหน้า
                     </Button>
                     <Button
                         variant="outline"
@@ -323,7 +336,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                         onClick={() => setCurrentPage(p => p + 1)}
                         disabled={currentPage >= totalPages - 1}
                     >
-                        Next
+                        ถัดไป
                     </Button>
                 </div>
             </div>
@@ -332,22 +345,22 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
-            className="sm:max-w-[600px] flex flex-col max-h-[90vh]"
+            className="sm:max-w-[600px] flex flex-col max-h-[90vh] p-0"
             onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
             onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Edit Customer</DialogTitle>
-            <DialogDescription>Update the details below.</DialogDescription>
+          <DialogHeader className="shrink-0 p-6 pb-0">
+            <DialogTitle>แก้ไขข้อมูลลูกค้า</DialogTitle>
+            <DialogDescription>อัปเดตข้อมูลลูกค้าและรายละเอียดภาษี</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 pr-4">
+          <ScrollArea className="flex-1 px-6">
             <Form {...form}>
-                <form id="edit-customer-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+                <form id="edit-customer-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
                 <FormField name="name" control={form.control} render={({ field }) => (
-                    <FormItem><FormLabel>Name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>ชื่อลูกค้า</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField name="phone" control={form.control} render={({ field }) => (
-                    <FormItem><FormLabel>Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>เบอร์โทรศัพท์</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 
                 <FormField
@@ -377,37 +390,40 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                 />
 
                 <FormField name="detail" control={form.control} render={({ field }) => (
-                    <FormItem><FormLabel>Details</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>รายละเอียดเพิ่มเติม</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
+                
                 <FormField name="useTax" control={form.control} render={({ field }) => (
-                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-muted/20">
                     <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                     <div className="space-y-1 leading-none">
-                        <FormLabel>Use Tax Invoice</FormLabel>
+                        <FormLabel className="cursor-pointer">ต้องการใบกำกับภาษี (Use Tax Invoice)</FormLabel>
                         <FormMessage />
                     </div>
                     </FormItem>
                 )} />
+
                 {useTax && (
-                    <div className="space-y-4 p-4 border rounded-md bg-muted/50">
+                    <div className="space-y-4 p-4 border rounded-md bg-muted/50 border-primary/20">
+                        <h4 className="text-sm font-bold text-primary">รายละเอียดสำหรับการออกใบกำกับภาษี</h4>
                         <FormField name="taxName" control={form.control} render={({ field }) => (
-                            <FormItem><FormLabel>Tax Payer Name</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>ชื่อในใบกำกับภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ชื่อบริษัท หรือ ชื่อ-นามสกุล" /></FormControl><FormMessage /></FormItem>
                         )} />
                         <FormField name="taxAddress" control={form.control} render={({ field }) => (
-                            <FormItem><FormLabel>Tax Address</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>ที่อยู่ในใบกำกับภาษี</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} placeholder="ระบุเลขที่บ้าน ถนน แขวง/ตำบล เขต/อำเภอ..." /></FormControl><FormMessage /></FormItem>
                         )} />
                         <FormField name="taxId" control={form.control} render={({ field }) => (
-                            <FormItem><FormLabel>Tax ID</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>เลขประจำตัวผู้เสียภาษี (Tax ID)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="เลข 13 หลัก" /></FormControl><FormMessage /></FormItem>
                         )} />
                     </div>
                 )}
                 </form>
             </Form>
           </ScrollArea>
-          <DialogFooter className="shrink-0 border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>Cancel</Button>
+          <DialogFooter className="shrink-0 border-t p-6">
+            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
             <Button type="submit" form="edit-customer-form" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} บันทึกการเปลี่ยนแปลง
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -416,14 +432,14 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>
             <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogTitle>ยืนยันการลบข้อมูล?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This will permanently delete the customer. This action cannot be undone.
+                    คุณกำลังจะลบข้อมูลลูกค้ารายนี้ออกจากระบบอย่างถาวร การกระทำนี้ไม่สามารถย้อนกลับได้
                 </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">ลบข้อมูล</AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -477,9 +493,9 @@ function TaxCustomersTab({ searchTerm }: { searchTerm: string }) {
            <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Tax ID</TableHead>
+                <TableHead>ชื่อ</TableHead>
+                <TableHead>เบอร์โทร</TableHead>
+                <TableHead>เลขผู้เสียภาษี</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -494,7 +510,7 @@ function TaxCustomersTab({ searchTerm }: { searchTerm: string }) {
               ) : (
                 <TableRow>
                     <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
-                        {searchTerm ? "No customers match your search." : "ไม่พบข้อมูลลูกค้าที่ใช้ภาษี"}
+                        {searchTerm ? "ไม่พบข้อมูลที่ตรงกับการค้นหา" : "ไม่พบข้อมูลลูกค้าที่ใช้ภาษี"}
                     </TableCell>
                 </TableRow>
               )}
@@ -549,8 +565,8 @@ function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
            <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
+                <TableHead>ชื่อ</TableHead>
+                <TableHead>เบอร์โทร</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -564,7 +580,7 @@ function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
               ) : (
                 <TableRow>
                     <TableCell colSpan={2} className="h-24 text-center text-muted-foreground">
-                        {searchTerm ? "No customers match your search." : "ไม่พบข้อมูลลูกค้าทั่วไป"}
+                        {searchTerm ? "ไม่พบข้อมูลที่ตรงกับการค้นหา" : "ไม่พบข้อมูลลูกค้าทั่วไป"}
                     </TableCell>
                 </TableRow>
               )}
@@ -581,28 +597,28 @@ export default function ManagementCustomersPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState("all");
 
-    const isManagerOrAdmin = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+    const isManagerOrAdmin = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
     const isAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
 
     const placeholder = useMemo(() => {
-        if (activeTab === 'tax') return "Search name, phone, detail, or Tax ID...";
-        return "Search by name, phone, or detail...";
+        if (activeTab === 'tax') return "ค้นหาชื่อ, เบอร์โทร, รายละเอียด หรือ เลขผู้เสียภาษี...";
+        return "ค้นหาชื่อ, เบอร์โทร หรือ รายละเอียดลูกค้า...";
     }, [activeTab]);
 
     return (
         <>
-            <PageHeader title="การจัดการลูกค้า" description="จัดการข้อมูลลูกค้าทั้งหมด">
+            <PageHeader title="การจัดการลูกค้า" description="จัดการข้อมูลลูกค้าและรายละเอียดสำหรับการออกบิล">
                 <div className="flex items-center gap-2">
                     <Button asChild variant="outline">
                         <Link href="/app/management/customers/import">
                             <Upload className="mr-2 h-4 w-4" />
-                            Import Customers
+                            นำเข้าลูกค้า (CSV)
                         </Link>
                     </Button>
                     <Button asChild>
                         <Link href="/app/office/customers/new">
                             <PlusCircle className="mr-2 h-4 w-4" />
-                            Add Customer
+                            เพิ่มลูกค้าใหม่
                         </Link>
                     </Button>
                 </div>
