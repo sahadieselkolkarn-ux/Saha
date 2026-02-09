@@ -34,7 +34,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/auth-context";
 import { ACQUISITION_SOURCES } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const customerSchema = z.object({
@@ -124,7 +123,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
       setLoading(false);
     },
     (error) => {
-      toast({ variant: "destructive", title: "Failed to load customers" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
       setLoading(false);
     });
     return () => unsubscribe();
@@ -193,7 +192,6 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
         const updateData = { 
           ...values, 
           updatedAt: serverTimestamp(),
-          // Ensure we don't save empty strings for optional tax fields if useTax is false
           taxName: values.useTax ? values.taxName : "",
           taxAddress: values.useTax ? values.taxAddress : "",
           taxId: values.useTax ? values.taxId : ""
@@ -202,7 +200,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
         toast({ title: "อัปเดตข้อมูลลูกค้าสำเร็จ" });
         setIsDialogOpen(false);
     } catch (error: any) {
-        toast({ variant: "destructive", title: "Update Failed", description: error.message });
+        toast({ variant: "destructive", title: "บันทึกไม่สำเร็จ", description: error.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -221,7 +219,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
       await deleteDoc(customerDoc)
       toast({title: "ลบข้อมูลลูกค้าเรียบร้อยแล้ว"});
     } catch (error: any) {
-      toast({variant: "destructive", title: "Deletion Failed", description: error.message});
+      toast({variant: "destructive", title: "ไม่สามารถลบได้", description: error.message});
     } finally {
       setIsDeleteAlertOpen(false);
       setCustomerToDelete(null);
@@ -345,15 +343,16 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
         <DialogContent 
-            className="sm:max-w-[600px] flex flex-col max-h-[90vh] p-0"
+            className="sm:max-w-[600px] grid grid-rows-[auto_1fr_auto] max-h-[90vh] p-0 overflow-hidden"
             onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
             onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
         >
-          <DialogHeader className="shrink-0 p-6 pb-0">
+          <DialogHeader className="p-6 pb-2">
             <DialogTitle>แก้ไขข้อมูลลูกค้า</DialogTitle>
             <DialogDescription>อัปเดตข้อมูลลูกค้าและรายละเอียดภาษี</DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 px-6">
+          
+          <div className="overflow-y-auto px-6">
             <Form {...form}>
                 <form id="edit-customer-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
                 <FormField name="name" control={form.control} render={({ field }) => (
@@ -404,7 +403,7 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                 )} />
 
                 {useTax && (
-                    <div className="space-y-4 p-4 border rounded-md bg-muted/50 border-primary/20">
+                    <div className="space-y-4 p-4 border rounded-md bg-muted/50 border-primary/20 mb-4">
                         <h4 className="text-sm font-bold text-primary">รายละเอียดสำหรับการออกใบกำกับภาษี</h4>
                         <FormField name="taxName" control={form.control} render={({ field }) => (
                             <FormItem><FormLabel>ชื่อในใบกำกับภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ชื่อบริษัท หรือ ชื่อ-นามสกุล" /></FormControl><FormMessage /></FormItem>
@@ -419,8 +418,9 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                 )}
                 </form>
             </Form>
-          </ScrollArea>
-          <DialogFooter className="shrink-0 border-t p-6">
+          </div>
+
+          <DialogFooter className="border-t p-6">
             <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
             <Button type="submit" form="edit-customer-form" disabled={isSubmitting}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} บันทึกการเปลี่ยนแปลง
@@ -464,7 +464,7 @@ function TaxCustomersTab({ searchTerm }: { searchTerm: string }) {
       setLoading(false);
     },
     (error) => {
-      toast({ variant: "destructive", title: "Failed to load tax customers" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลได้" });
       setLoading(false);
     });
     return () => unsubscribe();
@@ -537,7 +537,7 @@ function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
       setLoading(false);
     },
     (error) => {
-      toast({ variant: "destructive", title: "Failed to load general customers" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลได้" });
       setLoading(false);
     });
     return () => unsubscribe();
