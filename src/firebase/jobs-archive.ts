@@ -30,13 +30,22 @@ export async function archiveAndCloseJob(
   const archiveCol = collection(db, archiveColName);
   const archiveRef = doc(archiveCol, jobId);
 
-  // 1. Transaction to move the main job document
+  // 1. Transaction to move the main job document and update the linked sales document
   await runTransaction(db, async (transaction) => {
     const jobDoc = await transaction.get(jobRef);
     if (!jobDoc.exists()) {
       throw new Error("Job not found, it might have been deleted or moved already.");
     }
     const jobData = jobDoc.data() as Job;
+
+    // Update the sales document to point to this job (to ensure it shows up in history)
+    if (salesDocInfo.salesDocId) {
+        const docRef = doc(db, 'documents', salesDocInfo.salesDocId);
+        transaction.update(docRef, { 
+            jobId: jobId, 
+            updatedAt: serverTimestamp() 
+        });
+    }
 
     const archivedJobData = {
       ...jobData,

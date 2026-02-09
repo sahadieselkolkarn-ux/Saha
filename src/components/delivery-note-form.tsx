@@ -351,17 +351,24 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         } as any;
 
         if (selectedLinkDoc.status === 'PAID') {
+            // This now atomically updates the document's jobId inside the transaction
             await archiveAndCloseJob(db, activeJobId, selectedLinkDoc.docDate, profile, salesDocInfo);
             toast({ title: 'เชื่อมโยงบิลและปิดงานสำเร็จ' });
         } else {
             const batch = writeBatch(db);
             const jobRef = doc(db, 'jobs', activeJobId);
+            const docRef = doc(db, 'documents', selectedLinkDoc.id);
             const activityRef = doc(collection(db, 'jobs', activeJobId, 'activities'));
             
             batch.update(jobRef, {
                 ...salesDocInfo,
                 status: 'WAITING_CUSTOMER_PICKUP',
                 lastActivityAt: serverTimestamp(),
+            });
+            // Link the document to this job
+            batch.update(docRef, {
+                jobId: activeJobId,
+                updatedAt: serverTimestamp()
             });
             batch.set(activityRef, {
                 text: `เชื่อมโยงบิลที่รอตรวจสอบ (${selectedLinkDoc.docNo}) เข้ากับงานนี้`,
