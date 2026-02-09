@@ -37,7 +37,7 @@ import {
 
 import { createDocument } from "@/firebase/documents";
 import { sanitizeForFirestore } from "@/lib/utils";
-import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { deptLabel } from "@/lib/ui-labels";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -123,6 +123,11 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [qtSearchQuery, setQtSearchQuery] = useState("");
   const [allQuotations, setAllQuotations] = useState<DocumentType[]>([]);
   const [isSearchingQt, setIsSearchingQt] = useState(false);
+
+  const [isDnSearchOpen, setIsDnSearchOpen] = useState(false);
+  const [dnSearchQuery, setDnSearchQuery] = useState("");
+  const [allDeliveryNotes, setAllDeliveryNotes] = useState<DocumentType[]>([]);
+  const [isSearchingDn, setIsSearchingDn] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -288,8 +293,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     form.setValue("grandTotal", grandTotal, { shouldValidate: true });
   }, [watchedItems, watchedDiscount, form]);
 
-  const handleFetchFromQuotation = async (quotation: DocumentType) => {
-    const itemsFromQuotation = (quotation.items || []).map((item: any) => {
+  const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
+    const itemsFromDoc = (sourceDoc.items || []).map((item: any) => {
       const qty = Number(item.quantity ?? 1);
       const price = Number(item.unitPrice ?? 0);
       const total = Number(item.total ?? (qty * price));
@@ -301,68 +306,65 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       };
     });
   
-    if (itemsFromQuotation.length === 0) {
-      toast({ variant: 'destructive', title: "ใบเสนอราคาไม่มีรายการ", description: `เลขที่ ${quotation.docNo}` });
+    if (itemsFromDoc.length === 0) {
+      toast({ variant: 'destructive', title: "เอกสารต้นทางไม่มีรายการ", description: `เลขที่ ${sourceDoc.docNo}` });
       return;
     }
   
-    replace(itemsFromQuotation);
-    setReferencedQuotationId(quotation.id);
+    replace(itemsFromDoc);
+    if (sourceDoc.docType === 'QUOTATION') {
+        setReferencedQuotationId(sourceDoc.id);
+    }
   
-    form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
-    form.trigger(['items', 'discountAmount']);
+    form.setValue('discountAmount', Number(sourceDoc.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
     
-    // If not linked to this job, update the job detail (if jobId exists)
-    if (currentJobId && quotation.jobId !== currentJobId && db && profile) {
+    // Cross job linking log
+    if (currentJobId && sourceDoc.jobId !== currentJobId && db && profile) {
         try {
             const batch = writeBatch(db);
             const activityRef = doc(collection(db, 'jobs', currentJobId, 'activities'));
             batch.set(activityRef, {
-                text: `อ้างอิงใบเสนอราคาข้ามใบงาน: ${quotation.docNo}`,
+                text: `ดึงข้อมูลจากเอกสารอื่น (${sourceDoc.docType}): ${sourceDoc.docNo}`,
                 userName: profile.displayName,
                 userId: profile.uid,
                 createdAt: serverTimestamp(),
             });
             await batch.commit();
         } catch (e) {
-            console.error("Failed to log cross-job quotation usage", e);
+            console.error("Link error", e);
         }
     }
   
-    toast({
-      title: "ดึงข้อมูลสำเร็จ",
-      description: `ดึง ${itemsFromQuotation.length} รายการ จากใบเสนอราคาเลขที่ ${quotation.docNo}`,
-    });
+    form.trigger(['items', 'discountAmount']);
+    toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงจาก ${sourceDoc.docType} เลขที่ ${sourceDoc.docNo}` });
     setIsQtSearchOpen(false);
+    setIsDnSearchOpen(false);
   };
 
-  const loadAllQuotations = async () => {
+  const loadAllDocs = async (type: DocType) => {
     if (!db || !selectedCustomerId) {
-        toast({ variant: 'destructive', title: "กรุณาเลือกลูกค้าก่อนค้นหาใบเสนอราคา" });
+        toast({ variant: 'destructive', title: "กรุณาเลือกลูกค้าก่อนค้นหา" });
         return;
     }
-    setIsSearchingQt(true);
+    if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingDn(true);
+    
     try {
         const q = query(
             collection(db, "documents"),
             where("customerId", "==", selectedCustomerId),
-            where("docType", "==", "QUOTATION"),
+            where("docType", "==", type),
             orderBy("createdAt", "desc"),
             limit(50)
         );
         const snap = await getDocs(q);
-        setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED'));
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
+        if (type === 'QUOTATION') setAllQuotations(data); else setAllDeliveryNotes(data);
     } catch (e: any) {
         toast({ variant: 'destructive', title: "ค้นหาล้มเหลว", description: e.message });
     } finally {
-        setIsSearchingQt(false);
+        if (type === 'QUOTATION') setIsSearchingQt(false); else setIsSearchingDn(false);
     }
   };
-
-  const filteredAllQuotations = useMemo(() => {
-    if (!qtSearchQuery) return allQuotations;
-    return allQuotations.filter(q => q.docNo.toLowerCase().includes(qtSearchQuery.toLowerCase()));
-  }, [allQuotations, qtSearchQuery]);
 
   const handleSelectJob = (job: Job) => {
     form.setValue('jobId', job.id);
@@ -662,29 +664,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 <CardHeader className="flex flex-row items-center gap-4 py-3">
                     <CardTitle className="text-base whitespace-nowrap">3. รายการสินค้า/บริการ</CardTitle>
                     <div className="flex gap-2">
-                        {/* 1. Pick from current Job's quotations if available */}
-                        {quotations.length > 0 && (
-                            <Select onValueChange={(id) => {
-                                const q = quotations.find(qt => qt.id === id);
-                                if (q) handleFetchFromQuotation(q);
-                            }}>
-                                <SelectTrigger className="h-8 w-[200px] text-xs">
-                                    <SelectValue placeholder="เลือกใบเสนอราคาของงานนี้" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {quotations.map(q => (
-                                        <SelectItem key={q.id} value={q.id}>
-                                            {q.docNo} ({safeFormat(new Date(q.docDate), 'dd/MM/yy')})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                        
-                        {/* 2. Generic Search Button */}
+                        {/* Quotation Search Button */}
                         <Popover open={isQtSearchOpen} onOpenChange={setIsQtSearchOpen}>
                             <PopoverTrigger asChild>
-                                <Button type="button" variant="outline" size="sm" className="h-8" onClick={loadAllQuotations} disabled={isLocked}>
+                                <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('QUOTATION')} disabled={isLocked}>
                                     <FileSearch className="mr-2 h-3 w-3" /> เลือกจากใบเสนอราคา
                                 </Button>
                             </PopoverTrigger>
@@ -700,13 +683,13 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                 <ScrollArea className="h-60">
                                     {isSearchingQt ? (
                                         <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังค้นหา...</div>
-                                    ) : filteredAllQuotations.length > 0 ? (
-                                        filteredAllQuotations.map(q => (
+                                    ) : allQuotations.filter(q => q.docNo.toLowerCase().includes(qtSearchQuery.toLowerCase())).length > 0 ? (
+                                        allQuotations.filter(q => q.docNo.toLowerCase().includes(qtSearchQuery.toLowerCase())).map(q => (
                                             <Button 
                                                 key={q.id} 
                                                 variant="ghost" 
                                                 className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
-                                                onClick={() => handleFetchFromQuotation(q)}
+                                                onClick={() => handleFetchFromDoc(q)}
                                             >
                                                 <div className="flex flex-col">
                                                     <span className="font-semibold">{q.docNo}</span>
@@ -716,6 +699,46 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                                         ))
                                     ) : (
                                         <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบใบเสนอราคา</p>
+                                    )}
+                                </ScrollArea>
+                            </PopoverContent>
+                        </Popover>
+
+                        {/* Delivery Note Search Button */}
+                        <Popover open={isDnSearchOpen} onOpenChange={setIsDnSearchOpen}>
+                            <PopoverTrigger asChild>
+                                <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('DELIVERY_NOTE')} disabled={isLocked}>
+                                    <FileSearch className="mr-2 h-3 w-3" /> เลือกจากใบส่งสินค้า
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-0" align="start">
+                                <div className="p-2 border-b">
+                                    <Input 
+                                        placeholder="พิมพ์เลขที่ใบส่งของ..." 
+                                        value={dnSearchQuery} 
+                                        onChange={e => setDnSearchQuery(e.target.value)} 
+                                        autoFocus
+                                    />
+                                </div>
+                                <ScrollArea className="h-60">
+                                    {isSearchingDn ? (
+                                        <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังค้นหา...</div>
+                                    ) : allDeliveryNotes.filter(d => d.docNo.toLowerCase().includes(dnSearchQuery.toLowerCase())).length > 0 ? (
+                                        allDeliveryNotes.filter(d => d.docNo.toLowerCase().includes(dnSearchQuery.toLowerCase())).map(d => (
+                                            <Button 
+                                                key={d.id} 
+                                                variant="ghost" 
+                                                className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
+                                                onClick={() => handleFetchFromDoc(d)}
+                                            >
+                                                <div className="flex flex-col">
+                                                    <span className="font-semibold">{d.docNo}</span>
+                                                    <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
+                                                </div>
+                                            </Button>
+                                        ))
+                                    ) : (
+                                        <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบใบส่งของเดิม</p>
                                     )}
                                 </ScrollArea>
                             </PopoverContent>

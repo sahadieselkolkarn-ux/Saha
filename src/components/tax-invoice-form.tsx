@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
