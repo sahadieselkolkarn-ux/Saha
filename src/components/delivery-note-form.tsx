@@ -11,16 +11,16 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -42,8 +42,8 @@ import { archiveAndCloseJob } from "@/firebase/jobs-archive";
 import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { deptLabel } from "@/lib/ui-labels";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 
 const lineItemSchema = z.object({
@@ -388,6 +388,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingBills(true);
     
     try {
+        const getTime = (val: any) => {
+            if (!val) return 0;
+            if (typeof val.toMillis === 'function') return val.toMillis();
+            if (val instanceof Date) return val.getTime();
+            if (val.seconds) return val.seconds * 1000;
+            return 0;
+        };
+
         if (type === 'QUOTATION') {
             const q = query(
                 collection(db, "documents"),
@@ -396,11 +404,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             );
             const snap = await getDocs(q);
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-            items.sort((a,b) => {
-                const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-                const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-                return tb - ta;
-            });
+            items.sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt));
             setAllQuotations(items);
         } else {
             const qDn = query(collection(db, "documents"), where("docType", "==", "DELIVERY_NOTE"), limit(500));
@@ -410,11 +414,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                 ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
                 ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
             ].filter(d => d.status !== 'CANCELLED');
-            bills.sort((a,b) => {
-                const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-                const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-                return tb - ta;
-            });
+            bills.sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt));
             setAllBills(bills);
         }
     } catch (e: any) {
