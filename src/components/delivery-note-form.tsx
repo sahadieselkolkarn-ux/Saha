@@ -394,7 +394,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             const q = query(
                 collection(db, "documents"),
                 where("docType", "==", "QUOTATION"),
-                limit(100)
+                limit(1000)
             );
             const snap = await getDocs(q);
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
@@ -404,12 +404,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             const qDn = query(
                 collection(db, "documents"),
                 where("docType", "==", "DELIVERY_NOTE"),
-                limit(100)
+                limit(1000)
             );
             const qTi = query(
                 collection(db, "documents"),
                 where("docType", "==", "TAX_INVOICE"),
-                limit(100)
+                limit(1000)
             );
             const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
             const bills = [

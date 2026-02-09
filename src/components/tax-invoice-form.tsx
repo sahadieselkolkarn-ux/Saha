@@ -44,6 +44,7 @@ import { safeFormat } from "@/lib/date-utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { deptLabel } from "@/lib/ui-labels";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "กรุณากรอกรายละเอียดรายการ"),
@@ -383,7 +384,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             const q = query(
                 collection(db, "documents"),
                 where("docType", "==", "QUOTATION"),
-                limit(100)
+                limit(1000)
             );
             const snap = await getDocs(q);
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
@@ -393,12 +394,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             const qDn = query(
                 collection(db, "documents"),
                 where("docType", "==", "DELIVERY_NOTE"),
-                limit(100)
+                limit(1000)
             );
             const qTi = query(
                 collection(db, "documents"),
                 where("docType", "==", "TAX_INVOICE"),
-                limit(100)
+                limit(1000)
             );
             const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
             const bills = [
