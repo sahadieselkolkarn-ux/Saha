@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw } from "lucide-react";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw, Save } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
@@ -126,21 +126,52 @@ export default function AccountingInboxPage() {
   
   const getInitialAccountId = (doc: DocumentType, availableAccounts: AccountingAccount[]) => {
     if (availableAccounts.length === 0) return "";
+    // 1. Check if accounting already picked an account
+    if (doc.receivedAccountId && availableAccounts.some(a => a.id === doc.receivedAccountId)) {
+        return doc.receivedAccountId;
+    }
+    // 2. Fallback to suggested account from office
     if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
         return doc.suggestedAccountId;
     }
+    // 3. Fallback to first CASH account
     const cashAccount = availableAccounts.find(a => a.type === 'CASH');
     if (cashAccount) return cashAccount.id;
+    // 4. Ultimate fallback
     return availableAccounts[0].id;
   };
 
   const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
     setConfirmError(null);
     setConfirmingDoc(doc);
+    
+    // Set Account: Actual > Suggested > Default
     const initialId = getInitialAccountId(doc, accounts);
     setSelectedAccountId(initialId);
-    setSelectedPaymentMethod(doc.suggestedPaymentMethod || 'CASH');
-    setSelectedPaymentDate(doc.docDate || format(new Date(), "yyyy-MM-dd"));
+    
+    // Set Method: Actual > Suggested > Default 'CASH'
+    setSelectedPaymentMethod((doc.paymentMethod || doc.suggestedPaymentMethod || 'CASH') as any);
+    
+    // Set Date: Actual Payment Date > Doc Date > Today
+    setSelectedPaymentDate(doc.paymentDate || doc.docDate || format(new Date(), "yyyy-MM-dd"));
+  };
+
+  const handleUpdateDocumentInfo = async () => {
+    if (!db || !confirmingDoc) return;
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'documents', confirmingDoc.id), {
+        paymentMethod: selectedPaymentMethod,
+        receivedAccountId: selectedAccountId,
+        paymentDate: selectedPaymentDate,
+        updatedAt: serverTimestamp()
+      });
+      toast({ title: "บันทึกข้อมูลเบื้องต้นสำเร็จ" });
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "ไม่สามารถบันทึกได้", description: e.message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredDocs = useMemo(() => {
@@ -538,7 +569,7 @@ export default function AccountingInboxPage() {
           <DialogHeader>
             <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
             <DialogDescription className="text-destructive font-bold">
-                บันทึกรายรับเข้าสมุดบัญชีรายวัน
+                ตรวจสอบและแก้ไขข้อมูลการรับเงินให้ถูกต้องก่อนลงบัญชีจริง
             </DialogDescription>
           </DialogHeader>
           
@@ -551,9 +582,18 @@ export default function AccountingInboxPage() {
           )}
 
           <div className="py-4 space-y-6">
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center">
+              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center relative">
                 <p className="text-sm text-muted-foreground">ยอดเงินรวมสุทธิ</p>
                 <p className="text-3xl font-bold text-primary">{formatCurrency(confirmingDoc?.grandTotal ?? 0)} บาท</p>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="absolute top-2 right-2 h-8 px-2 text-[10px] text-muted-foreground hover:text-primary"
+                  onClick={handleUpdateDocumentInfo}
+                  disabled={isSubmitting}
+                >
+                  <Save className="mr-1 h-3 w-3" /> บันทึกค่านี้ไว้ (Draft)
+                </Button>
               </div>
 
               <div className="space-y-4">
@@ -586,6 +626,7 @@ export default function AccountingInboxPage() {
                             ))}
                         </SelectContent>
                     </Select>
+                    <p className="text-[10px] text-muted-foreground italic">* หากมีการแก้ไข ระบบจะบันทึกค่าใหม่ลงในบิลให้อัตโนมัติเมื่อกดยืนยัน</p>
                 </div>
               </div>
           </div>
