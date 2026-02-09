@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2, Undo2, Eye } from "lucide-react";
+import { Loader2, AlertCircle, ExternalLink, MoreHorizontal, Edit, Trash2, Undo2, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
@@ -128,15 +128,12 @@ export function JobTableList({
       const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
       const qConstraints: QueryConstraint[] = [];
 
-      // If searching, we fetch a larger batch to filter client-side effectively
-      // This allows "searching across pages"
       if (searchTerm.trim()) {
         if (department) qConstraints.push(where('department', '==', department));
         if (status) qConstraints.push(where('status', '==', status));
         qConstraints.push(orderBy(orderByField, orderByDirection));
-        qConstraints.push(limit(500)); // Large search pool
+        qConstraints.push(limit(500)); 
       } else {
-        // Normal paginated view
         if (source === 'active') {
           if (department) qConstraints.push(where('department', '==', department));
           if (status) qConstraints.push(where('status', '==', status));
@@ -158,7 +155,6 @@ export function JobTableList({
 
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
 
-      // Post-process for archive source if needed
       if (source === 'archive' && !searchTerm.trim()) {
         if (department) jobsData = jobsData.filter(job => job.department === department);
         if (status) jobsData = jobsData.filter(job => job.status === status);
@@ -174,7 +170,6 @@ export function JobTableList({
       
       setJobs(jobsData);
       
-      // Update pagination state only if not searching
       if (!searchTerm.trim()) {
         const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
         if (lastVisibleDoc && currentPage >= pageStartCursors.length - 1) {
@@ -184,7 +179,7 @@ export function JobTableList({
         }
         setIsLastPage(snapshot.docs.length < (limitProp || 20));
       } else {
-        setIsLastPage(true); // Disable pagination buttons during search
+        setIsLastPage(true);
       }
 
     } catch (err: any) {
@@ -426,7 +421,50 @@ export function JobTableList({
             </CardFooter>
           )}
       </Card>
-      {/* Alert Dialogs Omitted for brevity as they are unchanged but present in final file */}
+
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>ยืนยันการลบข้อมูล?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    คุณกำลังจะลบข้อมูลงานซ่อมนี้ออกจากระบบอย่างถาวร การกระทำนี้ไม่สามารถย้อนกลับได้
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">ลบข้อมูล</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={!!jobToRevert} onOpenChange={(open) => !open && setJobToRevert(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ยืนยันการย้อนสถานะงาน</DialogTitle>
+            <DialogDescription>
+              ระบบจะย้อนสถานะจาก "ปิดงาน" กลับเป็น "รอลูกค้ารับสินค้า" เพื่อให้สามารถดำเนินการแก้ไขหรือตรวจสอบบิลใหม่ได้
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="revert-reason">เหตุผลในการย้อนสถานะ</Label>
+              <Textarea 
+                id="revert-reason" 
+                placeholder="ระบุเหตุผล เช่น ลูกค้าขอเปลี่ยนประเภทบิล, บัญชีลงรายการผิด..." 
+                value={revertReason} 
+                onChange={(e) => setRevertReason(e.target.value)} 
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJobToRevert(null)} disabled={isReverting}>ยกเลิก</Button>
+            <Button variant="destructive" onClick={confirmRevert} disabled={isReverting || !revertReason}>
+              {isReverting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Undo2 className="mr-2 h-4 w-4" />}
+              ยืนยันการย้อนสถานะ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
