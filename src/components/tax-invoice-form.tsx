@@ -10,7 +10,7 @@ import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
