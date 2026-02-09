@@ -15,8 +15,8 @@ export default function OfficeJobManagementHistoryPage() {
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="ค้นหาชื่อ/เบอร์โทร..."
-            className="pl-8"
+            placeholder="ค้นหาชื่อ/เบอร์โทร/เลขที่จ๊อบ..."
+            className="pl-8 w-full sm:w-[300px]"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -25,11 +25,11 @@ export default function OfficeJobManagementHistoryPage() {
       <JobTableList 
         searchTerm={searchTerm}
         status="CLOSED"
-        limit={10}
+        limit={20}
         orderByField="closedDate"
         orderByDirection="desc"
-        emptyTitle="ไม่มีประวัติงานซ่อม"
-        emptyDescription="ยังไม่มีการเปิดงานที่ถูกปิดในระบบ"
+        emptyTitle="ไม่พบประวัติงานซ่อม"
+        emptyDescription="ยังไม่มีรายการงานที่ถูกปิดในระบบ หรือไม่พบข้อมูลที่ตรงกับการค้นหา"
       />
     </>
   );
