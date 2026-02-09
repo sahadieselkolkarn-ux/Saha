@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -163,9 +162,17 @@ export default function AccountingInboxPage() {
     );
   }, [documents, activeTab, searchTerm]);
 
+  /**
+   * Calls the Cloud Function via Firebase SDK (httpsCallable) to ensure CORS-safe calling.
+   */
   const callCloseJobFunction = async (jobId: string) => {
-    if (!firebaseApp) return;
-    const functions = getFunctions(firebaseApp);
+    if (!firebaseApp) {
+      console.error("Firebase App not initialized in context");
+      return;
+    }
+    
+    // Explicitly specify region to match the deployment
+    const functions = getFunctions(firebaseApp, 'us-central1');
     const closeJob = httpsCallable(functions, 'closeJobAfterAccounting');
     
     setClosingJobId(jobId);
@@ -176,15 +183,16 @@ export default function AccountingInboxPage() {
       if (result.data?.ok) {
         toast({ title: "ปิดงานสำเร็จ", description: "ใบงานถูกย้ายเข้าประวัติเรียบร้อยแล้ว" });
       } else {
-        throw new Error(result.data?.error || "Unknown error");
+        throw new Error(result.data?.error || result.data?.message || "Unknown error");
       }
     } catch (e: any) {
-      console.error("Close job function failed:", e);
+      console.error("Cloud Function call failed:", e);
       setFailedClosingJobId(jobId);
+      // Inform the user that accounting is safe but job is still active
       toast({ 
         variant: "destructive", 
-        title: "ปิดงานไม่สำเร็จ", 
-        description: "บันทึกบัญชีแล้ว แต่ไม่สามารถย้ายงานเข้าประวัติได้ กรุณากดลองอีกครั้งหรือแจ้งแอดมิน" 
+        title: "บันทึกบัญชีแล้ว แต่ย้ายเข้าประวัติไม่สำเร็จ", 
+        description: "กรุณาลองกด 'ลองปิดงานอีกครั้ง' หรือแจ้งแอดมิน (CORS fixed)" 
       });
     } finally {
       setClosingJobId(null);
@@ -271,7 +279,7 @@ export default function AccountingInboxPage() {
       toast({ title: "ลงบัญชีรายรับสำเร็จ" });
       
       if (jobId) {
-        // Phase 2: Server-side Close
+        // Trigger the safe server-side archive
         callCloseJobFunction(jobId);
       }
       
@@ -334,6 +342,7 @@ export default function AccountingInboxPage() {
         toast({ title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ' });
         
         if (jobId) {
+          // Trigger the safe server-side archive
           callCloseJobFunction(jobId);
         }
         

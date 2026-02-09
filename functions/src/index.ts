@@ -1,4 +1,3 @@
-
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
@@ -9,8 +8,9 @@ const db = getFirestore();
 /**
  * Cloud Function to safely close and archive a job after accounting confirmation.
  * Runs with admin privileges to avoid client-side permission issues.
+ * Region: us-central1 (default)
  */
-export const closeJobAfterAccounting = onCall(async (request) => {
+export const closeJobAfterAccounting = onCall({ region: "us-central1", cors: true }, async (request) => {
   // 1. Authorization
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be authenticated.");
@@ -37,25 +37,31 @@ export const closeJobAfterAccounting = onCall(async (request) => {
     throw new HttpsError("permission-denied", "Insufficient permissions to close jobs.");
   }
 
-  // 3. Find the Job
+  // 3. Idempotency Check: Search active jobs first, then check common archives
   const jobRef = db.collection("jobs").doc(jobId);
   const jobSnap = await jobRef.get();
 
   if (!jobSnap.exists) {
-    // Check if it's already archived by looking at common years
+    // If not in active jobs, check if it's already in the archives for recent years
     const currentYear = new Date().getFullYear();
     for (const year of [currentYear, currentYear - 1]) {
       const archiveSnap = await db.collection(`jobsArchive_${year}`).doc(jobId).get();
-      if (archiveSnap.exists) {
-        return { ok: true, alreadyClosed: true, archivedCollection: `jobsArchive_${year}` };
+      if (archiveSnap.exists()) {
+        return { 
+          ok: true, 
+          jobId, 
+          alreadyClosed: true, 
+          archivedCollection: `jobsArchive_${year}`,
+          message: "Job was already archived."
+        };
       }
     }
-    throw new HttpsError("not-found", `Job ${jobId} not found in active jobs.`);
+    throw new HttpsError("not-found", `Job ${jobId} not found in active jobs or recent archives.`);
   }
 
   const jobData = jobSnap.data()!;
   
-  // 4. Determine Archive Target
+  // 4. Determine Archive Target based on pickup date or current date
   const closedDate = jobData.pickupDate || new Date().toISOString().split("T")[0];
   const year = parseInt(closedDate.split("-")[0]);
   const archiveColName = `jobsArchive_${year}`;
@@ -74,10 +80,10 @@ export const closeJobAfterAccounting = onCall(async (request) => {
   };
 
   try {
-    // Set archived document
+    // Write to archive (Set with merge to be safe)
     await archiveRef.set(archivedJobData, { merge: true });
 
-    // 6. Move Activities (in chunks)
+    // 6. Move Activities (in chunks to handle large history)
     const activitiesRef = jobRef.collection("activities");
     const archiveActivitiesRef = archiveRef.collection("activities");
     const activitiesSnap = await activitiesRef.get();
@@ -88,11 +94,13 @@ export const closeJobAfterAccounting = onCall(async (request) => {
       let count = 0;
       
       for (const activityDoc of activitiesSnap.docs) {
+        // Use same doc ID to prevent duplicates on retry
         batch.set(archiveActivitiesRef.doc(activityDoc.id), activityDoc.data());
         batch.delete(activityDoc.ref);
         count++;
         movedCount++;
         
+        // Firestore batch limit is 500
         if (count >= 400) {
           await batch.commit();
           batch = db.batch();
@@ -102,7 +110,7 @@ export const closeJobAfterAccounting = onCall(async (request) => {
       if (count > 0) await batch.commit();
     }
 
-    // 7. Delete Original Job
+    // 7. Final Delete of the original job document
     await jobRef.delete();
 
     return {
@@ -116,6 +124,6 @@ export const closeJobAfterAccounting = onCall(async (request) => {
 
   } catch (error: any) {
     console.error("Error closing job:", error);
-    throw new HttpsError("internal", error.message || "Failed to close job.");
+    throw new HttpsError("internal", error.message || "Failed to archive and delete job.");
   }
 });
