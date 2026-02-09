@@ -798,7 +798,7 @@ export function JobList({
                     </Link>
                   </Button>
                 )}
-                {job.status === 'DONE' && (
+                {(job.status === 'DONE' || (job.status === 'WAITING_CUSTOMER_PICKUP' && isOfficeOrAdmin)) && (
                    <Button
                     variant="default"
                     className="w-full"

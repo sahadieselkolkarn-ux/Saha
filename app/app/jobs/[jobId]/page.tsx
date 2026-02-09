@@ -11,7 +11,7 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
 import { archiveCollectionNameByYear } from '@/lib/archive-utils';
-import { jobStatusLabel } from "@/lib/ui-labels";
+import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt } from "lucide-react";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -110,6 +110,8 @@ function JobDetailsPageContent() {
   const [isEditVehicleDialogOpen, setIsEditVehicleDialogOpen] = useState(false);
   const [vehicleEditData, setVehicleEditData] = useState<any>({});
   const [isUpdatingVehicle, setIsUpdatingVehicle] = useState(false);
+
+  const [billingJob, setBillingJob] = useState<Job | null>(null);
   
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
@@ -995,6 +997,12 @@ const handlePartsReady = async () => {
                             จบงาน
                         </Button>
                     )}
+                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && isOfficeOrAdmin && (
+                        <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote || isViewOnly} variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                            <Receipt className="mr-2 h-4 w-4" />
+                            ออกบิล
+                        </Button>
+                    )}
                 </div>
               </CardContent>
             </Card>
@@ -1068,19 +1076,24 @@ const handlePartsReady = async () => {
                     const latestDoc = relatedDocuments[docType]?.[0];
                     
                     return (
-                      <div key={docType} className="flex justify-between items-center">
-                        <span className="text-muted-foreground">{label}:</span>
+                      <div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
+                        <span className="text-muted-foreground pt-1">{label}:</span>
                         {latestDoc ? (
-                           <div className="flex items-center gap-2">
-                              <Button asChild variant="link" className="p-0 h-auto font-medium">
-                                <Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link>
-                              </Button>
-                              <Badge variant={DOC_STATUS_VARIANT[latestDoc.status] || 'secondary'} className="text-xs">
-                                {DOC_STATUS_DISPLAY[latestDoc.status] || latestDoc.status}
-                              </Badge>
+                           <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-2">
+                                <Button asChild variant="link" className="p-0 h-auto font-medium">
+                                    <Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link>
+                                </Button>
+                                <Badge variant={DOC_STATUS_VARIANT[latestDoc.status] || 'secondary'} className="text-[10px] px-1.5 h-5">
+                                    {DOC_STATUS_DISPLAY[latestDoc.status] || latestDoc.status}
+                                </Badge>
+                              </div>
+                              {latestDoc.status === 'CANCELLED' && (
+                                <p className="text-[10px] text-muted-foreground italic">ยกเลิกเมื่อ {safeFormat(latestDoc.updatedAt, 'dd/MM/yy')}</p>
+                              )}
                            </div>
                         ) : (
-                          <span>— ไม่มี —</span>
+                          <span className="pt-1">— ไม่มี —</span>
                         )}
                       </div>
                     );
@@ -1115,6 +1128,33 @@ const handlePartsReady = async () => {
 
         </div>
       </div>
+      
+      <AlertDialog open={!!billingJob} onOpenChange={(isOpen) => !isOpen && setBillingJob(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
+                <AlertDialogDescription>
+                    กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมนี้
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <Button variant="outline" onClick={() => setBillingJob(null)}>ยกเลิก</Button>
+                <Button variant="secondary" onClick={() => {
+                    if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`);
+                    setBillingJob(null);
+                }}>
+                    ใบส่งของชั่วคราว
+                </Button>
+                <Button onClick={() => {
+                    if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`);
+                    setBillingJob(null);
+                }}>
+                    ใบกำกับภาษี
+                </Button>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
           <DialogContent 
               onInteractOutside={(e) => {if (isTransferring) e.preventDefault()}}
