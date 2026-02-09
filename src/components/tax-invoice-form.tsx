@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle, AlertCircle, Send, FileSearch } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, AlertTriangle, AlertCircle, Send, FileSearch, FileStack } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -34,6 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { createDocument } from "@/firebase/documents";
 import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
@@ -101,7 +102,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [quotations, setQuotations] = useState<DocumentType[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -121,10 +121,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [allQuotations, setAllQuotations] = useState<DocumentType[]>([]);
   const [isSearchingQt, setIsSearchingQt] = useState(false);
 
-  const [isDnSearchOpen, setIsDnSearchOpen] = useState(false);
-  const [dnSearchQuery, setDnSearchQuery] = useState("");
-  const [allDeliveryNotes, setAllDeliveryNotes] = useState<DocumentType[]>([]);
-  const [isSearchingDn, setIsSearchingDn] = useState(false);
+  const [isBillSearchOpen, setIsBillSearchOpen] = useState(false);
+  const [billSearchQuery, setBillSearchQuery] = useState("");
+  const [billSearchType, setBillSearchType] = useState<'DELIVERY_NOTE' | 'TAX_INVOICE'>('DELIVERY_NOTE');
+  const [allBills, setAllBills] = useState<DocumentType[]>([]);
+  const [isSearchingBills, setIsSearchingBills] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -186,28 +187,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         unsubscribeAccounts();
     };
   }, [db, toast]);
-  
-  useEffect(() => {
-    if (!db || !jobId) {
-      setQuotations([]);
-      return;
-    };
-    
-    const q = query(
-      collection(db, 'documents'),
-      where('jobId', '==', jobId),
-      where('docType', '==', 'QUOTATION')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchedQuotations = snapshot.docs
-          .map(d => ({id: d.id, ...d.data()}) as DocumentType)
-          .filter(d => d.status !== 'CANCELLED');
-        fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
-        setQuotations(fetchedQuotations);
-    });
-    return () => unsubscribe();
-  }, [db, jobId]);
 
   useEffect(() => {
     if (docToEdit) {
@@ -250,11 +229,15 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   }, [job, docToEdit, profile, form]);
 
   const filteredCustomers = useMemo(() => {
-    if (!customerSearch) return customers;
-    return customers.filter(c =>
-        c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-        c.phone.includes(customerSearch)
-    );
+    const list = Array.isArray(customers) ? customers : [];
+    const q = (customerSearch ?? "").trim().toLowerCase();
+    if (!q) return list;
+  
+    return list.filter((c: any) => {
+      const name = String(c.name ?? "").toLowerCase();
+      const phone = String(c.phone ?? "").toLowerCase();
+      return name.includes(q) || phone.includes(q);
+    });
   }, [customers, customerSearch]);
 
   const { fields, append, remove, replace } = useFieldArray({
@@ -303,7 +286,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
   
     form.setValue('discountAmount', Number(sourceDoc.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
-    form.setValue('isVat', sourceDoc.docType === 'TAX_INVOICE' ? true : (sourceDoc.withTax ?? true), { shouldDirty: true, shouldValidate: true });
+    form.setValue('isVat', true, { shouldDirty: true, shouldValidate: true });
     form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
     
@@ -327,38 +310,50 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     form.trigger(['items', 'discountAmount', 'isVat', 'customerId']);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงจาก ${sourceDoc.docType} เลขที่ ${sourceDoc.docNo}` });
     setIsQtSearchOpen(false);
-    setIsDnSearchOpen(false);
+    setIsBillSearchOpen(false);
   };
 
-  const loadAllDocs = async (type: DocType) => {
+  const loadAllDocs = async (type: DocType | 'BILLS') => {
     if (!db) return;
-    if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingDn(true);
+    if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingBills(true);
     
     try {
         let q;
-        if (selectedCustomerId) {
+        if (type === 'QUOTATION') {
             q = query(
                 collection(db, "documents"),
-                where("customerId", "==", selectedCustomerId),
-                where("docType", "==", type),
+                where("docType", "==", "QUOTATION"),
                 orderBy("createdAt", "desc"),
-                limit(50)
+                limit(100)
             );
+            const snap = await getDocs(q);
+            setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED'));
         } else {
-            q = query(
+            const qDn = query(
                 collection(db, "documents"),
-                where("docType", "==", type),
+                where("docType", "==", "DELIVERY_NOTE"),
                 orderBy("createdAt", "desc"),
-                limit(50)
+                limit(100)
             );
+            const qTi = query(
+                collection(db, "documents"),
+                where("docType", "==", "TAX_INVOICE"),
+                orderBy("createdAt", "desc"),
+                limit(100)
+            );
+            const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
+            const bills = [
+                ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
+                ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
+            ].filter(d => d.status !== 'CANCELLED');
+            bills.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            setAllBills(bills);
         }
-        const snap = await getDocs(q);
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-        if (type === 'QUOTATION') setAllQuotations(data); else setAllDeliveryNotes(data);
     } catch (e: any) {
+        console.error(e);
         toast({ variant: 'destructive', title: "ค้นหาล้มเหลว", description: e.message });
     } finally {
-        if (type === 'QUOTATION') setIsSearchingQt(false); else setIsSearchingDn(false);
+        if (type === 'QUOTATION') setIsSearchingQt(false); else setIsSearchingBills(false);
     }
   };
 
@@ -496,10 +491,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
   const isCustomerSelectionDisabled = isLocked || !!jobId || (isEditing && !!docToEdit?.customerId);
 
-  const getFilteredDocs = (docs: DocumentType[], queryStr: string) => {
+  const getFilteredDocs = (docs: DocumentType[], queryStr: string, typeFilter?: 'DELIVERY_NOTE' | 'TAX_INVOICE') => {
     const q = queryStr.toLowerCase().trim();
-    if (!q) return docs;
-    return docs.filter(d => 
+    let filtered = [...docs];
+    if (typeFilter) {
+        filtered = filtered.filter(d => d.docType === typeFilter);
+    }
+    if (!q) return filtered;
+    return filtered.filter(d => 
         d.docNo.toLowerCase().includes(q) ||
         (d.customerSnapshot?.name || "").toLowerCase().includes(q) ||
         (d.customerSnapshot?.phone || "").includes(q)
@@ -597,8 +596,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                                     </div>
                                     <ScrollArea className="h-fit max-h-60">
                                         {filteredCustomers.map((c) => (
-                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3">
-                                                <div className="text-left"><p>{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
+                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 text-left">
+                                                <div className="flex flex-col">
+                                                    <span>{c.name}</span>
+                                                    <span className="text-[10px] text-muted-foreground">{c.phone}</span>
+                                                </div>
                                             </Button>
                                             ))}
                                     </ScrollArea>
@@ -624,10 +626,13 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                     <FormField control={form.control} name="paymentTerms" render={({ field }) => (
                         <FormItem>
                             <FormLabel>เงื่อนไขการชำระเงิน</FormLabel>
-                            <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
-                                <div className="flex items-center space-x-2"><RadioGroupItem value="CASH" id="cash" disabled={isLocked} /><Label htmlFor="cash">เงินสด/โอน</Label></div>
-                                <div className="flex items-center space-x-2"><RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} /><Label htmlFor="credit">เครดิต</Label></div>
-                            </RadioGroup>
+                            <FormControl>
+                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
+                                    <div className="flex items-center space-x-2"><RadioGroupItem value="CASH" id="cash" disabled={isLocked} /><Label htmlFor="cash">เงินสด/โอน</Label></div>
+                                    <div className="flex items-center space-x-2"><RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} /><Label htmlFor="credit">เครดิต</Label></div>
+                                </RadioGroup>
+                            </FormControl>
+                            <FormMessage />
                         </FormItem>
                     )} />
                     {form.watch('paymentTerms') === 'CASH' && (
@@ -677,22 +682,49 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                           </PopoverContent>
                       </Popover>
 
-                      <Popover open={isDnSearchOpen} onOpenChange={setIsDnSearchOpen}>
+                      <Popover open={isBillSearchOpen} onOpenChange={setIsBillSearchOpen}>
                           <PopoverTrigger asChild>
-                              <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('DELIVERY_NOTE')} disabled={isLocked}>
-                                  <FileSearch className="mr-2 h-3 w-3" /> เลือกจากใบส่งสินค้า
+                              <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('BILLS')} disabled={isLocked}>
+                                  <FileStack className="mr-2 h-3 w-3" /> เลือกจากบิลขาย
                               </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-80 p-0" align="start">
-                              <div className="p-2 border-b"><Input placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." value={dnSearchQuery} onChange={e=>setDnSearchQuery(e.target.value)} /></div>
-                              <ScrollArea className="h-60">
-                                  {isSearchingDn ? <div className="p-4 text-center"><Loader2 className="animate-spin inline mr-2"/>กำลังโหลด...</div> : 
-                                   getFilteredDocs(allDeliveryNotes, dnSearchQuery).map(d => (
-                                      <Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => handleFetchFromDoc(d)}>
-                                          <div className="flex flex-col"><span className="font-semibold">{d.docNo}</span><span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span><span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span></div>
-                                      </Button>
-                                  ))}
-                              </ScrollArea>
+                              <Tabs value={billSearchType} onValueChange={(v: any) => setBillSearchType(v)} className="w-full">
+                                  <TabsList className="w-full rounded-none h-10">
+                                      <TabsTrigger value="DELIVERY_NOTE" className="flex-1 text-[10px]">ใบส่งของชั่วคราว</TabsTrigger>
+                                      <TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับภาษี</TabsTrigger>
+                                  </TabsList>
+                                  <div className="p-2 border-b">
+                                      <Input 
+                                          placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." 
+                                          value={billSearchQuery} 
+                                          onChange={e => setBillSearchQuery(e.target.value)} 
+                                          autoFocus
+                                      />
+                                  </div>
+                                  <ScrollArea className="h-60">
+                                      {isSearchingBills ? (
+                                          <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>
+                                      ) : getFilteredDocs(allBills, billSearchQuery, billSearchType).length > 0 ? (
+                                          getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (
+                                              <Button 
+                                                  key={d.id} 
+                                                  variant="ghost" 
+                                                  className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
+                                                  onClick={() => handleFetchFromDoc(d)}
+                                              >
+                                                  <div className="flex flex-col">
+                                                      <span className="font-semibold">{d.docNo}</span>
+                                                      <span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span>
+                                                      <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
+                                                  </div>
+                                              </Button>
+                                          ))
+                                      ) : (
+                                          <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>
+                                      )}
+                                  </ScrollArea>
+                              </Tabs>
                           </PopoverContent>
                       </Popover>
                   </div>

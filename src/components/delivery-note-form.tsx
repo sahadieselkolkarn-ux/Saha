@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle, Send, FileSearch } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileDown, Search, AlertTriangle, AlertCircle, Send, FileSearch, FileStack } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -34,6 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { createDocument } from "@/firebase/documents";
 import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
@@ -100,7 +101,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [quotations, setQuotations] = useState<DocumentType[]>([]);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -123,10 +123,11 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [allQuotations, setAllQuotations] = useState<DocumentType[]>([]);
   const [isSearchingQt, setIsSearchingQt] = useState(false);
 
-  const [isDnSearchOpen, setIsDnSearchOpen] = useState(false);
-  const [dnSearchQuery, setDnSearchQuery] = useState("");
-  const [allDeliveryNotes, setAllDeliveryNotes] = useState<DocumentType[]>([]);
-  const [isSearchingDn, setIsSearchingDn] = useState(false);
+  const [isBillSearchOpen, setIsBillSearchOpen] = useState(false);
+  const [billSearchQuery, setBillSearchQuery] = useState("");
+  const [billSearchType, setBillSearchType] = useState<'DELIVERY_NOTE' | 'TAX_INVOICE'>('DELIVERY_NOTE');
+  const [allBills, setAllBills] = useState<DocumentType[]>([]);
+  const [isSearchingBills, setIsSearchingBills] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -201,25 +202,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     });
     return () => unsubscribe();
   }, [db, jobId, isEditing]);
-  
-  useEffect(() => {
-    if (!db || !currentJobId) {
-        setQuotations([]);
-        return;
-    }
-    
-    const q = query(
-        collection(db, "documents"),
-        where("jobId", "==", currentJobId),
-        where("docType", "==", "QUOTATION")
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedQuotations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-      fetchedQuotations.sort((a,b) => new Date(b.docDate).getTime() - new Date(a.docDate).getTime());
-      setQuotations(fetchedQuotations);
-    });
-    return () => unsubscribe();
-  }, [db, currentJobId]);
 
   useEffect(() => {
     if (docToEdit) {
@@ -339,38 +321,50 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     form.trigger(['items', 'discountAmount', 'customerId']);
     toast({ title: "ดึงข้อมูลสำเร็จ", description: `ดึงจาก ${sourceDoc.docType} เลขที่ ${sourceDoc.docNo}` });
     setIsQtSearchOpen(false);
-    setIsDnSearchOpen(false);
+    setIsBillSearchOpen(false);
   };
 
-  const loadAllDocs = async (type: DocType) => {
+  const loadAllDocs = async (type: DocType | 'BILLS') => {
     if (!db) return;
-    if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingDn(true);
+    if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingBills(true);
     
     try {
         let q;
-        if (selectedCustomerId) {
+        if (type === 'QUOTATION') {
             q = query(
                 collection(db, "documents"),
-                where("customerId", "==", selectedCustomerId),
-                where("docType", "==", type),
+                where("docType", "==", "QUOTATION"),
                 orderBy("createdAt", "desc"),
-                limit(50)
+                limit(100)
             );
+            const snap = await getDocs(q);
+            setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED'));
         } else {
-            q = query(
+            const qDn = query(
                 collection(db, "documents"),
-                where("docType", "==", type),
+                where("docType", "==", "DELIVERY_NOTE"),
                 orderBy("createdAt", "desc"),
-                limit(50)
+                limit(100)
             );
+            const qTi = query(
+                collection(db, "documents"),
+                where("docType", "==", "TAX_INVOICE"),
+                orderBy("createdAt", "desc"),
+                limit(100)
+            );
+            const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
+            const bills = [
+                ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
+                ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
+            ].filter(d => d.status !== 'CANCELLED');
+            bills.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+            setAllBills(bills);
         }
-        const snap = await getDocs(q);
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-        if (type === 'QUOTATION') setAllQuotations(data); else setAllDeliveryNotes(data);
     } catch (e: any) {
+        console.error(e);
         toast({ variant: 'destructive', title: "ค้นหาล้มเหลว", description: e.message });
     } finally {
-        if (type === 'QUOTATION') setIsSearchingQt(false); else setIsSearchingDn(false);
+        if (type === 'QUOTATION') setIsSearchingQt(false); else setIsSearchingBills(false);
     }
   };
 
@@ -483,10 +477,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
   const isCustomerSelectionDisabled = isLocked || !!currentJobId || (isEditing && !!docToEdit?.customerId);
 
-  const getFilteredDocs = (docs: DocumentType[], queryStr: string) => {
+  const getFilteredDocs = (docs: DocumentType[], queryStr: string, typeFilter?: 'DELIVERY_NOTE' | 'TAX_INVOICE') => {
     const q = queryStr.toLowerCase().trim();
-    if (!q) return docs;
-    return docs.filter(d => 
+    let filtered = [...docs];
+    if (typeFilter) {
+        filtered = filtered.filter(d => d.docType === typeFilter);
+    }
+    if (!q) return filtered;
+    return filtered.filter(d => 
         d.docNo.toLowerCase().includes(q) ||
         (d.customerSnapshot?.name || "").toLowerCase().includes(q) ||
         (d.customerSnapshot?.phone || "").includes(q)
@@ -723,44 +721,50 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                             </PopoverContent>
                         </Popover>
 
-                        {/* Delivery Note Search Button */}
-                        <Popover open={isDnSearchOpen} onOpenChange={setIsDnSearchOpen}>
+                        {/* Consolidated Bill Search Button */}
+                        <Popover open={isBillSearchOpen} onOpenChange={setIsBillSearchOpen}>
                             <PopoverTrigger asChild>
-                                <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('DELIVERY_NOTE')} disabled={isLocked}>
-                                    <FileSearch className="mr-2 h-3 w-3" /> เลือกจากใบส่งสินค้า
+                                <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('BILLS')} disabled={isLocked}>
+                                    <FileStack className="mr-2 h-3 w-3" /> เลือกจากบิลขาย
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-80 p-0" align="start">
-                                <div className="p-2 border-b">
-                                    <Input 
-                                        placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." 
-                                        value={dnSearchQuery} 
-                                        onChange={e => setDnSearchQuery(e.target.value)} 
-                                        autoFocus
-                                    />
-                                </div>
-                                <ScrollArea className="h-60">
-                                    {isSearchingDn ? (
-                                        <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังค้นหา...</div>
-                                    ) : getFilteredDocs(allDeliveryNotes, dnSearchQuery).length > 0 ? (
-                                        getFilteredDocs(allDeliveryNotes, dnSearchQuery).map(d => (
-                                            <Button 
-                                                key={d.id} 
-                                                variant="ghost" 
-                                                className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
-                                                onClick={() => handleFetchFromDoc(d)}
-                                            >
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold">{d.docNo}</span>
-                                                    <span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span>
-                                                    <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
-                                                </div>
-                                            </Button>
-                                        ))
-                                    ) : (
-                                        <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>
-                                    )}
-                                </ScrollArea>
+                                <Tabs value={billSearchType} onValueChange={(v: any) => setBillSearchType(v)} className="w-full">
+                                    <TabsList className="w-full rounded-none h-10">
+                                        <TabsTrigger value="DELIVERY_NOTE" className="flex-1 text-[10px]">ใบส่งของชั่วคราว</TabsTrigger>
+                                        <TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับภาษี</TabsTrigger>
+                                    </TabsList>
+                                    <div className="p-2 border-b">
+                                        <Input 
+                                            placeholder="ค้นหาเลขที่, ชื่อ, เบอร์โทร..." 
+                                            value={billSearchQuery} 
+                                            onChange={e => setBillSearchQuery(e.target.value)} 
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <ScrollArea className="h-60">
+                                        {isSearchingBills ? (
+                                            <div className="p-4 text-center"><Loader2 className="h-4 w-4 animate-spin inline mr-2"/>กำลังโหลด...</div>
+                                        ) : getFilteredDocs(allBills, billSearchQuery, billSearchType).length > 0 ? (
+                                            getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (
+                                                <Button 
+                                                    key={d.id} 
+                                                    variant="ghost" 
+                                                    className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
+                                                    onClick={() => handleFetchFromDoc(d)}
+                                                >
+                                                    <div className="flex flex-col">
+                                                        <span className="font-semibold">{d.docNo}</span>
+                                                        <span className="text-[10px] text-muted-foreground">{d.customerSnapshot?.name} • {d.customerSnapshot?.phone}</span>
+                                                        <span className="text-[10px] text-muted-foreground">{safeFormat(new Date(d.docDate), 'dd/MM/yy')} • ฿{formatCurrency(d.grandTotal)}</span>
+                                                    </div>
+                                                </Button>
+                                            ))
+                                        ) : (
+                                            <p className="p-4 text-center text-sm text-muted-foreground">ไม่พบเอกสาร</p>
+                                        )}
+                                    </ScrollArea>
+                                </Tabs>
                             </PopoverContent>
                         </Popover>
                     </div>
@@ -864,8 +868,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                           <span className="text-muted-foreground text-destructive">ส่วนลด:</span>
                           <span className="font-medium text-destructive">- {formatCurrency(form.watch('discountAmount'))}</span>
                       </div>
-                      <Separator className="my-2 w-full max-w-xs" />
-                      <div className="flex justify-between w-full max-w-xs text-lg font-bold">
+                      <Separator className="my-1 w-full max-w-xs" />
+                      <div className="flex justify-between w-full max-w-xs text-lg font-bold text-primary">
                           <span>ยอดสุทธิ:</span>
                           <span>{formatCurrency(form.watch('grandTotal'))}</span>
                       </div>
