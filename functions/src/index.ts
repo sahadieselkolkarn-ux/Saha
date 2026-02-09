@@ -7,11 +7,14 @@ const db = getFirestore();
 
 /**
  * Cloud Function to safely close and archive a job after accounting confirmation.
- * Runs with admin privileges to avoid client-side permission issues.
- * Region: us-central1 (default)
+ * Uses the V2 Callable (onCall) pattern to handle CORS and auth automatically.
+ * Region: us-central1
  */
-export const closeJobAfterAccounting = onCall({ region: "us-central1", cors: true }, async (request) => {
-  // 1. Authorization
+export const closeJobAfterAccounting = onCall({ 
+  region: "us-central1",
+  cors: true 
+}, async (request) => {
+  // 1. Authorization Check
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be authenticated.");
   }
@@ -37,7 +40,7 @@ export const closeJobAfterAccounting = onCall({ region: "us-central1", cors: tru
     throw new HttpsError("permission-denied", "Insufficient permissions to close jobs.");
   }
 
-  // 3. Idempotency Check: Search active jobs first, then check common archives
+  // 3. Idempotency Check: Search active jobs first, then check archives
   const jobRef = db.collection("jobs").doc(jobId);
   const jobSnap = await jobRef.get();
 
@@ -61,29 +64,26 @@ export const closeJobAfterAccounting = onCall({ region: "us-central1", cors: tru
 
   const jobData = jobSnap.data()!;
   
-  // 4. Determine Archive Target based on pickup date or current date
+  // 4. Determine Archive Target
   const closedDate = jobData.pickupDate || new Date().toISOString().split("T")[0];
   const year = parseInt(closedDate.split("-")[0]);
   const archiveColName = `jobsArchive_${year}`;
   const archiveRef = db.collection(archiveColName).doc(jobId);
 
-  // 5. Atomic Archive (Main Doc)
-  const archivedJobData = {
-    ...jobData,
-    status: "CLOSED",
-    isArchived: true,
-    archivedAt: FieldValue.serverTimestamp(),
-    archivedByUid: request.auth.uid,
-    archivedByName: userData.displayName || "Admin",
-    closedDate: closedDate,
-    updatedAt: FieldValue.serverTimestamp(),
-  };
-
   try {
-    // Write to archive (Set with merge to be safe)
-    await archiveRef.set(archivedJobData, { merge: true });
+    // 5. Atomic Archive (Main Doc)
+    await archiveRef.set({
+      ...jobData,
+      status: "CLOSED",
+      isArchived: true,
+      archivedAt: FieldValue.serverTimestamp(),
+      archivedByUid: request.auth.uid,
+      archivedByName: userData.displayName || "System",
+      closedDate: closedDate,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
 
-    // 6. Move Activities (in chunks to handle large history)
+    // 6. Move Activities (in chunks)
     const activitiesRef = jobRef.collection("activities");
     const archiveActivitiesRef = archiveRef.collection("activities");
     const activitiesSnap = await activitiesRef.get();
@@ -94,13 +94,12 @@ export const closeJobAfterAccounting = onCall({ region: "us-central1", cors: tru
       let count = 0;
       
       for (const activityDoc of activitiesSnap.docs) {
-        // Use same doc ID to prevent duplicates on retry
+        // Use same doc ID to prevent duplicates
         batch.set(archiveActivitiesRef.doc(activityDoc.id), activityDoc.data());
         batch.delete(activityDoc.ref);
         count++;
         movedCount++;
         
-        // Firestore batch limit is 500
         if (count >= 400) {
           await batch.commit();
           batch = db.batch();

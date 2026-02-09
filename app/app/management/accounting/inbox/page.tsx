@@ -126,33 +126,23 @@ export default function AccountingInboxPage() {
   
   const getInitialAccountId = (doc: DocumentType, availableAccounts: AccountingAccount[]) => {
     if (availableAccounts.length === 0) return "";
-    // 1. Check if accounting already picked an account
     if (doc.receivedAccountId && availableAccounts.some(a => a.id === doc.receivedAccountId)) {
         return doc.receivedAccountId;
     }
-    // 2. Fallback to suggested account from office
     if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
         return doc.suggestedAccountId;
     }
-    // 3. Fallback to first CASH account
     const cashAccount = availableAccounts.find(a => a.type === 'CASH');
     if (cashAccount) return cashAccount.id;
-    // 4. Ultimate fallback
     return availableAccounts[0].id;
   };
 
   const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
     setConfirmError(null);
     setConfirmingDoc(doc);
-    
-    // Set Account: Actual > Suggested > Default
     const initialId = getInitialAccountId(doc, accounts);
     setSelectedAccountId(initialId);
-    
-    // Set Method: Actual > Suggested > Default 'CASH'
     setSelectedPaymentMethod((doc.paymentMethod || doc.suggestedPaymentMethod || 'CASH') as any);
-    
-    // Set Date: Actual Payment Date > Doc Date > Today
     setSelectedPaymentDate(doc.paymentDate || doc.docDate || format(new Date(), "yyyy-MM-dd"));
   };
 
