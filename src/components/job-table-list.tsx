@@ -181,11 +181,12 @@ export function JobTableList({
 
   useEffect(() => {
     fetchData(currentPage, false);
-  }, [currentPage, fetchData]);
+  }, [currentPage]); // Only re-fetch on current page change
 
   useEffect(() => {
     pageStartCursors.current = [null];
     setCurrentPage(0);
+    // fetchData is called by current page effect
   }, [searchTerm, department, status, source, year]);
 
   const handleNextPage = () => {

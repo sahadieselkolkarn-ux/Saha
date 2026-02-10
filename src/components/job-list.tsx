@@ -507,7 +507,7 @@ export function JobList({
   
   const handleConfirmOutsource = async () => {
     if (!db || !profile || !outsourcingJob || !selectedVendorId) {
-        toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกร้านผู้รับเหมา" });
+        toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกล้านค้าผู้รับเหมา" });
         return;
     }
     
@@ -780,7 +780,7 @@ export function JobList({
                             onClick={() => openOutsourceDialog(job)}
                             disabled={isAccepting !== null}
                         >
-                            {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <Package />}
+                            {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <Package className="h-4 w-4" />}
                             มอบหมายร้านนอก
                         </Button>
                     ) : (
@@ -790,7 +790,7 @@ export function JobList({
                           onClick={() => isOfficer ? openAssignDialog(job) : handleAcceptJob(job.id)}
                           disabled={isAccepting !== null}
                         >
-                          {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck />}
+                          {isAccepting === job.id ? <Loader2 className="animate-spin" /> : <UserCheck className="h-4 w-4" />}
                           {isOfficer ? 'มอบหมายงาน' : 'รับงาน'}
                         </Button>
                     )}
@@ -800,7 +800,7 @@ export function JobList({
                   {(job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE') && !hideQuotationButton && (
                     <Button asChild variant="default" className="w-full">
                       <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                        <Receipt />
+                        <Receipt className="h-4 w-4" />
                         ทำใบเสนอราคา
                       </Link>
                     </Button>
@@ -814,7 +814,7 @@ export function JobList({
                           className="w-full"
                           onClick={() => setBillingJob(job)}
                         >
-                          <Receipt />
+                          <Receipt className="h-4 w-4" />
                           ออกบิล
                         </Button>
                       ) : (
@@ -918,7 +918,7 @@ export function JobList({
                                 <SelectContent>
                                 {relatedDocs.map(doc => (
                                     <SelectItem key={doc.id} value={doc.id}>
-                                        {doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'} {doc.docNo} - ยอด {doc.grandTotal.toLocaleString()} บาท
+                                        {doc.docNo} - ยอด {doc.grandTotal.toLocaleString()} บาท
                                     </SelectItem>
                                 ))}
                                 </SelectContent>

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import React, { useMemo, useState, useEffect } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2,
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck,
 } from "lucide-react"
 import { collection, query, where, getDocs } from "firebase/firestore"
 
@@ -127,6 +127,24 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     );
 };
 
+const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
+    const pathname = usePathname();
+    const isOpen = pathname.startsWith('/app/admin');
+    return (
+        <Collapsible defaultOpen={isOpen}>
+            <CollapsibleTrigger asChild>
+                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground text-sm">
+                    <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" /> Admin</span>
+                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="py-1 pl-4 space-y-1">
+                <SubNavLink href="/app/admin/users" label="จัดการผู้ใช้ / Maintenance" onClick={onLinkClick} />
+            </CollapsibleContent>
+        </Collapsible>
+    );
+};
+
 const SettingsSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
     const isOpen = pathname.startsWith('/app/management/settings') || pathname.startsWith('/app/management/hr/settings') || pathname.startsWith('/app/management/hr/holidays');
@@ -230,6 +248,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
     };
     const Icon = icons[department];
     const canSeeAccounting = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
+    const isSystemAdmin = profile?.role === 'ADMIN';
 
     return (
         <Collapsible defaultOpen={isOpen}>
@@ -251,6 +270,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         )}
                         <HRSubMenu onLinkClick={onLinkClick} />
                         <SettingsSubMenu onLinkClick={onLinkClick} />
+                        {isSystemAdmin && <AdminSubMenu onLinkClick={onLinkClick} />}
                     </>
                 )}
                 {department === 'OFFICE' && (
@@ -352,7 +372,6 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const pathname = usePathname();
     const { profile, loading } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
-    const debugBuildId = React.useMemo(() => new Date().toISOString(), []);
 
     const isManagementUser = useMemo(() => {
         if (!profile) return false;

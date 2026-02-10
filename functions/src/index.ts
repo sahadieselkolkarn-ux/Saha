@@ -53,6 +53,7 @@ export const closeJobAfterAccounting = onCall({
   const archiveRef = db.collection(archiveColName).doc(jobId);
 
   try {
+    // Force status to CLOSED when archiving
     await archiveRef.set({
       ...jobData,
       status: "CLOSED",
@@ -135,6 +136,7 @@ export const migrateClosedJobsToArchive = onCall({
       
       await archiveRef.set({
         ...jobData,
+        status: "CLOSED", // Force closed status
         isArchived: true,
         archivedAt: FieldValue.serverTimestamp(),
         archivedByUid: request.auth.uid,
