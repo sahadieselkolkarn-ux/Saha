@@ -80,9 +80,8 @@ export function JobTableList({
   const pageStartCursors = useRef<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
-  // Stabilize excludeStatus to prevent infinite loops if an array is passed inline
-  const memoizedExcludeStatus = useMemo(() => {
-    if (!excludeStatus) return null;
+  const memoizedExcludeStatusString = useMemo(() => {
+    if (!excludeStatus) return "";
     return Array.isArray(excludeStatus) ? excludeStatus.join(',') : excludeStatus;
   }, [excludeStatus]);
 
@@ -98,7 +97,6 @@ export function JobTableList({
       const isSearch = !!searchTerm.trim();
 
       if (isSearch && source === 'archive') {
-        // Multi-year search for archives
         const year1 = year;
         const year2 = year - 1;
         
@@ -137,7 +135,6 @@ export function JobTableList({
         if (status) qConstraints.push(where('status', '==', status));
         qConstraints.push(orderBy(orderByField, orderByDirection));
 
-        // Use the ref for cursors to avoid dependency loop
         const cursor = pageStartCursors.current[pageIndex];
         if (cursor) {
           qConstraints.push(startAfter(cursor));
@@ -150,8 +147,8 @@ export function JobTableList({
 
         let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
 
-        if (memoizedExcludeStatus) {
-          const statusesToExclude = memoizedExcludeStatus.split(',');
+        if (memoizedExcludeStatusString) {
+          const statusesToExclude = memoizedExcludeStatusString.split(',');
           jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
         }
         
@@ -181,14 +178,13 @@ export function JobTableList({
     } finally {
       setLoading(false);
     }
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatus, searchTerm]);
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatusString, searchTerm]);
 
   useEffect(() => {
     fetchData(currentPage, false);
   }, [currentPage, fetchData]);
 
   useEffect(() => {
-    // Reset pagination when filters change
     pageStartCursors.current = [null];
     setCurrentPage(0);
   }, [searchTerm, department, status, source, year]);

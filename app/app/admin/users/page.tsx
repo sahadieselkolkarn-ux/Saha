@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
@@ -35,27 +35,33 @@ export default function AdminUsersPage() {
       const migrate = httpsCallable(functions, "migrateClosedJobsToArchive2026");
       
       console.info("Starting migration call...");
-      const result = await migrate();
+      const result = await migrate({ limit: 40 });
       const data = result.data as any;
       
-      console.info("Migration result received:", data);
-      setMigrationResult(data);
+      // Normalize results
+      const totalFound = Number(data.totalFound || 0);
+      const migrated = Number(data.migrated || 0);
+      const skipped = Number(data.skipped || 0);
+      const errors = Array.isArray(data.errors) ? data.errors : [];
+
+      const normalizedResult = { ...data, totalFound, migrated, skipped, errors };
+      setMigrationResult(normalizedResult);
       
-      if (data.migrated > 0) {
+      if (migrated > 0) {
         toast({ 
           title: "ย้ายข้อมูลสำเร็จ", 
-          description: `ย้ายงาน CLOSED ไปประวัติแล้ว ${data.migrated} รายการ` 
+          description: `ย้ายงาน CLOSED ไปประวัติแล้ว ${migrated} รายการ` 
         });
-      } else if (data.totalFound === 0) {
+      } else if (totalFound === 0) {
         toast({ 
           title: "ไม่พบรายการ", 
-          description: "ไม่พบใบงานสถานะ CLOSED ที่ค้างอยู่ในระบบหลักแล้ว" 
+          description: "ไม่พบใบงานสถานะ CLOSED ที่ค้างอยู่ในระบบหลัก" 
         });
-      } else {
+      } else if (errors.length > 0) {
         toast({ 
           variant: "destructive",
-          title: "ไม่มีการย้ายข้อมูล", 
-          description: "พบงานแต่ไม่สามารถย้ายได้ กรุณาตรวจสอบรายละเอียดข้อผิดพลาด" 
+          title: "พบข้อผิดพลาด", 
+          description: `ย้ายไม่สำเร็จ ${errors.length} รายการ กรุณาตรวจสอบรายละเอียด` 
         });
       }
     } catch (e: any) {
@@ -63,7 +69,7 @@ export default function AdminUsersPage() {
       toast({ 
         variant: 'destructive', 
         title: "การเชื่อมต่อล้มเหลว", 
-        description: e.message || "เกิดข้อผิดพลาดในการเรียก Cloud Function" 
+        description: `${e.code || 'error'}: ${e.message || "เกิดข้อผิดพลาดในการเรียก Cloud Function"}` 
       });
     } finally {
       setIsMigrating(false);
@@ -72,7 +78,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="User Management" description="Manage users and system maintenance tasks." />
+      <PageHeader title="User Management & Maintenance" description="Manage users and system data integrity." />
       
       {isAdmin && (
         <Card className="border-amber-200 bg-amber-50/30">
@@ -82,7 +88,7 @@ export default function AdminUsersPage() {
               <CardTitle className="text-lg">System Maintenance</CardTitle>
             </div>
             <CardDescription>
-              ย้ายข้อมูลใบงานที่สถานะ "ปิดงาน" (CLOSED) ที่ยังค้างอยู่ในระบบ ไปยังระบบจัดเก็บประวัติ (Archive 2026)
+              ย้ายข้อมูลใบงานที่สถานะ "ปิดงาน" (CLOSED) ที่ยังค้างอยู่ในระบบหลัก ไปยังระบบจัดเก็บประวัติ (Archive 2026)
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -90,13 +96,13 @@ export default function AdminUsersPage() {
               <AlertTriangle className="h-4 w-4 text-amber-600" />
               <AlertTitle>คำแนะนำ</AlertTitle>
               <AlertDescription className="text-xs text-muted-foreground">
-                การย้ายข้อมูลจะทำทีละ 40 รายการเพื่อความปลอดภัย หากมีงานค้างจำนวนมาก กรุณากดปุ่มซ้ำจนกว่าจะขึ้นว่าไม่พบงานรอการย้าย
+                การย้ายข้อมูลจะทำทีละไม่เกิน 40 รายการเพื่อความเสถียร หากมีงานค้างจำนวนมาก กรุณากดปุ่มซ้ำจนกว่าจะขึ้นว่าไม่พบงานรอการย้าย
               </AlertDescription>
             </Alert>
 
             {migrationResult && (
               <div className={cn(
-                "p-4 rounded-md border space-y-2",
+                "p-4 rounded-md border space-y-2 animate-in fade-in slide-in-from-top-1",
                 migrationResult.migrated > 0 ? "bg-green-50 border-green-200" : "bg-muted border-muted"
               )}>
                 <div className={cn(
@@ -104,19 +110,21 @@ export default function AdminUsersPage() {
                   migrationResult.migrated > 0 ? "text-green-700" : "text-muted-foreground"
                 )}>
                   <CheckCircle2 className="h-4 w-4" />
-                  สรุปผลการย้ายประวัติ
+                  สรุปผลการย้ายประวัติ (Batch Summary)
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                  <div>พบงานค้าง: <span className="font-bold">{migrationResult.totalFound}</span></div>
+                  <div>พบงานในระบบ: <span className="font-bold">{migrationResult.totalFound}</span></div>
                   <div className="text-green-600 font-bold">ย้ายสำเร็จ: {migrationResult.migrated}</div>
-                  <div className="text-amber-600">ข้าม: {migrationResult.skipped || 0}</div>
+                  <div className="text-amber-600">ข้าม/มีอยู่แล้ว: {migrationResult.skipped}</div>
                 </div>
                 {migrationResult.errors && migrationResult.errors.length > 0 && (
                   <div className="text-destructive text-[10px] mt-2 border-t pt-2 space-y-1">
                     <p className="font-bold flex items-center gap-1"><XCircle className="h-3 w-3"/> พบข้อผิดพลาด {migrationResult.errors.length} รายการ:</p>
-                    {migrationResult.errors.slice(0, 3).map((err: any, i: number) => (
-                      <p key={i}>- Job {err.jobId}: {err.message}</p>
-                    ))}
+                    <ScrollArea className="h-20">
+                        {migrationResult.errors.slice(0, 10).map((err: any, i: number) => (
+                        <p key={i}>- Job {err.jobId}: {err.message}</p>
+                        ))}
+                    </ScrollArea>
                   </div>
                 )}
               </div>
@@ -125,9 +133,9 @@ export default function AdminUsersPage() {
             <Button 
               onClick={handleMigrate} 
               disabled={isMigrating}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto min-w-[200px]"
             >
-              {isMigrating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
+              {isMigrating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               เริ่มการย้ายข้อมูลประวัติ (Migration)
             </Button>
           </CardContent>

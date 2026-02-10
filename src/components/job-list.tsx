@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface JobListProps {
   department?: JobDepartment;
@@ -146,6 +147,11 @@ export function JobList({
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [outsourceNotes, setOutsourceNotes] = useState("");
 
+  const memoizedExcludeStatusString = useMemo(() => {
+    if (!excludeStatus) return "";
+    return Array.isArray(excludeStatus) ? excludeStatus.join(',') : excludeStatus;
+  }, [excludeStatus]);
+
   const jobsQuery = useMemo(() => {
     if (!db) return null;
 
@@ -199,8 +205,8 @@ export function JobList({
         }
       }
       
-      if (excludeStatus) {
-        const statusesToExclude = Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
+      if (memoizedExcludeStatusString) {
+        const statusesToExclude = memoizedExcludeStatusString.split(',');
         jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
       }
       
@@ -225,7 +231,7 @@ export function JobList({
     });
 
     return () => unsubscribe();
-  }, [jobsQuery, assigneeUid, department, status, excludeStatus, orderByField, orderByDirection]);
+  }, [jobsQuery, assigneeUid, department, status, memoizedExcludeStatusString, orderByField, orderByDirection]);
 
   const filteredJobs = useMemo(() => {
     if (!searchTerm) return jobs;
@@ -801,7 +807,196 @@ export function JobList({
         );
       })}
     </div>
-    {/* ... All dialogs remain same as in src/components/job-list.tsx ... */}
+
+    {/* Dialogs */}
+    <Dialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>เลือกประเภทเอกสาร</DialogTitle>
+                <DialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมนี้</DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-4 py-4">
+                <Button variant="outline" className="h-24 flex-col gap-2" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }}>
+                    <FileImage className="h-8 w-8" />
+                    <span>ใบส่งของชั่วคราว</span>
+                </Button>
+                <Button className="h-24 flex-col gap-2" onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}>
+                    <Receipt className="h-8 w-8" />
+                    <span>ใบกำกับภาษี</span>
+                </Button>
+            </div>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={!!closingJob} onOpenChange={(open) => !open && !isSubmittingToReview && setClosingJob(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+            <DialogHeader className="p-6 pb-0">
+                <DialogTitle>เตรียมส่งมอบงานและตรวจสอบรายการขาย</DialogTitle>
+                <DialogDescription>อ้างอิงเอกสารขายเพื่อย้ายงานเข้าสู่ระบบตรวจสอบโดยฝ่ายบัญชี</DialogDescription>
+            </DialogHeader>
+            
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+                <div className="space-y-2">
+                    <Label>1. เลือกเอกสารอ้างอิงสำหรับปิดงาน</Label>
+                    {isLoadingDocs ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> : 
+                     relatedDocs.length > 0 ? (
+                        <RadioGroup value={selectedDocId} onValueChange={setSelectedDocId} className="grid grid-cols-1 gap-2">
+                            {relatedDocs.map(doc => (
+                                <Label key={doc.id} className={cn("flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-muted/50", selectedDocId === doc.id && "border-primary bg-primary/5")}>
+                                    <div className="flex items-center gap-3">
+                                        <RadioGroupItem value={doc.id} id={doc.id} />
+                                        <div>
+                                            <p className="font-bold">{doc.docNo}</p>
+                                            <p className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'} • {safeFormat(new Date(doc.docDate), 'dd/MM/yy')}</p>
+                                        </div>
+                                    </div>
+                                    <p className="font-bold text-primary">฿{doc.grandTotal.toLocaleString()}</p>
+                                </Label>
+                            ))}
+                        </RadioGroup>
+                    ) : (
+                        <div className="p-8 border border-dashed rounded-lg text-center space-y-3">
+                            <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto" />
+                            <p className="text-sm text-muted-foreground">ไม่พบเอกสารขายที่ออกภายใต้ Job นี้</p>
+                            <Button variant="outline" size="sm" onClick={() => setClosingJob(null)}>ไปออกบิลก่อน</Button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-4 pt-4 border-t">
+                    <Label>2. เงื่อนไขการรับเงิน (สำหรับการตรวจสอบ)</Label>
+                    <RadioGroup value={paymentMode} onValueChange={(v: any) => setPaymentMode(v)} className="flex gap-6">
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="PAID" id="m-paid" /><Label htmlFor="paid" className="cursor-pointer">ได้รับเงินแล้ว (Cash)</Label></div>
+                        <div className="flex items-center space-x-2"><RadioGroupItem value="UNPAID" id="m-unpaid" /><Label htmlFor="unpaid" className="cursor-pointer">ยังไม่ได้รับเงิน (Credit)</Label></div>
+                    </RadioGroup>
+
+                    {paymentMode === 'PAID' ? (
+                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1">
+                            <div className="space-y-2">
+                                <Label>ช่องทางที่รับ</Label>
+                                <Select value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)}>
+                                    <SelectTrigger><SelectValue/></SelectTrigger>
+                                    <SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">โอนเงิน</SelectItem></SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>ระบุบัญชีที่เงินเข้า</Label>
+                                <Select value={suggestedAccountId} onValueChange={setSuggestedAccountId}>
+                                    <SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {accountingAccounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                            <Label>วันครบกำหนดชำระ (ถ้ามี)</Label>
+                            <Input type="date" value={creditDueDate} onChange={e => setCreditDueDate(e.target.value)} />
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-2 pt-4 border-t">
+                    <Label>3. วันที่ลูกค้ามารับของจริง</Label>
+                    <Input type="date" value={pickupDate} onChange={e => setPickupDate(e.target.value)} />
+                </div>
+            </div>
+
+            <DialogFooter className="p-6 border-t bg-muted/20">
+                <Button variant="outline" onClick={() => setClosingJob(null)} disabled={isSubmittingToReview}>ยกเลิก</Button>
+                <Button onClick={handleCloseJob} disabled={isSubmittingToReview || !selectedDocId || isLoadingDocs}>
+                    {isSubmittingToReview ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                    ส่งตรวจสอบและปิดงาน
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={!!assigningJob} onOpenChange={(open) => !open && setAssigningJob(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>มอบหมายงานซ่อม</DialogTitle>
+                <DialogDescription>เลือกพนักงานที่รับผิดชอบงานนี้ในแผนก {assigningJob && deptLabel(assigningJob.department)}</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                {isFetchingWorkers ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> : 
+                 workers.length > 0 ? (
+                    <Select value={selectedWorkerId || ""} onValueChange={setSelectedWorkerId}>
+                        <SelectTrigger><SelectValue placeholder="เลือกพนักงาน..." /></SelectTrigger>
+                        <SelectContent>
+                            {workers.map(w => <SelectItem key={w.uid} value={w.uid}>{w.displayName}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                ) : (
+                    <div className="p-4 border border-dashed rounded text-center text-muted-foreground text-sm">ไม่พบพนักงานในแผนกนี้</div>
+                )}
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setAssigningJob(null)}>ยกเลิก</Button>
+                <Button onClick={handleConfirmAssignment} disabled={!selectedWorkerId || isAccepting !== null}>
+                    {isAccepting !== null ? <Loader2 className="animate-spin mr-2" /> : <UserCheck className="mr-2" />}
+                    ยืนยันการมอบหมาย
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog open={!!outsourcingJob} onOpenChange={(open) => !open && setOutsourcingJob(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>ส่งต่องานนอก (Outsource)</DialogTitle>
+                <DialogDescription>ระบุผู้รับเหมาหรือร้านนอกที่จะรับงานชิ้นนี้ไปดำเนินการ</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="space-y-2">
+                    <Label>เลือกร้านค้า/ผู้รับเหมา</Label>
+                    {isFetchingVendors ? <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div> : 
+                     outsourceVendors.length > 0 ? (
+                        <Select value={selectedVendorId || ""} onValueChange={setSelectedVendorId}>
+                            <SelectTrigger><SelectValue placeholder="ค้นหาร้านค้า..." /></SelectTrigger>
+                            <SelectContent>
+                                {outsourceVendors.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    ) : (
+                        <div className="p-4 border border-dashed rounded text-center space-y-2">
+                            <p className="text-muted-foreground text-sm">ไม่พบรายชื่อผู้รับเหมางานนอกในระบบ</p>
+                            <Button variant="link" size="sm" asChild><Link href="/app/office/parts/vendors">ไปที่จัดการรายชื่อร้านค้า</Link></Button>
+                        </div>
+                    )}
+                </div>
+                <div className="space-y-2">
+                    <Label>หมายเหตุการส่งงาน</Label>
+                    <Textarea placeholder="เช่น ส่งซ่อมเทอร์โบ, นัดรับวันไหน..." value={outsourceNotes} onChange={e => setOutsourceNotes(e.target.value)} />
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setOutsourcingJob(null)}>ยกเลิก</Button>
+                <Button onClick={handleConfirmOutsource} disabled={!selectedVendorId || isAccepting !== null}>
+                    {isAccepting !== null ? <Loader2 className="animate-spin mr-2" /> : <Package className="mr-2" />}
+                    ยืนยันส่งงานนอก
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <AlertDialog open={!!jobForPartsReady} onOpenChange={(open) => !open && setJobForPartsReady(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>ยืนยันอะไหล่พร้อมซ่อม?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    เมื่อยืนยัน ระบบจะแจ้งเตือนไปยังแผนก {jobForPartsReady && deptLabel(jobForPartsReady.department)} ให้เริ่มดำเนินการซ่อมทันที
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel disabled={isActionLoading}>ยกเลิก</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmPartsReady} disabled={isActionLoading}>
+                    {isActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "ใช่, อะไหล่พร้อมแล้ว"}
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 }
