@@ -96,7 +96,6 @@ export function JobTableList({
     try {
       const isSearch = !!searchTerm.trim();
 
-      // For search in archive, we search across current and previous year
       if (isSearch && source === 'archive') {
         const year1 = year;
         const year2 = year - 1;
@@ -187,7 +186,7 @@ export function JobTableList({
   useEffect(() => {
     pageStartCursors.current = [null];
     setCurrentPage(0);
-  }, [searchTerm, department, status]);
+  }, [searchTerm, department, status, source, year]);
 
   const handleNextPage = () => {
     if (!isLastPage) {

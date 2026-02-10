@@ -15,7 +15,8 @@ import {
   limit, 
   getDocs,
   Timestamp,
-  runTransaction
+  runTransaction,
+  type FirestoreError
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase/client-provider";
@@ -39,7 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Loader2, PlusCircle, History, Wallet, ArrowDownCircle, ArrowUpCircle, 
-  Lock, Unlock, CheckCircle2, AlertCircle, Camera, X, Image as ImageIcon
+  Lock, Unlock, CheckCircle2, AlertCircle, Camera, X, Image as ImageIcon, ExternalLink
 } from "lucide-react";
 import { cashDrawerStatusLabel } from "@/lib/ui-labels";
 import { safeFormat } from "@/lib/date-utils";
@@ -188,6 +189,8 @@ export default function OfficeCashDrawerPage() {
   
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closingData, setClosingData] = useState<CloseSessionFormData | null>(null);
+  
+  const [historyIndexUrl, setHistoryIndexUrl] = useState<string | null>(null);
 
   const isMgmt = profile?.department === 'MANAGEMENT' || profile?.role === 'ADMIN';
 
@@ -222,13 +225,23 @@ export default function OfficeCashDrawerPage() {
     });
   }, [db, activeSession]);
 
-  // Listen for History
+  // Listen for History with index error handling
   useEffect(() => {
     if (!db) return;
     const q = query(collection(db, "cashDrawerSessions"), where("status", "!=", "OPEN"), orderBy("openedAt", "desc"), limit(10));
-    return onSnapshot(q, (snap) => {
-      setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const unsub = onSnapshot(q, 
+      (snap) => {
+        setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setHistoryIndexUrl(null);
+      },
+      (err: FirestoreError) => {
+        if (err.message?.includes('requires an index')) {
+          const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+          if (urlMatch) setHistoryIndexUrl(urlMatch[0]);
+        }
+      }
+    );
+    return unsub;
   }, [db]);
 
   const handleOpenSession = async () => {
@@ -500,6 +513,22 @@ export default function OfficeCashDrawerPage() {
         <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold flex items-center gap-2 text-muted-foreground"><History className="h-5 w-5"/> ประวัติรอบการทำงานล่าสุด</h3>
         </div>
+        
+        {historyIndexUrl && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>ต้องสร้างดัชนี (Index) ก่อนดูประวัติ</AlertTitle>
+            <AlertDescription className="flex flex-col gap-2">
+              <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงประวัติรอบการทำงาน กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
+              <Button asChild variant="outline" size="sm" className="w-fit">
+                <a href={historyIndexUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index สำหรับประวัติ
+                </a>
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid gap-4">
           {history.length === 0 ? (
               <p className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg border border-dashed">ยังไม่มีประวัติการปิดรอบ</p>

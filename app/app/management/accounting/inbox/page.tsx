@@ -127,15 +127,12 @@ export default function AccountingInboxPage() {
   
   const getInitialAccountId = (doc: DocumentType, availableAccounts: AccountingAccount[]) => {
     if (availableAccounts.length === 0) return "";
-    // Priority 1: Value already saved in document (e.g. from previous Save Draft by accounting)
     if (doc.receivedAccountId && availableAccounts.some(a => a.id === doc.receivedAccountId)) {
         return doc.receivedAccountId;
     }
-    // Priority 2: Suggested value from office
     if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
         return doc.suggestedAccountId;
     }
-    // Fallback: Cash account or first available
     const cashAccount = availableAccounts.find(a => a.type === 'CASH');
     if (cashAccount) return cashAccount.id;
     return availableAccounts[0].id;
@@ -191,7 +188,7 @@ export default function AccountingInboxPage() {
     if (!firebaseApp) return;
     
     const functions = getFunctions(firebaseApp, 'us-central1');
-    const closeJob = httpsCallable(functions, 'closeJobAfterAccounting');
+    const closeJob = httpsCallable(functions, "closeJobAfterAccounting");
     
     setClosingJobId(jobId);
     setFailedClosingJobId(null);
