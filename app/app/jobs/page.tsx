@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight, Loader2, PlusCircle, Search, FileImage, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { ArrowRight, Loader2, PlusCircle, Search, FileImage, LayoutGrid, Table as TableIcon, Eye } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobStatus } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
@@ -68,7 +68,7 @@ function JobCard({ job }: { job: Job }) {
       <CardFooter>
         <Button asChild variant="outline" className="w-full">
           <Link href={`/app/jobs/${job.id}`}>
-            ดูรายละเอียด <ArrowRight />
+            <Eye className="h-4 w-4" />
           </Link>
         </Button>
       </CardFooter>
@@ -93,8 +93,8 @@ function CompactJobCard({ job }: { job: Job }) {
                         <p className="text-xs text-muted-foreground truncate">{job.description}</p>
                         <div className="flex justify-between items-center mt-1">
                             <Badge variant="outline" className="text-xs">{deptLabel(job.department)}</Badge>
-                            <Button asChild size="sm" variant="ghost" className="h-auto px-2 py-1 text-xs">
-                                <Link href={`/app/jobs/${job.id}`}>View</Link>
+                            <Button asChild size="sm" variant="ghost" className="h-auto p-1">
+                                <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
                             </Button>
                         </div>
                     </div>
@@ -168,7 +168,7 @@ function JobsTable({ jobs }: { jobs: Job[] }) {
               <TableHead>Description</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Last Updated</TableHead>
-              <TableHead />
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -183,8 +183,8 @@ function JobsTable({ jobs }: { jobs: Job[] }) {
                 <TableCell><Badge variant={getStatusVariant(job.status)} className={cn(job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge></TableCell>
                 <TableCell>{safeFormat(job.lastActivityAt, 'dd MMM yy')}</TableCell>
                 <TableCell className="text-right">
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/app/jobs/${job.id}`}>Details</Link>
+                  <Button asChild variant="ghost" size="icon">
+                    <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
                   </Button>
                 </TableCell>
               </TableRow>

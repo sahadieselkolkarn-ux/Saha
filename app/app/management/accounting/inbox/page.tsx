@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -47,7 +46,7 @@ export default function AccountingInboxPage() {
   const router = useRouter();
 
   const [documents, setDocuments] = useState<WithId<DocumentType>[]>([]);
-  const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
+  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"receive" | "ar">("receive");
@@ -131,7 +130,7 @@ export default function AccountingInboxPage() {
         return doc.receivedAccountId;
     }
     if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
-        return doc.suggestedAccountId;
+        return doc.receivedAccountId;
     }
     const cashAccount = availableAccounts.find(a => a.type === 'CASH');
     if (cashAccount) return cashAccount.id;
@@ -184,10 +183,7 @@ export default function AccountingInboxPage() {
     );
   }, [documents, activeTab, searchTerm]);
 
-  /**
-   * Calls the Cloud Function via Firebase SDK (httpsCallable) to ensure CORS-safe calling.
-   */
-  const callCloseJobFunction = async (jobId: string) => {
+  const callCloseJobFunction = async (jobId: string, paymentStatus: 'PAID' | 'UNPAID' = 'UNPAID') => {
     if (!firebaseApp) {
       console.error("Firebase App not initialized in context");
       return;
@@ -200,7 +196,7 @@ export default function AccountingInboxPage() {
     setFailedClosingJobId(null);
     
     try {
-      const result: any = await closeJob({ jobId });
+      const result: any = await closeJob({ jobId, paymentStatus });
       if (result.data?.ok) {
         toast({ title: "ปิดงานสำเร็จ", description: "ใบงานถูกย้ายเข้าประวัติเรียบร้อยแล้ว" });
       } else {
@@ -299,7 +295,7 @@ export default function AccountingInboxPage() {
       toast({ title: "ลงบัญชีรายรับสำเร็จ" });
       
       if (jobId) {
-        callCloseJobFunction(jobId);
+        callCloseJobFunction(jobId, 'PAID');
       }
       
       setConfirmingDoc(null);
@@ -361,7 +357,7 @@ export default function AccountingInboxPage() {
         toast({ title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ' });
         
         if (jobId) {
-          callCloseJobFunction(jobId);
+          callCloseJobFunction(jobId, 'UNPAID');
         }
         
         setArDocToConfirm(null);

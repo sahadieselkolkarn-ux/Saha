@@ -1,6 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase/admin/firestore";
 
 initializeApp();
 const db = getFirestore();
@@ -19,7 +19,7 @@ export const closeJobAfterAccounting = onCall({
     throw new HttpsError("unauthenticated", "User must be authenticated.");
   }
 
-  const { jobId } = request.data as { jobId: string };
+  const { jobId, paymentStatus } = request.data as { jobId: string, paymentStatus?: 'PAID' | 'UNPAID' };
   if (!jobId) {
     throw new HttpsError("invalid-argument", "Missing jobId.");
   }
@@ -85,6 +85,7 @@ export const closeJobAfterAccounting = onCall({
       closedByUid: request.auth.uid,
       closedByName: userData.displayName || "System",
       updatedAt: FieldValue.serverTimestamp(),
+      paymentStatusAtClose: paymentStatus || jobData.paymentStatusAtClose || 'UNPAID',
     }, { merge: true });
 
     // 6. Move Activities (in chunks)
@@ -98,7 +99,6 @@ export const closeJobAfterAccounting = onCall({
       let count = 0;
       
       for (const activityDoc of activitiesSnap.docs) {
-        // Use same doc ID to prevent duplicates
         batch.set(archiveActivitiesRef.doc(activityDoc.id), activityDoc.data());
         batch.delete(activityDoc.ref);
         count++;
