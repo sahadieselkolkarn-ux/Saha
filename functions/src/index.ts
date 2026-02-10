@@ -94,7 +94,71 @@ export const closeJobAfterAccounting = onCall({
 });
 
 /**
- * Migrate legacy history (CLOSED jobs in 'jobs' collection) to jobsArchive_2026.
+ * Migration Function: Move CLOSED jobs from 'jobs' to 'jobsArchive_2026'.
+ */
+export const migrateClosedJobsToArchive2026 = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
+
+  const userSnap = await db.collection("users").doc(request.auth.uid).get();
+  const userData = userSnap.data();
+  const isAllowed = ["ADMIN", "MANAGER"].includes(userData?.role) || ["MANAGEMENT", "OFFICE"].includes(userData?.department);
+  if (!isAllowed) throw new HttpsError("permission-denied", "Access denied.");
+
+  const limitCount = 40;
+  const archiveColName = `jobsArchive_2026`;
+  
+  const closedJobsSnap = await db.collection("jobs")
+    .where("status", "==", "CLOSED")
+    .limit(limitCount)
+    .get();
+
+  const results = { ok: true, totalFound: closedJobsSnap.size, migrated: 0, skipped: 0, errors: [] as any[] };
+
+  for (const jobDoc of closedJobsSnap.docs) {
+    const jobData = jobDoc.data();
+    const jobId = jobDoc.id;
+
+    try {
+      const archiveRef = db.collection(archiveColName).doc(jobId);
+      
+      // 1. Copy Job Document
+      await archiveRef.set({
+        ...jobData,
+        status: "CLOSED",
+        isArchived: true,
+        archivedAt: FieldValue.serverTimestamp(),
+        archivedByUid: request.auth.uid,
+        archivedByName: userData?.displayName || "Migration",
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      // 2. Move Activities
+      const activitiesSnap = await jobDoc.ref.collection("activities").get();
+      if (!activitiesSnap.empty) {
+        const batch = db.batch();
+        for (const act of activitiesSnap.docs) {
+          batch.set(archiveRef.collection("activities").doc(act.id), act.data());
+          batch.delete(act.ref);
+        }
+        await batch.commit();
+      }
+
+      // 3. Delete Original Job
+      await jobDoc.ref.delete();
+      results.migrated++;
+    } catch (e: any) {
+      results.errors.push({ jobId, message: e.message });
+    }
+  }
+
+  return results;
+});
+
+/**
+ * Migrate legacy history (CLOSED jobs in 'jobs' collection) - Generic Version
  */
 export const migrateClosedJobsToArchive = onCall({
   region: "us-central1",
@@ -111,7 +175,6 @@ export const migrateClosedJobsToArchive = onCall({
   const targetYear = 2026;
   const archiveColName = `jobsArchive_${targetYear}`;
   
-  // Query jobs that are CLOSED and NOT marked as archived yet
   const closedJobsSnap = await db.collection("jobs")
     .where("status", "==", "CLOSED")
     .limit(limitCount)
@@ -123,7 +186,6 @@ export const migrateClosedJobsToArchive = onCall({
     const jobData = jobDoc.data();
     const jobId = jobDoc.id;
     
-    // Safely detect year
     let dateStr = jobData.closedDate || "2026-01-01";
     if (jobData.createdAt && typeof jobData.createdAt.toDate === 'function') {
         dateStr = jobData.createdAt.toDate().toISOString().split('T')[0];
@@ -133,7 +195,6 @@ export const migrateClosedJobsToArchive = onCall({
     
     const year = parseInt(dateStr.split('-')[0]);
     
-    // Strict year check as per requirement
     if (year !== targetYear) {
       results.skipped++;
       continue;
@@ -142,7 +203,6 @@ export const migrateClosedJobsToArchive = onCall({
     try {
       const archiveRef = db.collection(archiveColName).doc(jobId);
       
-      // Atomic move
       await archiveRef.set({
         ...jobData,
         status: "CLOSED",
