@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
+import Link from "next/image";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc, deleteField } from "firebase/firestore";
@@ -654,7 +654,6 @@ export function JobList({
                 <CardTitle>ไม่สามารถโหลดข้อมูลงานได้</CardTitle>
                 <CardDescription>{error.message}</CardDescription>
             </CardHeader>
-        </Card>
        );
   }
 

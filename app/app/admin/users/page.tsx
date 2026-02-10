@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function AdminUsersPage() {
   const { firebaseApp } = useFirebase();
@@ -38,7 +39,7 @@ export default function AdminUsersPage() {
       const result = await migrate({ limit: 40 });
       const data = result.data as any;
       
-      // Normalize results
+      // Normalize results to ensure types are correct
       const totalFound = Number(data.totalFound || 0);
       const migrated = Number(data.migrated || 0);
       const skipped = Number(data.skipped || 0);
@@ -120,7 +121,7 @@ export default function AdminUsersPage() {
                 {migrationResult.errors && migrationResult.errors.length > 0 && (
                   <div className="text-destructive text-[10px] mt-2 border-t pt-2 space-y-1">
                     <p className="font-bold flex items-center gap-1"><XCircle className="h-3 w-3"/> พบข้อผิดพลาด {migrationResult.errors.length} รายการ:</p>
-                    <ScrollArea className="h-20">
+                    <ScrollArea className="h-24">
                         {migrationResult.errors.slice(0, 10).map((err: any, i: number) => (
                         <p key={i}>- Job {err.jobId}: {err.message}</p>
                         ))}
