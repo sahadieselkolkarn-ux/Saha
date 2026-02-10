@@ -7,14 +7,11 @@ const db = getFirestore();
 
 /**
  * Cloud Function to safely close and archive a job after accounting confirmation.
- * Uses the V2 Callable (onCall) pattern to handle CORS and auth automatically.
- * Region: us-central1
  */
 export const closeJobAfterAccounting = onCall({ 
   region: "us-central1",
   cors: true 
 }, async (request) => {
-  // 1. Authorization Check
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be authenticated.");
   }
@@ -24,55 +21,38 @@ export const closeJobAfterAccounting = onCall({
     throw new HttpsError("invalid-argument", "Missing jobId.");
   }
 
-  // 2. Permission Check (ADMIN/MANAGER or OFFICE/MANAGEMENT department)
   const userSnap = await db.collection("users").doc(request.auth.uid).get();
   const userData = userSnap.data();
-  
   if (!userData) {
     throw new HttpsError("permission-denied", "User profile not found.");
   }
 
-  const isAllowed = 
-    ["ADMIN", "MANAGER"].includes(userData.role) || 
-    ["MANAGEMENT", "OFFICE"].includes(userData.department);
-
+  const isAllowed = ["ADMIN", "MANAGER"].includes(userData.role) || ["MANAGEMENT", "OFFICE"].includes(userData.department);
   if (!isAllowed) {
-    throw new HttpsError("permission-denied", "Insufficient permissions to close jobs.");
+    throw new HttpsError("permission-denied", "Insufficient permissions.");
   }
 
-  // 3. Idempotency Check: Search active jobs first, then check archives
   const jobRef = db.collection("jobs").doc(jobId);
   const jobSnap = await jobRef.get();
 
   if (!jobSnap.exists) {
-    // If not in active jobs, check if it's already in the archives for recent years
     const currentYear = new Date().getFullYear();
     for (const year of [currentYear, currentYear - 1]) {
       const archiveSnap = await db.collection(`jobsArchive_${year}`).doc(jobId).get();
-      if (archiveSnap.exists) {
-        return { 
-          ok: true, 
-          jobId, 
-          alreadyClosed: true, 
-          archivedCollection: `jobsArchive_${year}`,
-          message: "Job was already archived."
-        };
+      if (archiveSnap.exists()) {
+        return { ok: true, jobId, alreadyClosed: true, archivedCollection: `jobsArchive_${year}` };
       }
     }
-    throw new HttpsError("not-found", `Job ${jobId} not found in active jobs or recent archives.`);
+    throw new HttpsError("not-found", `Job ${jobId} not found.`);
   }
 
   const jobData = jobSnap.data()!;
-  
-  // 4. Determine Archive Target
-  const closedDate = jobData.closedDate || jobData.pickupDate || new Date().toISOString().split("T")[0];
+  const closedDate = jobData.closedDate || new Date().toISOString().split("T")[0];
   const year = parseInt(closedDate.split("-")[0]);
   const archiveColName = `jobsArchive_${year}`;
   const archiveRef = db.collection(archiveColName).doc(jobId);
 
   try {
-    // 5. Atomic Archive (Main Doc)
-    // CRITICAL: Explicitly set status to CLOSED and add audit fields
     await archiveRef.set({
       ...jobData,
       status: "CLOSED",
@@ -85,25 +65,17 @@ export const closeJobAfterAccounting = onCall({
       closedByUid: request.auth.uid,
       closedByName: userData.displayName || "System",
       updatedAt: FieldValue.serverTimestamp(),
-      paymentStatusAtClose: paymentStatus || jobData.paymentStatusAtClose || 'UNPAID',
+      paymentStatusAtClose: paymentStatus || 'UNPAID',
     }, { merge: true });
 
-    // 6. Move Activities (in chunks)
-    const activitiesRef = jobRef.collection("activities");
-    const archiveActivitiesRef = archiveRef.collection("activities");
-    const activitiesSnap = await activitiesRef.get();
-    
-    let movedCount = 0;
+    const activitiesSnap = await jobRef.collection("activities").get();
     if (!activitiesSnap.empty) {
       let batch = db.batch();
       let count = 0;
-      
       for (const activityDoc of activitiesSnap.docs) {
-        batch.set(archiveActivitiesRef.doc(activityDoc.id), activityDoc.data());
+        batch.set(archiveRef.collection("activities").doc(activityDoc.id), activityDoc.data());
         batch.delete(activityDoc.ref);
         count++;
-        movedCount++;
-        
         if (count >= 400) {
           await batch.commit();
           batch = db.batch();
@@ -113,20 +85,79 @@ export const closeJobAfterAccounting = onCall({
       if (count > 0) await batch.commit();
     }
 
-    // 7. Final Delete of the original job document
     await jobRef.delete();
-
-    return {
-      ok: true,
-      jobId,
-      archivedCollection: archiveColName,
-      movedActivitiesCount: movedCount,
-      deletedJob: true,
-      alreadyClosed: false
-    };
-
+    return { ok: true, jobId, archivedCollection: archiveColName };
   } catch (error: any) {
-    console.error("Error closing job:", error);
-    throw new HttpsError("internal", error.message || "Failed to archive and delete job.");
+    throw new HttpsError("internal", error.message || "Failed to archive job.");
   }
+});
+
+/**
+ * Migrate legacy history (CLOSED jobs in 'jobs' collection) to jobsArchive_2026.
+ */
+export const migrateClosedJobsToArchive = onCall({
+  region: "us-central1",
+  cors: true
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
+
+  const userSnap = await db.collection("users").doc(request.auth.uid).get();
+  const userData = userSnap.data();
+  const isAllowed = ["ADMIN", "MANAGER"].includes(userData?.role) || ["MANAGEMENT", "OFFICE"].includes(userData?.department);
+  if (!isAllowed) throw new HttpsError("permission-denied", "Access denied.");
+
+  const limitCount = 40;
+  const targetYear = 2026;
+  const archiveColName = `jobsArchive_${targetYear}`;
+  
+  const closedJobsSnap = await db.collection("jobs")
+    .where("status", "==", "CLOSED")
+    .limit(limitCount)
+    .get();
+
+  const results = { ok: true, totalFound: closedJobsSnap.size, migrated: 0, skipped: 0, errors: [] as string[] };
+
+  for (const jobDoc of closedJobsSnap.docs) {
+    const jobData = jobDoc.data();
+    const jobId = jobDoc.id;
+    
+    // Check if it's a 2026 job (default to 2026 if unclear)
+    const dateStr = jobData.closedDate || jobData.createdAt?.toDate?.()?.toISOString()?.split('T')[0] || "2026-01-01";
+    const year = parseInt(dateStr.split('-')[0]);
+    
+    if (year !== targetYear) {
+      results.skipped++;
+      continue;
+    }
+
+    try {
+      const archiveRef = db.collection(archiveColName).doc(jobId);
+      
+      await archiveRef.set({
+        ...jobData,
+        isArchived: true,
+        archivedAt: FieldValue.serverTimestamp(),
+        archivedByUid: request.auth.uid,
+        archivedByName: userData?.displayName || "Migration",
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      const activitiesSnap = await jobDoc.ref.collection("activities").get();
+      if (!activitiesSnap.empty) {
+        let batch = db.batch();
+        for (const act of activitiesSnap.docs) {
+          batch.set(archiveRef.collection("activities").doc(act.id), act.data());
+          batch.delete(act.ref);
+        }
+        await batch.commit();
+      }
+
+      await jobDoc.ref.delete();
+      results.migrated++;
+    } catch (e: any) {
+      results.errors.push(`Job ${jobId}: ${e.message}`);
+    }
+  }
+
+  return results;
 });
