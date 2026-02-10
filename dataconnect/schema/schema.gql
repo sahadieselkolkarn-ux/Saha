@@ -1,0 +1,46 @@
+type User @table {
+  email: String!
+  createdAt: Timestamp!
+  displayName: String
+  photoUrl: String
+}
+
+type Company @table {
+  name: String!
+  createdAt: Timestamp!
+  website: String
+  industry: String
+  location: String
+}
+
+type Application @table {
+  user: User!
+  company: Company!
+  jobTitle: String!
+  applicationDate: Date!
+  status: String!
+  createdAt: Timestamp!
+  jobLink: String
+  salaryExpectation: String
+  notes: String
+}
+
+type Interview @table {
+  application: Application!
+  interviewDate: Timestamp!
+  type: String!
+  createdAt: Timestamp!
+  interviewerNames: String
+  notes: String
+  feedback: String
+}
+
+type Offer @table {
+  application: Application!
+  offerDate: Date!
+  salary: String!
+  createdAt: Timestamp!
+  benefits: String
+  decisionDeadline: Date
+  notes: String
+}

@@ -1,0 +1,28 @@
+mutation CreateApplication($companyId: UUID!, $userId: UUID!, $applicationDate: Date!, $jobTitle: String!, $status: String!) @auth(level: USER) {
+  application_insert(data: {companyId: $companyId, userId: $userId, applicationDate: $applicationDate, jobTitle: $jobTitle, status: $status})
+}
+
+query GetApplicationsByUser($userId: UUID!) @auth(level: USER) {
+  applications(where: {userId: {eq: $userId}}) {
+    id
+    company {
+      name
+    }
+    applicationDate
+    jobTitle
+    status
+  }
+}
+
+mutation UpdateApplicationStatus($id: UUID!, $status: String!) @auth(level: USER) {
+  application_update(id: $id, data: {status: $status})
+}
+
+query ListCompanies @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public") {
+  companies {
+    id
+    name
+    industry
+    location
+  }
+}

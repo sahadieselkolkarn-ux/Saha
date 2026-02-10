@@ -1,0 +1,88 @@
+mutation SeedData @transaction @auth(level: PUBLIC, insecureReason: "This operation is for seeding the database with initial data.") {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      email: "demouser1@example.com",
+      createdAt: "2024-01-01T00:00:00Z",
+      displayName: "Demo User 1",
+      photoUrl: "https://example.com/demouser1.jpg"
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      email: "demouser2@example.com",
+      createdAt: "2024-01-01T00:00:00Z",
+      displayName: "Demo User 2",
+      photoUrl: "https://example.com/demouser2.jpg"
+    }
+  ])
+  company_insertMany(data: [
+    {
+      id: "650e8400-e29b-41d4-a716-446655440000",
+      name: "Demo Company 1",
+      createdAt: "2024-01-01T00:00:00Z",
+      industry: "Technology",
+      location: "San Francisco",
+      website: "https://example.com"
+    },
+    {
+      id: "650e8400-e29b-41d4-a716-446655440001",
+      name: "Demo Company 2",
+      createdAt: "2024-01-01T00:00:00Z",
+      industry: "Finance",
+      location: "New York",
+      website: "https://example.com"
+    }
+  ])
+  application_insertMany(data: [
+    {
+      id: "750e8400-e29b-41d4-a716-446655440000",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      companyId: "650e8400-e29b-41d4-a716-446655440000",
+      applicationDate: "2024-02-01",
+      createdAt: "2024-02-01T00:00:00Z",
+      jobTitle: "Software Engineer",
+      status: "Applied"
+    },
+    {
+      id: "750e8400-e29b-41d4-a716-446655440001",
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      companyId: "650e8400-e29b-41d4-a716-446655440001",
+      applicationDate: "2024-02-15",
+      createdAt: "2024-02-15T00:00:00Z",
+      jobTitle: "Financial Analyst",
+      status: "Interviewing"
+    }
+  ])
+  interview_insertMany(data: [
+    {
+      id: "850e8400-e29b-41d4-a716-446655440000",
+      applicationId: "750e8400-e29b-41d4-a716-446655440000",
+      interviewDate: "2024-02-22T14:00:00Z",
+      createdAt: "2024-02-21T00:00:00Z",
+      type: "Technical"
+    },
+    {
+      id: "850e8400-e29b-41d4-a716-446655440001",
+      applicationId: "750e8400-e29b-41d4-a716-446655440001",
+      interviewDate: "2024-03-01T10:00:00Z",
+      createdAt: "2024-02-29T00:00:00Z",
+      type: "Behavioral"
+    }
+  ])
+  offer_insertMany(data: [
+    {
+      id: "950e8400-e29b-41d4-a716-446655440000",
+      applicationId: "750e8400-e29b-41d4-a716-446655440000",
+      offerDate: "2024-03-01",
+      createdAt: "2024-02-29T00:00:00Z",
+      salary: "$120,000",
+    },
+    {
+      id: "950e8400-e29b-41d4-a716-446655440001",
+      applicationId: "750e8400-e29b-41d4-a716-446655440001",
+      offerDate: "2024-03-15",
+      createdAt: "2024-03-14T00:00:00Z",
+      salary: "$90,000",
+    }
+  ])
+}
