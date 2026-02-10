@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 
 export default function AdminUsersPage() {
   const { firebaseApp } = useFirebase();
@@ -18,29 +19,52 @@ export default function AdminUsersPage() {
   const [isMigrating, setIsMigrating] = useState(false);
   const [migrationResult, setMigrationResult] = useState<any>(null);
 
-  const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
+  const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
 
   const handleMigrate = async () => {
-    if (!firebaseApp) return;
+    if (!firebaseApp) {
+      toast({ variant: 'destructive', title: "System error", description: "Firebase App not initialized" });
+      return;
+    }
+    
     setIsMigrating(true);
     setMigrationResult(null);
     
     try {
       const functions = getFunctions(firebaseApp, 'us-central1');
       const migrate = httpsCallable(functions, "migrateClosedJobsToArchive2026");
+      
+      console.info("Starting migration call...");
       const result = await migrate();
       const data = result.data as any;
+      
+      console.info("Migration result received:", data);
       setMigrationResult(data);
       
       if (data.migrated > 0) {
-        toast({ title: "Migration Success", description: `ย้ายข้อมูลสำเร็จ ${data.migrated} รายการ` });
-      } else if (data.totalFound > 0) {
-        toast({ title: "No jobs migrated", description: "พบงานแต่ไม่มีรายการที่ย้ายได้ในรอบนี้" });
+        toast({ 
+          title: "ย้ายข้อมูลสำเร็จ", 
+          description: `ย้ายงาน CLOSED ไปประวัติแล้ว ${data.migrated} รายการ` 
+        });
+      } else if (data.totalFound === 0) {
+        toast({ 
+          title: "ไม่พบรายการ", 
+          description: "ไม่พบใบงานสถานะ CLOSED ที่ค้างอยู่ในระบบหลักแล้ว" 
+        });
       } else {
-        toast({ title: "Done", description: "ไม่พบงานสถานะ CLOSED ค้างในระบบแล้ว" });
+        toast({ 
+          variant: "destructive",
+          title: "ไม่มีการย้ายข้อมูล", 
+          description: "พบงานแต่ไม่สามารถย้ายได้ กรุณาตรวจสอบรายละเอียดข้อผิดพลาด" 
+        });
       }
     } catch (e: any) {
-      toast({ variant: 'destructive', title: "Migration Failed", description: e.message });
+      console.error("Migration error:", e);
+      toast({ 
+        variant: 'destructive', 
+        title: "การเชื่อมต่อล้มเหลว", 
+        description: e.message || "เกิดข้อผิดพลาดในการเรียก Cloud Function" 
+      });
     } finally {
       setIsMigrating(false);
     }
@@ -85,9 +109,9 @@ export default function AdminUsersPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                   <div>พบงานค้าง: <span className="font-bold">{migrationResult.totalFound}</span></div>
                   <div className="text-green-600 font-bold">ย้ายสำเร็จ: {migrationResult.migrated}</div>
-                  <div className="text-amber-600">ข้าม: {migrationResult.skipped}</div>
+                  <div className="text-amber-600">ข้าม: {migrationResult.skipped || 0}</div>
                 </div>
-                {migrationResult.errors?.length > 0 && (
+                {migrationResult.errors && migrationResult.errors.length > 0 && (
                   <div className="text-destructive text-[10px] mt-2 border-t pt-2 space-y-1">
                     <p className="font-bold flex items-center gap-1"><XCircle className="h-3 w-3"/> พบข้อผิดพลาด {migrationResult.errors.length} รายการ:</p>
                     {migrationResult.errors.slice(0, 3).map((err: any, i: number) => (
@@ -111,8 +135,4 @@ export default function AdminUsersPage() {
       )}
     </div>
   );
-}
-
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(" ");
 }

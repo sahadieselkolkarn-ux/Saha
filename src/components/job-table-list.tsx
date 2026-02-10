@@ -80,6 +80,7 @@ export function JobTableList({
   const pageStartCursors = useRef<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
+  // Stabilize excludeStatus to prevent infinite loops if an array is passed inline
   const memoizedExcludeStatus = useMemo(() => {
     if (!excludeStatus) return null;
     return Array.isArray(excludeStatus) ? excludeStatus.join(',') : excludeStatus;
@@ -136,6 +137,7 @@ export function JobTableList({
         if (status) qConstraints.push(where('status', '==', status));
         qConstraints.push(orderBy(orderByField, orderByDirection));
 
+        // Use the ref for cursors to avoid dependency loop
         const cursor = pageStartCursors.current[pageIndex];
         if (cursor) {
           qConstraints.push(startAfter(cursor));
@@ -186,6 +188,7 @@ export function JobTableList({
   }, [currentPage, fetchData]);
 
   useEffect(() => {
+    // Reset pagination when filters change
     pageStartCursors.current = [null];
     setCurrentPage(0);
   }, [searchTerm, department, status, source, year]);

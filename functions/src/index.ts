@@ -102,6 +102,8 @@ export const migrateClosedJobsToArchive2026 = onCall({
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
 
+  console.info(`Migration started by UID: ${request.auth.uid}`);
+
   const userSnap = await db.collection("users").doc(request.auth.uid).get();
   const userData = userSnap.data();
   const isAllowed = ["ADMIN", "MANAGER"].includes(userData?.role) || ["MANAGEMENT", "OFFICE"].includes(userData?.department);
@@ -110,12 +112,24 @@ export const migrateClosedJobsToArchive2026 = onCall({
   const limitCount = 40;
   const archiveColName = `jobsArchive_2026`;
   
+  // Query status exactly "CLOSED"
   const closedJobsSnap = await db.collection("jobs")
     .where("status", "==", "CLOSED")
     .limit(limitCount)
     .get();
 
-  const results = { ok: true, totalFound: closedJobsSnap.size, migrated: 0, skipped: 0, errors: [] as any[] };
+  const results = { 
+    ok: true, 
+    totalFound: closedJobsSnap.size, 
+    migrated: 0, 
+    skipped: 0, 
+    errors: [] as {jobId: string, message: string}[] 
+  };
+
+  if (closedJobsSnap.empty) {
+    console.info("No CLOSED jobs found to migrate.");
+    return results;
+  }
 
   for (const jobDoc of closedJobsSnap.docs) {
     const jobData = jobDoc.data();
@@ -124,7 +138,7 @@ export const migrateClosedJobsToArchive2026 = onCall({
     try {
       const archiveRef = db.collection(archiveColName).doc(jobId);
       
-      // 1. Copy Job Document
+      // 1. Copy Main Document
       await archiveRef.set({
         ...jobData,
         status: "CLOSED",
@@ -135,30 +149,40 @@ export const migrateClosedJobsToArchive2026 = onCall({
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
 
-      // 2. Move Activities
+      // 2. Copy Activities Subcollection
       const activitiesSnap = await jobDoc.ref.collection("activities").get();
       if (!activitiesSnap.empty) {
-        const batch = db.batch();
+        let batch = db.batch();
+        let count = 0;
         for (const act of activitiesSnap.docs) {
           batch.set(archiveRef.collection("activities").doc(act.id), act.data());
           batch.delete(act.ref);
+          count++;
+          if (count >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            count = 0;
+          }
         }
-        await batch.commit();
+        if (count > 0) await batch.commit();
       }
 
-      // 3. Delete Original Job
+      // 3. Delete Original Main Document
       await jobDoc.ref.delete();
       results.migrated++;
+      console.info(`Successfully migrated job: ${jobId}`);
     } catch (e: any) {
+      console.error(`Error migrating job ${jobId}:`, e);
       results.errors.push({ jobId, message: e.message });
     }
   }
 
+  console.info(`Migration finished. Summary: found=${results.totalFound}, migrated=${results.migrated}, errors=${results.errors.length}`);
   return results;
 });
 
 /**
- * Migrate legacy history (CLOSED jobs in 'jobs' collection) - Generic Version
+ * Legacy migration helper (generic)
  */
 export const migrateClosedJobsToArchive = onCall({
   region: "us-central1",
