@@ -94,7 +94,6 @@ export function JobTableList({
     setIndexCreationUrl(null);
 
     try {
-      const qConstraints: QueryConstraint[] = [];
       const isSearch = !!searchTerm.trim();
 
       // For search in archive, we search across current and previous year
@@ -112,7 +111,6 @@ export function JobTableList({
         const [jobs1, jobs2] = await Promise.all([fetchYear(year1), fetchYear(year2)]);
         let combined = [...jobs1, ...jobs2];
         
-        // Filter by searchTerm
         const term = searchTerm.toLowerCase();
         combined = combined.filter(j => 
             (j.customerSnapshot?.name || "").toLowerCase().includes(term) ||
@@ -121,7 +119,6 @@ export function JobTableList({
             (j.id || "").toLowerCase().includes(term)
         );
 
-        // Sort combined results
         combined.sort((a, b) => {
             const valA = (a[orderByField as keyof Job] as any)?.toMillis?.() || 0;
             const valB = (b[orderByField as keyof Job] as any)?.toMillis?.() || 0;
@@ -132,6 +129,7 @@ export function JobTableList({
         setIsLastPage(true);
       } else {
         const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
+        const qConstraints: QueryConstraint[] = [];
         
         if (department) qConstraints.push(where('department', '==', department));
         if (status) qConstraints.push(where('status', '==', status));
@@ -175,7 +173,6 @@ export function JobTableList({
               setIndexState('missing');
           }
       } else {
-          console.error("Fetch data error:", err);
           setError(err);
       }
     } finally {
@@ -188,7 +185,6 @@ export function JobTableList({
   }, [currentPage, fetchData]);
 
   useEffect(() => {
-    // Reset to first page on filter change
     pageStartCursors.current = [null];
     setCurrentPage(0);
   }, [searchTerm, department, status]);

@@ -274,7 +274,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
                             <CollapsibleTrigger asChild>
                                 <Button variant={pathname.startsWith('/app/office/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
-                                    สร้างเอกสาร
+                                    จัดการเอกสารขาย
                                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                                 </Button>
                             </CollapsibleTrigger>
