@@ -710,9 +710,10 @@ export function JobList({
     <>
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {filteredJobs.map(job => {
+        // OPERATIONAL LOCK: If a job is submitted for review or already archived, hide all primary action buttons.
         const isBilled = !!job.salesDocId;
-        const isSubmitted = job.status === 'WAITING_CUSTOMER_PICKUP';
-        const isEffectivelyLocked = isBilled && isSubmitted;
+        const isSubmitted = job.status === 'WAITING_CUSTOMER_PICKUP' || job.status === 'CLOSED';
+        const isEffectivelyLocked = isSubmitted || job.isArchived;
 
         return (
           <Card key={job.id} className="flex flex-col overflow-hidden">
@@ -750,7 +751,7 @@ export function JobList({
                   บิล: {job.salesDocNo}
                 </div>
               )}
-              {isSubmitted && (
+              {job.status === 'WAITING_CUSTOMER_PICKUP' && (
                 <Badge variant="secondary" className="mt-2 w-full justify-center bg-blue-50 text-blue-700 border-blue-200">
                   <Clock className="mr-1 h-3 w-3" /> รอตรวจสอบบัญชี
                 </Badge>

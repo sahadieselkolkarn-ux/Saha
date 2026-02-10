@@ -65,13 +65,14 @@ export const closeJobAfterAccounting = onCall({
   const jobData = jobSnap.data()!;
   
   // 4. Determine Archive Target
-  const closedDate = jobData.pickupDate || new Date().toISOString().split("T")[0];
+  const closedDate = jobData.closedDate || jobData.pickupDate || new Date().toISOString().split("T")[0];
   const year = parseInt(closedDate.split("-")[0]);
   const archiveColName = `jobsArchive_${year}`;
   const archiveRef = db.collection(archiveColName).doc(jobId);
 
   try {
     // 5. Atomic Archive (Main Doc)
+    // CRITICAL: Explicitly set status to CLOSED and add audit fields
     await archiveRef.set({
       ...jobData,
       status: "CLOSED",
@@ -79,7 +80,10 @@ export const closeJobAfterAccounting = onCall({
       archivedAt: FieldValue.serverTimestamp(),
       archivedByUid: request.auth.uid,
       archivedByName: userData.displayName || "System",
+      closedAt: FieldValue.serverTimestamp(),
       closedDate: closedDate,
+      closedByUid: request.auth.uid,
+      closedByName: userData.displayName || "System",
       updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
