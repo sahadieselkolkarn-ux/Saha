@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { collection, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, limit, doc, getDocs, startAfter, type QueryDocumentSnapshot } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
@@ -80,7 +80,7 @@ export function JobTableList({
   const [pageStartCursors, setPageStartCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
-  const fetchData = useCallback(async (cursor: QueryDocumentSnapshot | null) => {
+  const fetchData = useCallback(async (cursor: QueryDocumentSnapshot | null, isNextPage: boolean = false) => {
     if (!db) return;
 
     setLoading(true);
@@ -101,6 +101,9 @@ export function JobTableList({
         if (source === 'active') {
           if (department) qConstraints.push(where('department', '==', department));
           if (status) qConstraints.push(where('status', '==', status));
+          qConstraints.push(orderBy(orderByField, orderByDirection));
+        } else {
+          // If archiving source, we must orderBy whatever we use for pagination
           qConstraints.push(orderBy(orderByField, orderByDirection));
         }
 
@@ -125,10 +128,12 @@ export function JobTableList({
       
       if (!searchTerm.trim()) {
         const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-        if (lastVisibleDoc && currentPage === pageStartCursors.length - 1) {
+        if (lastVisibleDoc && isNextPage) {
             setPageStartCursors(prev => {
                 const next = [...prev];
-                next[currentPage + 1] = lastVisibleDoc;
+                if (!next[currentPage + 1]) {
+                    next[currentPage + 1] = lastVisibleDoc;
+                }
                 return next;
             });
         }
@@ -152,11 +157,15 @@ export function JobTableList({
     } finally {
       setLoading(false);
     }
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, excludeStatus, currentPage, searchTerm, pageStartCursors.length]);
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, excludeStatus, searchTerm, currentPage]);
+
+  const initialFetchDone = useRef(false);
 
   useEffect(() => {
-    fetchData(pageStartCursors[currentPage] || null);
-  }, [fetchData, currentPage]);
+    // Only fetch on mount or when currentPage/searchTerm changes
+    const cursor = pageStartCursors[currentPage] || null;
+    fetchData(cursor, false);
+  }, [currentPage, searchTerm, fetchData]); // Removed pageStartCursors from deps to prevent loop
   
   const filteredJobs = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -172,9 +181,30 @@ export function JobTableList({
     );
   }, [jobs, searchTerm]);
 
-  const handleNextPage = () => {
+  const handleNextPage = async () => {
     if (!isLastPage) {
-        setCurrentPage(p => p + 1);
+        setLoading(true);
+        const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
+        const qConstraints: QueryConstraint[] = [];
+        if (department) qConstraints.push(where('department', '==', department));
+        if (status) qConstraints.push(where('status', '==', status));
+        qConstraints.push(orderBy(orderByField, orderByDirection));
+        
+        const currentCursor = pageStartCursors[currentPage];
+        if (currentCursor) qConstraints.push(startAfter(currentCursor));
+        qConstraints.push(limit(limitProp));
+
+        const snap = await getDocs(query(collection(db!, collectionName), ...qConstraints));
+        const lastDoc = snap.docs[snap.docs.length - 1];
+        
+        if (lastDoc) {
+            setPageStartCursors(prev => {
+                const next = [...prev];
+                next[currentPage + 1] = lastDoc;
+                return next;
+            });
+            setCurrentPage(p => p + 1);
+        }
     }
   };
 
@@ -196,7 +226,7 @@ export function JobTableList({
                 <CardTitle>ดัชนีกำลังถูกสร้าง (Index is Building)</CardTitle>
                 <CardDescription className="max-w-xl mx-auto">
                     ฐานข้อมูลกำลังเตรียมพร้อมสำหรับการแสดงผลนี้ อาจใช้เวลา 2-3 นาที
-                    หน้านี้จะพยายามโหลดข้อมูลใหม่โดยอัตโนมัติใน 10 วินาที
+                    ระบบจะพยายามโหลดข้อมูลใหม่เป็นระยะ
                 </CardDescription>
             </CardHeader>
         </Card>

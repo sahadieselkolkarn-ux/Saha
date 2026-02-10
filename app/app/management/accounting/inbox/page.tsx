@@ -130,7 +130,7 @@ export default function AccountingInboxPage() {
         return doc.receivedAccountId;
     }
     if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
-        return doc.receivedAccountId;
+        return doc.suggestedAccountId;
     }
     const cashAccount = availableAccounts.find(a => a.type === 'CASH');
     if (cashAccount) return cashAccount.id;
