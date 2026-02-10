@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
 
 export default function Page() {
-  redirect('/app/office/jobs/management/by-department');
+  redirect('/app/office/jobs/management/all');
 }

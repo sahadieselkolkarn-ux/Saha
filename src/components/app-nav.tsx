@@ -59,6 +59,7 @@ const OfficeJobManagementSubMenu = ({ onLinkClick }: { onLinkClick?: () => void 
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
+                <SubNavLink href="/app/office/jobs/management/all" label="งานทั้งหมด" onClick={onLinkClick} />
                 <SubNavLink href="/app/office/jobs/management/by-department" label="งานตามแผนก" onClick={onLinkClick} />
                 <SubNavLink href="/app/office/jobs/management/by-status" label="งานตามสถานะ" onClick={onLinkClick} />
                 <SubNavLink href="/app/office/jobs/management/history" label="ประวัติงานซ่อม" onClick={onLinkClick} />
