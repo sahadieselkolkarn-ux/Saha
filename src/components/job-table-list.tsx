@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -80,6 +81,12 @@ export function JobTableList({
   const [pageStartCursors, setPageStartCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
+  // Stabilize excludeStatus to prevent infinite loops if passed as an inline array
+  const memoizedExcludeStatus = useMemo(() => {
+    if (!excludeStatus) return null;
+    return Array.isArray(excludeStatus) ? excludeStatus.join(',') : excludeStatus;
+  }, [excludeStatus]);
+
   const fetchData = useCallback(async (cursor: QueryDocumentSnapshot | null, isNextPage: boolean = false) => {
     if (!db) return;
 
@@ -103,7 +110,6 @@ export function JobTableList({
           if (status) qConstraints.push(where('status', '==', status));
           qConstraints.push(orderBy(orderByField, orderByDirection));
         } else {
-          // If archiving source, we must orderBy whatever we use for pagination
           qConstraints.push(orderBy(orderByField, orderByDirection));
         }
 
@@ -119,8 +125,8 @@ export function JobTableList({
 
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
 
-      if (excludeStatus) {
-        const statusesToExclude = Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
+      if (memoizedExcludeStatus) {
+        const statusesToExclude = memoizedExcludeStatus.split(',');
         jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
       }
       
@@ -157,15 +163,13 @@ export function JobTableList({
     } finally {
       setLoading(false);
     }
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, excludeStatus, searchTerm, currentPage]);
-
-  const initialFetchDone = useRef(false);
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatus, searchTerm, currentPage]);
 
   useEffect(() => {
-    // Only fetch on mount or when currentPage/searchTerm changes
+    // Only fetch on mount or when currentPage/searchTerm/fetchData changes
     const cursor = pageStartCursors[currentPage] || null;
     fetchData(cursor, false);
-  }, [currentPage, searchTerm, fetchData]); // Removed pageStartCursors from deps to prevent loop
+  }, [currentPage, searchTerm, fetchData]); 
   
   const filteredJobs = useMemo(() => {
     if (!searchTerm.trim()) {

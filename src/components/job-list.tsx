@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon, PlusCircle, Settings, Send, Clock } from "lucide-react";
+import { ArrowRight, Loader2, AlertCircle, ExternalLink, UserCheck, FileImage, Receipt, PackageCheck, Package, ExternalLink as ExternalLinkIcon, PlusCircle, Settings, Send, Clock, Eye } from "lucide-react";
 import type { Job, JobStatus, JobDepartment, UserProfile, Document as DocumentType, AccountingAccount, Vendor } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
