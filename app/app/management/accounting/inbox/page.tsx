@@ -104,8 +104,6 @@ export default function AccountingInboxPage() {
         if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
             if (urlMatch) setIndexCreationUrl(urlMatch[0]);
-        } else {
-            console.error("Firestore error in docsQuery:", err);
         }
         setLoading(false); 
       }

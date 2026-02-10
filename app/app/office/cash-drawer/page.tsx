@@ -440,7 +440,7 @@ export default function OfficeCashDrawerPage() {
                       const counted = Number((document.getElementById('countedAmount') as HTMLInputElement).value);
                       const notes = (document.getElementById('closingNotes') as HTMLTextAreaElement).value;
                       setClosingData({ countedAmount: counted, notes });
-                      setShowCloseConfirm(true);
+                      setShowCloseConfirm(false);
                     }} disabled={isClosing} className="w-full sm:w-auto">
                       ยืนยันปิดรอบ
                     </Button>

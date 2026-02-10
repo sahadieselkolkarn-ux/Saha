@@ -29,8 +29,16 @@ export default function AdminUsersPage() {
       const functions = getFunctions(firebaseApp, 'us-central1');
       const migrate = httpsCallable(functions, "migrateClosedJobsToArchive");
       const result = await migrate();
-      setMigrationResult(result.data);
-      toast({ title: "Migration Complete", description: "Successfully processed closed jobs." });
+      const data = result.data as any;
+      setMigrationResult(data);
+      
+      if (data.migrated > 0) {
+        toast({ title: "Migration Complete", description: `Successfully moved ${data.migrated} jobs.` });
+      } else if (data.totalFound > 0) {
+        toast({ title: "Migration Finished", description: "Found jobs but they were skipped (possibly wrong year)." });
+      } else {
+        toast({ title: "Nothing to migrate", description: "No closed jobs found in current collection." });
+      }
     } catch (e: any) {
       toast({ variant: 'destructive', title: "Migration Failed", description: e.message });
     } finally {
@@ -70,11 +78,11 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>พบงาน: {migrationResult.totalFound}</div>
-                  <div className="text-green-600">ย้ายแล้ว: {migrationResult.migrated}</div>
+                  <div className="text-green-600 font-bold">ย้ายสำเร็จ: {migrationResult.migrated}</div>
                   <div className="text-amber-600">ข้าม (คนละปี): {migrationResult.skipped}</div>
                 </div>
                 {migrationResult.errors?.length > 0 && (
-                  <div className="text-destructive text-[10px] mt-2">
+                  <div className="text-destructive text-[10px] mt-2 border-t pt-2">
                     พบข้อผิดพลาด {migrationResult.errors.length} รายการ
                   </div>
                 )}

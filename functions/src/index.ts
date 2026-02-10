@@ -111,6 +111,7 @@ export const migrateClosedJobsToArchive = onCall({
   const targetYear = 2026;
   const archiveColName = `jobsArchive_${targetYear}`;
   
+  // Query jobs that are CLOSED and NOT marked as archived yet
   const closedJobsSnap = await db.collection("jobs")
     .where("status", "==", "CLOSED")
     .limit(limitCount)
@@ -122,10 +123,17 @@ export const migrateClosedJobsToArchive = onCall({
     const jobData = jobDoc.data();
     const jobId = jobDoc.id;
     
-    // Check if it's a 2026 job (default to 2026 if unclear)
-    const dateStr = jobData.closedDate || jobData.createdAt?.toDate?.()?.toISOString()?.split('T')[0] || "2026-01-01";
+    // Safely detect year
+    let dateStr = jobData.closedDate || "2026-01-01";
+    if (jobData.createdAt && typeof jobData.createdAt.toDate === 'function') {
+        dateStr = jobData.createdAt.toDate().toISOString().split('T')[0];
+    } else if (typeof jobData.createdAt === 'string') {
+        dateStr = jobData.createdAt.split('T')[0];
+    }
+    
     const year = parseInt(dateStr.split('-')[0]);
     
+    // Strict year check as per requirement
     if (year !== targetYear) {
       results.skipped++;
       continue;
@@ -134,9 +142,10 @@ export const migrateClosedJobsToArchive = onCall({
     try {
       const archiveRef = db.collection(archiveColName).doc(jobId);
       
+      // Atomic move
       await archiveRef.set({
         ...jobData,
-        status: "CLOSED", // Force closed status
+        status: "CLOSED",
         isArchived: true,
         archivedAt: FieldValue.serverTimestamp(),
         archivedByUid: request.auth.uid,

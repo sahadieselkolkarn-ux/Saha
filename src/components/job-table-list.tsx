@@ -97,6 +97,7 @@ export function JobTableList({
       const isSearch = !!searchTerm.trim();
 
       if (isSearch && source === 'archive') {
+        // Multi-year search for archives
         const year1 = year;
         const year2 = year - 1;
         
@@ -115,7 +116,8 @@ export function JobTableList({
             (j.customerSnapshot?.name || "").toLowerCase().includes(term) ||
             (j.customerSnapshot?.phone || "").includes(term) ||
             (j.description || "").toLowerCase().includes(term) ||
-            (j.id || "").toLowerCase().includes(term)
+            (j.id || "").toLowerCase().includes(term) ||
+            (j.salesDocNo || "").toLowerCase().includes(term)
         );
 
         combined.sort((a, b) => {
@@ -181,12 +183,11 @@ export function JobTableList({
 
   useEffect(() => {
     fetchData(currentPage, false);
-  }, [currentPage]); // Only re-fetch on current page change
+  }, [currentPage, fetchData]);
 
   useEffect(() => {
     pageStartCursors.current = [null];
     setCurrentPage(0);
-    // fetchData is called by current page effect
   }, [searchTerm, department, status, source, year]);
 
   const handleNextPage = () => {
@@ -233,7 +234,7 @@ export function JobTableList({
                 <AlertCircle className="h-10 w-10 text-destructive mb-4" />
                 <CardTitle>ต้องสร้างดัชนี (Index) ก่อน</CardTitle>
                 <CardDescription className="max-w-xl mx-auto">
-                    ฐานข้อมูลต้องการ Index เพื่อกรองและเรียงข้อมูล กรุณากดปุ่มด้านล่างเพื่อสร้างใน Firebase Console
+                    ฐานข้อมูลต้องการ Index เพื่อกรองและเรียงข้อมูล
                 </CardDescription>
             </CardHeader>
             <CardContent>
