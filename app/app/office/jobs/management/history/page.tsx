@@ -9,6 +9,8 @@ import { Search } from "lucide-react";
 
 export default function OfficeJobManagementHistoryPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const currentYear = new Date().getFullYear();
+
   return (
     <>
       <PageHeader title="จัดการงานซ่อม - ประวัติงานซ่อม" description="งานที่ปิดไปแล้วทั้งหมด">
@@ -25,6 +27,8 @@ export default function OfficeJobManagementHistoryPage() {
       <JobTableList 
         searchTerm={searchTerm}
         status="CLOSED"
+        source="archive"
+        year={currentYear}
         limit={20}
         orderByField="closedDate"
         orderByDirection="desc"

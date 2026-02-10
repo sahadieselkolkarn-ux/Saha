@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { collection, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, limit, getDocs, startAfter, type QueryDocumentSnapshot, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
@@ -78,7 +78,7 @@ export function JobTableList({
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
   
   const [currentPage, setCurrentPage] = useState(0);
-  const [pageStartCursors, setPageStartCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
+  const pageStartCursors = useRef<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
   const memoizedExcludeStatus = useMemo(() => {
@@ -86,7 +86,7 @@ export function JobTableList({
     return Array.isArray(excludeStatus) ? excludeStatus.join(',') : excludeStatus;
   }, [excludeStatus]);
 
-  const fetchData = useCallback(async (isNextPage: boolean = false) => {
+  const fetchData = useCallback(async (pageIndex: number, isNext: boolean = false) => {
     if (!db) return;
 
     setLoading(true);
@@ -95,57 +95,75 @@ export function JobTableList({
     setIndexCreationUrl(null);
 
     try {
-      const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
       const qConstraints: QueryConstraint[] = [];
+      const isSearch = !!searchTerm.trim();
 
-      if (searchTerm.trim()) {
+      // For search in archive, we search across current and previous year
+      if (isSearch && source === 'archive') {
+        const year1 = year;
+        const year2 = year - 1;
+        
+        const fetchYear = async (y: number) => {
+            const colName = archiveCollectionNameByYear(y);
+            const q = query(collection(db, colName), orderBy(orderByField, orderByDirection), limit(200));
+            const snap = await getDocs(q);
+            return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+        };
+
+        const [jobs1, jobs2] = await Promise.all([fetchYear(year1), fetchYear(year2)]);
+        let combined = [...jobs1, ...jobs2];
+        
+        // Filter by searchTerm
+        const term = searchTerm.toLowerCase();
+        combined = combined.filter(j => 
+            (j.customerSnapshot?.name || "").toLowerCase().includes(term) ||
+            (j.customerSnapshot?.phone || "").includes(term) ||
+            (j.description || "").toLowerCase().includes(term) ||
+            (j.id || "").toLowerCase().includes(term)
+        );
+
+        // Sort combined results
+        combined.sort((a, b) => {
+            const valA = (a[orderByField as keyof Job] as any)?.toMillis?.() || 0;
+            const valB = (b[orderByField as keyof Job] as any)?.toMillis?.() || 0;
+            return orderByDirection === 'desc' ? valB - valA : valA - valB;
+        });
+
+        setJobs(combined.slice(0, limitProp));
+        setIsLastPage(true);
+      } else {
+        const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
+        
         if (department) qConstraints.push(where('department', '==', department));
         if (status) qConstraints.push(where('status', '==', status));
         qConstraints.push(orderBy(orderByField, orderByDirection));
-        qConstraints.push(limit(500)); 
-      } else {
-        if (source === 'active') {
-          if (department) qConstraints.push(where('department', '==', department));
-          if (status) qConstraints.push(where('status', '==', status));
-          qConstraints.push(orderBy(orderByField, orderByDirection));
-        } else {
-          qConstraints.push(orderBy(orderByField, orderByDirection));
-        }
 
-        const cursor = pageStartCursors[currentPage];
+        const cursor = pageStartCursors.current[pageIndex];
         if (cursor) {
           qConstraints.push(startAfter(cursor));
         }
 
         qConstraints.push(limit(limitProp));
-      }
 
-      const finalQuery = query(collection(db, collectionName), ...qConstraints);
-      const snapshot = await getDocs(finalQuery);
+        const finalQuery = query(collection(db, collectionName), ...qConstraints);
+        const snapshot = await getDocs(finalQuery);
 
-      let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+        let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
 
-      if (memoizedExcludeStatus) {
-        const statusesToExclude = memoizedExcludeStatus.split(',');
-        jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
-      }
-      
-      setJobs(jobsData);
-      
-      if (!searchTerm.trim()) {
+        if (memoizedExcludeStatus) {
+          const statusesToExclude = memoizedExcludeStatus.split(',');
+          jobsData = jobsData.filter(job => !statusesToExclude.includes(job.status));
+        }
+        
+        setJobs(jobsData);
+        
         const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-        if (lastVisibleDoc && isNextPage) {
-            setPageStartCursors(prev => {
-                const next = [...prev];
-                if (!next[currentPage + 1]) {
-                    next[currentPage + 1] = lastVisibleDoc;
-                }
-                return next;
-            });
+        if (lastVisibleDoc && isNext) {
+            if (!pageStartCursors.current[pageIndex + 1]) {
+                pageStartCursors.current[pageIndex + 1] = lastVisibleDoc;
+            }
         }
         setIsLastPage(snapshot.docs.length < limitProp);
-      } else {
-        setIsLastPage(true);
       }
 
     } catch (err: any) {
@@ -163,29 +181,26 @@ export function JobTableList({
     } finally {
       setLoading(false);
     }
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatus, searchTerm, currentPage, pageStartCursors]);
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatus, searchTerm]);
 
   useEffect(() => {
-    fetchData();
-  }, [currentPage, searchTerm]); 
-  
-  const filteredJobs = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return jobs;
+    fetchData(currentPage, false);
+  }, [currentPage, fetchData]);
+
+  useEffect(() => {
+    if (currentPage !== 0) {
+        pageStartCursors.current = [null];
+        setCurrentPage(0);
+    } else {
+        fetchData(0, false);
     }
-    const lowercasedFilter = searchTerm.toLowerCase();
-    return jobs.filter(job =>
-      (job.customerSnapshot?.name || "").toLowerCase().includes(lowercasedFilter) ||
-      (job.customerSnapshot?.phone || "").includes(searchTerm) ||
-      (job.description || "").toLowerCase().includes(lowercasedFilter) ||
-      (job.carServiceDetails?.licensePlate || "").toLowerCase().includes(lowercasedFilter) ||
-      job.id.toLowerCase().includes(lowercasedFilter)
-    );
-  }, [jobs, searchTerm]);
+  }, [searchTerm, department, status]);
 
   const handleNextPage = () => {
     if (!isLastPage) {
-      setCurrentPage(p => p + 1);
+      fetchData(currentPage, true).then(() => {
+          setCurrentPage(p => p + 1);
+      });
     }
   };
 
@@ -257,7 +272,7 @@ export function JobTableList({
                       </TableRow>
                   </TableHeader>
                   <TableBody>
-                      {filteredJobs.map(job => (
+                      {jobs.map(job => (
                           <TableRow key={job.id} className="group hover:bg-muted/30 transition-colors">
                               <TableCell className="pl-6 py-4">
                                 <div className="font-semibold text-foreground">{job.customerSnapshot.name}</div>
@@ -302,7 +317,7 @@ export function JobTableList({
                               </TableCell>
                           </TableRow>
                       ))}
-                      {filteredJobs.length === 0 && (
+                      {jobs.length === 0 && (
                         <TableRow>
                             <TableCell colSpan={6} className="h-48 text-center text-muted-foreground italic">
                                 <div className="flex flex-col items-center gap-2">
@@ -320,7 +335,7 @@ export function JobTableList({
                 <div className="flex w-full flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">
-                            {searchTerm ? `พบทั้งหมด ${filteredJobs.length} รายการ` : `หน้า ${currentPage + 1}`}
+                            {searchTerm ? `พบทั้งหมด ${jobs.length} รายการ` : `หน้า ${currentPage + 1}`}
                         </span>
                         {loading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
                     </div>
