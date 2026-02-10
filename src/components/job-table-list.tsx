@@ -116,6 +116,9 @@ export function JobTableList({
 
   const isUserAdmin = profile?.role === 'ADMIN';
   
+  // Use current cursor as a stable value to prevent loop
+  const currentCursor = pageStartCursors[currentPage];
+
   const fetchData = useCallback(async () => {
     if (!db) return;
 
@@ -140,9 +143,8 @@ export function JobTableList({
           qConstraints.push(orderBy(orderByField, orderByDirection));
         }
 
-        const cursor = pageStartCursors[currentPage];
-        if (cursor) {
-          qConstraints.push(startAfter(cursor));
+        if (currentCursor) {
+          qConstraints.push(startAfter(currentCursor));
         }
 
         if (limitProp) {
@@ -173,9 +175,11 @@ export function JobTableList({
       if (!searchTerm.trim()) {
         const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
         if (lastVisibleDoc && currentPage >= pageStartCursors.length - 1) {
-            const newCursors = [...pageStartCursors];
-            newCursors[currentPage + 1] = lastVisibleDoc;
-            setPageStartCursors(newCursors);
+            setPageStartCursors(prev => {
+                const next = [...prev];
+                next[currentPage + 1] = lastVisibleDoc;
+                return next;
+            });
         }
         setIsLastPage(snapshot.docs.length < (limitProp || 20));
       } else {
@@ -197,7 +201,8 @@ export function JobTableList({
     } finally {
       setLoading(false);
     }
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, JSON.stringify(excludeStatus), currentPage, pageStartCursors, searchTerm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, JSON.stringify(excludeStatus), currentPage, currentCursor, searchTerm]);
 
   useEffect(() => {
     fetchData();
@@ -225,7 +230,7 @@ export function JobTableList({
 
   const handlePrevPage = () => {
       if (currentPage > 0) {
-          setPageStartCursors(prev => prev.slice(0, currentPage));
+          setPageStartCursors(prev => prev.slice(0, currentPage + 1));
           setCurrentPage(p => p - 1);
       }
   };
@@ -384,7 +389,7 @@ export function JobTableList({
                       {filteredJobs.length === 0 && (
                         <TableRow>
                             <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                                {searchTerm ? "ไม่พบข้อมูลที่ค้นหา" : emptyTitle}
+                                {searchTerm ? "ไม่พบข้อมูลที่ตรงกับการค้นหา" : emptyTitle}
                             </TableCell>
                         </TableRow>
                       )}

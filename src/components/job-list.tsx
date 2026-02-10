@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -132,7 +133,7 @@ export function JobList({
   const [accountingAccounts, setAccountingAccounts] = useState<AccountingAccount[]>([]);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<string>('');
-  const [paymentMode, setPaymentMode] = useState<'PAID' | 'UNPAID'>('PAID');
+  const [paymentMode, setPaymentMode] = useState<'PAID' | 'UNPAID'>('UNPAID');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
   const [suggestedAccountId, setSuggestedAccountId] = useState<string>('');
   const [creditDueDate, setCreditDueDate] = useState('');
@@ -263,7 +264,7 @@ export function JobList({
     setClosingJob(job);
     setPickupDate(format(new Date(), 'yyyy-MM-dd'));
     setSelectedDocId('');
-    setPaymentMode('PAID');
+    setPaymentMode('UNPAID'); // Receipt-first: always UNPAID initially
 
     setIsLoadingDocs(true);
     try {
@@ -313,11 +314,6 @@ export function JobList({
       toast({ variant: 'destructive', title: 'ไม่พบเอกสาร', description: 'ไม่พบเอกสารขายที่เลือกในระบบ'});
       return;
     }
-
-    if (paymentMode === 'PAID' && !suggestedAccountId) {
-        toast({ variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: 'กรุณาเลือกบัญชีที่รับเงินจริง'});
-        return;
-    }
     
     setIsSubmittingToReview(true);
     try {
@@ -333,10 +329,12 @@ export function JobList({
             updatedAt: serverTimestamp()
         };
 
+        // Receipt-first: we don't finalize the payment method/account here yet
+        // but we can suggest them based on the UI choice
         if (paymentMode === 'PAID') {
             docUpdate.paymentTerms = 'CASH';
-            docUpdate.receivedAccountId = suggestedAccountId;
-            docUpdate.paymentMethod = paymentMethod;
+            docUpdate.suggestedAccountId = suggestedAccountId;
+            docUpdate.suggestedPaymentMethod = paymentMethod;
         } else {
             docUpdate.paymentTerms = 'CREDIT';
             docUpdate.dueDate = creditDueDate || null;
@@ -348,7 +346,7 @@ export function JobList({
             salesDocType: selectedDoc.docType,
             salesDocId: selectedDoc.id,
             salesDocNo: selectedDoc.docNo,
-            paymentStatusAtClose: paymentMode
+            paymentStatusAtClose: 'UNPAID' // Force UNPAID until confirmed by accounting
         };
 
         batch.update(jobRef, {
@@ -766,7 +764,7 @@ export function JobList({
             )}>
               <Button asChild variant="outline" className="w-full">
                 <Link href={`/app/jobs/${job.id}`}>
-                  ดูรายละเอียด
+                  <Eye className="h-4 w-4" />
                 </Link>
               </Button>
 
@@ -934,13 +932,7 @@ export function JobList({
                         ) : <p className="text-sm text-destructive p-2 bg-destructive/10 rounded-md mt-1">ไม่พบเอกสารขาย กรุณาออกบิลก่อนส่งตรวจสอบ</p>
                     )}
                 </div>
-                <div>
-                    <Label>2. สถานะการรับเงิน</Label>
-                    <RadioGroup value={paymentMode} onValueChange={(v) => setPaymentMode(v as any)} className="flex gap-4 pt-2">
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="PAID" id="paid" /><Label htmlFor="paid">จ่ายเงินแล้ว (เงินสด/โอน)</Label></div>
-                        <div className="flex items-center space-x-2"><RadioGroupItem value="UNPAID" id="unpaid" /><Label htmlFor="unpaid">ค้างชำระ (เครดิต)</Label></div>
-                    </RadioGroup>
-                </div>
+                
                 {paymentMode === 'PAID' && (
                     <div className="p-4 border rounded-md space-y-4 bg-muted/50">
                         <div className="grid grid-cols-2 gap-4">
@@ -972,7 +964,7 @@ export function JobList({
                     </div>
                  )}
                 <div>
-                    <Label htmlFor="pickupDate">3. วันที่ส่งมอบจริง</Label>
+                    <Label htmlFor="pickupDate">2. วันที่ส่งมอบจริง</Label>
                     <Input id="pickupDate" type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} className="mt-1" />
                 </div>
             </div>
