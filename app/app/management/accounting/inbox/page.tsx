@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -102,10 +101,11 @@ export default function AccountingInboxPage() {
         setIndexCreationUrl(null);
       },
       (err: FirestoreError) => { 
-        console.error("Firestore error in docsQuery:", err);
         if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
             if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+        } else {
+            console.error("Firestore error in docsQuery:", err);
         }
         setLoading(false); 
       }
@@ -185,10 +185,7 @@ export default function AccountingInboxPage() {
   }, [documents, activeTab, searchTerm]);
 
   const callCloseJobFunction = async (jobId: string, paymentStatus: 'PAID' | 'UNPAID' = 'UNPAID') => {
-    if (!firebaseApp) {
-      console.error("Firebase App not initialized in context");
-      return;
-    }
+    if (!firebaseApp) return;
     
     const functions = getFunctions(firebaseApp, 'us-central1');
     const closeJob = httpsCallable(functions, 'closeJobAfterAccounting');
@@ -204,7 +201,6 @@ export default function AccountingInboxPage() {
         throw new Error(result.data?.error || result.data?.message || "Unknown error");
       }
     } catch (e: any) {
-      console.error("Cloud Function call failed:", e);
       setFailedClosingJobId(jobId);
       toast({ 
         variant: "destructive", 
@@ -302,7 +298,6 @@ export default function AccountingInboxPage() {
       setConfirmingDoc(null);
       setIsSubmitting(false);
     } catch(e: any) {
-      console.error("Confirm cash failed", e);
       setConfirmError(`บันทึกไม่สำเร็จ: ${e.message || e.toString()}`);
       setIsSubmitting(false);
     }

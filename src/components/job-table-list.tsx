@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -167,16 +166,17 @@ export function JobTableList({
       }
 
     } catch (err: any) {
-      console.error("Fetch data error:", err);
-      setError(err);
       if (err.message?.includes('requires an index')) {
-          const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
+          const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
           if (urlMatch) setIndexCreationUrl(urlMatch[0]);
           if (err.message.includes('currently building')) {
               setIndexState('building');
           } else {
               setIndexState('missing');
           }
+      } else {
+          console.error("Fetch data error:", err);
+          setError(err);
       }
     } finally {
       setLoading(false);
@@ -188,12 +188,9 @@ export function JobTableList({
   }, [currentPage, fetchData]);
 
   useEffect(() => {
-    if (currentPage !== 0) {
-        pageStartCursors.current = [null];
-        setCurrentPage(0);
-    } else {
-        fetchData(0, false);
-    }
+    // Reset to first page on filter change
+    pageStartCursors.current = [null];
+    setCurrentPage(0);
   }, [searchTerm, department, status]);
 
   const handleNextPage = () => {
