@@ -186,7 +186,7 @@ export function JobTableList({
       console.error("Fetch data error:", err);
       setError(err);
       if (err.message?.includes('requires an index')) {
-          const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+          const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
           if (urlMatch) setIndexCreationUrl(urlMatch[0]);
           if (err.message.includes('currently building')) {
               setIndexState('building');
@@ -377,9 +377,6 @@ export function JobTableList({
                                     <Button asChild variant="ghost" size="icon" title="ดูรายละเอียด">
                                         <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
                                     </Button>
-                                    <Button asChild variant="outline" size="sm" className="hidden sm:flex">
-                                        <Link href={`/app/jobs/${job.id}`}>ดูรายละเอียด</Link>
-                                    </Button>
                                 </div>
                               </TableCell>
                           </TableRow>
@@ -457,7 +454,7 @@ export function JobTableList({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setJobToRevert(null)} disabled={isReverting}>ยกเลิก</Button>
+            <Button variant="outline" onClick={setJobToRevert(null)} disabled={isReverting}>ยกเลิก</Button>
             <Button variant="destructive" onClick={confirmRevert} disabled={isReverting || !revertReason}>
               {isReverting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Undo2 className="mr-2 h-4 w-4" />}
               ยืนยันการย้อนสถานะ
