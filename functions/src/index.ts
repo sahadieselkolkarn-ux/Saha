@@ -49,7 +49,7 @@ export const closeJobAfterAccounting = onCall({
     const currentYear = new Date().getFullYear();
     for (const year of [currentYear, currentYear - 1]) {
       const archiveSnap = await db.collection(`jobsArchive_${year}`).doc(jobId).get();
-      if (archiveSnap.exists()) {
+      if (archiveSnap.exists) {
         return { 
           ok: true, 
           jobId, 

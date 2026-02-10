@@ -1,9 +1,9 @@
 
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { collection, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, limit, doc, getDocs, startAfter, type QueryDocumentSnapshot } from "firebase/firestore";
+import { collection, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, limit, getDocs, startAfter, type QueryDocumentSnapshot, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -81,13 +81,12 @@ export function JobTableList({
   const [pageStartCursors, setPageStartCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
-  // Stabilize excludeStatus to prevent infinite loops if passed as an inline array
   const memoizedExcludeStatus = useMemo(() => {
     if (!excludeStatus) return null;
     return Array.isArray(excludeStatus) ? excludeStatus.join(',') : excludeStatus;
   }, [excludeStatus]);
 
-  const fetchData = useCallback(async (cursor: QueryDocumentSnapshot | null, isNextPage: boolean = false) => {
+  const fetchData = useCallback(async (isNextPage: boolean = false) => {
     if (!db) return;
 
     setLoading(true);
@@ -113,6 +112,7 @@ export function JobTableList({
           qConstraints.push(orderBy(orderByField, orderByDirection));
         }
 
+        const cursor = pageStartCursors[currentPage];
         if (cursor) {
           qConstraints.push(startAfter(cursor));
         }
@@ -163,13 +163,11 @@ export function JobTableList({
     } finally {
       setLoading(false);
     }
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatus, searchTerm, currentPage]);
+  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatus, searchTerm, currentPage, pageStartCursors]);
 
   useEffect(() => {
-    // Only fetch on mount or when currentPage/searchTerm/fetchData changes
-    const cursor = pageStartCursors[currentPage] || null;
-    fetchData(cursor, false);
-  }, [currentPage, searchTerm, fetchData]); 
+    fetchData();
+  }, [currentPage, searchTerm]); 
   
   const filteredJobs = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -185,30 +183,9 @@ export function JobTableList({
     );
   }, [jobs, searchTerm]);
 
-  const handleNextPage = async () => {
+  const handleNextPage = () => {
     if (!isLastPage) {
-        setLoading(true);
-        const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
-        const qConstraints: QueryConstraint[] = [];
-        if (department) qConstraints.push(where('department', '==', department));
-        if (status) qConstraints.push(where('status', '==', status));
-        qConstraints.push(orderBy(orderByField, orderByDirection));
-        
-        const currentCursor = pageStartCursors[currentPage];
-        if (currentCursor) qConstraints.push(startAfter(currentCursor));
-        qConstraints.push(limit(limitProp));
-
-        const snap = await getDocs(query(collection(db!, collectionName), ...qConstraints));
-        const lastDoc = snap.docs[snap.docs.length - 1];
-        
-        if (lastDoc) {
-            setPageStartCursors(prev => {
-                const next = [...prev];
-                next[currentPage + 1] = lastDoc;
-                return next;
-            });
-            setCurrentPage(p => p + 1);
-        }
+      setCurrentPage(p => p + 1);
     }
   };
 
@@ -219,7 +196,12 @@ export function JobTableList({
   };
 
   if (loading && jobs.length === 0) {
-    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
+    return (
+      <div className="flex flex-col justify-center items-center h-64 gap-4">
+        <Loader2 className="animate-spin h-10 w-10 text-primary" />
+        <p className="text-sm text-muted-foreground">กำลังโหลดรายการงาน...</p>
+      </div>
+    );
   }
   
   if (indexState === 'building') {
@@ -229,8 +211,7 @@ export function JobTableList({
                 <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
                 <CardTitle>ดัชนีกำลังถูกสร้าง (Index is Building)</CardTitle>
                 <CardDescription className="max-w-xl mx-auto">
-                    ฐานข้อมูลกำลังเตรียมพร้อมสำหรับการแสดงผลนี้ อาจใช้เวลา 2-3 นาที
-                    ระบบจะพยายามโหลดข้อมูลใหม่เป็นระยะ
+                    ฐานข้อมูลกำลังเตรียมพร้อมสำหรับการแสดงผลนี้ อาจใช้เวลา 2-3 นาที ระบบจะรีเฟรชข้อมูลให้อัตโนมัติ
                 </CardDescription>
             </CardHeader>
         </Card>
@@ -261,41 +242,60 @@ export function JobTableList({
 
   return (
     <>
-      <Card>
-          <CardContent className="pt-6">
+      <Card className="overflow-hidden border-none shadow-sm bg-card/50 backdrop-blur-sm">
+          <CardContent className="p-0">
               <div className="w-full overflow-x-auto">
-                <Table className="min-w-[900px]">
-                  <TableHeader>
+                <Table>
+                  <TableHeader className="bg-muted/50">
                       <TableRow>
-                          <TableHead className="w-[250px]">Customer</TableHead>
-                          <TableHead className="hidden md:table-cell">Department</TableHead>
-                          <TableHead className="hidden md:table-cell">Description</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="hidden md:table-cell">Last Updated</TableHead>
-                          <TableHead className="sticky right-0 bg-background text-right">Actions</TableHead>
+                          <TableHead className="w-[200px] sm:w-[250px] pl-6 py-4">ลูกค้า (Customer)</TableHead>
+                          <TableHead className="hidden md:table-cell py-4">แผนก (Department)</TableHead>
+                          <TableHead className="hidden lg:table-cell py-4">รายละเอียด (Description)</TableHead>
+                          <TableHead className="w-[120px] py-4">สถานะ (Status)</TableHead>
+                          <TableHead className="hidden md:table-cell py-4">อัปเดตล่าสุด</TableHead>
+                          <TableHead className="sticky right-0 bg-muted/50 text-right pr-6 py-4">จัดการ</TableHead>
                       </TableRow>
                   </TableHeader>
                   <TableBody>
                       {filteredJobs.map(job => (
-                          <TableRow key={job.id}>
-                              <TableCell className="font-medium">
-                                {job.customerSnapshot.name}
-                                <div className="md:hidden text-xs text-muted-foreground mt-1">
-                                    {deptLabel(job.department)} • {safeFormat(job.lastActivityAt, 'dd/MM/yy')}
+                          <TableRow key={job.id} className="group hover:bg-muted/30 transition-colors">
+                              <TableCell className="pl-6 py-4">
+                                <div className="font-semibold text-foreground">{job.customerSnapshot.name}</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">{job.customerSnapshot.phone}</div>
+                                <div className="md:hidden mt-2 flex flex-col gap-1">
+                                    <span className="text-[10px] inline-flex items-center px-1.5 py-0.5 rounded bg-muted font-medium w-fit">
+                                        {deptLabel(job.department)}
+                                    </span>
+                                    <div className="text-[10px] line-clamp-1 italic text-muted-foreground">
+                                        {job.description}
+                                    </div>
                                 </div>
-                                <div className="md:hidden text-xs text-muted-foreground line-clamp-2">
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <Badge variant="outline" className="font-normal">{deptLabel(job.department)}</Badge>
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell max-w-[300px]">
+                                <div className="truncate text-sm text-muted-foreground" title={job.description}>
                                     {job.description}
                                 </div>
                               </TableCell>
-                              <TableCell className="hidden md:table-cell">{deptLabel(job.department)}</TableCell>
-                              <TableCell className="max-w-xs truncate hidden md:table-cell">{job.description}</TableCell>
                               <TableCell>
-                                  <Badge variant={getStatusVariant(job.status)} className={cn(job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
+                                  <Badge 
+                                    variant={getStatusVariant(job.status)} 
+                                    className={cn(
+                                        "whitespace-nowrap font-medium",
+                                        job.status === 'RECEIVED' && "animate-blink shadow-[0_0_8px_rgba(var(--primary),0.2)]"
+                                    )}
+                                  >
+                                    {jobStatusLabel(job.status)}
+                                  </Badge>
                               </TableCell>
-                              <TableCell className="hidden md:table-cell">{safeFormat(job.lastActivityAt, 'dd/MM/yy')}</TableCell>
-                              <TableCell className="sticky right-0 bg-background text-right whitespace-nowrap">
+                              <TableCell className="hidden md:table-cell text-sm text-muted-foreground whitespace-nowrap">
+                                {safeFormat(job.lastActivityAt, 'dd/MM/yy HH:mm')}
+                              </TableCell>
+                              <TableCell className="sticky right-0 bg-background/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none text-right pr-6 whitespace-nowrap">
                                 <div className="flex justify-end gap-2">
-                                    <Button asChild variant="ghost" size="icon" title="ดูรายละเอียด">
+                                    <Button asChild variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-sm hover:scale-110 transition-transform" title="ดูรายละเอียด">
                                         <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
                                     </Button>
                                 </div>
@@ -304,8 +304,11 @@ export function JobTableList({
                       ))}
                       {filteredJobs.length === 0 && (
                         <TableRow>
-                            <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                                {searchTerm ? "ไม่พบข้อมูลที่ตรงกับการค้นหา" : emptyTitle}
+                            <TableCell colSpan={6} className="h-48 text-center text-muted-foreground italic">
+                                <div className="flex flex-col items-center gap-2">
+                                    <AlertCircle className="h-8 w-8 opacity-20" />
+                                    <p>{searchTerm ? `ไม่พบข้อมูลที่ตรงกับ "${searchTerm}"` : emptyTitle}</p>
+                                </div>
                             </TableCell>
                         </TableRow>
                       )}
@@ -313,31 +316,26 @@ export function JobTableList({
                 </Table>
               </div>
           </CardContent>
-          {(!searchTerm.trim() && filteredJobs.length > 0) && (
-            <CardFooter>
-                <div className="flex w-full justify-between items-center">
+          <CardFooter className="p-4 border-t bg-muted/5">
+                <div className="flex w-full flex-col sm:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">
-                            หน้า {currentPage + 1}
+                        <span className="text-xs text-muted-foreground">
+                            {searchTerm ? `พบทั้งหมด ${filteredJobs.length} รายการ` : `หน้า ${currentPage + 1}`}
                         </span>
-                        {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                        {loading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
                     </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={handlePrevPage} disabled={currentPage === 0 || loading}>
-                            <ChevronLeft className="h-4 w-4 mr-1" /> ก่อนหน้า
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={handleNextPage} disabled={isLastPage || loading}>
-                            ถัดไป <ChevronRight className="h-4 w-4 ml-1" />
-                        </Button>
-                    </div>
+                    {!searchTerm && (
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="h-8" onClick={handlePrevPage} disabled={currentPage === 0 || loading}>
+                                <ChevronLeft className="h-4 w-4 mr-1" /> ก่อนหน้า
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-8" onClick={handleNextPage} disabled={isLastPage || loading}>
+                                ถัดไป <ChevronRight className="h-4 w-4 ml-1" />
+                            </Button>
+                        </div>
+                    )}
                 </div>
-            </CardFooter>
-          )}
-          {searchTerm.trim() && (
-            <CardFooter className="justify-center bg-muted/20 py-2">
-                <p className="text-xs text-muted-foreground italic">แสดงผลลัพธ์การค้นหาจากข้อมูลล่าสุด 500 รายการ (การแบ่งหน้าถูกปิดชั่วคราวขณะค้นหา)</p>
-            </CardFooter>
-          )}
+          </CardFooter>
       </Card>
     </>
   );

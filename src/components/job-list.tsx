@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -264,7 +264,7 @@ export function JobList({
     setClosingJob(job);
     setPickupDate(format(new Date(), 'yyyy-MM-dd'));
     setSelectedDocId('');
-    setPaymentMode('UNPAID'); // Receipt-first: always UNPAID initially
+    setPaymentMode('UNPAID');
 
     setIsLoadingDocs(true);
     try {
@@ -322,15 +322,12 @@ export function JobList({
         const jobRef = doc(db, 'jobs', closingJob.id);
         const activityRef = doc(collection(db, 'jobs', closingJob.id, 'activities'));
         
-        // 1. Update Document status to PENDING_REVIEW
         const docUpdate: any = {
             status: 'PENDING_REVIEW',
             arStatus: 'PENDING',
             updatedAt: serverTimestamp()
         };
 
-        // Receipt-first: we don't finalize the payment method/account here yet
-        // but we can suggest them based on the UI choice
         if (paymentMode === 'PAID') {
             docUpdate.paymentTerms = 'CASH';
             docUpdate.suggestedAccountId = suggestedAccountId;
@@ -341,12 +338,11 @@ export function JobList({
         }
         batch.update(docRefToUpdate, docUpdate);
 
-        // 2. Update Job status to WAITING_CUSTOMER_PICKUP
         const salesDocInfo = {
             salesDocType: selectedDoc.docType,
             salesDocId: selectedDoc.id,
             salesDocNo: selectedDoc.docNo,
-            paymentStatusAtClose: 'UNPAID' // Force UNPAID until confirmed by accounting
+            paymentStatusAtClose: 'UNPAID'
         };
 
         batch.update(jobRef, {
@@ -356,7 +352,6 @@ export function JobList({
             lastActivityAt: serverTimestamp(),
         });
 
-        // 3. Add activity log
         batch.set(activityRef, {
             text: `ส่งตรวจสอบรายการขาย (${selectedDoc.docNo}) และเตรียมส่งมอบงาน. แผนกบัญชีสามารถตรวจสอบและกดยืนยันเพื่อปิดงานได้`,
             userName: profile.displayName,
@@ -708,7 +703,6 @@ export function JobList({
     <>
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {filteredJobs.map(job => {
-        // OPERATIONAL LOCK: If a job is submitted for review or already archived, hide all primary action buttons.
         const isBilled = !!job.salesDocId;
         const isSubmitted = job.status === 'WAITING_CUSTOMER_PICKUP' || job.status === 'CLOSED';
         const isEffectivelyLocked = isSubmitted || job.isArchived;

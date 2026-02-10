@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -36,14 +37,14 @@ const getStatusVariant = (status: Job['status']) => {
 // Job Card for Grid/List views
 function JobCard({ job }: { job: Job }) {
   return (
-    <Card className="flex flex-col overflow-hidden">
+    <Card className="flex flex-col overflow-hidden group hover:shadow-md transition-all">
       <div className="relative aspect-video w-full bg-muted">
         {job.photos && job.photos.length > 0 ? (
             <Image
                 src={job.photos[0]}
                 alt={job.description || "Job image"}
                 fill
-                className="object-cover"
+                className="object-cover group-hover:scale-105 transition-transform"
             />
         ) : (
             <div className="flex h-full w-full items-center justify-center">
@@ -51,24 +52,24 @@ function JobCard({ job }: { job: Job }) {
             </div>
         )}
       </div>
-      <CardHeader>
-        <div className="flex justify-between items-start">
-          <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-          <Badge variant={getStatusVariant(job.status)} className={cn("flex-shrink-0", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
+      <CardHeader className="p-4">
+        <div className="flex justify-between items-start gap-2">
+          <CardTitle className="text-base font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
+          <Badge variant={getStatusVariant(job.status)} className={cn("flex-shrink-0 text-[10px]", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
         </div>
-        <CardDescription>
+        <CardDescription className="text-xs">
           {deptLabel(job.department)}
           <br />
-          อัปเดตล่าสุด: {safeFormat(job.lastActivityAt, 'PP')}
+          อัปเดต: {safeFormat(job.lastActivityAt, 'PP')}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex-grow">
-        <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
+      <CardContent className="px-4 pb-4 flex-grow">
+        <p className="line-clamp-2 text-xs text-muted-foreground">{job.description}</p>
       </CardContent>
-      <CardFooter>
-        <Button asChild variant="outline" className="w-full">
+      <CardFooter className="px-4 pb-4 pt-0">
+        <Button asChild variant="secondary" size="sm" className="w-full h-8 rounded-full">
           <Link href={`/app/jobs/${job.id}`}>
-            <Eye className="h-4 w-4" />
+            <Eye className="h-3.5 w-3.5" />
           </Link>
         </Button>
       </CardFooter>
@@ -79,22 +80,21 @@ function JobCard({ job }: { job: Job }) {
 // Compact Job Card for Board View
 function CompactJobCard({ job }: { job: Job }) {
     return (
-        <Card className="mb-2">
+        <Card className="mb-2 hover:border-primary/50 transition-colors shadow-none border bg-card">
             <CardContent className="p-3">
                 <div className="flex gap-3">
                     {job.photos && job.photos.length > 0 && (
-                        <div className="relative w-16 h-16 rounded-md bg-muted flex-shrink-0">
-                            <Image src={job.photos[0]} alt="Job" fill className="object-cover rounded-md" />
+                        <div className="relative w-12 h-12 rounded-md bg-muted flex-shrink-0 overflow-hidden">
+                            <Image src={job.photos[0]} alt="Job" fill className="object-cover" />
                         </div>
                     )}
                     <div className="flex-grow overflow-hidden">
-                        <p className="font-semibold truncate">{job.customerSnapshot.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{job.customerSnapshot.phone}</p>
-                        <p className="text-xs text-muted-foreground truncate">{job.description}</p>
-                        <div className="flex justify-between items-center mt-1">
-                            <Badge variant="outline" className="text-xs">{deptLabel(job.department)}</Badge>
-                            <Button asChild size="sm" variant="ghost" className="h-auto p-1">
-                                <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
+                        <p className="font-semibold text-sm truncate">{job.customerSnapshot.name}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{job.description}</p>
+                        <div className="flex justify-between items-center mt-2">
+                            <Badge variant="outline" className="text-[9px] px-1 h-4">{deptLabel(job.department)}</Badge>
+                            <Button asChild size="icon" variant="ghost" className="h-6 w-6 rounded-full">
+                                <Link href={`/app/jobs/${job.id}`}><Eye className="h-3.5 w-3.5" /></Link>
                             </Button>
                         </div>
                     </div>
@@ -130,22 +130,20 @@ function JobsStatusBoard({ jobs }: { jobs: Job[] }) {
                 {allColumnKeys.map(statusKey => {
                     const columnJobs = jobsByStatus[statusKey] || [];
                     return (
-                        <div key={statusKey} className="w-[320px] shrink-0">
-                            <Card className="bg-muted/50 h-full flex flex-col">
-                                <CardHeader className="p-4">
-                                    <div className="flex justify-between items-center">
-                                        <CardTitle className="text-base">{jobStatusLabel(statusKey as JobStatus) || statusKey}</CardTitle>
-                                        <Badge variant="secondary">{columnJobs.length}</Badge>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="p-4 pt-0 flex-1 overflow-y-auto max-h-[calc(100vh-22rem)]">
+                        <div key={statusKey} className="w-[280px] shrink-0">
+                            <div className="bg-muted/30 rounded-lg p-3 h-full flex flex-col border">
+                                <div className="flex justify-between items-center mb-3 px-1">
+                                    <h3 className="text-sm font-bold text-muted-foreground">{jobStatusLabel(statusKey as JobStatus) || statusKey}</h3>
+                                    <Badge variant="secondary" className="h-5 text-[10px] px-1.5">{columnJobs.length}</Badge>
+                                </div>
+                                <div className="flex-1 overflow-y-auto max-h-[calc(100vh-22rem)] scrollbar-hide">
                                     {columnJobs.length > 0 ? (
                                         columnJobs.map(job => <CompactJobCard key={job.id} job={job} />)
                                     ) : (
-                                        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">ไม่มีงาน</div>
+                                        <div className="flex items-center justify-center h-20 text-muted-foreground text-[10px] border-2 border-dashed rounded-lg bg-card/50">ไม่มีงาน</div>
                                     )}
-                                </CardContent>
-                            </Card>
+                                </div>
+                            </div>
                         </div>
                     );
                 })}
@@ -158,39 +156,41 @@ function JobsStatusBoard({ jobs }: { jobs: Job[] }) {
 // Table View Component
 function JobsTable({ jobs }: { jobs: Job[] }) {
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last Updated</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {jobs.map(job => (
-              <TableRow key={job.id}>
-                <TableCell>
-                  <div className="font-medium">{job.customerSnapshot.name}</div>
-                  <div className="text-sm text-muted-foreground">{job.customerSnapshot.phone}</div>
-                </TableCell>
-                <TableCell>{deptLabel(job.department)}</TableCell>
-                <TableCell className="max-w-xs truncate">{job.description}</TableCell>
-                <TableCell><Badge variant={getStatusVariant(job.status)} className={cn(job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge></TableCell>
-                <TableCell>{safeFormat(job.lastActivityAt, 'dd MMM yy')}</TableCell>
-                <TableCell className="text-right">
-                  <Button asChild variant="ghost" size="icon">
-                    <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <Card className="border-none shadow-none bg-transparent">
+      <CardContent className="p-0">
+        <div className="border rounded-lg bg-card overflow-hidden">
+            <Table>
+            <TableHeader className="bg-muted/50">
+                <TableRow>
+                <TableHead className="pl-6">ลูกค้า (Customer)</TableHead>
+                <TableHead className="hidden md:table-cell">แผนก</TableHead>
+                <TableHead className="hidden lg:table-cell">รายละเอียด</TableHead>
+                <TableHead>สถานะ</TableHead>
+                <TableHead className="hidden md:table-cell">อัปเดตล่าสุด</TableHead>
+                <TableHead className="text-right pr-6">จัดการ</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {jobs.map(job => (
+                <TableRow key={job.id} className="hover:bg-muted/30 transition-colors">
+                    <TableCell className="pl-6 py-4">
+                    <div className="font-semibold">{job.customerSnapshot.name}</div>
+                    <div className="text-xs text-muted-foreground">{job.customerSnapshot.phone}</div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell"><Badge variant="outline" className="font-normal">{deptLabel(job.department)}</Badge></TableCell>
+                    <TableCell className="max-w-[200px] truncate hidden lg:table-cell text-sm text-muted-foreground">{job.description}</TableCell>
+                    <TableCell><Badge variant={getStatusVariant(job.status)} className={cn(job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge></TableCell>
+                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{safeFormat(job.lastActivityAt, 'dd MMM yy HH:mm')}</TableCell>
+                    <TableCell className="text-right pr-6">
+                    <Button asChild variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-sm">
+                        <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
+                    </Button>
+                    </TableCell>
+                </TableRow>
+                ))}
+            </TableBody>
+            </Table>
+        </div>
       </CardContent>
     </Card>
   );
@@ -229,7 +229,8 @@ export default function ManagementJobsPage() {
         if (q) {
             openJobs = openJobs.filter(j =>
                 (j.customerSnapshot?.name || "").toLowerCase().includes(q) ||
-                (j.customerSnapshot?.phone || "").includes(q)
+                (j.customerSnapshot?.phone || "").includes(q) ||
+                (j.description || "").toLowerCase().includes(q)
             );
         }
         return openJobs;
@@ -237,13 +238,19 @@ export default function ManagementJobsPage() {
 
     const renderContent = () => {
         if (loading) {
-            return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
+            return (
+                <div className="flex flex-col justify-center items-center h-64 gap-4">
+                    <Loader2 className="animate-spin h-10 w-10 text-primary" />
+                    <p className="text-sm text-muted-foreground font-medium">กำลังเตรียมข้อมูลภาพรวม...</p>
+                </div>
+            )
         }
         if (visibleJobs.length === 0) {
             return (
-                <Card className="text-center py-12">
+                <Card className="text-center py-16 bg-muted/20 border-dashed">
                     <CardHeader>
-                        <CardTitle>{searchTerm ? 'ไม่พบงานที่ค้นหา' : 'ไม่มีงานที่กำลังดำเนินการ'}</CardTitle>
+                        <CardTitle className="text-muted-foreground">{searchTerm ? 'ไม่พบงานที่ตรงกับการค้นหา' : 'ไม่มีงานที่กำลังดำเนินการ'}</CardTitle>
+                        <CardDescription>งานใหม่จะปรากฏที่นี่ทันทีที่มีการเปิดรับงาน</CardDescription>
                     </CardHeader>
                 </Card>
             )
@@ -263,27 +270,27 @@ export default function ManagementJobsPage() {
     };
 
     return (
-        <>
-            <PageHeader title="ภาพรวมงานซ่อม" description="จัดการงานทั้งหมดในที่เดียว">
-                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        <div className="space-y-6">
+            <PageHeader title="ภาพรวมงานซ่อม" description="ติดตามและจัดการงานซ่อมทั้งหมดในระบบ">
+                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <div className="relative flex-1 sm:flex-initial">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             type="search"
-                            placeholder="ค้นหาชื่อ/เบอร์โทร..."
-                            className="w-full rounded-lg bg-background pl-8 sm:w-[250px]"
+                            placeholder="ค้นหาชื่องาน/ลูกค้า..."
+                            className="w-full rounded-lg bg-background pl-9 sm:w-[250px]"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                     <div className="hidden lg:flex items-center gap-1 rounded-md bg-muted p-1">
-                        <Button variant={desktopView === 'table' ? 'secondary' : 'ghost'} size="sm" onClick={() => setDesktopView('table')}><TableIcon /> Table</Button>
-                        <Button variant={desktopView === 'board' ? 'secondary' : 'ghost'} size="sm" onClick={() => setDesktopView('board')}><LayoutGrid/> Board</Button>
+                     <div className="hidden lg:flex items-center gap-1 rounded-lg bg-muted p-1 border">
+                        <Button variant={desktopView === 'table' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-3" onClick={() => setDesktopView('table')}><TableIcon className="h-3.5 w-3.5 mr-1.5" /> Table</Button>
+                        <Button variant={desktopView === 'board' ? 'secondary' : 'ghost'} size="sm" className="h-8 px-3" onClick={() => setDesktopView('board')}><LayoutGrid className="h-3.5 w-3.5 mr-1.5"/> Board</Button>
                     </div>
-                    <Button asChild>
+                    <Button asChild className="shadow-md">
                         <Link href="/app/office/intake">
-                            <PlusCircle />
-                            New Job
+                            <PlusCircle className="h-4 w-4 mr-2" />
+                            เปิดงานใหม่
                         </Link>
                     </Button>
                 </div>
@@ -291,6 +298,6 @@ export default function ManagementJobsPage() {
             <div className="space-y-4">
                 {renderContent()}
             </div>
-        </>
+        </div>
     );
 }
