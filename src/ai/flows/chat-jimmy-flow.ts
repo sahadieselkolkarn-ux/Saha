@@ -9,7 +9,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, collection, query, where, getDocs, orderBy, limit, startOfMonth, endOfMonth } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 
 /**
  * Initializes Firebase on the server side to fetch settings and data.
@@ -31,20 +31,27 @@ const getAccountingSummary = ai.defineTool(
     outputSchema: z.any(),
   },
   async (input) => {
-    const db = getServerFirestore();
-    const entriesRef = collection(db, 'accountingEntries');
-    const snap = await getDocs(query(entriesRef, orderBy('entryDate', 'desc'), limit(500)));
-    
-    const data = snap.docs.map(d => d.data());
-    const summary = data.reduce((acc: any, curr: any) => {
-      const month = curr.entryDate.substring(0, 7); // YYYY-MM
-      if (!acc[month]) acc[month] = { income: 0, expense: 0 };
-      if (curr.entryType === 'CASH_IN' || curr.entryType === 'RECEIPT') acc[month].income += curr.amount;
-      if (curr.entryType === 'CASH_OUT') acc[month].expense += curr.amount;
-      return acc;
-    }, {});
+    try {
+      const db = getServerFirestore();
+      const entriesRef = collection(db, 'accountingEntries');
+      const snap = await getDocs(query(entriesRef, orderBy('entryDate', 'desc'), limit(500)));
+      
+      const data = snap.docs.map(d => d.data());
+      const summary = data.reduce((acc: any, curr: any) => {
+        const month = curr.entryDate.substring(0, 7); // YYYY-MM
+        if (!acc[month]) acc[month] = { income: 0, expense: 0 };
+        if (curr.entryType === 'CASH_IN' || curr.entryType === 'RECEIPT') acc[month].income += curr.amount;
+        if (curr.entryType === 'CASH_OUT') acc[month].expense += curr.amount;
+        return acc;
+      }, {});
 
-    return summary;
+      return summary;
+    } catch (e: any) {
+      if (e.code === 'permission-denied') {
+        return { error: 'PERMISSION_DENIED', path: 'accountingEntries', operation: 'list' };
+      }
+      throw e;
+    }
   }
 );
 
@@ -56,20 +63,27 @@ const getJobStatistics = ai.defineTool(
     outputSchema: z.any(),
   },
   async () => {
-    const db = getServerFirestore();
-    const jobsRef = collection(db, 'jobs');
-    const snap = await getDocs(jobsRef);
-    
-    const stats: any = { status: {}, department: {}, activeTotal: 0 };
-    snap.docs.forEach(doc => {
-      const data = doc.data();
-      if (data.status !== 'CLOSED') {
-        stats.activeTotal++;
-        stats.status[data.status] = (stats.status[data.status] || 0) + 1;
-        stats.department[data.department] = (stats.department[data.department] || 0) + 1;
+    try {
+      const db = getServerFirestore();
+      const jobsRef = collection(db, 'jobs');
+      const snap = await getDocs(jobsRef);
+      
+      const stats: any = { status: {}, department: {}, activeTotal: 0 };
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.status !== 'CLOSED') {
+          stats.activeTotal++;
+          stats.status[data.status] = (stats.status[data.status] || 0) + 1;
+          stats.department[data.department] = (stats.department[data.department] || 0) + 1;
+        }
+      });
+      return stats;
+    } catch (e: any) {
+      if (e.code === 'permission-denied') {
+        return { error: 'PERMISSION_DENIED', path: 'jobs', operation: 'list' };
       }
-    });
-    return stats;
+      throw e;
+    }
   }
 );
 
@@ -81,20 +95,28 @@ const getWorkerDetails = ai.defineTool(
     outputSchema: z.any(),
   },
   async () => {
-    const db = getServerFirestore();
-    const usersRef = collection(db, 'users');
-    const snap = await getDocs(query(usersRef, where('role', 'in', ['WORKER', 'OFFICER'])));
-    
-    return snap.docs.map(doc => {
-      const d = doc.data();
-      return {
-        name: d.displayName,
-        dept: d.department,
-        status: d.status,
-        salary: d.hr?.salaryMonthly || 0,
-        payType: d.hr?.payType
-      };
-    });
+    try {
+      const db = getServerFirestore();
+      const usersRef = collection(db, 'users');
+      // Note: This query might require an index for 'role' in 'users' collection
+      const snap = await getDocs(query(usersRef, where('role', 'in', ['WORKER', 'OFFICER'])));
+      
+      return snap.docs.map(doc => {
+        const d = doc.data();
+        return {
+          name: d.displayName,
+          dept: d.department,
+          status: d.status,
+          salary: d.hr?.salaryMonthly || 0,
+          payType: d.hr?.payType
+        };
+      });
+    } catch (e: any) {
+      if (e.code === 'permission-denied') {
+        return { error: 'PERMISSION_DENIED', path: 'users', operation: 'list' };
+      }
+      throw e;
+    }
   }
 );
 
@@ -111,6 +133,10 @@ export type ChatJimmyInput = z.infer<typeof ChatJimmyInputSchema>;
 
 const ChatJimmyOutputSchema = z.object({
   response: z.string().describe('ข้อความตอบกลับจากน้องจิมมี่'),
+  permissionError: z.object({
+    path: z.string(),
+    operation: z.enum(['get', 'list', 'create', 'update', 'delete', 'write']),
+  }).optional(),
 });
 export type ChatJimmyOutput = z.infer<typeof ChatJimmyOutputSchema>;
 
@@ -152,7 +178,7 @@ const prompt = ai.definePrompt({
 
 **คำแนะนำในการตอบ:**
 - หากต้องสรุปตัวเลข ให้แสดงเป็น "ตาราง (Table)" ที่สวยงามเสมอ
-- หากข้อมูลในระบบไม่มี ให้แจ้งพี่โจ้ตามตรงว่า "ในระบบยังไม่ได้บันทึกไว้ค่ะ"
+- หากข้อมูลในระบบไม่มี หรือได้รับแจ้งว่าไม่มีสิทธิ์เข้าถึง (PERMISSION_DENIED) ให้แจ้งพี่โจ้ตามตรงว่า "น้องจิมมี่ยังไม่มีสิทธิ์เข้าดูข้อมูลส่วนนี้ค่ะ รบกวนพี่โจ้ตรวจสอบการตั้งค่าความปลอดภัยนะคะ"
 - ใช้เครื่องมือ (Tools) ที่มีให้เกิดประโยชน์สูงสุดก่อนตอบคำถามเชิงวิเคราะห์
 
 ข้อความจากพี่โจ้: {{{message}}}`,

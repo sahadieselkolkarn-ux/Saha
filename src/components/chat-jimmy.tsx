@@ -23,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import type { GenAISettings } from "@/lib/types";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 interface Message {
   role: 'user' | 'model';
@@ -96,19 +98,36 @@ export function ChatJimmy() {
         history: history.slice(0, -1),
       };
 
-      const { response } = await chatJimmy(input);
+      const result = await chatJimmy(input);
+
+      if (result.permissionError) {
+        const permissionError = new FirestorePermissionError({
+          path: result.permissionError.path,
+          operation: result.permissionError.operation,
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      }
 
       setMessages(prev => [
         ...prev,
-        { role: 'model', content: response, timestamp: new Date() }
+        { role: 'model', content: result.response, timestamp: new Date() }
       ]);
     } catch (error: any) {
-      console.error("Chat error:", error);
-      toast({
-        variant: "destructive",
-        title: "จิมมี่มีอาการสับสนเล็กน้อย",
-        description: "เกิดข้อผิดพลาดในการเชื่อมต่อ AI กรุณาลองใหม่นะคะ"
-      });
+      // Logic for actual security rule errors that bypass our tool catch
+      if (error.message?.includes('Missing or insufficient permissions')) {
+          // Attempt to extract path if possible, or just emit a generic one
+          const permissionError = new FirestorePermissionError({
+              path: 'chatJimmyFlow',
+              operation: 'list',
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+      } else {
+          toast({
+            variant: "destructive",
+            title: "จิมมี่มีอาการสับสนเล็กน้อย",
+            description: "เกิดข้อผิดพลาดในการเชื่อมต่อ AI กรุณาลองใหม่นะคะ"
+          });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -128,7 +147,14 @@ export function ChatJimmy() {
       setIsApiKeyDialogOpen(false);
       setNewApiKeyInput("");
     } catch (e: any) {
-      toast({ variant: 'destructive', title: "บันทึกไม่สำเร็จ", description: e.message });
+      if (e.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'settings/ai',
+          operation: 'update',
+          requestResourceData: { geminiApiKey: '***' }
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      }
     } finally {
       setIsSavingKey(false);
     }
