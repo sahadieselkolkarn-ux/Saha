@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search, Badge } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search, Badge } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -477,7 +477,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             docId = result.docId;
         }
         
-        toast({ title: submitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
+        toast({ 
+            title: submitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ",
+            description: submitForReview ? "เอกสารของคุณถูกส่งไปที่ฝ่ายบัญชีเรียบร้อยแล้วค่ะ" : "บันทึกข้อมูลลงในระบบแล้ว"
+        });
+        
+        // Redirect back to the list page
         router.push('/app/office/documents/tax-invoice');
 
     } catch (error: any) {
@@ -803,7 +808,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingData) executeSave(pendingData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
+              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingData) executeSave(pendingData, true); setShowReviewConfirm(false); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
 

@@ -11,10 +11,10 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search, Badge } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search, Badge } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -296,7 +296,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       return;
     }
   
-    // Pull the data into the form first
     replace(itemsFromDoc);
     if (sourceDoc.docType === 'QUOTATION') {
         setReferencedQuotationId(sourceDoc.id);
@@ -307,7 +306,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
     form.trigger(['items', 'discountAmount', 'customerId']);
 
-    // Check if it needs special linking confirmation
     if (sourceDoc.status === 'PAID' || sourceDoc.status === 'PENDING_REVIEW') {
         setSelectedLinkDoc(sourceDoc);
         setShowLinkConfirm(true);
@@ -500,7 +498,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             docId = result.docId;
         }
         
-        toast({ title: submitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
+        toast({ 
+            title: submitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ",
+            description: submitForReview ? "เอกสารของคุณถูกส่งไปที่ฝ่ายบัญชีเรียบร้อยแล้วค่ะ" : "บันทึกข้อมูลเรียบร้อยแล้ว"
+        });
+        
+        // Redirect back to the list page
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
@@ -818,7 +821,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
       <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle><AlertDialogDescription>เมื่อส่งแล้วจะไม่สามารถแก้ไขเอกสารนี้ได้อีกจนกว่าฝ่ายบัญชีจะตรวจสอบ</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingFormData) executeSave(pendingFormData, true); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
+              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingFormData) executeSave(pendingFormData, true); setShowReviewConfirm(false); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
 
