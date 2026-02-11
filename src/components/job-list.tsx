@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type OrderByDirection, type QueryConstraint, type FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc, deleteField } from "firebase/firestore";
+import { collection, onSnapshot, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc, deleteField } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
