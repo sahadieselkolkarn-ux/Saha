@@ -13,6 +13,8 @@ import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle, RefreshCw, Tra
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 export default function AdminUsersPage() {
   const { db, firebaseApp } = useFirebase();
@@ -93,8 +95,14 @@ export default function AdminUsersPage() {
       const q = query(collection(db, "kioskTokens"), where("isActive", "==", true));
       const snap = await getCountFromServer(q);
       setUnusedTokenCount(snap.data().count);
-    } catch (e) {
-      console.error("Error fetching token count:", e);
+    } catch (e: any) {
+      if (e.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'kioskTokens',
+          operation: 'get',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      }
     } finally {
       setIsLoadingCount(false);
     }
@@ -143,7 +151,15 @@ export default function AdminUsersPage() {
       });
       await fetchUnusedTokenCount();
     } catch (e: any) {
-      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+      if (e.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'kioskTokens',
+          operation: 'delete',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      } else {
+        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
+      }
     } finally {
       setIsCleaningUp(false);
     }

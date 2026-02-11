@@ -35,6 +35,8 @@ import { useAuth } from "@/context/auth-context";
 import { ACQUISITION_SOURCES } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 const customerSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อลูกค้า"),
@@ -122,8 +124,16 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
       setCustomers(customersData);
       setLoading(false);
     },
-    (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+    async (error: any) => {
+      if (error.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'customers',
+          operation: 'list',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      } else {
+        toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+      }
       setLoading(false);
     });
     return () => unsubscribe();
@@ -187,23 +197,35 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
     if (!db || !editingCustomer) return;
     setIsSubmitting(true);
     
-    try {
-        const customerDoc = doc(db, "customers", editingCustomer.id);
-        const updateData = { 
-          ...values, 
-          updatedAt: serverTimestamp(),
-          taxName: values.useTax ? values.taxName : "",
-          taxAddress: values.useTax ? values.taxAddress : "",
-          taxId: values.useTax ? values.taxId : ""
-        };
-        await updateDoc(customerDoc, updateData);
+    const customerDoc = doc(db, "customers", editingCustomer.id);
+    const updateData = { 
+      ...values, 
+      updatedAt: serverTimestamp(),
+      taxName: values.useTax ? values.taxName : "",
+      taxAddress: values.useTax ? values.taxAddress : "",
+      taxId: values.useTax ? values.taxId : ""
+    };
+
+    updateDoc(customerDoc, updateData)
+      .then(() => {
         toast({ title: "อัปเดตข้อมูลลูกค้าสำเร็จ" });
         setIsDialogOpen(false);
-    } catch (error: any) {
-        toast({ variant: "destructive", title: "บันทึกไม่สำเร็จ", description: error.message });
-    } finally {
+      })
+      .catch(async (error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: customerDoc.path,
+            operation: 'update',
+            requestResourceData: updateData,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({ variant: "destructive", title: "บันทึกไม่สำเร็จ", description: error.message });
+        }
+      })
+      .finally(() => {
         setIsSubmitting(false);
-    }
+      });
   };
 
   const handleDeleteRequest = (customerId: string) => {
@@ -214,16 +236,26 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
   const confirmDelete = async () => {
     if (!db || !customerToDelete) return;
     
-    try {
-      const customerDoc = doc(db, "customers", customerToDelete);
-      await deleteDoc(customerDoc)
-      toast({title: "ลบข้อมูลลูกค้าเรียบร้อยแล้ว"});
-    } catch (error: any) {
-      toast({variant: "destructive", title: "ไม่สามารถลบได้", description: error.message});
-    } finally {
-      setIsDeleteAlertOpen(false);
-      setCustomerToDelete(null);
-    }
+    const customerDoc = doc(db, "customers", customerToDelete);
+    deleteDoc(customerDoc)
+      .then(() => {
+        toast({title: "ลบข้อมูลลูกค้าเรียบร้อยแล้ว"});
+      })
+      .catch(async (error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: customerDoc.path,
+            operation: 'delete',
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({variant: "destructive", title: "ไม่สามารถลบได้", description: error.message});
+        }
+      })
+      .finally(() => {
+        setIsDeleteAlertOpen(false);
+        setCustomerToDelete(null);
+      });
   };
 
   if (loading) {
@@ -463,8 +495,16 @@ function TaxCustomersTab({ searchTerm }: { searchTerm: string }) {
       setCustomers(customersData);
       setLoading(false);
     },
-    (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลได้" });
+    (error: any) => {
+      if (error.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'customers',
+          operation: 'list',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      } else {
+        toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลได้" });
+      }
       setLoading(false);
     });
     return () => unsubscribe();
@@ -536,8 +576,16 @@ function GeneralCustomersTab({ searchTerm }: { searchTerm: string }) {
       setCustomers(customersData);
       setLoading(false);
     },
-    (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลได้" });
+    (error: any) => {
+      if (error.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'customers',
+          operation: 'list',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      } else {
+        toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลได้" });
+      }
       setLoading(false);
     });
     return () => unsubscribe();

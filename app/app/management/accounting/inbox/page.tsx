@@ -36,6 +36,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -101,7 +103,13 @@ export default function AccountingInboxPage() {
         setIndexCreationUrl(null);
       },
       (err: FirestoreError) => { 
-        if (err.message?.includes('requires an index')) {
+        if (err.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: 'documents',
+            operation: 'list',
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
             if (urlMatch) setIndexCreationUrl(urlMatch[0]);
         }
@@ -116,7 +124,13 @@ export default function AccountingInboxPage() {
           setAccounts(data);
       },
       (err: FirestoreError) => {
-          console.error("Firestore error in accountsQuery:", err);
+        if (err.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: 'accountingAccounts',
+            operation: 'list',
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        }
       }
     );
 
@@ -148,19 +162,33 @@ export default function AccountingInboxPage() {
   const handleUpdateDocumentInfo = async () => {
     if (!db || !confirmingDoc) return;
     setIsSubmitting(true);
-    try {
-      await updateDoc(doc(db, 'documents', confirmingDoc.id), {
-        paymentMethod: selectedPaymentMethod,
-        receivedAccountId: selectedAccountId,
-        paymentDate: selectedPaymentDate,
-        updatedAt: serverTimestamp()
+    const docRef = doc(db, 'documents', confirmingDoc.id);
+    const updateData = {
+      paymentMethod: selectedPaymentMethod,
+      receivedAccountId: selectedAccountId,
+      paymentDate: selectedPaymentDate,
+      updatedAt: serverTimestamp()
+    };
+
+    updateDoc(docRef, updateData)
+      .then(() => {
+        toast({ title: "บันทึกข้อมูลเบื้องต้นสำเร็จ" });
+      })
+      .catch(async (error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: docRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({ variant: 'destructive', title: "ไม่สามารถบันทึกได้", description: error.message });
+        }
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
-      toast({ title: "บันทึกข้อมูลเบื้องต้นสำเร็จ" });
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: "ไม่สามารถบันทึกได้", description: e.message });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const filteredDocs = useMemo(() => {
@@ -296,7 +324,15 @@ export default function AccountingInboxPage() {
       setConfirmingDoc(null);
       setIsSubmitting(false);
     } catch(e: any) {
-      setConfirmError(`บันทึกไม่สำเร็จ: ${e.message || e.toString()}`);
+      if (e.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'documents/' + confirmingDoc.id,
+          operation: 'write',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      } else {
+        setConfirmError(`บันทึกไม่สำเร็จ: ${e.message || e.toString()}`);
+      }
       setIsSubmitting(false);
     }
   };
@@ -357,7 +393,15 @@ export default function AccountingInboxPage() {
         setArDocToConfirm(null);
         setIsSubmitting(false);
     } catch (e: any) {
-        toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการยืนยันรายการ", description: e.message });
+        if (e.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: 'documents/' + docToProcess.id,
+            operation: 'write',
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการยืนยันรายการ", description: e.message });
+        }
         setIsSubmitting(false);
     }
   };
@@ -365,22 +409,36 @@ export default function AccountingInboxPage() {
   const handleDispute = async () => {
     if (!db || !profile || !disputingDoc || !disputeReason) return;
     setIsSubmitting(true);
-    try {
-      await updateDoc(doc(db, 'documents', disputingDoc.id), {
-        arStatus: 'DISPUTED',
-        status: 'REJECTED',
-        reviewRejectReason: disputeReason,
-        reviewRejectedAt: serverTimestamp(),
-        reviewRejectedByName: profile.displayName || 'Unknown',
-        dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() }
+    const docRef = doc(db, 'documents', disputingDoc.id);
+    const updateData = {
+      arStatus: 'DISPUTED',
+      status: 'REJECTED',
+      reviewRejectReason: disputeReason,
+      reviewRejectedAt: serverTimestamp(),
+      reviewRejectedByName: profile.displayName || 'Unknown',
+      dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() }
+    };
+
+    updateDoc(docRef, updateData)
+      .then(() => {
+        toast({ title: "บันทึกข้อโต้แย้งและตีกลับสำเร็จ" });
+        setDisputingDoc(null);
+      })
+      .catch(async (error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: docRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการบันทึก", description: error.message });
+        }
+      })
+      .finally(() => {
+        setIsSubmitting(false);
       });
-      toast({ title: "บันทึกข้อโต้แย้งและตีกลับสำเร็จ" });
-      setDisputingDoc(null);
-    } catch(e: any) {
-      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการบันทึก", description: e.message });
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>หน้าจอนี้สำหรับฝ่ายบริหารและบัญชีเท่านั้น</CardDescription></CardHeader></Card>;

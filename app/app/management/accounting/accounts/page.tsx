@@ -18,6 +18,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { AccountingAccount } from "@/lib/types";
 import type { WithId } from "@/firebase/firestore/use-collection";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 export default function ManagementAccountingAccountsPage() {
   const { db } = useFirebase();
@@ -39,9 +41,16 @@ export default function ManagementAccountingAccountsPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>)));
       setLoading(false);
-    }, (error) => {
-      console.error("Error loading accounting accounts: ", error);
-      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่มีสิทธิ์เข้าถึงข้อมูลบัญชี หรือการดึงข้อมูลถูกปฏิเสธ" });
+    }, (error: any) => {
+      if (error.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'accountingAccounts',
+          operation: 'list',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      } else {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลบัญชีได้" });
+      }
       setLoading(false);
     });
     return () => unsubscribe();
@@ -63,20 +72,33 @@ export default function ManagementAccountingAccountsPage() {
 
   const confirmToggleActive = async () => {
     if (!db || !accountToAction) return;
-    try {
-      const accountRef = doc(db, "accountingAccounts", accountToAction.id);
-      const newStatus = !accountToAction.isActive;
-      await updateDoc(accountRef, {
-        isActive: newStatus,
-        updatedAt: serverTimestamp()
+    const accountRef = doc(db, "accountingAccounts", accountToAction.id);
+    const newStatus = !accountToAction.isActive;
+    const updateData = {
+      isActive: newStatus,
+      updatedAt: serverTimestamp()
+    };
+
+    updateDoc(accountRef, updateData)
+      .then(() => {
+        toast({ title: `เปลี่ยนสถานะบัญชีสำเร็จ` });
+      })
+      .catch(async (error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: accountRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
+        }
+      })
+      .finally(() => {
+        setIsDeactivateAlertOpen(false);
+        setAccountToAction(null);
       });
-      toast({ title: `เปลี่ยนสถานะบัญชีสำเร็จ` });
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
-    } finally {
-      setIsDeactivateAlertOpen(false);
-      setAccountToAction(null);
-    }
   };
 
   if (!profile) {
