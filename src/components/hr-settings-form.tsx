@@ -1,17 +1,16 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, setDoc, collection, query, where, getDocs, limit, writeBatch, serverTimestamp, getCountFromServer } from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import type { HRSettings } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -33,9 +32,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Save, Edit, X, Trash2, RefreshCw } from "lucide-react";
+import { Loader2, Save, Edit, X } from "lucide-react";
 import { Skeleton } from "./ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "./ui/separator";
 import { Switch } from "./ui/switch";
 
@@ -162,9 +161,6 @@ export function HRSettingsForm() {
   const { toast } = useToast();
   const { profile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [isCleaningUp, setIsCleaningUp] = useState(false);
-  const [unusedTokenCount, setUnusedTokenCount] = useState<number | null>(null);
-  const [isLoadingCount, setIsLoadingCount] = useState(false);
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
@@ -220,26 +216,6 @@ export function HRSettingsForm() {
       backfillMode: false,
     },
   });
-
-  const fetchUnusedTokenCount = useCallback(async () => {
-    if (!db || !isUserAdmin) return;
-    setIsLoadingCount(true);
-    try {
-      const q = query(collection(db, "kioskTokens"), where("isActive", "==", true));
-      const snap = await getCountFromServer(q);
-      setUnusedTokenCount(snap.data().count);
-    } catch (e) {
-      console.error("Error fetching token count:", e);
-    } finally {
-      setIsLoadingCount(false);
-    }
-  }, [db, isUserAdmin]);
-
-  useEffect(() => {
-    if (isUserAdmin) {
-      fetchUnusedTokenCount();
-    }
-  }, [isUserAdmin, fetchUnusedTokenCount]);
 
   useEffect(() => {
     if (settings) {
@@ -314,51 +290,6 @@ export function HRSettingsForm() {
         title: "เกิดข้อผิดพลาด",
         description: error.message,
       });
-    }
-  };
-
-  const handleCleanupTokens = async () => {
-    if (!db || !isUserAdmin) return;
-    
-    setIsCleaningUp(true);
-    let totalDeleted = 0;
-    
-    try {
-      const performDelete = async (): Promise<number> => {
-        const q = query(
-          collection(db, "kioskTokens"), 
-          where("isActive", "==", true), 
-          limit(500)
-        );
-        
-        const snap = await getDocs(q);
-        if (snap.empty) return 0;
-        
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        
-        return snap.size;
-      };
-
-      let deletedInThisPass = 0;
-      do {
-        deletedInThisPass = await performDelete();
-        totalDeleted += deletedInThisPass;
-        // Small delay to avoid hitting write rate limits too hard
-        if (deletedInThisPass > 0) await new Promise(r => setTimeout(r, 200));
-      } while (deletedInThisPass === 500 && totalDeleted < 20000); // Increased limit to 20k
-
-      toast({ 
-        title: "ล้างข้อมูลสำเร็จ", 
-        description: `ลบ Token ที่ไม่ได้ใช้งานออกทั้งหมด ${totalDeleted} รายการ` 
-      });
-      // Refresh count after cleanup
-      await fetchUnusedTokenCount();
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
-    } finally {
-      setIsCleaningUp(false);
     }
   };
 
@@ -501,43 +432,6 @@ export function HRSettingsForm() {
                     </CardHeader>
                     <CardContent>
                         <InfoRow label="โหมดแก้ไขย้อนหลัง (Backfill Mode)" value={settings?.backfillMode ? "เปิด" : "ปิด"} />
-                    </CardContent>
-                </Card>
-
-                <Card className="border-destructive/50 bg-destructive/5">
-                    <CardHeader>
-                        <CardTitle className="text-destructive flex items-center gap-2">
-                            <Trash2 className="h-5 w-5" />
-                            การจัดการฐานข้อมูล (Database Maintenance)
-                        </CardTitle>
-                        <CardDescription>
-                            ลบข้อมูลส่วนเกินเพื่อเพิ่มประสิทธิภาพระบบ
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                            <div className="space-y-1">
-                                <p className="text-sm font-bold">ล้างข้อมูล Token ลงเวลาที่ไม่ได้ใช้</p>
-                                <p className="text-xs text-muted-foreground">ลบ Token สแกนเวลาที่ค้างอยู่ในระบบ (ที่ไม่ได้ถูกใช้งานหรือหมดอายุแล้ว) เพื่อลดขนาดฐานข้อมูล</p>
-                                <div className="flex items-center gap-2 mt-2">
-                                    <p className="text-xs font-bold text-destructive">
-                                        จำนวน Token ที่ค้างในระบบปัจจุบัน: {isLoadingCount ? <Loader2 className="h-3 w-3 animate-spin inline ml-1"/> : (unusedTokenCount !== null ? `${unusedTokenCount.toLocaleString()} รายการ` : "-")}
-                                    </p>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={fetchUnusedTokenCount} disabled={isLoadingCount}>
-                                        <RefreshCw className={cn("h-3 w-3", isLoadingCount && "animate-spin")} />
-                                    </Button>
-                                </div>
-                            </div>
-                            <Button 
-                                variant="destructive" 
-                                size="sm" 
-                                onClick={handleCleanupTokens} 
-                                disabled={isCleaningUp || unusedTokenCount === 0}
-                            >
-                                {isCleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
-                                {isCleaningUp ? "กำลังล้างข้อมูล..." : "ล้างข้อมูล Token"}
-                            </Button>
-                        </div>
                     </CardContent>
                 </Card>
               </>

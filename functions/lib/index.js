@@ -107,6 +107,7 @@ exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({
         if (!isAllowed) {
             throw new https_1.HttpsError("permission-denied", "You do not have permission to run migrations.");
         }
+        // Default limit to 40 if not provided
         const limitCount = Math.min(((_a = request.data) === null || _a === void 0 ? void 0 : _a.limit) || 40, 40);
         const archiveColName = `jobsArchive_2026`;
         // 3. Query CLOSED jobs from main collection
@@ -131,8 +132,9 @@ exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({
             try {
                 const archiveRef = db.collection(archiveColName).doc(jobId);
                 const archiveSnap = await archiveRef.get();
-                // Skip if already moved but not deleted
+                // Check if already archived
                 if (archiveSnap.exists && ((_b = archiveSnap.data()) === null || _b === void 0 ? void 0 : _b.isArchived)) {
+                    // If it exists in archive but still in jobs, delete from jobs and skip count
                     if (typeof db.recursiveDelete === 'function') {
                         await db.recursiveDelete(jobDoc.ref);
                     }
