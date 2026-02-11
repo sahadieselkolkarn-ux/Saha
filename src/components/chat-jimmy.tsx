@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { UserProfile, AccountingEntry, Job, GenAISettings } from "@/lib/types";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -37,7 +38,7 @@ export function ChatJimmy() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: `สวัสดีครับคุณ ${profile?.displayName || 'ผู้บริหาร'}! ผม "จิมมี่" ผู้ช่วย AI ประจำ Sahadiesel ยินดีที่ได้พบครับ มีข้อมูลส่วนไหนที่คุณอยากให้ผมช่วยวิเคราะห์หรือตรวจสอบไหมครับ?`,
+      content: `สวัสดีค่ะพี่โจ้! น้องจิมมี่พร้อมช่วยพี่โจ้ดูแลร้านสหดีเซลแล้วค่ะ วันนี้พี่โจ้อยากให้น้องจิมมี่ช่วยเช็คยอดขาย คุมงบค่าแรงพนักงาน หรืออยากจะปรึกษาเรื่องฟื้นฟูร้านตรงไหน บอกน้องจิมมี่ได้เลยนะคะ น้องจิมมี่เป็นกำลังใจให้พี่โจ้เสมอค่ะ!`,
       timestamp: new Date()
     }
   ]);
@@ -54,7 +55,10 @@ export function ChatJimmy() {
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+      const scrollContainer = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTo({ top: scrollContainer.scrollHeight, behavior: 'smooth' });
+      }
     }
   }, [messages, isLoading]);
 
@@ -127,7 +131,7 @@ export function ChatJimmy() {
 
       const input: ChatJimmyInput = {
         message: userMessage,
-        history: history.slice(0, -1), // Everything except the current message
+        history: history.slice(0, -1),
         context: context
       };
 
@@ -142,7 +146,7 @@ export function ChatJimmy() {
       toast({
         variant: "destructive",
         title: "จิมมี่มีอาการสับสนเล็กน้อย",
-        description: "เกิดข้อผิดพลาดในการเรียก AI กรุณาตรวจสอบ API Key หรือลองอีกครั้งภายหลัง"
+        description: "เกิดข้อผิดพลาดในการเรียก AI กรุณาตรวจสอบ API Key หรือลองอีกครั้งภายหลังนะคะ"
       });
     } finally {
       setIsLoading(false);
@@ -159,7 +163,7 @@ export function ChatJimmy() {
         updatedByUid: profile.uid,
         updatedByName: profile.displayName
       }, { merge: true });
-      toast({ title: "บันทึก API Key สำเร็จ" });
+      toast({ title: "บันทึก API Key สำเร็จแล้วค่ะ" });
       setIsApiKeyDialogOpen(false);
       setNewApiKeyInput("");
     } catch (e: any) {
@@ -170,18 +174,18 @@ export function ChatJimmy() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto border rounded-xl overflow-hidden bg-background shadow-2xl">
+    <div className="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto border rounded-xl overflow-hidden bg-background shadow-2xl border-primary/20">
       {/* Header */}
-      <div className="bg-primary p-4 flex items-center justify-between text-primary-foreground">
+      <div className="bg-primary p-4 flex items-center justify-between text-primary-foreground shadow-lg">
         <div className="flex items-center gap-3">
           <div className="bg-white/20 p-2 rounded-full ring-2 ring-white/30">
             <Bot className="h-6 w-6" />
           </div>
           <div>
             <h3 className="font-bold text-lg leading-none flex items-center gap-2">
-              Jimmy <Badge variant="secondary" className="bg-white/20 text-[10px] h-4">Beta</Badge>
+              น้องจิมมี่ <Badge variant="secondary" className="bg-pink-500/80 text-white text-[10px] h-4 border-none">Assistant</Badge>
             </h3>
-            <p className="text-xs text-primary-foreground/70 mt-1">Sahadiesel Intelligent Assistant</p>
+            <p className="text-xs text-primary-foreground/70 mt-1">ผู้ช่วยคนเก่งของพี่โจ้แห่งสหดีเซล</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -193,14 +197,14 @@ export function ChatJimmy() {
 
       {/* Stats Quick View (Context Preview) */}
       <div className="bg-muted/30 border-b p-2 flex gap-4 overflow-x-auto text-[10px] uppercase font-bold tracking-widest text-muted-foreground whitespace-nowrap">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-white rounded-full border shadow-sm">
-            <BarChart3 className="h-3 w-3 text-primary" /> สรุปข้อมูลธุรกิจ Real-time
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-white rounded-full border shadow-sm text-primary">
+            <BarChart3 className="h-3 w-3" /> วิเคราะห์งบพี่โจ้
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1">
-            <UsersIcon className="h-3 w-3" /> ช่างพร้อมให้บริการ
+            <UsersIcon className="h-3 w-3" /> ดูแลพี่ๆ ช่าง
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1">
-            <Sparkles className="h-3 w-3" /> ระบบ Gemini 2.5 Flash
+          <div className="flex items-center gap-1.5 px-3 py-1 text-pink-500">
+            <Sparkles className="h-3 w-3" /> เป็นกำลังใจให้พี่โจ้ค่ะ
           </div>
       </div>
 
@@ -211,21 +215,32 @@ export function ChatJimmy() {
             <div key={i} className={cn("flex w-full gap-3", m.role === 'user' ? "flex-row-reverse" : "flex-row")}>
               <Avatar className={cn("h-9 w-9 shrink-0", m.role === 'model' ? "ring-2 ring-primary/20" : "ring-2 ring-muted")}>
                 {m.role === 'model' ? (
-                  <AvatarImage src="/jimmy-avatar.png" />
+                  <div className="bg-primary flex items-center justify-center w-full h-full text-white">
+                    <Bot className="h-5 w-5" />
+                  </div>
                 ) : (
                   <AvatarImage src={`https://api.dicebear.com/8.x/initials/svg?seed=${profile?.displayName}`} />
                 )}
-                <AvatarFallback className={m.role === 'model' ? "bg-primary text-white" : "bg-muted"}>
-                  {m.role === 'model' ? <Bot className="h-5 w-5" /> : <User className="h-5 w-5" />}
-                </AvatarFallback>
+                <AvatarFallback>{m.role === 'model' ? "JM" : "PJ"}</AvatarFallback>
               </Avatar>
               <div className={cn(
-                "max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm",
+                "max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm transition-all",
                 m.role === 'user' 
                   ? "bg-primary text-primary-foreground rounded-tr-none" 
-                  : "bg-muted border rounded-tl-none"
+                  : "bg-muted border rounded-tl-none prose prose-sm dark:prose-invert max-w-none"
               )}>
-                <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                {m.role === 'model' ? (
+                  <div className="markdown-content overflow-x-auto">
+                    {/* Render Markdown-like content manually for now or use a component */}
+                    <div dangerouslySetInnerHTML={{ 
+                      __html: m.content
+                        .replace(/\n/g, '<br />')
+                        .replace(/\|/g, ' ') 
+                    }} />
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
+                )}
                 <div className={cn(
                   "text-[10px] mt-2 opacity-50",
                   m.role === 'user' ? "text-right" : "text-left"
@@ -237,14 +252,12 @@ export function ChatJimmy() {
           ))}
           {isLoading && (
             <div className="flex w-full gap-3">
-              <Avatar className="h-9 w-9 shrink-0 ring-2 ring-primary/20">
-                <AvatarFallback className="bg-primary text-white">
-                  <Bot className="h-5 w-5 animate-bounce" />
-                </AvatarFallback>
-              </Avatar>
+              <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-white ring-2 ring-primary/20 shrink-0">
+                <Bot className="h-5 w-5 animate-bounce" />
+              </div>
               <div className="bg-muted border rounded-2xl rounded-tl-none px-4 py-3 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-xs text-muted-foreground italic">จิมมี่กำลังคิด...</span>
+                <span className="text-xs text-muted-foreground italic">น้องจิมมี่กำลังประมวลผลให้พี่โจ้อยู่นะคะ...</span>
               </div>
             </div>
           )}
@@ -255,8 +268,8 @@ export function ChatJimmy() {
       <div className="p-4 bg-muted/20 border-t">
         <div className="flex gap-2 max-w-3xl mx-auto">
           <Input 
-            placeholder="พิมพ์คำถามของคุณถึงจิมมี่ที่นี่..." 
-            className="rounded-full bg-background border-primary/20 focus-visible:ring-primary h-12 px-6"
+            placeholder="พิมพ์บอกน้องจิมมี่ได้เลยค่ะพี่โจ้..." 
+            className="rounded-full bg-background border-primary/20 focus-visible:ring-primary h-12 px-6 shadow-inner"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
@@ -264,15 +277,15 @@ export function ChatJimmy() {
           />
           <Button 
             size="icon" 
-            className="rounded-full h-12 w-12 shrink-0 shadow-lg"
+            className="rounded-full h-12 w-12 shrink-0 shadow-lg hover:scale-105 active:scale-95 transition-transform"
             onClick={handleSend}
             disabled={isLoading || !inputValue.trim()}
           >
             {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
           </Button>
         </div>
-        <p className="text-[10px] text-center text-muted-foreground mt-3 uppercase tracking-tighter">
-          * จิมมี่เป็น AI ข้อมูลทางการเงินอาจมีความคลาดเคลื่อน กรุณาตรวจสอบกับสมุดบัญชีจริงอีกครั้ง
+        <p className="text-[9px] text-center text-muted-foreground mt-3 uppercase font-bold tracking-tighter">
+          SAHADIESEL INTELLIGENT COMPANION • ALWAYS BY YOUR SIDE P'JOE
         </p>
       </div>
 
@@ -282,10 +295,10 @@ export function ChatJimmy() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Key className="h-5 w-5 text-primary" /> 
-              ตั้งค่า AI API Key
+              ตั้งค่าสมองของน้องจิมมี่
             </DialogTitle>
             <DialogDescription>
-              ระบบใช้ Gemini AI ในการวิเคราะห์ข้อมูล กรุณากรอก Google AI API Key ของคุณ
+              น้องจิมมี่ใช้ Gemini AI ในการช่วยพี่โจ้ทำงานนะคะ รบกวนพี่โจ้กรอก API Key ตรงนี้ก่อนน้า
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -294,17 +307,17 @@ export function ChatJimmy() {
               <Input 
                 id="api-key" 
                 type="password" 
-                placeholder="กรอก Key ของคุณที่นี่..." 
+                placeholder="วาง Key ของพี่โจ้ตรงนี้เลยค่ะ..." 
                 value={apiKeyInput}
                 onChange={(e) => setNewApiKeyInput(e.target.value)}
               />
               <p className="text-[10px] text-muted-foreground">
-                คุณสามารถขอ API Key ได้ฟรีที่ <a href="https://aistudio.google.com/" target="_blank" className="text-primary underline">Google AI Studio</a>
+                พี่โจ้สามารถขอ Key ได้ฟรีที่ <a href="https://aistudio.google.com/" target="_blank" className="text-primary underline">Google AI Studio</a> นะคะ
               </p>
             </div>
             {aiSettings?.geminiApiKey && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center gap-2 text-xs text-green-700">
-                <CheckCircle className="h-4 w-4" /> ระบบมี API Key บันทึกอยู่แล้ว
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center gap-2 text-xs text-green-700 font-medium">
+                <CheckCircle className="h-4 w-4" /> น้องจิมมี่พร้อมลุยแล้วค่ะ มี Key อยู่แล้ว!
               </div>
             )}
           </div>
@@ -312,7 +325,7 @@ export function ChatJimmy() {
             <Button variant="outline" onClick={() => setIsApiKeyDialogOpen(false)}>ยกเลิก</Button>
             <Button onClick={saveApiKey} disabled={isSavingKey || !apiKeyInput.trim()}>
               {isSavingKey && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              บันทึกการตั้งค่า
+              บันทึกเลยค่ะ
             </Button>
           </DialogFooter>
         </DialogContent>
