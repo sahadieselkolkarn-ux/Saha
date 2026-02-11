@@ -1,20 +1,33 @@
+
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { JobList } from "@/components/job-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 
-export default function OfficeJobManagementByStatusPage() {
+function ByStatusContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [searchTerm, setSearchTerm] = useState("");
+
+  const activeTab = searchParams.get("status") || "quotation";
+
+  const handleTabChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("status", value);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <>
       <PageHeader title="จัดการงานซ่อม - ตามสถานะ" description="แสดงงานทั้งหมดที่ยังไม่ปิด แยกตามสถานะปัจจุบัน" />
-      <Tabs defaultValue="quotation">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 gap-1">
             <TabsTrigger value="quotation">งานเสนอราคา</TabsTrigger>
@@ -81,5 +94,13 @@ export default function OfficeJobManagementByStatusPage() {
         </Card>
       </Tabs>
     </>
+  );
+}
+
+export default function OfficeJobManagementByStatusPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8" /></div>}>
+      <ByStatusContent />
+    </Suspense>
   );
 }

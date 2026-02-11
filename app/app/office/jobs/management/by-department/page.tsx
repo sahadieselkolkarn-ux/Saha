@@ -1,20 +1,33 @@
+
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { JobList } from "@/components/job-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 
-export default function OfficeJobManagementByDepartmentPage() {
+function ByDepartmentContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [searchTerm, setSearchTerm] = useState("");
+
+  const activeTab = searchParams.get("dept") || "car-service";
+
+  const handleTabChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("dept", value);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <>
       <PageHeader title="จัดการงานซ่อม - ตามแผนก" description="แสดงงานทั้งหมดที่ยังไม่ปิด แยกตามแผนกที่รับผิดชอบ" />
-      <Tabs defaultValue="car-service">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <TabsList>
             <TabsTrigger value="car-service">งานซ่อมหน้าร้าน</TabsTrigger>
@@ -74,5 +87,13 @@ export default function OfficeJobManagementByDepartmentPage() {
         </Card>
       </Tabs>
     </>
+  );
+}
+
+export default function OfficeJobManagementByDepartmentPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8" /></div>}>
+      <ByDepartmentContent />
+    </Suspense>
   );
 }
