@@ -30,7 +30,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 };
 
 const DOC_STATUS_LABELS: Record<string, string> = {
-    DRAFT: 'ฉบับร่าง (ยังไม่ส่งตรวจ)',
+    DRAFT: 'ฉบับร่าง',
     PAID: 'รับเงินแล้ว',
     CANCELLED: 'ยกเลิก',
     WAITING_CUSTOMER_PICKUP: 'รอลูกค้ารับ',
