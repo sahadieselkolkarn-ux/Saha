@@ -40,6 +40,17 @@ function JobCard({ job }: { job: Job }) {
   return (
     <Card className="flex flex-col overflow-hidden group hover:shadow-md transition-all">
       <div className="relative aspect-video w-full bg-muted">
+        {/* Status Badge at Top Right */}
+        <Badge 
+          variant={getStatusVariant(job.status)} 
+          className={cn(
+            "absolute top-2 right-2 z-10 shadow-sm text-[10px] px-2 py-0.5 border-white/20 backdrop-blur-[2px] bg-opacity-90", 
+            job.status === 'RECEIVED' && "animate-blink"
+          )}
+        >
+          {jobStatusLabel(job.status)}
+        </Badge>
+
         {job.photos && job.photos.length > 0 ? (
             <Image
                 src={job.photos[0]}
@@ -53,11 +64,8 @@ function JobCard({ job }: { job: Job }) {
             </div>
         )}
       </div>
-      <CardHeader className="p-4 space-y-2">
-        <div className="flex flex-col gap-2">
-          <CardTitle className="text-base font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-          <Badge variant={getStatusVariant(job.status)} className={cn("w-fit flex-shrink-0 text-[10px]", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
-        </div>
+      <CardHeader className="p-4 space-y-1">
+        <CardTitle className="text-base font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
         <CardDescription className="text-xs">
           {deptLabel(job.department)}
           <br />

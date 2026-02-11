@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc, deleteField } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type OrderByDirection, type QueryConstraint, type FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc, deleteField } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -681,6 +681,17 @@ export function JobList({
         return (
           <Card key={job.id} className="flex flex-col overflow-hidden">
             <div className="relative aspect-[16/10] w-full bg-muted">
+              {/* Badge positioned at the top-right of the image */}
+              <Badge 
+                variant={getStatusVariant(job.status)} 
+                className={cn(
+                  "absolute top-2 right-2 z-10 shadow-md whitespace-nowrap px-2 py-1 border-white/20 backdrop-blur-[2px] bg-opacity-90", 
+                  job.status === 'RECEIVED' && "animate-blink"
+                )}
+              >
+                {jobStatusLabel(job.status)}
+              </Badge>
+
               {job.photos && job.photos.length > 0 ? (
                   <Image
                       src={job.photos[0]}
@@ -694,19 +705,18 @@ export function JobList({
                   </div>
               )}
             </div>
-            <CardHeader>
-              <div className="flex flex-col gap-2">
+            <CardHeader className="p-4">
+              <div className="flex flex-col gap-1">
                 <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-                <Badge variant={getStatusVariant(job.status)} className={cn("w-fit whitespace-nowrap", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
               </div>
-              <CardDescription>
+              <CardDescription className="text-xs">
                 {deptLabel(job.department)}
                 {job.assigneeName && <span className="font-medium"> • {job.assigneeName}</span>}
                 <br />
                 อัปเดตล่าสุด: {safeFormat(job.lastActivityAt, 'PP')}
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex-grow">
+            <CardContent className="flex-grow px-4 pb-4">
               <p className="line-clamp-2 text-sm text-muted-foreground">{job.description}</p>
               {isBilled && (
                 <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-primary">
