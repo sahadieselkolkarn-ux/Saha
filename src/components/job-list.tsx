@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import Link from "next/image";
+import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { collection, onSnapshot, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, doc, updateDoc, serverTimestamp, writeBatch, limit, getDocs, runTransaction, Timestamp, setDoc, deleteField } from "firebase/firestore";
@@ -252,8 +252,8 @@ export function JobList({
       }
       if (error.message.includes('currently building')) {
         setIndexState('building');
-        const timer = setTimeout(() => setRetry(r => r + 1), 10000); 
-        return () => clearTimeout(timer);
+        const retryTimer = setTimeout(() => setRetry(r => r + 1), 10000); 
+        return () => clearTimeout(retryTimer);
       } else {
         setIndexState('missing');
       }
@@ -654,6 +654,7 @@ export function JobList({
                 <CardTitle>ไม่สามารถโหลดข้อมูลงานได้</CardTitle>
                 <CardDescription>{error.message}</CardDescription>
             </CardHeader>
+        </Card>
        );
   }
 
