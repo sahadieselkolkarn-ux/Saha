@@ -74,17 +74,20 @@ exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({ region: "us-centr
     }
     return { totalFound: closedJobsSnap.size, migrated, skipped, errors };
 });
-// --- 3. ฟังก์ชัน น้องจิมมี่ ---
+// --- 3. ฟังก์ชัน น้องจิมมี่ (Improved Resilience) ---
 exports.chatWithJimmy = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
     var _a;
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "เข้าสู่ระบบก่อนนะจ๊ะพี่โจ้");
-    const userSnap = await db.collection("users").doc(request.auth.uid).get();
+    const userRef = db.collection("users").doc(request.auth.uid);
+    const userSnap = await userRef.get();
     const userData = userSnap.data();
     const isAllowed = (userData === null || userData === void 0 ? void 0 : userData.role) === 'ADMIN' || (userData === null || userData === void 0 ? void 0 : userData.role) === 'MANAGER' || (userData === null || userData === void 0 ? void 0 : userData.department) === 'MANAGEMENT';
     if (!isAllowed)
         throw new https_1.HttpsError("permission-denied", "หน้านี้สงวนไว้สำหรับผู้บริหารเท่านั้นค่ะพี่");
     const { message } = request.data;
+    if (!message)
+        throw new https_1.HttpsError("invalid-argument", "กรุณาพิมพ์ข้อความด้วยนะคะ");
     const aiSettings = await db.collection("settings").doc("ai").get();
     const apiKey = (_a = aiSettings.data()) === null || _a === void 0 ? void 0 : _a.geminiApiKey;
     if (!apiKey)
@@ -100,24 +103,24 @@ exports.chatWithJimmy = (0, https_1.onCall)({ region: "us-central1" }, async (re
             .map(d => {
             var _a;
             return ({
-                dept: d.data().department,
-                status: d.data().status,
-                customer: (_a = d.data().customerSnapshot) === null || _a === void 0 ? void 0 : _a.name
+                dept: d.data().department || "ไม่ระบุแผนก",
+                status: d.data().status || "RECEIVED",
+                customer: ((_a = d.data().customerSnapshot) === null || _a === void 0 ? void 0 : _a.name) || "ไม่ทราบชื่อลูกค้า"
             });
         });
         const accSummary = entriesSnap.docs.map(d => ({
-            date: d.data().entryDate,
-            type: d.data().entryType,
-            amount: d.data().amount,
-            desc: d.data().description
+            date: d.data().entryDate || "ไม่ระบุวันที่",
+            type: d.data().entryType || "CASH_IN",
+            amount: d.data().amount || 0,
+            desc: d.data().description || "ไม่มีรายละเอียด"
         }));
         const workerSummary = workersSnap.docs
             .filter(d => ["WORKER", "OFFICER"].includes(d.data().role))
             .map(d => {
             var _a;
             return ({
-                name: d.data().displayName,
-                dept: d.data().department,
+                name: d.data().displayName || "ไม่ทราบชื่อ",
+                dept: d.data().department || "ไม่ระบุแผนก",
                 salary: ((_a = d.data().hr) === null || _a === void 0 ? void 0 : _a.salaryMonthly) || 0
             });
         });
@@ -149,7 +152,7 @@ exports.chatWithJimmy = (0, https_1.onCall)({ region: "us-central1" }, async (re
         return { answer: result.response.text() };
     }
     catch (e) {
-        console.error("Jimmy Error:", e);
-        throw new https_1.HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + e.message);
+        console.error("Jimmy Error Detail:", e);
+        throw new https_1.HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + (e.message || "Unknown AI error"));
     }
 });
