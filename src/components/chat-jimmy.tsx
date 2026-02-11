@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { chatJimmy, type ChatJimmyInput } from "@/ai/flows/chat-jimmy-flow";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -23,8 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import type { GenAISettings } from "@/lib/types";
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 interface Message {
   role: 'user' | 'model';
@@ -33,7 +31,7 @@ interface Message {
 }
 
 export function ChatJimmy() {
-  const { db } = useFirebase();
+  const { db, firebaseApp } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   
@@ -65,7 +63,7 @@ export function ChatJimmy() {
   }, [messages, isLoading]);
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || !firebaseApp) return;
 
     if (!aiSettings?.geminiApiKey) {
         toast({
@@ -80,54 +78,31 @@ export function ChatJimmy() {
     const userMessage = inputValue.trim();
     setInputValue("");
     
-    const newMessages: Message[] = [
-      ...messages,
+    setMessages(prev => [
+      ...prev,
       { role: 'user', content: userMessage, timestamp: new Date() }
-    ];
-    setMessages(newMessages);
+    ]);
     setIsLoading(true);
 
     try {
-      const history = newMessages.map(m => ({
-        role: m.role,
-        content: m.content
-      }));
-
-      const input: ChatJimmyInput = {
-        message: userMessage,
-        history: history.slice(0, -1),
-      };
-
-      const result = await chatJimmy(input);
-
-      if (result.permissionError) {
-        const permissionError = new FirestorePermissionError({
-          path: result.permissionError.path,
-          operation: result.permissionError.operation,
-        } satisfies SecurityRuleContext);
-        errorEmitter.emit('permission-error', permissionError);
-      }
+      // Call Cloud Function instead of Server Action
+      const functions = getFunctions(firebaseApp, 'us-central1');
+      const chatFn = httpsCallable(functions, "chatWithJimmy");
+      
+      const result = await chatFn({ message: userMessage });
+      const data = result.data as { answer: string };
 
       setMessages(prev => [
         ...prev,
-        { role: 'model', content: result.response, timestamp: new Date() }
+        { role: 'model', content: data.answer, timestamp: new Date() }
       ]);
     } catch (error: any) {
-      // Logic for actual security rule errors that bypass our tool catch
-      if (error.message?.includes('Missing or insufficient permissions')) {
-          // Attempt to extract path if possible, or just emit a generic one
-          const permissionError = new FirestorePermissionError({
-              path: 'chatJimmyFlow',
-              operation: 'list',
-          } satisfies SecurityRuleContext);
-          errorEmitter.emit('permission-error', permissionError);
-      } else {
-          toast({
-            variant: "destructive",
-            title: "จิมมี่มีอาการสับสนเล็กน้อย",
-            description: "เกิดข้อผิดพลาดในการเชื่อมต่อ AI กรุณาลองใหม่นะคะ"
-          });
-      }
+      console.error("Chat Error:", error);
+      toast({
+        variant: "destructive",
+        title: "จิมมี่มีอาการสับสนเล็กน้อย",
+        description: error.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ AI"
+      });
     } finally {
       setIsLoading(false);
     }
@@ -147,14 +122,7 @@ export function ChatJimmy() {
       setIsApiKeyDialogOpen(false);
       setNewApiKeyInput("");
     } catch (e: any) {
-      if (e.code === 'permission-denied') {
-        const permissionError = new FirestorePermissionError({
-          path: 'settings/ai',
-          operation: 'update',
-          requestResourceData: { geminiApiKey: '***' }
-        } satisfies SecurityRuleContext);
-        errorEmitter.emit('permission-error', permissionError);
-      }
+      toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: e.message });
     } finally {
       setIsSavingKey(false);
     }
@@ -251,13 +219,13 @@ export function ChatJimmy() {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            disabled={isLoading}
+            disabled={inputValue.trim() === "" || isLoading}
           />
           <Button 
             size="icon" 
             className="rounded-full h-12 w-12 shrink-0 shadow-lg hover:scale-105 active:scale-95 transition-transform"
             onClick={handleSend}
-            disabled={isLoading || !inputValue.trim()}
+            disabled={inputValue.trim() === "" || isLoading}
           >
             {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
           </Button>

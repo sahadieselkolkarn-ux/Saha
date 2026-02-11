@@ -15,8 +15,6 @@ exports.closeJobAfterAccounting = (0, https_1.onCall)({ region: "us-central1" },
     if (!jobId)
         throw new https_1.HttpsError("invalid-argument", "Missing jobId.");
     try {
-        const userSnap = await db.collection("users").doc(request.auth.uid).get();
-        const userData = userSnap.data();
         const jobRef = db.collection("jobs").doc(jobId);
         const jobSnap = await jobRef.get();
         if (!jobSnap.exists)
@@ -41,29 +39,119 @@ exports.closeJobAfterAccounting = (0, https_1.onCall)({ region: "us-central1" },
 exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "Auth required.");
-    const closedJobsSnap = await db.collection("jobs").where("status", "==", "CLOSED").limit(40).get();
-    // ... (Logic การย้ายข้อมูลเหมือนเดิมของพี่โจ้ค่ะ)
-    return { migrated: closedJobsSnap.size };
+    const userSnap = await db.collection("users").doc(request.auth.uid).get();
+    const userData = userSnap.data();
+    const isAdmin = (userData === null || userData === void 0 ? void 0 : userData.role) === 'ADMIN' || (userData === null || userData === void 0 ? void 0 : userData.role) === 'MANAGER' || (userData === null || userData === void 0 ? void 0 : userData.department) === 'MANAGEMENT';
+    if (!isAdmin)
+        throw new https_1.HttpsError("permission-denied", "เฉพาะผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้ค่ะ");
+    const limit = Math.min(request.data.limit || 40, 40);
+    const closedJobsSnap = await db.collection("jobs").where("status", "==", "CLOSED").limit(limit).get();
+    let migrated = 0;
+    let skipped = 0;
+    const errors = [];
+    for (const jobDoc of closedJobsSnap.docs) {
+        try {
+            const jobId = jobDoc.id;
+            const archiveRef = db.collection("jobsArchive_2026").doc(jobId);
+            const archiveSnap = await archiveRef.get();
+            if (!archiveSnap.exists) {
+                const jobData = jobDoc.data();
+                await archiveRef.set(Object.assign(Object.assign({}, jobData), { isArchived: true, archivedAt: firestore_1.FieldValue.serverTimestamp(), archivedByUid: request.auth.uid, archivedByName: (userData === null || userData === void 0 ? void 0 : userData.displayName) || "Admin", updatedAt: firestore_1.FieldValue.serverTimestamp() }));
+                const activitiesSnap = await jobDoc.ref.collection("activities").get();
+                for (const actDoc of activitiesSnap.docs) {
+                    await archiveRef.collection("activities").doc(actDoc.id).set(actDoc.data());
+                }
+                migrated++;
+            }
+            else {
+                skipped++;
+            }
+            await db.recursiveDelete(jobDoc.ref);
+        }
+        catch (e) {
+            errors.push({ jobId: jobDoc.id, message: e.message });
+        }
+    }
+    return { totalFound: closedJobsSnap.size, migrated, skipped, errors };
 });
-// --- 3. ฟังก์ชัน น้องจิมมี่ (ตัวละครลับ!) ---
+// --- 3. ฟังก์ชัน น้องจิมมี่ ---
 exports.chatWithJimmy = (0, https_1.onCall)({
     region: "us-central1",
     secrets: ["GEMINI_API_KEY"]
 }, async (request) => {
+    var _a, _b, _c;
     if (!request.auth)
-        throw new https_1.HttpsError("unauthenticated", "เข้าสู่ระบบก่อนนะจ๊ะ");
-    const { message, monthlyData } = request.data;
-    const genAI = new generative_ai_1.GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+        throw new https_1.HttpsError("unauthenticated", "เข้าสู่ระบบก่อนนะจ๊ะพี่โจ้");
+    const userSnap = await db.collection("users").doc(request.auth.uid).get();
+    const userData = userSnap.data();
+    const isAllowed = (userData === null || userData === void 0 ? void 0 : userData.role) === 'ADMIN' || (userData === null || userData === void 0 ? void 0 : userData.role) === 'MANAGER' || (userData === null || userData === void 0 ? void 0 : userData.department) === 'MANAGEMENT';
+    if (!isAllowed)
+        throw new https_1.HttpsError("permission-denied", "หน้านี้สงวนไว้สำหรับผู้บริหารเท่านั้นค่ะพี่");
+    const { message } = request.data;
+    let apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        const aiSettings = await db.collection("settings").doc("ai").get();
+        apiKey = (_a = aiSettings.data()) === null || _a === void 0 ? void 0 : _a.geminiApiKey;
+    }
+    if (!apiKey)
+        throw new https_1.HttpsError("failed-precondition", "กรุณาตั้งค่า Gemini API Key ในหน้าแอปก่อนนะคะ");
+    const [activeJobsSnap, entriesSnap, workersSnap] = await Promise.all([
+        db.collection("jobs").where("status", "!=", "CLOSED").get(),
+        db.collection("accountingEntries").orderBy("entryDate", "desc").limit(50).get(),
+        db.collection("users").where("role", "in", ["WORKER", "OFFICER"]).get()
+    ]);
+    const jobSummary = activeJobsSnap.docs.map(d => {
+        var _a;
+        return ({
+            dept: d.data().department,
+            status: d.data().status,
+            customer: (_a = d.data().customerSnapshot) === null || _a === void 0 ? void 0 : _a.name
+        });
+    });
+    const accSummary = entriesSnap.docs.map(d => ({
+        date: d.data().entryDate,
+        type: d.data().entryType,
+        amount: d.data().amount,
+        desc: d.data().description
+    }));
+    const workerSummary = workersSnap.docs.map(d => {
+        var _a;
+        return ({
+            name: d.data().displayName,
+            dept: d.data().department,
+            salary: ((_a = d.data().hr) === null || _a === void 0 ? void 0 : _a.salaryMonthly) || 0
+        });
+    });
+    const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
         model: "gemini-1.5-flash",
-        systemInstruction: "คุณคือน้องจิมมี่ ผู้ช่วยคนสวยของพี่โจ้แห่งสหดีเซล ตอบหวานๆ วิเคราะห์เก่งๆ นะคะ"
+        systemInstruction: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
+
+**บุคลิกและเป้าหมาย:**
+- เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ และเอาใจใส่ "พี่โจ้" และ "พี่ถิน" มากๆ
+- แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
+- คุณมีความสามารถในการมองเห็นข้อมูล "งานซ่อม" "บัญชี" และ "พนักงาน" ทั้งหมดในร้าน
+
+**หน้าที่ของคุณ:**
+1. วิเคราะห์บัญชี: สรุปกำไร/ขาดทุนจากข้อมูลบัญชีที่ได้รับ
+2. คุมงบค่าแรง: งบรวมต้องไม่เกิน 240,000 บาท/เดือน (เตือนพี่โจ้หากเกิน)
+3. บริหารงานซ่อม: สรุปงานค้างและแจ้งแผนกที่งานเยอะเกินไป
+4. ให้กำลังใจ: สู้ไปพร้อมกับพี่โจ้หลังน้ำท่วมนะคะ
+
+**ข้อมูลธุรกิจปัจจุบันที่น้องจิมมี่เห็น:**
+- รายการงานที่กำลังทำอยู่: ${JSON.stringify(jobSummary)}
+- รายการบัญชีล่าสุด: ${JSON.stringify(accSummary)}
+- รายชื่อและเงินเดือนพนักงาน: ${JSON.stringify(workerSummary)}
+- งบครอบครัว: พี่เตี้ย/ม่ะ 70,000, พี่โจ้/พี่ถิน 100,000
+
+หากต้องแสดงตัวเลขเยอะๆ ให้สรุปเป็น "ตาราง (Markdown Table)" ที่สวยงามเสมอนะคะ`
     });
     try {
-        const prompt = `ข้อมูลร้าน: ${JSON.stringify(monthlyData)}\nคำถาม: ${message}`;
-        const result = await model.generateContent(prompt);
-        return { answer: result.response.text() };
+        const result = await model.generateContent(message);
+        const responseText = result.response.text();
+        return { answer: responseText };
     }
     catch (e) {
-        throw new https_1.HttpsError("internal", e.message);
+        throw new https_1.HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + e.message);
     }
 });
