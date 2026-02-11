@@ -35,7 +35,7 @@ export default function AdminUsersPage() {
       const functions = getFunctions(firebaseApp, 'us-central1');
       const migrate = httpsCallable(functions, "migrateClosedJobsToArchive2026");
       
-      console.info("Starting migration call...");
+      console.info("Starting migration call to us-central1...");
       const result = await migrate({ limit: 40 });
       const data = result.data as any;
       
@@ -66,11 +66,11 @@ export default function AdminUsersPage() {
         });
       }
     } catch (e: any) {
-      console.error("Migration error:", e);
+      console.error("Migration error detail:", e);
       toast({ 
         variant: 'destructive', 
         title: "การเชื่อมต่อล้มเหลว", 
-        description: `${e.code || 'error'}: ${e.message || "เกิดข้อผิดพลาดในการเรียก Cloud Function"}` 
+        description: `[${e.code || 'error'}]: ${e.message || "เกิดข้อผิดพลาดในการเรียก Cloud Function"}` 
       });
     } finally {
       setIsMigrating(false);

@@ -10,8 +10,7 @@ const db = (0, firestore_1.getFirestore)();
  * Cloud Function to safely close and archive a job after accounting confirmation.
  */
 exports.closeJobAfterAccounting = (0, https_1.onCall)({
-    region: "us-central1",
-    cors: true
+    region: "us-central1"
 }, async (request) => {
     if (!request.auth) {
         throw new https_1.HttpsError("unauthenticated", "User must be authenticated.");
@@ -83,6 +82,7 @@ exports.closeJobAfterAccounting = (0, https_1.onCall)({
         return { ok: true, jobId, archivedCollection: archiveColName };
     }
     catch (error) {
+        console.error("Archive error:", error);
         if (error instanceof https_1.HttpsError)
             throw error;
         throw new https_1.HttpsError("internal", error.message || "Failed to archive job.");
@@ -92,8 +92,7 @@ exports.closeJobAfterAccounting = (0, https_1.onCall)({
  * Robust Migration Function: Move CLOSED jobs from 'jobs' to 'jobsArchive_2026' with subcollection activities.
  */
 exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({
-    region: "us-central1",
-    cors: true
+    region: "us-central1"
 }, async (request) => {
     var _a, _b;
     // 1. Auth Guard
@@ -132,9 +131,8 @@ exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({
             try {
                 const archiveRef = db.collection(archiveColName).doc(jobId);
                 const archiveSnap = await archiveRef.get();
-                // Skip if already moved but not deleted (shouldn't happen often but for safety)
+                // Skip if already moved but not deleted
                 if (archiveSnap.exists && ((_b = archiveSnap.data()) === null || _b === void 0 ? void 0 : _b.isArchived)) {
-                    // If it exists in archive but still in jobs, delete from jobs and skip count
                     if (typeof db.recursiveDelete === 'function') {
                         await db.recursiveDelete(jobDoc.ref);
                     }
@@ -157,14 +155,13 @@ exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({
                 // 2. Copy Activities Subcollection
                 const activitiesSnap = await jobDoc.ref.collection("activities").get();
                 if (!activitiesSnap.empty) {
-                    // Use BulkWriter for more reliable subcollection copying if many activities
                     const writer = db.bulkWriter();
                     for (const act of activitiesSnap.docs) {
                         writer.set(archiveRef.collection("activities").doc(act.id), act.data());
                     }
                     await writer.close();
                 }
-                // 3. Recursive Delete source (deletes subcollections too)
+                // 3. Recursive Delete source
                 if (typeof db.recursiveDelete === 'function') {
                     await db.recursiveDelete(jobDoc.ref);
                 }
@@ -172,20 +169,19 @@ exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({
                     await jobDoc.ref.delete();
                 }
                 results.migrated++;
-                console.info(`Successfully migrated job: ${jobId}`);
             }
             catch (e) {
                 console.error(`Error migrating job ${jobId}:`, e);
                 results.errors.push({ jobId, message: e.message || "Unknown error during copy/delete" });
             }
         }
-        console.info(`Migration finished: ${results.migrated} migrated, ${results.skipped} skipped, ${results.errors.length} errors.`);
+        console.info(`Migration finished: ${results.migrated} migrated, ${results.skipped} skipped.`);
         return results;
     }
     catch (error) {
+        console.error("Top-level migration error:", error);
         if (error instanceof https_1.HttpsError)
             throw error;
-        console.error("Top-level migration error:", error);
-        throw new HttpsError("internal", error.message || "Failed to process migration.");
+        throw new https_1.HttpsError("internal", error.message || "Failed to process migration.");
     }
 });

@@ -9,8 +9,7 @@ const db = getFirestore();
  * Cloud Function to safely close and archive a job after accounting confirmation.
  */
 export const closeJobAfterAccounting = onCall({ 
-  region: "us-central1",
-  cors: true 
+  region: "us-central1"
 }, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be authenticated.");
@@ -89,6 +88,7 @@ export const closeJobAfterAccounting = onCall({
     await jobRef.delete();
     return { ok: true, jobId, archivedCollection: archiveColName };
   } catch (error: any) {
+    console.error("Archive error:", error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", error.message || "Failed to archive job.");
   }
@@ -98,8 +98,7 @@ export const closeJobAfterAccounting = onCall({
  * Robust Migration Function: Move CLOSED jobs from 'jobs' to 'jobsArchive_2026' with subcollection activities.
  */
 export const migrateClosedJobsToArchive2026 = onCall({
-  region: "us-central1",
-  cors: true
+  region: "us-central1"
 }, async (request) => {
   // 1. Auth Guard
   if (!request.auth) {
@@ -115,6 +114,7 @@ export const migrateClosedJobsToArchive2026 = onCall({
       throw new HttpsError("permission-denied", "You do not have permission to run migrations.");
     }
 
+    // Default limit to 40 if not provided
     const limitCount = Math.min(request.data?.limit || 40, 40);
     const archiveColName = `jobsArchive_2026`;
     
@@ -146,7 +146,7 @@ export const migrateClosedJobsToArchive2026 = onCall({
         const archiveRef = db.collection(archiveColName).doc(jobId);
         const archiveSnap = await archiveRef.get();
 
-        // Skip if already moved but not deleted (shouldn't happen often but for safety)
+        // Check if already archived
         if (archiveSnap.exists && archiveSnap.data()?.isArchived) {
           // If it exists in archive but still in jobs, delete from jobs and skip count
           if (typeof db.recursiveDelete === 'function') {
@@ -172,7 +172,6 @@ export const migrateClosedJobsToArchive2026 = onCall({
         // 2. Copy Activities Subcollection
         const activitiesSnap = await jobDoc.ref.collection("activities").get();
         if (!activitiesSnap.empty) {
-          // Use BulkWriter for more reliable subcollection copying if many activities
           const writer = db.bulkWriter();
           for (const act of activitiesSnap.docs) {
             writer.set(archiveRef.collection("activities").doc(act.id), act.data());
@@ -180,7 +179,7 @@ export const migrateClosedJobsToArchive2026 = onCall({
           await writer.close();
         }
 
-        // 3. Recursive Delete source (deletes subcollections too)
+        // 3. Recursive Delete source
         if (typeof db.recursiveDelete === 'function') {
           await db.recursiveDelete(jobDoc.ref);
         } else {
@@ -188,18 +187,17 @@ export const migrateClosedJobsToArchive2026 = onCall({
         }
         
         results.migrated++;
-        console.info(`Successfully migrated job: ${jobId}`);
       } catch (e: any) {
         console.error(`Error migrating job ${jobId}:`, e);
         results.errors.push({ jobId, message: e.message || "Unknown error during copy/delete" });
       }
     }
 
-    console.info(`Migration finished: ${results.migrated} migrated, ${results.skipped} skipped, ${results.errors.length} errors.`);
+    console.info(`Migration finished: ${results.migrated} migrated, ${results.skipped} skipped.`);
     return results;
   } catch (error: any) {
-    if (error instanceof HttpsError) throw error;
     console.error("Top-level migration error:", error);
+    if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", error.message || "Failed to process migration.");
   }
 });
