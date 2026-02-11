@@ -695,9 +695,9 @@ export function JobList({
               )}
             </div>
             <CardHeader>
-              <div className="flex justify-between items-start gap-2">
+              <div className="flex flex-col gap-2">
                 <CardTitle className="text-lg font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-                <Badge variant={getStatusVariant(job.status)} className={cn("flex-shrink-0 whitespace-nowrap", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
+                <Badge variant={getStatusVariant(job.status)} className={cn("w-fit whitespace-nowrap", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
               </div>
               <CardDescription>
                 {deptLabel(job.department)}

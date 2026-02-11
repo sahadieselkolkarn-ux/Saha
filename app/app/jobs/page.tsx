@@ -53,10 +53,10 @@ function JobCard({ job }: { job: Job }) {
             </div>
         )}
       </div>
-      <CardHeader className="p-4">
-        <div className="flex justify-between items-start gap-2">
+      <CardHeader className="p-4 space-y-2">
+        <div className="flex flex-col gap-2">
           <CardTitle className="text-base font-bold line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-          <Badge variant={getStatusVariant(job.status)} className={cn("flex-shrink-0 text-[10px]", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
+          <Badge variant={getStatusVariant(job.status)} className={cn("w-fit flex-shrink-0 text-[10px]", job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge>
         </div>
         <CardDescription className="text-xs">
           {deptLabel(job.department)}
@@ -258,7 +258,7 @@ export default function ManagementJobsPage() {
             return (
                 <Card className="text-center py-16 bg-muted/20 border-dashed">
                     <CardHeader>
-                        <CardTitle className="text-muted-foreground">{searchTerm ? 'ไม่พบงานที่ตรงกับการค้นหา' : 'ไม่มีงานที่กำลังดำเนินการ'}</CardTitle>
+                        <CardTitle className="text-muted-foreground">{searchTerm ? 'ไม่พบย่านที่ตรงกับการค้นหา' : 'ไม่มีงานที่กำลังดำเนินการ'}</CardTitle>
                         <CardDescription>งานใหม่จะปรากฏที่นี่ทันทีที่มีการเปิดรับงาน</CardDescription>
                     </CardHeader>
                 </Card>
