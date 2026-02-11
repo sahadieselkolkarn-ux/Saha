@@ -219,7 +219,7 @@ export function ChatJimmy() {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            disabled={inputValue.trim() === "" || isLoading}
+            disabled={isLoading}
           />
           <Button 
             size="icon" 
