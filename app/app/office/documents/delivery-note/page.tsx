@@ -8,20 +8,27 @@ import { DocumentList } from "@/components/document-list";
 
 export default function OfficeDeliveryNotePage() {
   return (
-    <>
-      <PageHeader title="ใบส่งของชั่วคราว" description="สร้างและจัดการใบส่งของชั่วคราว">
+    <div className="space-y-6">
+      <PageHeader 
+        title="ใบส่งของชั่วคราว" 
+        description="สร้างและจัดการใบส่งของชั่วคราว" 
+        className="mb-0"
+      />
+      
+      <div className="flex items-center gap-2">
         <Button asChild>
           <Link href="/app/office/documents/delivery-note/new">
             <PlusCircle className="mr-2 h-4 w-4" />
             สร้างใบส่งของใหม่
           </Link>
         </Button>
-      </PageHeader>
+      </div>
+
       <DocumentList
         docType="DELIVERY_NOTE"
         orderByField="docNo"
         orderByDirection="desc"
       />
-    </>
+    </div>
   );
 }
