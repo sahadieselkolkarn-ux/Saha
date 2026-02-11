@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon } from "lucide-react";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -902,22 +902,39 @@ const handlePartsReady = async () => {
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
                 {isOfficeOrAdminOrMgmt && (
-                    <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
-                        <label htmlFor="quick-photo-upload" className="cursor-pointer flex items-center">
-                            {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
-                            Add Photo
-                            <Input 
-                                id="quick-photo-upload" 
-                                type="file" 
-                                className="hidden" 
-                                multiple 
-                                accept="image/*" 
-                                capture="environment" 
-                                onChange={handleQuickPhotoUpload}
-                                disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}
-                            />
-                        </label>
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
+                            <label htmlFor="camera-photo-upload" className="cursor-pointer flex items-center">
+                                {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                                ถ่ายรูปเพิ่ม
+                                <Input 
+                                    id="camera-photo-upload" 
+                                    type="file" 
+                                    className="hidden" 
+                                    multiple 
+                                    accept="image/*" 
+                                    capture="environment" 
+                                    onChange={handleQuickPhotoUpload}
+                                    disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}
+                                />
+                            </label>
+                        </Button>
+                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
+                            <label htmlFor="library-photo-upload" className="cursor-pointer flex items-center">
+                                {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
+                                เลือกรูปถ่าย
+                                <Input 
+                                    id="library-photo-upload" 
+                                    type="file" 
+                                    className="hidden" 
+                                    multiple 
+                                    accept="image/*" 
+                                    onChange={handleQuickPhotoUpload}
+                                    disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}
+                                />
+                            </label>
+                        </Button>
+                    </div>
                 )}
             </CardHeader>
             <CardContent>
@@ -1053,7 +1070,6 @@ const handlePartsReady = async () => {
               <CardTitle className="text-base font-semibold">Status</CardTitle>
               <Badge variant={getStatusVariant(job.status)}>{statusText}</Badge>
             </CardHeader>
-          </Card>
           <Card>
               <CardHeader><CardTitle className="text-base font-semibold">Timestamps</CardTitle></CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
