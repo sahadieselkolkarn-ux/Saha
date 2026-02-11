@@ -5,16 +5,16 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, getDocs } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, getDocs, setDoc } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, FileDown, AlertTriangle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, FileSearch, FileDown, AlertTriangle, LayoutTemplate } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,9 +24,21 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 import { createDocument } from "@/firebase/documents";
-import type { Job, StoreSettings, Customer, Document as DocumentType } from "@/lib/types";
+import type { Job, StoreSettings, Customer, Document as DocumentType, QuotationTemplate } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 
 const lineItemSchema = z.object({
@@ -69,7 +81,14 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
-  const [quotationUsages, setQuotationUsages] = useState<number>(0);
+  
+  // Template states
+  const [isTemplatePopoverOpen, setIsTemplatePopoverOpen] = useState(false);
+  const [templates, setTemplates] = useState<QuotationTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -114,7 +133,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้ กรุณาลองใหม่อีกครั้ง" });
+      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
       setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
@@ -157,16 +176,56 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     }
   }, [job, docToEdit, form, jobId, customers]);
 
-  useEffect(() => {
-    if (!db || !editDocId) {
-      setQuotationUsages(0);
-      return;
+  const fetchTemplates = async () => {
+    if (!db) return;
+    setIsLoadingTemplates(true);
+    try {
+      const q = query(collection(db, "quotationTemplates"), orderBy("updatedAt", "desc"));
+      const snap = await getDocs(q);
+      setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() } as QuotationTemplate)));
+    } catch (e) {
+      toast({ variant: "destructive", title: "ไม่สามารถโหลด Template ได้" });
+    } finally {
+      setIsLoadingTemplates(false);
     }
-    const q = query(collection(db, "documents"), where("referencesDocIds", "array-contains", editDocId));
-    getDocs(q).then(snap => {
-      setQuotationUsages(snap.size);
-    });
-  }, [db, editDocId]);
+  };
+
+  const applyTemplate = (template: QuotationTemplate) => {
+    form.setValue("items", template.items.map(i => ({ ...i })), { shouldValidate: true });
+    form.setValue("notes", template.notes || "", { shouldValidate: true });
+    form.setValue("discountAmount", template.discountAmount || 0, { shouldValidate: true });
+    form.setValue("isVat", template.withTax ?? true, { shouldValidate: true });
+    setIsTemplatePopoverOpen(false);
+    toast({ title: "ดึงข้อมูลจาก Template สำเร็จ" });
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!db || !profile || !newTemplateName.trim()) return;
+    setIsSavingTemplate(true);
+    try {
+      const data = form.getValues();
+      const templateRef = doc(collection(db, "quotationTemplates"));
+      await setDoc(templateRef, sanitizeForFirestore({
+        id: templateRef.id,
+        name: newTemplateName.trim(),
+        items: data.items,
+        notes: data.notes,
+        discountAmount: data.discountAmount || 0,
+        withTax: data.isVat,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdByUid: profile.uid,
+        createdByName: profile.displayName,
+      }));
+      toast({ title: "บันทึกเป็น Template สำเร็จ" });
+      setIsSaveTemplateDialogOpen(false);
+      setNewTemplateName("");
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "บันทึกไม่สำเร็จ", description: e.message });
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers;
@@ -199,44 +258,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     form.setValue("vatAmount", vatAmount, { shouldValidate: true });
     form.setValue("grandTotal", grandTotal, { shouldValidate: true });
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
-
-  const handleFetchFromQuotation = () => {
-    const quotation = quotations.find(q => q.id === selectedQuotationId);
-    if (!quotation) {
-      toast({ variant: 'destructive', title: "กรุณาเลือกใบเสนอราคา" });
-      return;
-    }
-  
-    const itemsFromQuotation = (quotation.items || []).map((item: any) => {
-      const qty = Number(item.quantity ?? 1);
-      const price = Number(item.unitPrice ?? 0);
-      const total = Number(item.total ?? (qty * price));
-      return {
-        description: String(item.description ?? ''),
-        quantity: qty,
-        unitPrice: price,
-        total,
-      };
-    });
-  
-    if (itemsFromQuotation.length === 0) {
-      toast({ variant: 'destructive', title: "ใบเสนอราคาไม่มีรายการ", description: `เลขที่ ${quotation.docNo}` });
-      return;
-    }
-  
-    replace(itemsFromQuotation);
-    setReferencedQuotationId(selectedQuotationId);
-  
-    form.setValue('discountAmount', Number(quotation.discountAmount ?? 0), { shouldDirty: true, shouldValidate: true });
-    form.setValue('isVat', quotation.withTax, { shouldDirty: true, shouldValidate: true });
-  
-    form.trigger(['items', 'discountAmount', 'isVat']);
-  
-    toast({
-      title: "ดึงข้อมูลสำเร็จ",
-      description: `ดึง ${itemsFromQuotation.length} รายการ จากใบเสนอราคาเลขที่ ${quotation.docNo}`,
-    });
-  };
 
   const onSubmit = async (data: QuotationFormData) => {
     if (isCancelled) return;
@@ -348,7 +369,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                 </Button>
                             </FormControl>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                                 <div className="p-2 border-b">
                                     <Input autoFocus placeholder="พิมพ์ชื่อ หรือเบอร์โทร..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                                 </div>
@@ -386,7 +407,36 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         </Card>
 
         <Card>
-            <CardHeader><CardTitle className="text-base">รายการสินค้า/บริการ</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between py-3">
+                <CardTitle className="text-base whitespace-nowrap">รายการสินค้า/บริการ</CardTitle>
+                <div className="flex gap-2">
+                    <Popover open={isTemplatePopoverOpen} onOpenChange={(o) => { setIsTemplatePopoverOpen(o); if(o) fetchTemplates(); }}>
+                        <PopoverTrigger asChild>
+                            <Button type="button" variant="outline" size="sm" disabled={isCancelled}>
+                                <LayoutTemplate className="mr-2 h-4 w-4"/>
+                                เลือกจาก Template
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0" align="end">
+                            <div className="p-3 border-b bg-muted/50 font-semibold text-sm">เลือกรายการมาตรฐาน</div>
+                            <ScrollArea className="h-64">
+                                {isLoadingTemplates ? (
+                                    <div className="p-4 text-center"><Loader2 className="animate-spin inline"/></div>
+                                ) : templates.length > 0 ? (
+                                    templates.map(t => (
+                                        <Button key={t.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left flex flex-col items-start" onClick={() => applyTemplate(t)}>
+                                            <span className="font-medium text-sm">{t.name}</span>
+                                            <span className="text-[10px] text-muted-foreground">{t.items.length} รายการ</span>
+                                        </Button>
+                                    ))
+                                ) : (
+                                    <p className="p-4 text-center text-sm text-muted-foreground italic">ยังไม่มี Template</p>
+                                )}
+                            </ScrollArea>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+            </CardHeader>
             <CardContent>
                 <div className="border rounded-md overflow-x-auto">
                     <Table>
@@ -509,12 +559,38 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
 
         <div className="flex justify-end gap-4">
             <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ</Button>
+            <Button type="button" variant="secondary" onClick={() => setIsSaveTemplateDialogOpen(true)} disabled={isCancelled}>
+                <LayoutTemplate className="mr-2 h-4 w-4"/>
+                บันทึกเป็น Template
+            </Button>
             <Button type="submit" disabled={isFormLoading || isCancelled}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
               {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบเสนอราคา'}
             </Button>
         </div>
       </form>
+
+      <Dialog open={isSaveTemplateDialogOpen} onOpenChange={setIsSaveTemplateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>บันทึกเป็น Template</DialogTitle>
+            <DialogDescription>ตั้งชื่อให้ชุดรายการนี้เพื่อเรียกใช้งานในครั้งถัดไป</DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="template-name">ชื่อ Template</Label>
+              <Input id="template-name" placeholder="เช่น ชุดซ่อมปั๊ม ISUZU..." value={newTemplateName} onChange={e => setNewTemplateName(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSaveTemplateDialogOpen(false)} disabled={isSavingTemplate}>ยกเลิก</Button>
+            <Button onClick={handleSaveAsTemplate} disabled={!newTemplateName.trim() || isSavingTemplate}>
+              {isSavingTemplate && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
+              ยืนยันบันทึก
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Form>
   );
 }

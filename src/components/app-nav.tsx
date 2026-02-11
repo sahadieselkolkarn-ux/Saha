@@ -300,6 +300,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                             </CollapsibleTrigger>
                             <CollapsibleContent className="py-1 pl-4 space-y-1">
                                 <SubNavLink href="/app/office/documents/quotation" label="ใบเสนอราคา" onClick={onLinkClick} />
+                                <SubNavLink href="/app/office/documents/quotation/templates" label="Template ใบเสนอราคา" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/documents/delivery-note" label="ใบส่งของชั่วคราว" onClick={onLinkClick} />
                                 <SubNavLink href="/app/office/documents/tax-invoice" label="ใบกำกับภาษี" onClick={onLinkClick} />
                             </CollapsibleContent>

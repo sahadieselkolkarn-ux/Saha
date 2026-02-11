@@ -515,6 +515,19 @@ export interface Document {
   };
 }
 
+export interface QuotationTemplate {
+  id: string;
+  name: string;
+  items: DocumentItem[];
+  notes?: string;
+  discountAmount: number;
+  withTax: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+}
+
 export interface DocumentCounters {
   year: number;
   quotation?: number;

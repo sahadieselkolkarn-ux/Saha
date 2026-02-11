@@ -37,8 +37,7 @@ service cloud.firestore {
     }
     
     function isOfficeOrMgmt() {
-      // Allows anyone in Office dept, anyone in Management dept, or anyone with Admin/Manager roles
-      return isMgmt() || (signedIn() && (dept() == "OFFICE" || role() == "ADMIN" || role() == "MANAGER"));
+      return isMgmt() || (signedIn() && (dept() == "OFFICE" || role() == "ADMIN" || role() == "MANAGER" || role() == "OFFICER"));
     }
     
     function isAccountingAllowed() {
@@ -199,6 +198,11 @@ service cloud.firestore {
         allow read: if (signedIn() && request.auth.uid == userId) || isMgmt();
         allow write: if isMgmt() || (signedIn() && request.auth.uid == userId);
       }
+    }
+
+    match /quotationTemplates/{id} {
+      allow read: if signedIn();
+      allow write: if isOfficeOrMgmt();
     }
   }
 }

@@ -116,7 +116,7 @@ export function JobList({
   const [billingJob, setBillingJob] = useState<Job | null>(null);
   
   const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
-  const isOfficer = isOfficeOrAdmin;
+  const isOfficer = isOfficeOrAdmin || profile?.role === 'OFFICER';
 
   const [assigningJob, setAssigningJob] = useState<Job | null>(null);
   const [workers, setWorkers] = useState<UserProfile[]>([]);
@@ -722,7 +722,7 @@ export function JobList({
             </CardContent>
             <CardFooter className={cn(
               "mt-auto grid gap-2 p-4",
-              (job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin)) ? 'grid-cols-2' :
+              (job.status === 'RECEIVED' && (profile?.department === job.department || isOfficer)) ? 'grid-cols-2' :
               (actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS') || isEffectivelyLocked
                 ? 'grid-cols-1'
                 : (job.status === 'WAITING_QUOTATION' || job.status === 'WAITING_APPROVE' || job.status === 'DONE') ? "grid-cols-2" : "grid-cols-1"
@@ -742,7 +742,7 @@ export function JobList({
                       </Button>
                   )}
                   
-                  {job.status === 'RECEIVED' && (profile?.department === job.department || isOfficeOrAdmin) && (
+                  {job.status === 'RECEIVED' && (profile?.department === job.department || isOfficer) && (
                     <>
                     {job.department === 'OUTSOURCE' ? (
                         <Button

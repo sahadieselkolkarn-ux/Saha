@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "UserProfile": {
@@ -193,49 +192,19 @@
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
-    "WithholdingTaxDoc": {
-      "title": "Withholding Tax Document",
-      "description": "หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) สร้างจากรายการจ่ายเงิน (Accounting Entry - CASH_OUT) ที่ระบุว่ามีการหักภาษี",
+    "QuotationTemplate": {
+      "title": "Quotation Template",
+      "description": "A reusable set of line items for creating quotations.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "docNo": { "type": "string", "description": "เลขที่เอกสาร" },
-        "bookNo": { "type": "string", "description": "เล่มที่" },
-        "docDate": { "type": "string", "format": "date" },
-        "payerSnapshot": {
-          "type": "object",
-          "properties": {
-            "name": { "type": "string" },
-            "address": { "type": "string" },
-            "taxId": { "type": "string" },
-            "branch": { "type": "string" }
-          }
-        },
-        "payeeSnapshot": {
-          "type": "object",
-          "properties": {
-            "name": { "type": "string" },
-            "address": { "type": "string" },
-            "taxId": { "type": "string" }
-          }
-        },
-        "vendorId": { "type": "string" },
-        "pndForm": { "type": "string", "enum": ["PND1", "PND1K", "PND2", "PND3", "PND53", "OTHER"] },
-        "pndSequenceNo": { "type": "string" },
-        "paidMonth": { "type": "number" },
-        "paidYear": { "type": "number" },
-        "incomeTypeCode": { 
-          "type": "string", 
-          "enum": ["ITEM1", "ITEM2", "ITEM3", "ITEM4", "ITEM5", "ITEM6"],
-          "description": "รหัสประเภทเงินได้ (ITEM5 = ข้อ 5 การจ่ายเงินตามมาตรา 40(4) (ข) เป็นค่าเริ่มต้น)"
-        },
-        "incomeTypeOtherText": { "type": "string" },
-        "paidAmountGross": { "type": "number" },
-        "withholdingPercent": { "type": "number", "enum": [1, 3] },
-        "withholdingAmount": { "type": "number" },
-        "paidAmountNet": { "type": "number" },
-        "relatedAccountingEntryId": { "type": "string" },
-        "status": { "type": "string", "enum": ["DRAFT", "ISSUED", "CANCELLED"] }
+        "name": { "type": "string" },
+        "items": { "type": "array" },
+        "notes": { "type": "string" },
+        "discountAmount": { "type": "number" },
+        "withTax": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       }
     }
   },
@@ -259,9 +228,9 @@
       "schema": { "$ref": "#/backend/entities/AccountingEntry" },
       "description": "Records of all financial transactions."
     },
-    "/withholdingTaxDocs/{docId}": {
-      "schema": { "$ref": "#/backend/entities/WithholdingTaxDoc" },
-      "description": "หนังสือรับรองการหักภาษี ณ ที่จ่ายที่ถูกสร้างจากรายการรายจ่าย (CASH_OUT) ที่ระบุว่ามีการหักภาษี"
+    "/quotationTemplates/{id}": {
+      "schema": { "$ref": "#/backend/entities/QuotationTemplate" },
+      "description": "Reusable quotation item sets."
     }
   }
 }
