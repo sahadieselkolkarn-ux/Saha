@@ -466,7 +466,7 @@ export default function AccountingInboxPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
           <AlertDescription className="flex flex-col gap-2">
-            <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงข้อมูล กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
+            <span>ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับข้อมูล กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
             <Button asChild variant="outline" size="sm" className="w-fit">
               <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index
@@ -517,9 +517,6 @@ export default function AccountingInboxPage() {
                       <TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
-                            <Eye className="h-4 w-4" />
-                          </Button>
                           {closingJobId === doc.jobId ? (
                             <Badge variant="outline" className="animate-pulse"><Loader2 className="h-3 w-3 mr-1 animate-spin"/> ปิดจ๊อบ...</Badge>
                           ) : (
@@ -528,6 +525,9 @@ export default function AccountingInboxPage() {
                                 <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
+                                  <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600 font-bold">
                                   <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงิน
                                 </DropdownMenuItem>
@@ -572,9 +572,6 @@ export default function AccountingInboxPage() {
                       <TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => router.push(`/app/office/documents/${doc.id}`)} title="ดูเอกสาร">
-                            <Eye className="h-4 w-4" />
-                          </Button>
                           {closingJobId === doc.jobId ? (
                             <Badge variant="outline" className="animate-pulse"><Loader2 className="h-3 w-3 mr-1 animate-spin"/> ปิดจ๊อบ...</Badge>
                           ) : (
@@ -583,6 +580,9 @@ export default function AccountingInboxPage() {
                                 <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => router.push(`/app/office/documents/${doc.id}`)}>
+                                  <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => setArDocToConfirm(doc)} disabled={isSubmitting} className="font-bold text-amber-600 focus:text-amber-600">
                                   <HandCoins className="mr-2 h-4 w-4"/> ยืนยันตั้งลูกหนี้
                                 </DropdownMenuItem>

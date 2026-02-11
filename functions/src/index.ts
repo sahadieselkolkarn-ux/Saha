@@ -7,135 +7,153 @@ initializeApp();
 const db = getFirestore();
 
 // --- 1. ฟังก์ชันปิดจ๊อบ ---
-export const closeJobAfterAccounting = onCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth) throw new HttpsError("unauthenticated", "User must be authenticated.");
-  const { jobId, paymentStatus } = request.data as { jobId: string, paymentStatus?: 'PAID' | 'UNPAID' };
-  if (!jobId) throw new HttpsError("invalid-argument", "Missing jobId.");
-  try {
-    const jobRef = db.collection("jobs").doc(jobId);
-    const jobSnap = await jobRef.get();
-    if (!jobSnap.exists) return { ok: true, alreadyClosed: true };
+export const closeJobAfterAccounting = onCall(
+  { region: "us-central1", cors: true }, // ✅ เพิ่ม cors: true
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "User must be authenticated.");
 
-    const jobData = jobSnap.data()!;
-    const archiveRef = db.collection(`jobsArchive_${new Date().getFullYear()}`).doc(jobId);
+    const { jobId, paymentStatus } = request.data as { jobId: string; paymentStatus?: "PAID" | "UNPAID" };
+    if (!jobId) throw new HttpsError("invalid-argument", "Missing jobId.");
 
-    await archiveRef.set({
-      ...jobData,
-      status: "CLOSED",
-      isArchived: true,
-      archivedAt: FieldValue.serverTimestamp(),
-      paymentStatusAtClose: paymentStatus || 'UNPAID',
-    }, { merge: true });
-
-    await jobRef.delete();
-    return { ok: true, jobId };
-  } catch (error: any) { throw new HttpsError("internal", error.message); }
-});
-
-// --- 2. ฟังก์ชัน Migration ---
-export const migrateClosedJobsToArchive2026 = onCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
-  
-  const userSnap = await db.collection("users").doc(request.auth.uid).get();
-  const userData = userSnap.data();
-  const isAdmin = userData?.role === 'ADMIN' || userData?.role === 'MANAGER' || userData?.department === 'MANAGEMENT';
-  if (!isAdmin) throw new HttpsError("permission-denied", "เฉพาะผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้ค่ะ");
-
-  const limit = Math.min(request.data.limit || 40, 40);
-  const closedJobsSnap = await db.collection("jobs").where("status", "==", "CLOSED").limit(limit).get();
-  
-  let migrated = 0;
-  let skipped = 0;
-  const errors: any[] = [];
-
-  for (const jobDoc of closedJobsSnap.docs) {
     try {
-      const jobId = jobDoc.id;
-      const archiveRef = db.collection("jobsArchive_2026").doc(jobId);
-      const archiveSnap = await archiveRef.get();
+      const jobRef = db.collection("jobs").doc(jobId);
+      const jobSnap = await jobRef.get();
+      if (!jobSnap.exists) return { ok: true, alreadyClosed: true };
 
-      if (!archiveSnap.exists) {
-        const jobData = jobDoc.data();
-        await archiveRef.set({
+      const jobData = jobSnap.data()!;
+      const archiveRef = db.collection(`jobsArchive_${new Date().getFullYear()}`).doc(jobId);
+
+      await archiveRef.set(
+        {
           ...jobData,
+          status: "CLOSED",
           isArchived: true,
           archivedAt: FieldValue.serverTimestamp(),
-          archivedByUid: request.auth.uid,
-          archivedByName: userData?.displayName || "Admin",
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-        
-        const activitiesSnap = await jobDoc.ref.collection("activities").get();
-        for (const actDoc of activitiesSnap.docs) {
-          await archiveRef.collection("activities").doc(actDoc.id).set(actDoc.data());
-        }
-        migrated++;
-      } else {
-        skipped++;
-      }
+          paymentStatusAtClose: paymentStatus || "UNPAID",
+        },
+        { merge: true }
+      );
 
-      await db.recursiveDelete(jobDoc.ref);
-    } catch (e: any) {
-      errors.push({ jobId: jobDoc.id, message: e.message });
+      await jobRef.delete();
+      return { ok: true, jobId };
+    } catch (error: any) {
+      throw new HttpsError("internal", error?.message || "Unknown error");
     }
   }
+);
 
-  return { totalFound: closedJobsSnap.size, migrated, skipped, errors };
-});
+// --- 2. ฟังก์ชัน Migration ---
+export const migrateClosedJobsToArchive2026 = onCall(
+  { region: "us-central1", cors: true }, // ✅ เพิ่ม cors: true
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
+
+    const userSnap = await db.collection("users").doc(request.auth.uid).get();
+    const userData = userSnap.data();
+    const isAdmin =
+      userData?.role === "ADMIN" || userData?.role === "MANAGER" || userData?.department === "MANAGEMENT";
+    if (!isAdmin) throw new HttpsError("permission-denied", "เฉพาะผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้ค่ะ");
+
+    const limit = Math.min(request.data?.limit || 40, 40);
+    const closedJobsSnap = await db.collection("jobs").where("status", "==", "CLOSED").limit(limit).get();
+
+    let migrated = 0;
+    let skipped = 0;
+    const errors: any[] = [];
+
+    for (const jobDoc of closedJobsSnap.docs) {
+      try {
+        const jobId = jobDoc.id;
+        const archiveRef = db.collection("jobsArchive_2026").doc(jobId);
+        const archiveSnap = await archiveRef.get();
+
+        if (!archiveSnap.exists) {
+          const jobData = jobDoc.data();
+          await archiveRef.set({
+            ...jobData,
+            isArchived: true,
+            archivedAt: FieldValue.serverTimestamp(),
+            archivedByUid: request.auth.uid,
+            archivedByName: userData?.displayName || "Admin",
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+
+          const activitiesSnap = await jobDoc.ref.collection("activities").get();
+          for (const actDoc of activitiesSnap.docs) {
+            await archiveRef.collection("activities").doc(actDoc.id).set(actDoc.data());
+          }
+
+          migrated++;
+        } else {
+          skipped++;
+        }
+
+        await db.recursiveDelete(jobDoc.ref);
+      } catch (e: any) {
+        errors.push({ jobId: jobDoc.id, message: e?.message || "Unknown error" });
+      }
+    }
+
+    return { totalFound: closedJobsSnap.size, migrated, skipped, errors };
+  }
+);
 
 // --- 3. ฟังก์ชัน น้องจิมมี่ (Improved Resilience) ---
-export const chatWithJimmy = onCall({ region: "us-central1" }, async (request) => {
-  if (!request.auth) throw new HttpsError("unauthenticated", "เข้าสู่ระบบก่อนนะจ๊ะพี่โจ้");
-  
-  const userRef = db.collection("users").doc(request.auth.uid);
-  const userSnap = await userRef.get();
-  const userData = userSnap.data();
-  const isAllowed = userData?.role === 'ADMIN' || userData?.role === 'MANAGER' || userData?.department === 'MANAGEMENT';
-  
-  if (!isAllowed) throw new HttpsError("permission-denied", "หน้านี้สงวนไว้สำหรับผู้บริหารเท่านั้นค่ะพี่");
+export const chatWithJimmy = onCall(
+  { region: "us-central1", cors: true }, // ✅ เพิ่ม cors: true (ตัวนี้สำคัญที่สุด)
+  async (request) => {
+    if (!request.auth) throw new HttpsError("unauthenticated", "เข้าสู่ระบบก่อนนะจ๊ะพี่โจ้");
 
-  const { message } = request.data;
-  if (!message) throw new HttpsError("invalid-argument", "กรุณาพิมพ์ข้อความด้วยนะคะ");
+    const userRef = db.collection("users").doc(request.auth.uid);
+    const userSnap = await userRef.get();
+    const userData = userSnap.data();
 
-  const aiSettings = await db.collection("settings").doc("ai").get();
-  const apiKey = aiSettings.data()?.geminiApiKey;
-  if (!apiKey) throw new HttpsError("failed-precondition", "กรุณาตั้งค่า Gemini API Key ในหน้าแอปก่อนนะคะพี่โจ้");
+    const isAllowed =
+      userData?.role === "ADMIN" || userData?.role === "MANAGER" || userData?.department === "MANAGEMENT";
+    if (!isAllowed) throw new HttpsError("permission-denied", "หน้านี้สงวนไว้สำหรับผู้บริหารเท่านั้นค่ะพี่");
 
-  try {
-    // Fetch data with safer error handling
-    const [activeJobsSnap, entriesSnap, workersSnap] = await Promise.all([
-      db.collection("jobs").limit(100).get(),
-      db.collection("accountingEntries").limit(50).get(),
-      db.collection("users").limit(100).get()
-    ]);
+    const message = (request.data?.message ?? "").toString().trim(); // ✅ กัน data แปลก
+    if (!message) throw new HttpsError("invalid-argument", "กรุณาพิมพ์ข้อความด้วยนะคะ");
 
-    const jobSummary = activeJobsSnap.docs
-      .filter(d => d.data().status !== "CLOSED")
-      .map(d => ({
-        dept: d.data().department || "ไม่ระบุแผนก",
-        status: d.data().status || "RECEIVED",
-        customer: d.data().customerSnapshot?.name || "ไม่ทราบชื่อลูกค้า"
+    const aiSettings = await db.collection("settings").doc("ai").get();
+    const apiKey = aiSettings.data()?.geminiApiKey;
+    if (!apiKey)
+      throw new HttpsError("failed-precondition", "กรุณาตั้งค่า Gemini API Key ในหน้าแอปก่อนนะคะพี่โจ้");
+
+    try {
+      const [activeJobsSnap, entriesSnap, workersSnap] = await Promise.all([
+        db.collection("jobs").limit(100).get(),
+        db.collection("accountingEntries").limit(50).get(),
+        db.collection("users").limit(100).get(),
+      ]);
+
+      const jobSummary = activeJobsSnap.docs
+        .filter((d) => d.data().status !== "CLOSED")
+        .map((d) => ({
+          dept: d.data().department || "ไม่ระบุแผนก",
+          status: d.data().status || "RECEIVED",
+          customer: d.data().customerSnapshot?.name || "ไม่ทราบชื่อลูกค้า",
+        }));
+
+      const accSummary = entriesSnap.docs.map((d) => ({
+        date: d.data().entryDate || "ไม่ระบุวันที่",
+        type: d.data().entryType || "CASH_IN",
+        amount: d.data().amount || 0,
+        desc: d.data().description || "ไม่มีรายละเอียด",
       }));
 
-    const accSummary = entriesSnap.docs.map(d => ({
-      date: d.data().entryDate || "ไม่ระบุวันที่",
-      type: d.data().entryType || "CASH_IN",
-      amount: d.data().amount || 0,
-      desc: d.data().description || "ไม่มีรายละเอียด"
-    }));
+      const workerSummary = workersSnap.docs
+        .filter((d) => ["WORKER", "OFFICER"].includes(d.data().role))
+        .map((d) => ({
+          name: d.data().displayName || "ไม่ทราบชื่อ",
+          dept: d.data().department || "ไม่ระบุแผนก",
+          salary: d.data().hr?.salaryMonthly || 0,
+        }));
 
-    const workerSummary = workersSnap.docs
-      .filter(d => ["WORKER", "OFFICER"].includes(d.data().role))
-      .map(d => ({
-        name: d.data().displayName || "ไม่ทราบชื่อ",
-        dept: d.data().department || "ไม่ระบุแผนก",
-        salary: d.data().hr?.salaryMonthly || 0
-      }));
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      systemInstruction: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        systemInstruction: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
 
 **บุคลิกและเป้าหมาย:**
 - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ และเอาใจใส่ "พี่โจ้" และ "พี่ถิน" มากๆ
@@ -154,13 +172,14 @@ export const chatWithJimmy = onCall({ region: "us-central1" }, async (request) =
 - รายชื่อและเงินเดือนพนักงาน: ${JSON.stringify(workerSummary)}
 - งบครอบครัว: พี่เตี้ย/ม่ะ 70,000, พี่โจ้/พี่ถิน 100,000
 
-หากต้องแสดงตัวเลขเยอะๆ ให้สรุปเป็น "ตาราง (Markdown Table)" ที่สวยงามเสมอนะคะ`
-    });
+หากต้องแสดงตัวเลขเยอะๆ ให้สรุปเป็น "ตาราง (Markdown Table)" ที่สวยงามเสมอนะคะ`,
+      });
 
-    const result = await model.generateContent(message);
-    return { answer: result.response.text() };
-  } catch (e: any) { 
-    console.error("Jimmy Error Detail:", e);
-    throw new HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + (e.message || "Unknown AI error")); 
+      const result = await model.generateContent(message);
+      return { answer: result.response.text() };
+    } catch (e: any) {
+      console.error("Jimmy Error Detail:", e);
+      throw new HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + (e?.message || "Unknown AI error"));
+    }
   }
-});
+);
