@@ -70,7 +70,7 @@ function JobCard({ job }: { job: Job }) {
       <CardFooter className="px-4 pb-4 pt-0">
         <Button asChild variant="secondary" size="sm" className="w-full h-8 rounded-full">
           <Link href={`/app/jobs/${job.id}`}>
-            <Eye className="h-3.5 w-3.5" />
+            ดูรายละเอียด
           </Link>
         </Button>
       </CardFooter>

@@ -729,7 +729,7 @@ export function JobList({
             )}>
               <Button asChild variant="outline" className="w-full">
                 <Link href={`/app/jobs/${job.id}`}>
-                  <Eye className="h-4 w-4" />
+                  ดูรายละเอียด
                 </Link>
               </Button>
 
