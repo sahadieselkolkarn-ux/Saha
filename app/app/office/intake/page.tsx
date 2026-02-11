@@ -25,8 +25,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
 import { Loader2, Camera, X, ChevronsUpDown, PlusCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 const intakeSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
@@ -91,8 +93,14 @@ export default function IntakePage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     },
-    (error) => {
-        console.error("Error fetching customers:", error);
+    async (error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: 'customers',
+            operation: 'list',
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        }
     });
     return () => unsubscribe();
   }, [db]);
@@ -121,7 +129,7 @@ export default function IntakePage() {
   const removePhoto = (index: number) => {
     URL.revokeObjectURL(photoPreviews[index]);
     setPhotos(prev => prev.filter((_, i) => i !== index));
-    setPhotoPreviews(prev => prev.filter((_, i) => i !== index));
+    setPhotoPreviews(p => p.filter((_, i) => i !== index));
   };
 
   const onSubmit = async (values: z.infer<typeof intakeSchema>) => {
@@ -182,7 +190,7 @@ export default function IntakePage() {
             jobData.mechanicDetails = values.mechanicDetails;
         }
 
-        batch.set(jobDocRef, jobData);
+        batch.set(jobDocRef, sanitizeForFirestore(jobData));
         
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.set(activityDocRef, {
@@ -193,7 +201,16 @@ export default function IntakePage() {
             photos: [],
         });
 
-        await batch.commit();
+        batch.commit().catch(async (error) => {
+          if (error.code === 'permission-denied') {
+            const permissionError = new FirestorePermissionError({
+              path: jobDocRef.path,
+              operation: 'create',
+              requestResourceData: jobData,
+            } satisfies SecurityRuleContext);
+            errorEmitter.emit('permission-error', permissionError);
+          }
+        });
 
         toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
         

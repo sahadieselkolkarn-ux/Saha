@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -16,6 +15,8 @@ import {
 } from 'firebase/firestore';
 import type { DocumentSettings, Document, DocType, DocumentCounters, JobStatus, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 const docTypeToCounterField: Record<DocType, keyof Omit<DocumentCounters, 'year'>> = {
     QUOTATION: 'quotation',
@@ -44,13 +45,6 @@ interface CreateDocumentOptions {
 
 /**
  * Creates a new document in the 'documents' collection with a transactionally-generated document number.
- * @param db The Firestore instance.
- * @param docType The type of the document to create.
- * @param data The document data, excluding fields that will be generated (id, docNo, createdAt, etc.).
- * @param userProfile The profile of the user creating the document.
- * @param newJobStatus Optional new status to set for the associated job.
- * @param options Optional parameters for manual backfilling.
- * @returns An object containing the new document's ID and number: { docId, docNo }.
  */
 export async function createDocument(
   db: Firestore,
@@ -65,28 +59,36 @@ export async function createDocument(
   const docId = newDocRef.id;
 
   if (options?.manualDocNo) {
-    // --- Manual Mode (Backfill) ---
-    const { manualDocNo } = options;
-
-    const duplicateQuery = query(collection(db, "documents"), where("docNo", "==", manualDocNo));
+    const duplicateQuery = query(collection(db, "documents"), where("docNo", "==", options.manualDocNo));
     const querySnapshot = await getDocs(duplicateQuery);
     const isDuplicate = querySnapshot.docs.some(doc => doc.data().docType === docType);
 
     if (isDuplicate) {
-      throw new Error(`เลขที่เอกสาร '${manualDocNo}' ถูกใช้ไปแล้วสำหรับเอกสารประเภทนี้`);
+      throw new Error(`เลขที่เอกสาร '${options.manualDocNo}' ถูกใช้ไปแล้วสำหรับเอกสารประเภทนี้`);
     }
 
     const newDocumentData: Document = {
         ...data,
         id: docId,
-        docNo: manualDocNo,
+        docNo: options.manualDocNo,
         docType,
         status: options?.initialStatus ?? 'DRAFT',
         createdAt: serverTimestamp() as Timestamp,
         updatedAt: serverTimestamp() as Timestamp,
     };
     
-    await setDoc(newDocRef, sanitizeForFirestore(newDocumentData));
+    const sanitizedData = sanitizeForFirestore(newDocumentData);
+    setDoc(newDocRef, sanitizedData)
+      .catch(async (error) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: newDocRef.path,
+            operation: 'create',
+            requestResourceData: sanitizedData,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        }
+      });
 
     if (data.jobId) {
         const jobRef = doc(db, 'jobs', data.jobId);
@@ -96,24 +98,31 @@ export async function createDocument(
         }
         const activityRef = doc(collection(db, 'jobs', data.jobId, 'activities'));
         batch.set(activityRef, {
-            text: `Created ${docType} document: ${manualDocNo} (backfilled)`,
+            text: `Created ${docType} document: ${options.manualDocNo} (backfilled)`,
             userName: userProfile.displayName,
             userId: userProfile.uid,
             createdAt: serverTimestamp(),
             photos: [],
         });
-        await batch.commit();
+        batch.commit().catch(async (error) => {
+          if (error.code === 'permission-denied') {
+            const permissionError = new FirestorePermissionError({
+              path: jobRef.path,
+              operation: 'update',
+            } satisfies SecurityRuleContext);
+            errorEmitter.emit('permission-error', permissionError);
+          }
+        });
     }
     
-    return { docId, docNo: manualDocNo };
+    return { docId, docNo: options.manualDocNo };
 
   } else {
-    // --- Automatic Mode (Existing Logic) ---
     const year = new Date(data.docDate).getFullYear();
     const counterRef = doc(db, 'documentCounters', String(year));
     const docSettingsRef = doc(db, 'settings', 'documents');
 
-    const docNo = await runTransaction(db, async (transaction) => {
+    const result = await runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
         const docSettingsDoc = await transaction.get(docSettingsRef);
 
@@ -165,9 +174,19 @@ export async function createDocument(
             });
         }
 
-        return generatedDocNo;
+        return { docNo: generatedDocNo };
+    }).catch(async (error) => {
+      if (error.code === 'permission-denied') {
+        const permissionError = new FirestorePermissionError({
+          path: 'documents/' + docId,
+          operation: 'create',
+          requestResourceData: data,
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      }
+      throw error;
     });
 
-    return { docId, docNo };
+    return { docId, docNo: result.docNo };
   }
 }

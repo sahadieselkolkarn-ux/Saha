@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -19,6 +18,8 @@ import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 // Helper Functions
 const isClosedStatus = (status?: Job['status']) => 
@@ -215,8 +216,16 @@ export default function ManagementJobsPage() {
                 setJobs(jobsData);
                 setLoading(false);
             }, 
-            (error: FirestoreError) => {
-                toast({ variant: "destructive", title: "Error loading jobs", description: error.message });
+            async (error: any) => {
+                if (error.code === 'permission-denied') {
+                  const permissionError = new FirestorePermissionError({
+                    path: 'jobs',
+                    operation: 'list',
+                  } satisfies SecurityRuleContext);
+                  errorEmitter.emit('permission-error', permissionError);
+                } else {
+                  toast({ variant: "destructive", title: "Error loading jobs", description: error.message });
+                }
                 setLoading(false);
             }
         );

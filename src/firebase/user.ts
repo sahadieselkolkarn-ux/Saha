@@ -2,6 +2,8 @@
 
 import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import type { Role, UserStatus } from "@/lib/constants";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 interface UserProfileData {
     displayName: string;
@@ -21,6 +23,17 @@ export async function createUserProfile(uid: string, data: UserProfileData) {
         updatedAt: serverTimestamp(),
     };
 
-    await setDoc(userDocRef, profileData);
+    setDoc(userDocRef, profileData, { merge: true })
+      .catch(async (error) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: userDocRef.path,
+            operation: 'write',
+            requestResourceData: profileData,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        }
+      });
+
     return profileData;
 }

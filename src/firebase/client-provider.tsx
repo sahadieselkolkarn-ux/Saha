@@ -6,6 +6,7 @@ import type { Firestore } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
 import type { Auth } from 'firebase/auth';
 import type { FirebaseApp } from 'firebase/app';
+import { FirebaseErrorListener } from '@/components/firebase-error-listener';
 
 interface FirebaseServices {
   db: Firestore | null;
@@ -33,6 +34,7 @@ export function FirebaseClientProvider({ children }: { children: ReactNode }) {
       auth: services.auth,
       firebaseApp: services.firebaseApp
     }}>
+      <FirebaseErrorListener />
       {children}
     </FirebaseContext.Provider>
   );
