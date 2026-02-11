@@ -75,11 +75,8 @@ exports.migrateClosedJobsToArchive2026 = (0, https_1.onCall)({ region: "us-centr
     return { totalFound: closedJobsSnap.size, migrated, skipped, errors };
 });
 // --- 3. ฟังก์ชัน น้องจิมมี่ ---
-exports.chatWithJimmy = (0, https_1.onCall)({
-    region: "us-central1",
-    secrets: ["GEMINI_API_KEY"]
-}, async (request) => {
-    var _a, _b, _c;
+exports.chatWithJimmy = (0, https_1.onCall)({ region: "us-central1" }, async (request) => {
+    var _a;
     if (!request.auth)
         throw new https_1.HttpsError("unauthenticated", "เข้าสู่ระบบก่อนนะจ๊ะพี่โจ้");
     const userSnap = await db.collection("users").doc(request.auth.uid).get();
@@ -88,44 +85,46 @@ exports.chatWithJimmy = (0, https_1.onCall)({
     if (!isAllowed)
         throw new https_1.HttpsError("permission-denied", "หน้านี้สงวนไว้สำหรับผู้บริหารเท่านั้นค่ะพี่");
     const { message } = request.data;
-    let apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        const aiSettings = await db.collection("settings").doc("ai").get();
-        apiKey = (_a = aiSettings.data()) === null || _a === void 0 ? void 0 : _a.geminiApiKey;
-    }
+    const aiSettings = await db.collection("settings").doc("ai").get();
+    const apiKey = (_a = aiSettings.data()) === null || _a === void 0 ? void 0 : _a.geminiApiKey;
     if (!apiKey)
-        throw new https_1.HttpsError("failed-precondition", "กรุณาตั้งค่า Gemini API Key ในหน้าแอปก่อนนะคะ");
-    const [activeJobsSnap, entriesSnap, workersSnap] = await Promise.all([
-        db.collection("jobs").where("status", "!=", "CLOSED").get(),
-        db.collection("accountingEntries").orderBy("entryDate", "desc").limit(50).get(),
-        db.collection("users").where("role", "in", ["WORKER", "OFFICER"]).get()
-    ]);
-    const jobSummary = activeJobsSnap.docs.map(d => {
-        var _a;
-        return ({
-            dept: d.data().department,
-            status: d.data().status,
-            customer: (_a = d.data().customerSnapshot) === null || _a === void 0 ? void 0 : _a.name
+        throw new https_1.HttpsError("failed-precondition", "กรุณาตั้งค่า Gemini API Key ในหน้าแอปก่อนนะคะพี่โจ้");
+    try {
+        const [activeJobsSnap, entriesSnap, workersSnap] = await Promise.all([
+            db.collection("jobs").limit(100).get(),
+            db.collection("accountingEntries").limit(50).get(),
+            db.collection("users").limit(100).get()
+        ]);
+        const jobSummary = activeJobsSnap.docs
+            .filter(d => d.data().status !== "CLOSED")
+            .map(d => {
+            var _a;
+            return ({
+                dept: d.data().department,
+                status: d.data().status,
+                customer: (_a = d.data().customerSnapshot) === null || _a === void 0 ? void 0 : _a.name
+            });
         });
-    });
-    const accSummary = entriesSnap.docs.map(d => ({
-        date: d.data().entryDate,
-        type: d.data().entryType,
-        amount: d.data().amount,
-        desc: d.data().description
-    }));
-    const workerSummary = workersSnap.docs.map(d => {
-        var _a;
-        return ({
-            name: d.data().displayName,
-            dept: d.data().department,
-            salary: ((_a = d.data().hr) === null || _a === void 0 ? void 0 : _a.salaryMonthly) || 0
+        const accSummary = entriesSnap.docs.map(d => ({
+            date: d.data().entryDate,
+            type: d.data().entryType,
+            amount: d.data().amount,
+            desc: d.data().description
+        }));
+        const workerSummary = workersSnap.docs
+            .filter(d => ["WORKER", "OFFICER"].includes(d.data().role))
+            .map(d => {
+            var _a;
+            return ({
+                name: d.data().displayName,
+                dept: d.data().department,
+                salary: ((_a = d.data().hr) === null || _a === void 0 ? void 0 : _a.salaryMonthly) || 0
+            });
         });
-    });
-    const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        systemInstruction: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
+        const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+            model: "gemini-1.5-flash",
+            systemInstruction: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
 
 **บุคลิกและเป้าหมาย:**
 - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ และเอาใจใส่ "พี่โจ้" และ "พี่ถิน" มากๆ
@@ -145,13 +144,12 @@ exports.chatWithJimmy = (0, https_1.onCall)({
 - งบครอบครัว: พี่เตี้ย/ม่ะ 70,000, พี่โจ้/พี่ถิน 100,000
 
 หากต้องแสดงตัวเลขเยอะๆ ให้สรุปเป็น "ตาราง (Markdown Table)" ที่สวยงามเสมอนะคะ`
-    });
-    try {
+        });
         const result = await model.generateContent(message);
-        const responseText = result.response.text();
-        return { answer: responseText };
+        return { answer: result.response.text() };
     }
     catch (e) {
+        console.error("Jimmy Error:", e);
         throw new https_1.HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + e.message);
     }
 });
