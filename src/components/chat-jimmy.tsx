@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, getCountFromServer, Timestamp } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, getCountFromServer } from "firebase/firestore";
 import { chatJimmy, type ChatJimmyInput } from "@/ai/flows/chat-jimmy-flow";
 import { useToast } from "@/hooks/use-toast";
 import { startOfMonth, endOfMonth, format } from "date-fns";
@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Send, Bot, User, Loader2, Sparkles, Settings, Key, 
-  AlertCircle, ChevronRight, BarChart3, Users as UsersIcon 
+  AlertCircle, ChevronRight, BarChart3, Users as UsersIcon, CheckCircle2 
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -71,45 +71,72 @@ export function ChatJimmy() {
       const end = endOfMonth(now);
 
       // 1. Fetch Sales (Cashbook Receipts)
-      const salesQuery = query(
-        collection(db, "accountingEntries"),
-        where("entryType", "in", ["RECEIPT", "CASH_IN"]),
-        where("entryDate", ">=", format(start, "yyyy-MM-dd")),
-        where("entryDate", "<=", format(end, "yyyy-MM-dd"))
-      );
-      const salesSnap = await getDocs(salesQuery);
-      const totalSales = salesSnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
+      // Note: If this fails due to missing index, we return 0 rather than crashing
+      let totalSales = 0;
+      try {
+        const salesQuery = query(
+          collection(db, "accountingEntries"),
+          where("entryType", "in", ["RECEIPT", "CASH_IN"]),
+          where("entryDate", ">=", format(start, "yyyy-MM-dd")),
+          where("entryDate", "<=", format(end, "yyyy-MM-dd"))
+        );
+        const salesSnap = await getDocs(salesQuery);
+        totalSales = salesSnap.docs.reduce((sum, d) => sum + (d.data().amount || 0), 0);
+      } catch (indexError) {
+        console.warn("Sales query failed (likely index missing), falling back to 0.");
+      }
 
       // 2. Fetch Workers
-      const workersQuery = query(
-        collection(db, "users"),
-        where("role", "==", "WORKER"),
-        where("status", "==", "ACTIVE")
-      );
-      const workersSnap = await getDocs(workersQuery);
-      const workerNames = workersSnap.docs.map(d => d.data().displayName);
+      let workerNames: string[] = [];
+      try {
+        const workersQuery = query(
+          collection(db, "users"),
+          where("role", "==", "WORKER"),
+          where("status", "==", "ACTIVE")
+        );
+        const workersSnap = await getDocs(workersQuery);
+        workerNames = workersSnap.docs.map(d => d.data().displayName);
+      } catch (e) {
+        console.warn("Workers fetch error:", e);
+      }
 
       // 3. Fetch Active Jobs
-      const jobsQuery = query(
-        collection(db, "jobs"),
-        where("status", "in", ["IN_PROGRESS", "IN_REPAIR_PROCESS", "PENDING_PARTS"])
-      );
-      const jobsCount = await getCountFromServer(jobsQuery);
+      let jobsCount = 0;
+      try {
+        const jobsQuery = query(
+          collection(db, "jobs"),
+          where("status", "in", ["IN_PROGRESS", "IN_REPAIR_PROCESS", "PENDING_PARTS"])
+        );
+        const jobsCountSnap = await getCountFromServer(jobsQuery);
+        jobsCount = jobsCountSnap.data().count;
+      } catch (e) {
+        console.warn("Jobs count error:", e);
+      }
 
       return {
         currentMonthSales: totalSales,
         workerCount: workerNames.length,
         workerNames: workerNames,
-        activeJobsCount: jobsCount.data().count
+        activeJobsCount: jobsCount
       };
     } catch (e) {
-      console.error("Context fetch error:", e);
+      console.error("General context fetch error:", e);
       return {};
     }
   };
 
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading) return;
+
+    if (!aiSettings?.geminiApiKey) {
+        toast({
+            variant: "destructive",
+            title: "จิมมี่ยังไม่พร้อม",
+            description: "กรุณาตั้งค่า API Key ก่อนนะคะ กดที่รูปฟันเฟืองด้านบนได้เลยค่ะ"
+        });
+        setIsApiKeyDialogOpen(true);
+        return;
+    }
 
     const userMessage = inputValue.trim();
     setInputValue("");
@@ -146,7 +173,7 @@ export function ChatJimmy() {
       toast({
         variant: "destructive",
         title: "จิมมี่มีอาการสับสนเล็กน้อย",
-        description: "เกิดข้อผิดพลาดในการเรียก AI กรุณาตรวจสอบ API Key หรือลองอีกครั้งภายหลังนะคะ"
+        description: "เกิดข้อผิดพลาดในการเชื่อมต่อ AI กรุณาลองใหม่อีกครั้งนะคะ"
       });
     } finally {
       setIsLoading(false);
@@ -189,6 +216,11 @@ export function ChatJimmy() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {aiSettings?.geminiApiKey && (
+            <Badge variant="outline" className="bg-green-500/20 text-green-100 border-green-500/30 gap-1.5 hidden sm:flex">
+              <CheckCircle2 className="h-3 w-3" /> AI Ready
+            </Badge>
+          )}
           <Button variant="ghost" size="icon" className="text-white hover:bg-white/10" onClick={() => setIsApiKeyDialogOpen(true)}>
             <Settings className="h-5 w-5" />
           </Button>
@@ -229,18 +261,14 @@ export function ChatJimmy() {
                   ? "bg-primary text-primary-foreground rounded-tr-none" 
                   : "bg-muted border rounded-tl-none prose prose-sm dark:prose-invert max-w-none"
               )}>
-                {m.role === 'model' ? (
-                  <div className="markdown-content overflow-x-auto">
-                    {/* Render Markdown-like content manually for now or use a component */}
-                    <div dangerouslySetInnerHTML={{ 
-                      __html: m.content
-                        .replace(/\n/g, '<br />')
-                        .replace(/\|/g, ' ') 
-                    }} />
-                  </div>
-                ) : (
-                  <div className="whitespace-pre-wrap leading-relaxed">{m.content}</div>
-                )}
+                <div className="whitespace-pre-wrap leading-relaxed">
+                    {/* Simplified Markdown handling */}
+                    {m.content.split('\n').map((line, idx) => (
+                        <p key={idx} className={line.startsWith('|') ? 'font-mono text-xs overflow-x-auto whitespace-pre' : ''}>
+                            {line}
+                        </p>
+                    ))}
+                </div>
                 <div className={cn(
                   "text-[10px] mt-2 opacity-50",
                   m.role === 'user' ? "text-right" : "text-left"
@@ -257,7 +285,7 @@ export function ChatJimmy() {
               </div>
               <div className="bg-muted border rounded-2xl rounded-tl-none px-4 py-3 flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-xs text-muted-foreground italic">น้องจิมมี่กำลังประมวลผลให้พี่โจ้อยู่นะคะ...</span>
+                <span className="text-xs text-muted-foreground italic">น้องจิมมี่กำลังวิเคราะห์ข้อมูลให้พี่โจ้อยู่นะคะ...</span>
               </div>
             </div>
           )}
@@ -315,9 +343,13 @@ export function ChatJimmy() {
                 พี่โจ้สามารถขอ Key ได้ฟรีที่ <a href="https://aistudio.google.com/" target="_blank" className="text-primary underline">Google AI Studio</a> นะคะ
               </p>
             </div>
-            {aiSettings?.geminiApiKey && (
+            {aiSettings?.geminiApiKey ? (
               <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center gap-2 text-xs text-green-700 font-medium">
-                <CheckCircle className="h-4 w-4" /> น้องจิมมี่พร้อมลุยแล้วค่ะ มี Key อยู่แล้ว!
+                <CheckCircle2 className="h-4 w-4" /> น้องจิมมี่พร้อมลุยแล้วค่ะ มี Key อยู่แล้ว!
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-2 text-xs text-amber-700 font-medium">
+                <AlertCircle className="h-4 w-4" /> ยังไม่ได้ระบุ API Key ค่ะ
               </div>
             )}
           </div>
@@ -331,11 +363,5 @@ export function ChatJimmy() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function CheckCircle({ className }: { className?: string }) {
-  return (
-    <svg className={cn("lucide lucide-check-circle", className)} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
   );
 }
