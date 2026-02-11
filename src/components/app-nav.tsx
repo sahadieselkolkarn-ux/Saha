@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import React, { useMemo, useState, useEffect } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck,
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText
 } from "lucide-react"
 import { collection, query, where, getDocs } from "firebase/firestore"
 
@@ -140,6 +140,7 @@ const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/admin/users" label="จัดการผู้ใช้ / Maintenance" onClick={onLinkClick} />
+                <SubNavLink href="/app/admin/chat" label="คุยกับจิมมี่ (AI)" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );

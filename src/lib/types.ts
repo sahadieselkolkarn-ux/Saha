@@ -805,3 +805,11 @@ export interface CashDrawerTransaction {
   createdByUid: string;
   createdByName: string;
 }
+
+export interface GenAISettings {
+  id?: 'ai';
+  geminiApiKey?: string;
+  updatedAt?: Timestamp;
+  updatedByUid?: string;
+  updatedByName?: string;
+}
