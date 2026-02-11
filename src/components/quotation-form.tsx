@@ -5,35 +5,24 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, getDocs, setDoc } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, orderBy, setDoc } from "firebase/firestore";
+import { useFirebase, useCollection, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, FileSearch, FileDown, AlertTriangle, LayoutTemplate } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, LayoutTemplate } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { ScrollArea } from "./ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
@@ -84,19 +73,21 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   
   // Template states
   const [isTemplatePopoverOpen, setIsTemplatePopoverOpen] = useState(false);
-  const [templates, setTemplates] = useState<QuotationTemplate[]>([]);
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
+  // Firestore Refs
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
+  const templatesQuery = useMemo(() => (db ? query(collection(db, "quotationTemplates"), orderBy("updatedAt", "desc")) : null), [db]);
 
+  // Firestore Data
   const { data: job, isLoading: isLoadingJob } = useDoc<Job>(jobDocRef);
   const { data: docToEdit, isLoading: isLoadingDocToEdit } = useDoc<DocumentType>(docToEditRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
+  const { data: templates, isLoading: isLoadingTemplates } = useCollection<QuotationTemplate>(templatesQuery);
   
   const form = useForm<QuotationFormData>({
     resolver: zodResolver(quotationFormSchema),
@@ -175,20 +166,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         });
     }
   }, [job, docToEdit, form, jobId, customers]);
-
-  const fetchTemplates = async () => {
-    if (!db) return;
-    setIsLoadingTemplates(true);
-    try {
-      const q = query(collection(db, "quotationTemplates"), orderBy("updatedAt", "desc"));
-      const snap = await getDocs(q);
-      setTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() } as QuotationTemplate)));
-    } catch (e) {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลด Template ได้" });
-    } finally {
-      setIsLoadingTemplates(false);
-    }
-  };
 
   const applyTemplate = (template: QuotationTemplate) => {
     form.setValue("items", template.items.map(i => ({ ...i })), { shouldValidate: true });
@@ -299,7 +276,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 updatedAt: serverTimestamp(),
             }));
             toast({ title: "อัปเดตใบเสนอราคาสำเร็จ" });
-            router.push(`/app/documents/${editDocId}`);
+            router.push(`/app/office/documents/quotation/${editDocId}`);
         } else {
             const { docId } = await createDocument(
                 db,
@@ -309,7 +286,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 data.jobId ? 'WAITING_APPROVE' : undefined
             );
             toast({ title: "สร้างใบเสนอราคาสำเร็จ" });
-            router.push(`/app/documents/${docId}`);
+            router.push(`/app/office/documents/quotation/${docId}`);
         }
     } catch (error: any) {
         toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง" });
@@ -336,7 +313,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
           </Alert>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card shadow-sm">
             <div className="lg:col-span-2 space-y-2">
                 <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Sahadiesel Service'}</h2>
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{storeSettings?.taxAddress}</p>
@@ -376,7 +353,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                 <ScrollArea className="h-fit max-h-60">
                                     {filteredCustomers.length > 0 ? (
                                         filteredCustomers.map((c) => (
-                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none">
+                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left">
                                                 <div className="flex flex-col items-start"><p className="font-medium">{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
                                             </Button>
                                         ))
@@ -390,7 +367,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 />
                  {displayCustomer && (
                     <div className="mt-3 p-3 bg-muted/50 rounded-md text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">{displayCustomer.name}</p>
+                        <p className="font-medium text-foreground">{displayCustomer.taxName || displayCustomer.name}</p>
                         <p className="whitespace-pre-wrap">{displayCustomer.taxAddress || displayCustomer.detail || 'ไม่มีที่อยู่'}</p>
                         <p>โทร: {displayCustomer.phone}</p>
                         {displayCustomer.taxId && <p>เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId}</p>}
@@ -410,7 +387,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             <CardHeader className="flex flex-row items-center justify-between py-3">
                 <CardTitle className="text-base whitespace-nowrap">รายการสินค้า/บริการ</CardTitle>
                 <div className="flex gap-2">
-                    <Popover open={isTemplatePopoverOpen} onOpenChange={(o) => { setIsTemplatePopoverOpen(o); if(o) fetchTemplates(); }}>
+                    <Popover open={isTemplatePopoverOpen} onOpenChange={setIsTemplatePopoverOpen}>
                         <PopoverTrigger asChild>
                             <Button type="button" variant="outline" size="sm" disabled={isCancelled}>
                                 <LayoutTemplate className="mr-2 h-4 w-4"/>
@@ -422,7 +399,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                             <ScrollArea className="h-64">
                                 {isLoadingTemplates ? (
                                     <div className="p-4 text-center"><Loader2 className="animate-spin inline"/></div>
-                                ) : templates.length > 0 ? (
+                                ) : templates && templates.length > 0 ? (
                                     templates.map(t => (
                                         <Button key={t.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left flex flex-col items-start" onClick={() => applyTemplate(t)}>
                                             <span className="font-medium text-sm">{t.name}</span>
@@ -508,7 +485,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                         </TableBody>
                     </Table>
                 </div>
-                {!isCancelled && <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>}
+                {!isCancelled && <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isCancelled}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>}
             </CardContent>
         </Card>
 
