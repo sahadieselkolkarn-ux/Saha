@@ -166,7 +166,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   });
 
   const selectedCustomerId = form.watch('customerId');
-  const { data: customer } = useDoc<Customer>(useMemo(() => db && selectedCustomerId ? doc(db, 'customers', selectedCustomerId) : null, [db, selectedCustomerId]));
+  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(useMemo(() => db && selectedCustomerId ? doc(db, 'customers', selectedCustomerId) : null, [db, selectedCustomerId]));
   const isLocked = isEditing && docToEdit?.status === 'PAID' && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
 
   useEffect(() => {
