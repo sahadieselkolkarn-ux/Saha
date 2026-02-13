@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, ExternalLink } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, ExternalLink, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
@@ -204,10 +204,11 @@ function DocumentPageContent() {
         if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
             printedRef.current = true;
             
-            // Set a brief timeout to ensure browser has rendered everything before print dialog
-            setTimeout(() => {
+            // Wait a moment for all elements and styles to settle
+            const timer = setTimeout(() => {
                 window.print();
-            }, 1000);
+            }, 1200);
+            return () => clearTimeout(timer);
         }
     }, [isPrintMode, shouldAutoprint, document, isLoading]);
 
@@ -216,14 +217,14 @@ function DocumentPageContent() {
         if (document?.docType === 'TAX_INVOICE' && !isPrintMode) {
             setIsPrintOptionsOpen(true);
         } else if (!isPrintMode) {
-            router.push(`${pathname}?print=1&autoprint=1`);
+            router.push(`${pathname}?print=1&autoprint=1&t=${Date.now()}`);
         } else {
              window.print();
         }
     };
     
     const confirmPrint = () => {
-        router.push(`${pathname}?print=1&autoprint=1&copies=${printCopies}`);
+        router.push(`${pathname}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`);
         setIsPrintOptionsOpen(false);
     };
 
@@ -262,10 +263,10 @@ function DocumentPageContent() {
                         }
                      `}</style>
                      <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                        <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด Ctrl+P</p>
-                        <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                        <p className="text-muted-foreground">โหมดพิมพ์อัตโนมัติ: หากไม่มีหน้าต่างพิมพ์เด้งขึ้นมา กรุณากดปุ่ม "พิมพ์" อีกครั้ง</p>
+                        <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์</Button>
                         <Button asChild variant="outline">
-                            <a href={`${pathname}?print=1&copies=${copies}`} target="_blank" rel="noopener noreferrer"><ExternalLink/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
+                            <a href={`${pathname}?print=1&copies=${copies}`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2"/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
                         </Button>
                         <Button type="button" variant="ghost" onClick={() => router.back()}>กลับ</Button>
                     </div>
@@ -287,10 +288,10 @@ function DocumentPageContent() {
         return (
             <div>
                  <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                    <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด Ctrl+P</p>
-                    <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                    <p className="text-muted-foreground">โหมดพิมพ์อัตโนมัติ: หากไม่มีหน้าต่างพิมพ์เด้งขึ้นมา กรุณากดปุ่ม "พิมพ์" อีกครั้ง</p>
+                    <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์</Button>
                     <Button asChild variant="outline">
-                        <a href={`${pathname}?print=1`} target="_blank" rel="noopener noreferrer"><ExternalLink/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
+                        <a href={`${pathname}?print=1`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2"/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
                     </Button>
                     <Button type="button" variant="ghost" onClick={() => router.back()}>กลับ</Button>
                 </div>
@@ -302,8 +303,8 @@ function DocumentPageContent() {
     return (
         <div className="space-y-6">
              <div className="flex justify-between items-center">
-                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
-                 <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
+                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="h-4 w-4 mr-2"/> กลับ</Button>
+                 <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์</Button>
             </div>
             
             <DocumentView document={document} />

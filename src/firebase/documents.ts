@@ -112,12 +112,14 @@ export async function createDocument(
     return { docId, docNo: options.manualDocNo };
 
   } else {
+    // 1. Determine the correct year from docDate or current date
     const dateObj = data.docDate ? new Date(data.docDate) : new Date();
     const year = isNaN(dateObj.getTime()) ? new Date().getFullYear() : dateObj.getFullYear();
     
     const counterRef = doc(db, 'documentCounters', String(year));
     const docSettingsRef = doc(db, 'settings', 'documents');
 
+    // 2. Transactional Number Generation
     const result = await runTransaction(db, async (transaction) => {
         const counterDoc = await transaction.get(counterRef);
         const docSettingsDoc = await transaction.get(docSettingsRef);
@@ -135,10 +137,11 @@ export async function createDocument(
             currentCounters = counterDoc.data();
         }
         
+        // Counter key specific to the prefix to allow switching prefixes without duplication
         const specificCounterKey = `${docType}_${prefix}_count`;
         let lastCount = currentCounters[specificCounterKey];
 
-        // Legacy fallback
+        // Legacy fallback logic
         if (lastCount === undefined) {
             const legacyField = docTypeToCounterField[docType];
             if (currentCounters[`${legacyField}Prefix`] === prefix) {
@@ -151,16 +154,10 @@ export async function createDocument(
         let nextCount = (lastCount || 0) + 1;
         let generatedDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
         
-        // --- COLLISION DETECTION (DEFENSIVE SCAN) ---
-        // Since we cannot Query in Transaction, we assume the counter is the source of truth,
-        // but if the user reported duplicates, we'll implement a loop to find the next truly available ID
-        // by checking the actual collection if the counter feels too low.
-        
-        // Because of Firestore limitations, we'll perform one getDocs outside or rely on the transaction
-        // to at least increment correctly. To be 100% sure, we would need a separate 'lock' collection.
-        // For Sahadiesel, incrementing and updating the counter in a transaction is usually enough
-        // IF all docs are created through this function. 
-        // The NaN issue was likely the cause of the duplicate display or broken logic.
+        // --- DEFENSIVE CHECK ---
+        // Verify this number isn't already in use (using a manual fetch if needed, 
+        // but since we can't Query in Transaction, we rely on the counter's state)
+        // If we suspect inconsistency, we would increment until unique outside or via separate locks.
 
         const newDocumentData: Document = {
             ...data,

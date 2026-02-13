@@ -28,7 +28,8 @@ function QuotationDetailPageContent() {
 
     const handlePrint = () => {
         if (printFrameRef.current) {
-            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1`;
+            // Use timestamp to force iframe reload and trigger autoprint script inside
+            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`;
         }
     };
 
@@ -49,8 +50,16 @@ function QuotationDetailPageContent() {
 
     return (
         <div className="space-y-6">
-            {/* Hidden Print Frame */}
-            <iframe ref={printFrameRef} className="hidden" title="print-frame" />
+            {/* 
+                Hidden Print Frame: 
+                Must not be 'display: none' in some browsers to execute scripts.
+                Using absolute positioning and opacity instead.
+            */}
+            <iframe 
+                ref={printFrameRef} 
+                style={{ position: 'absolute', width: 0, height: 0, border: 0, opacity: 0, pointerEvents: 'none' }}
+                title="print-frame" 
+            />
 
             {/* Action Bar */}
             <div className="flex justify-between items-center print:hidden">
