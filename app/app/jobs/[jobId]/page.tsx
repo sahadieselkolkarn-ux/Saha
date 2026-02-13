@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
@@ -58,12 +59,18 @@ const getStatusVariant = (status: Job['status']) => {
 
 function JobDetailsPageContent() {
   const router = useRouter();
-  const { jobId } = useParams();
+  const params = useParams();
   const searchParams = useSearchParams();
   const { db, storage } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   
+  // Extract jobId safely
+  const jobId = useMemo(() => {
+    const id = params?.jobId;
+    return Array.isArray(id) ? id[0] : id;
+  }, [params]);
+
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFoundInPrimary, setNotFoundInPrimary] = useState(false);
@@ -117,9 +124,9 @@ function JobDetailsPageContent() {
     if (!db || !jobId) return null;
     if (job?.isArchived) {
       const year = new Date(job.closedDate!).getFullYear();
-      return query(collection(db, archiveCollectionNameByYear(year), jobId as string, "activities"), orderBy("createdAt", "desc"));
+      return query(collection(db, archiveCollectionNameByYear(year), jobId, "activities"), orderBy("createdAt", "desc"));
     }
-    return query(collection(db, "jobs", jobId as string, "activities"), orderBy("createdAt", "desc"));
+    return query(collection(db, "jobs", jobId, "activities"), orderBy("createdAt", "desc"));
   }, [db, jobId, job]);
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
@@ -135,7 +142,7 @@ function JobDetailsPageContent() {
     if (!db || !jobId) return;
 
     setLoadingDocs(true);
-    const docsQuery = query(collection(db, "documents"), where("jobId", "==", jobId as string));
+    const docsQuery = query(collection(db, "documents"), where("jobId", "==", jobId));
 
     const unsubscribeDocs = onSnapshot(docsQuery, (snapshot) => {
         const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType));
@@ -174,7 +181,7 @@ function JobDetailsPageContent() {
 
   useEffect(() => {
     if (!jobId || !db) return;
-    const jobDocRef = doc(db, "jobs", jobId as string);
+    const jobDocRef = doc(db, "jobs", jobId);
     const unsubscribe = onSnapshot(jobDocRef, (doc) => {
       if (doc.exists()) {
         const jobData = { id: doc.id, ...doc.data() } as Job;
@@ -194,7 +201,7 @@ function JobDetailsPageContent() {
   }, [jobId, toast, db]);
 
   useEffect(() => {
-    if (!notFoundInPrimary || !db) return;
+    if (!notFoundInPrimary || !db || !jobId) return;
 
     setLoading(true);
     const searchArchives = async () => {
@@ -203,7 +210,7 @@ function JobDetailsPageContent() {
         const year = currentYear - i;
         const archiveColName = archiveCollectionNameByYear(year);
         try {
-          const archiveDocRef = doc(db, archiveColName, jobId as string);
+          const archiveDocRef = doc(db, archiveColName, jobId);
           const docSnap = await getDoc(archiveDocRef);
           if (docSnap.exists()) {
             const jobData = { id: docSnap.id, ...docSnap.data() } as Job;
@@ -306,8 +313,8 @@ function JobDetailsPageContent() {
     setIsSubmittingNote(true);
     try {
         const batch = writeBatch(db);
-        const jobDocRef = doc(db, "jobs", jobId as string);
-        const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+        const jobDocRef = doc(db, "jobs", jobId);
+        const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
         batch.set(activityDocRef, { text: `เปลี่ยนสถานะเป็น "${jobStatusLabel('DONE')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
         await batch.commit();
@@ -324,8 +331,8 @@ function JobDetailsPageContent() {
     setIsRequestingQuotation(true);
     try {
         const batch = writeBatch(db);
-        const jobDocRef = doc(db, "jobs", jobId as string);
-        const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+        const jobDocRef = doc(db, "jobs", jobId);
+        const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.update(jobDocRef, { status: 'WAITING_QUOTATION', lastActivityAt: serverTimestamp() });
         batch.set(activityDocRef, { text: `แจ้งขอเสนอราคา`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
         await batch.commit();
@@ -342,8 +349,8 @@ function JobDetailsPageContent() {
     setIsSavingTechReport(true);
     try {
       const batch = writeBatch(db);
-      const jobDocRef = doc(db, "jobs", jobId as string);
-      const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+      const jobDocRef = doc(db, "jobs", jobId);
+      const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
       batch.update(jobDocRef, { technicalReport: techReport, lastActivityAt: serverTimestamp() });
       batch.set(activityDocRef, { text: `อัปเดตผลการตรวจ/งานที่ทำ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
       await batch.commit();
@@ -384,8 +391,8 @@ function JobDetailsPageContent() {
     if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile || !job) return;
     setIsSubmittingNote(true);
     try {
-        const jobDocRef = doc(db, "jobs", jobId as string);
-        const activitiesColRef = collection(db, "jobs", jobId as string, "activities");
+        const jobDocRef = doc(db, "jobs", jobId);
+        const activitiesColRef = collection(db, "jobs", jobId, "activities");
         const photoURLs: string[] = [];
         for (const photo of newPhotos) {
             const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
@@ -414,13 +421,13 @@ function JobDetailsPageContent() {
     const files = Array.from(e.target.files);
     const totalPhotos = (job?.photos?.length || 0) + files.length;
     if (totalPhotos > 4) {
-      toast({ variant: "destructive", title: "You can only have up to 4 photos in total." });
+      toast({ variant: "destructive", title: "คุณสามารถอัปโหลดรูปภาพรวมกันได้ไม่เกิน 4 รูปค่ะ" });
       setIsAddingPhotos(false);
       return;
     }
     const validFiles = files.filter(file => {
         if (file.size > 5 * 1024 * 1024) {
-            toast({ variant: "destructive", title: `File ${file.name} is too large.`, description: "Max size is 5MB." });
+            toast({ variant: "destructive", title: `ไฟล์ ${file.name} ใหญ่เกินไป`, description: "ขนาดสูงสุดที่รองรับคือ 5MB ค่ะ" });
             return false;
         }
         return true;
@@ -430,8 +437,8 @@ function JobDetailsPageContent() {
         return;
     }
     try {
-        const jobDocRef = doc(db, "jobs", jobId as string);
-        const activitiesColRef = collection(db, "jobs", jobId as string, "activities");
+        const jobDocRef = doc(db, "jobs", jobId);
+        const activitiesColRef = collection(db, "jobs", jobId, "activities");
         const photoURLs: string[] = [];
         for (const photo of validFiles) {
             const photoRef = ref(storage, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
@@ -439,10 +446,10 @@ function JobDetailsPageContent() {
             photoURLs.push(await getDownloadURL(photoRef));
         }
         const batch = writeBatch(db);
-        batch.set(doc(activitiesColRef), { text: `Added ${validFiles.length} photo(s) to the main job.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
+        batch.set(doc(activitiesColRef), { text: `อัปโหลดรูปประกอบงานเพิ่ม ${validFiles.length} รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
         batch.update(jobDocRef, { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() });
         await batch.commit();
-        toast({title: `${validFiles.length} photo(s) added successfully`});
+        toast({title: `อัปโหลดรูปภาพ ${validFiles.length} รูปสำเร็จแล้วค่ะ`});
     } catch(error: any) {
         toast({variant: "destructive", title: "Failed to add photos", description: error.message});
     } finally {
@@ -514,8 +521,8 @@ function JobDetailsPageContent() {
     setIsApprovalActionLoading(true);
     try {
         const batch = writeBatch(db);
-        batch.update(doc(db, "jobs", jobId as string), { status: 'PENDING_PARTS', lastActivityAt: serverTimestamp() });
-        batch.set(doc(collection(db, "jobs", jobId as string, "activities")), { text: `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+        batch.update(doc(db, "jobs", jobId), { status: 'PENDING_PARTS', lastActivityAt: serverTimestamp() });
+        batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         await batch.commit();
         toast({ title: "Job Approved" });
     } catch (error: any) {
@@ -531,8 +538,8 @@ function JobDetailsPageContent() {
     setIsApprovalActionLoading(true);
     try {
         const batch = writeBatch(db);
-        const jobDocRef = doc(db, "jobs", jobId as string);
-        const activityDocRef = doc(collection(db, "jobs", jobId as string, "activities"));
+        const jobDocRef = doc(db, "jobs", jobId);
+        const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         if (rejectionChoice === 'with_cost') {
             batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
             batch.set(activityDocRef, { text: `ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
@@ -556,8 +563,8 @@ function JobDetailsPageContent() {
     setIsApprovalActionLoading(true);
     try {
         const batch = writeBatch(db);
-        batch.update(doc(db, "jobs", jobId as string), { status: 'IN_REPAIR_PROCESS', lastActivityAt: serverTimestamp() });
-        batch.set(doc(collection(db, "jobs", jobId as string, "activities")), { text: `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "${jobStatusLabel('IN_REPAIR_PROCESS')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+        batch.update(doc(db, "jobs", jobId), { status: 'IN_REPAIR_PROCESS', lastActivityAt: serverTimestamp() });
+        batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "${jobStatusLabel('IN_REPAIR_PROCESS')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         await batch.commit();
         toast({ title: "Parts Ready" });
     } catch (error: any) {
@@ -635,16 +642,18 @@ function JobDetailsPageContent() {
                             <label htmlFor="camera-photo-upload" className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                                 ถ่ายรูปเพิ่ม
-                                <Input id="camera-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
                             </label>
                         </Button>
                         <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
                             <label htmlFor="library-photo-upload" className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
                                 เลือกรูปถ่าย
-                                <Input id="library-photo-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
                             </label>
                         </Button>
+                        
+                        {/* Hidden Inputs outside for better reliability */}
+                        <input id="camera-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
+                        <input id="library-photo-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
                     </div>
                 )}
             </CardHeader>
