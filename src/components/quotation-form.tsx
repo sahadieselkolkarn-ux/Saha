@@ -247,15 +247,21 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
 
     customerSnapshot = { ...customerSnapshot, id: data.customerId };
 
+    const carSnapshot = (job || docToEdit?.jobId) ? { 
+      licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate,
+      brand: job?.carServiceDetails?.brand || job?.commonrailDetails?.brand || job?.mechanicDetails?.brand || docToEdit?.carSnapshot?.brand,
+      model: job?.carServiceDetails?.model || docToEdit?.carSnapshot?.model,
+      partNumber: job?.commonrailDetails?.partNumber || job?.mechanicDetails?.partNumber || docToEdit?.carSnapshot?.partNumber,
+      registrationNumber: job?.commonrailDetails?.registrationNumber || job?.mechanicDetails?.registrationNumber || docToEdit?.carSnapshot?.registrationNumber,
+      details: job?.description || docToEdit?.carSnapshot?.details 
+    } : {};
+
     const documentData = {
         customerId: data.customerId,
         docDate: data.issueDate,
         jobId: data.jobId,
         customerSnapshot: customerSnapshot,
-        carSnapshot: (job || docToEdit?.jobId) ? { 
-          licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, 
-          details: job?.description || docToEdit?.carSnapshot?.details 
-        } : {},
+        carSnapshot: carSnapshot,
         storeSnapshot: { ...storeSettings },
         items: data.items,
         subtotal: data.subtotal,

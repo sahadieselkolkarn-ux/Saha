@@ -322,102 +322,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     setIsBillSearchOpen(false);
   };
 
-  const handleConfirmLinkDoc = async () => {
-    const activeJobId = jobId || form.getValues('jobId');
-    if (!db || !profile || !selectedLinkDoc || !activeJobId) {
-        toast({ variant: 'destructive', title: 'ไม่สามารถเชื่อมโยงได้', description: 'ต้องระบุงานซ่อมที่ต้องการเชื่อมโยงก่อน' });
-        return;
-    }
-
-    setIsSubmitting(true);
-    try {
-        const salesDocInfo = {
-            salesDocType: selectedLinkDoc.docType,
-            salesDocId: selectedLinkDoc.id,
-            salesDocNo: selectedLinkDoc.docNo,
-            paymentStatusAtClose: selectedLinkDoc.status === 'PAID' ? 'PAID' : 'UNPAID'
-        } as any;
-
-        if (selectedLinkDoc.status === 'PAID') {
-            await archiveAndCloseJob(db, activeJobId, selectedLinkDoc.docDate, profile, salesDocInfo);
-            toast({ title: 'เชื่อมโยงบิลและปิดงานสำเร็จ' });
-        } else {
-            const batch = writeBatch(db);
-            const jobRef = doc(db, 'jobs', activeJobId);
-            const docRef = doc(db, 'documents', selectedLinkDoc.id);
-            const activityRef = doc(collection(db, 'jobs', activeJobId, 'activities'));
-            
-            batch.update(jobRef, {
-                ...salesDocInfo,
-                status: 'WAITING_CUSTOMER_PICKUP',
-                lastActivityAt: serverTimestamp(),
-            });
-            batch.update(docRef, {
-                jobId: activeJobId,
-                updatedAt: serverTimestamp()
-            });
-            batch.set(activityRef, {
-                text: `เชื่อมโยงบิลที่รอตรวจสอบ (${selectedLinkDoc.docNo}) เข้ากับงานนี้`,
-                userName: profile.displayName,
-                userId: profile.uid,
-                createdAt: serverTimestamp(),
-            });
-            await batch.commit();
-            toast({ title: 'เชื่อมโยงบิลเรียบร้อย' });
-        }
-        
-        router.push('/app/office/jobs/management/history');
-    } catch (e: any) {
-        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
-    } finally {
-        setIsSubmitting(false);
-        setShowLinkConfirm(false);
-        setSelectedLinkDoc(null);
-    }
-  };
-
-  const loadAllDocs = async (type: DocType | 'BILLS') => {
-    if (!db) return;
-    if (type === 'QUOTATION') setIsSearchingQt(true); else setIsSearchingBills(true);
-    
-    try {
-        const getTime = (val: any) => {
-            if (!val) return 0;
-            if (typeof val.toMillis === 'function') return val.toMillis();
-            if (val instanceof Date) return val.getTime();
-            if (val.seconds) return val.seconds * 1000;
-            return 0;
-        };
-
-        if (type === 'QUOTATION') {
-            const q = query(
-                collection(db, "documents"),
-                where("docType", "==", "QUOTATION"),
-                limit(1000)
-            );
-            const snap = await getDocs(q);
-            const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED');
-            items.sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt));
-            setAllQuotations(items);
-        } else {
-            const qDn = query(collection(db, "documents"), where("docType", "==", "DELIVERY_NOTE"), limit(1000));
-            const qTi = query(collection(db, "documents"), where("docType", "==", "TAX_INVOICE"), limit(1000));
-            const [snapDn, snapTi] = await Promise.all([getDocs(qDn), getDocs(qTi)]);
-            const bills = [
-                ...snapDn.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)),
-                ...snapTi.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType))
-            ].filter(d => d.status !== 'CANCELLED');
-            bills.sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt));
-            setAllBills(bills);
-        }
-    } catch (e: any) {
-        console.error(e);
-        toast({ variant: 'destructive', title: "ค้นหาล้มเหลว", description: e.message });
-    } finally {
-        if (type === 'QUOTATION') setIsSearchingQt(false); else setIsSearchingBills(false);
-    }
-  };
-
   const executeSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
     const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) {
@@ -431,15 +335,22 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     const targetArStatus = submitForReview ? 'PENDING' : (isEditing ? docToEdit?.arStatus : null);
     const targetDispute = submitForReview ? null : (isEditing ? docToEdit?.dispute : null);
 
+    const jobDetails = job || docToEdit?.jobId ? docToEdit?.carSnapshot : null;
+    const carSnapshot = (job || docToEdit?.jobId) ? { 
+      licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate,
+      brand: job?.carServiceDetails?.brand || job?.commonrailDetails?.brand || job?.mechanicDetails?.brand || docToEdit?.carSnapshot?.brand,
+      model: job?.carServiceDetails?.model || docToEdit?.carSnapshot?.model,
+      partNumber: job?.commonrailDetails?.partNumber || job?.mechanicDetails?.partNumber || docToEdit?.carSnapshot?.partNumber,
+      registrationNumber: job?.commonrailDetails?.registrationNumber || job?.mechanicDetails?.registrationNumber || docToEdit?.carSnapshot?.registrationNumber,
+      details: job?.description || docToEdit?.carSnapshot?.details 
+    } : {};
+
     const documentDataPayload = {
       customerId: data.customerId,
       docDate: data.issueDate,
       jobId: data.jobId,
       customerSnapshot: { ...customerSnapshot },
-      carSnapshot: (job || docToEdit?.jobId) ? { 
-          licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate, 
-          details: job?.description || docToEdit?.carSnapshot?.details 
-      } : {},
+      carSnapshot: carSnapshot,
       storeSnapshot: { ...storeSettings },
       items: data.items,
       subtotal: data.subtotal,
@@ -566,11 +477,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     }
   };
 
-  const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
-  const isFormLoading = form.formState.isSubmitting || isLoading;
-  const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
-  const isCustomerSelectionDisabled = isLocked || !!jobId || (isEditing && !!docToEdit?.customerId);
-
   const getFilteredDocs = (docs: DocumentType[], queryStr: string, typeFilter?: 'DELIVERY_NOTE' | 'TAX_INVOICE') => {
     const q = queryStr.toLowerCase().trim();
     let filtered = [...docs];
@@ -584,6 +490,65 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         (d.customerSnapshot?.phone || "").toLowerCase().includes(q)
     );
   };
+
+  const handleConfirmLinkDoc = async () => {
+    const activeJobId = jobId || form.getValues('jobId');
+    if (!db || !profile || !selectedLinkDoc || !activeJobId) {
+        toast({ variant: 'destructive', title: 'ไม่สามารถเชื่อมโยงได้', description: 'ต้องระบุงานซ่อมที่ต้องการเชื่อมโยงก่อน' });
+        return;
+    }
+
+    setIsSubmitting(true);
+    try {
+        const salesDocInfo = {
+            salesDocType: selectedLinkDoc.docType,
+            salesDocId: selectedLinkDoc.id,
+            salesDocNo: selectedLinkDoc.docNo,
+            paymentStatusAtClose: selectedLinkDoc.status === 'PAID' ? 'PAID' : 'UNPAID'
+        } as any;
+
+        if (selectedLinkDoc.status === 'PAID') {
+            await archiveAndCloseJob(db, activeJobId, selectedLinkDoc.docDate, profile, salesDocInfo);
+            toast({ title: 'เชื่อมโยงบิลและปิดงานสำเร็จ' });
+        } else {
+            const batch = writeBatch(db);
+            const jobRef = doc(db, 'jobs', activeJobId);
+            const docRef = doc(db, 'documents', selectedLinkDoc.id);
+            const activityRef = doc(collection(db, 'jobs', activeJobId, 'activities'));
+            
+            batch.update(jobRef, {
+                ...salesDocInfo,
+                status: 'WAITING_CUSTOMER_PICKUP',
+                lastActivityAt: serverTimestamp(),
+            });
+            batch.update(docRef, {
+                jobId: activeJobId,
+                updatedAt: serverTimestamp()
+            });
+            batch.set(activityRef, {
+                text: `เชื่อมโยงบิลที่รอตรวจสอบ (${selectedLinkDoc.docNo}) เข้ากับงานนี้`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp(),
+            });
+            await batch.commit();
+            toast({ title: 'เชื่อมโยงบิลเรียบร้อย' });
+        }
+        
+        router.push('/app/office/jobs/management/history');
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
+    } finally {
+        setIsSubmitting(false);
+        setShowLinkConfirm(false);
+        setSelectedLinkDoc(null);
+    }
+  };
+
+  const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
+  const isFormLoading = form.formState.isSubmitting || isLoading;
+  const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
+  const isCustomerSelectionDisabled = isLocked || !!jobId || (isEditing && !!docToEdit?.customerId);
 
   if (isLoading && !jobId && !editDocId) {
     return <Skeleton className="h-96" />;

@@ -29,6 +29,22 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 
+function VehicleInfo({ doc }: { doc: Document }) {
+    const s = doc.carSnapshot;
+    if (!s || (!s.licensePlate && !s.brand && !s.model && !s.partNumber && !s.registrationNumber)) return null;
+
+    return (
+        <div className="space-y-1 text-sm border-l pl-6 print:pl-4 print:border-l-2 print:border-muted">
+            <h4 className="font-semibold text-primary mb-2 uppercase tracking-wider text-xs">รายละเอียดรถ / ชิ้นส่วน</h4>
+            {s.brand && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ยี่ห้อ:</span><span className="font-medium">{s.brand}</span></div>}
+            {s.model && <div className="flex justify-between gap-4"><span className="text-muted-foreground">รุ่นรถ:</span><span className="font-medium">{s.model}</span></div>}
+            {s.licensePlate && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ทะเบียน:</span><span className="font-medium">{s.licensePlate}</span></div>}
+            {s.partNumber && <div className="flex justify-between gap-4"><span className="text-muted-foreground">เลขอะไหล่:</span><span className="font-medium">{s.partNumber}</span></div>}
+            {s.registrationNumber && <div className="flex justify-between gap-4"><span className="text-muted-foreground">เลขทะเบียนชิ้นส่วน:</span><span className="font-medium">{s.registrationNumber}</span></div>}
+        </div>
+    );
+}
+
 function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyLabel?: 'ORIGINAL' | 'COPY' }) {
     const docTypeDisplay: Record<Document['docType'], string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
@@ -50,6 +66,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
     }
 
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
+    const isQuotation = document.docType === 'QUOTATION';
 
     const isTaxDoc =
         document.docType === 'TAX_INVOICE' ||
@@ -93,21 +110,26 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 </div>
 
                 <Card className="mb-8 print:bg-white print:shadow-none print:border-none">
-                    <CardHeader>
-                        <CardTitle className="text-base">ข้อมูลลูกค้า</CardTitle>
-                    </CardHeader>
-                    <CardContent className="text-sm space-y-1">
-                        <p className="font-semibold">{displayCustomerName}</p>
-                        <p className="text-muted-foreground whitespace-pre-wrap">{displayCustomerAddress}</p>
-                        <p className="text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
-                        {isTaxDoc && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
+                    <CardContent className="pt-6">
+                        <div className={cn("grid grid-cols-1 gap-6", (isDeliveryNote || isQuotation) && "md:grid-cols-2")}>
+                            <div className="space-y-1">
+                                <h4 className="font-semibold text-base mb-2">ข้อมูลลูกค้า</h4>
+                                <p className="font-bold">{displayCustomerName}</p>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{displayCustomerAddress}</p>
+                                <p className="text-sm text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
+                                {isTaxDoc && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
+                            </div>
+                            {(isDeliveryNote || isQuotation) && (
+                                <VehicleInfo doc={document} />
+                            )}
+                        </div>
                     </CardContent>
                 </Card>
 
                 <Table className="mb-8">
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-12">#</TableHead>
+                            <TableHead className="w-12 text-center">#</TableHead>
                             <TableHead>รายการ</TableHead>
                             <TableHead className="text-right">จำนวน</TableHead>
                             <TableHead className="text-right">ราคา/หน่วย</TableHead>
@@ -117,7 +139,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                     <TableBody>
                         {document.items.map((item, index) => (
                             <TableRow key={index}>
-                                <TableCell>{index + 1}</TableCell>
+                                <TableCell className="text-center">{index + 1}</TableCell>
                                 <TableCell>{item.description}</TableCell>
                                 <TableCell className="text-right">{item.quantity}</TableCell>
                                 <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>

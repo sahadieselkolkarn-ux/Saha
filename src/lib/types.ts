@@ -430,6 +430,10 @@ export interface Document {
   customerSnapshot: Partial<Customer>;
   carSnapshot?: {
     licensePlate?: string;
+    brand?: string;
+    model?: string;
+    partNumber?: string;
+    registrationNumber?: string;
     details?: string;
   };
   storeSnapshot: Partial<StoreSettings>;
