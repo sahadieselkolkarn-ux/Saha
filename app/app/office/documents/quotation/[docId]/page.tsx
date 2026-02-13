@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense } from "react";
+import { useMemo, Suspense, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
@@ -19,11 +19,18 @@ function QuotationDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
     const { db } = useFirebase();
+    const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const isCancelled = document?.status === 'CANCELLED';
+
+    const handlePrint = () => {
+        if (printFrameRef.current) {
+            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1`;
+        }
+    };
 
     if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
     
@@ -42,12 +49,15 @@ function QuotationDetailPageContent() {
 
     return (
         <div className="space-y-6">
+            {/* Hidden Print Frame */}
+            <iframe ref={printFrameRef} className="hidden" title="print-frame" />
+
             {/* Action Bar */}
             <div className="flex justify-between items-center print:hidden">
                 <Button variant="outline" onClick={() => router.back()}>
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
                 </Button>
-                <Button variant="default" size="sm" onClick={() => router.push(`/app/office/documents/${docId}?print=1&autoprint=1`)}>
+                <Button variant="default" size="sm" onClick={handlePrint}>
                     <Printer className="mr-2 h-4 w-4"/> พิมพ์ (PDF)
                 </Button>
             </div>

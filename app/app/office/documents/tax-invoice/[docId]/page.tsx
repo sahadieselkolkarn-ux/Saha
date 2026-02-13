@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense } from "react";
+import { useMemo, Suspense, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc } from "firebase/firestore";
@@ -18,6 +18,18 @@ import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 const getStatusVariant = (status: string) => {
   switch (status) {
@@ -43,11 +55,26 @@ function TaxInvoiceDetailPageContent() {
     const router = useRouter();
     const { db } = useFirebase();
     const { profile } = useAuth();
+    
+    const [isPrintOptionsOpen, setIsPrintOptionsOpen] = useState(false);
+    const [printCopies, setPrintCopies] = useState<1 | 2>(1);
+    const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const isCancelled = document?.status === 'CANCELLED';
+
+    const handlePrintRequest = () => {
+        setIsPrintOptionsOpen(true);
+    };
+
+    const confirmPrint = () => {
+        if (printFrameRef.current) {
+            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&copies=${printCopies}`;
+        }
+        setIsPrintOptionsOpen(false);
+    };
 
     if (isLoading) return (
         <div className="flex flex-col items-center justify-center h-[60vh]">
@@ -71,13 +98,16 @@ function TaxInvoiceDetailPageContent() {
 
     return (
         <div className="space-y-6">
+            {/* Hidden Print Frame */}
+            <iframe ref={printFrameRef} className="hidden" title="print-frame" />
+
             {/* Action Bar */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <Button variant="outline" onClick={() => router.push('/app/office/documents/tax-invoice')}>
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
                 </Button>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="default" size="sm" onClick={() => router.push(`/app/office/documents/${docId}?print=1&autoprint=1`)}>
+                    <Button variant="default" size="sm" onClick={handlePrintRequest}>
                         <Printer className="mr-2 h-4 w-4"/> พิมพ์ (PDF)
                     </Button>
                 </div>
@@ -247,6 +277,36 @@ function TaxInvoiceDetailPageContent() {
                     </Card>
                 </div>
             </div>
+
+            {/* Print Options Dialog */}
+            <AlertDialog open={isPrintOptionsOpen} onOpenChange={setIsPrintOptionsOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>เลือกรูปแบบการพิมพ์ใบกำกับภาษี</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            กรุณาเลือกจำนวนสำเนาที่ต้องการพิมพ์เพื่อใช้ในการยื่นภาษีและเป็นหลักฐาน
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="py-4">
+                        <RadioGroup value={String(printCopies)} onValueChange={(v) => setPrintCopies(Number(v) as 1 | 2)}>
+                            <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="1" id="c1" />
+                                <Label htmlFor="c1">ต้นฉบับ 1 ใบ + สำเนา 1 ใบ</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="2" id="c2" />
+                                <Label htmlFor="c2">ต้นฉบับ 1 ใบ + สำเนา 2 ใบ (สำหรับออฟฟิศและบัญชี)</Label>
+                            </div>
+                        </RadioGroup>
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmPrint}>
+                            พิมพ์
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

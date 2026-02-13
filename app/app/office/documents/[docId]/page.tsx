@@ -204,14 +204,12 @@ function DocumentPageContent() {
         if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
             printedRef.current = true;
             
-            const newUrl = `${pathname}?print=1` + (searchParams.get('copies') ? `&copies=${searchParams.get('copies')}`: '');
-            router.replace(newUrl, { scroll: false });
-
+            // Set a brief timeout to ensure browser has rendered everything before print dialog
             setTimeout(() => {
                 window.print();
-            }, 500);
+            }, 1000);
         }
-    }, [isPrintMode, shouldAutoprint, document, isLoading, router, pathname, searchParams]);
+    }, [isPrintMode, shouldAutoprint, document, isLoading]);
 
 
     const handlePrint = () => {
@@ -264,12 +262,12 @@ function DocumentPageContent() {
                         }
                      `}</style>
                      <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                        <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
+                        <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด Ctrl+P</p>
                         <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
                         <Button asChild variant="outline">
                             <a href={`${pathname}?print=1&copies=${copies}`} target="_blank" rel="noopener noreferrer"><ExternalLink/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
                         </Button>
-                        <Button type="button" variant="ghost" onClick={() => router.replace(pathname)}>กลับ</Button>
+                        <Button type="button" variant="ghost" onClick={() => router.back()}>กลับ</Button>
                     </div>
                     <div className="print-pages">
                         <DocumentView document={document} taxCopyLabel="ORIGINAL" />
@@ -289,12 +287,12 @@ function DocumentPageContent() {
         return (
             <div>
                  <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                    <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
+                    <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด Ctrl+P</p>
                     <Button type="button" onClick={handlePrint}><Printer/> พิมพ์</Button>
                     <Button asChild variant="outline">
                         <a href={`${pathname}?print=1`} target="_blank" rel="noopener noreferrer"><ExternalLink/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
                     </Button>
-                    <Button type="button" variant="ghost" onClick={() => router.replace(pathname)}>กลับ</Button>
+                    <Button type="button" variant="ghost" onClick={() => router.back()}>กลับ</Button>
                 </div>
                 <DocumentView document={document} />
             </div>
