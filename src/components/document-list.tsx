@@ -176,15 +176,13 @@ export function DocumentList({
         updatedAt: serverTimestamp()
       });
 
-      // 2. Reset the associated Job
+      // 2. Revert the Job state
       if (docToAction.jobId) {
         const jobRef = doc(db, 'jobs', docToAction.jobId);
         const jobSnap = await getDoc(jobRef);
         
-        // Only reset if the job is still active (not archived)
         if (jobSnap.exists()) {
-          // Reset Job status to DONE and clear ALL sales doc references
-          // Regardless of whether salesDocId matches docToAction.id to ensure the job isn't stuck
+          // Reset Job status to DONE and clear ALL sales doc links
           await updateDoc(jobRef, {
             status: 'DONE',
             salesDocId: deleteField(),
@@ -193,10 +191,10 @@ export function DocumentList({
             lastActivityAt: serverTimestamp(),
           });
 
-          // Log the reversion in job activities
+          // Log the reversion
           const activityRef = doc(collection(db, 'jobs', docToAction.jobId, 'activities'));
           await setDoc(activityRef, {
-            text: `ยกเลิกเอกสาร ${docToAction.docType} (${docToAction.docNo}): ระบบย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล" (DONE) เพื่อให้ออกบิลใหม่ได้`,
+            text: `ยกเลิกเอกสาร ${docToAction.docNo}: ระบบย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล" (DONE) เพื่อให้ออกบิลใหม่ได้`,
             userName: profile?.displayName || 'System',
             userId: profile?.uid || 'system',
             createdAt: serverTimestamp(),
