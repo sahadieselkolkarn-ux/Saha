@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, Suspense, useEffect, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
-import Image from "next/image";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -200,13 +199,13 @@ function DocumentPageContent() {
     const shouldAutoprint = searchParams.get('autoprint') === '1';
     
     useEffect(() => {
-        // เมื่อโหลดหน้าสำเร็จ และอยู่ในโหมดสั่งพิมพ์อัตโนมัติ (มักจะโหลดผ่าน iframe หรือหน้าต่างใหม่)
+        // เมื่อโหลดหน้าสำเร็จ และอยู่ในโหมดสั่งพิมพ์อัตโนมัติ (มักจะโหลดผ่าน iframe)
         if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
             printedRef.current = true;
-            // ให้เวลาบราวเซอร์ประมวลผลสไตล์และฟอนต์ 1 วินาที
+            // ให้เวลาบราวเซอร์ประมวลผลสไตล์และฟอนต์ 1.2 วินาที
             const timer = setTimeout(() => {
                 window.print();
-            }, 1000);
+            }, 1200);
             return () => clearTimeout(timer);
         }
     }, [isPrintMode, shouldAutoprint, document, isLoading]);
@@ -217,7 +216,6 @@ function DocumentPageContent() {
         if (document?.docType === 'TAX_INVOICE' && !isPrintMode) {
             setIsPrintOptionsOpen(true);
         } else {
-            // สั่งพิมพ์หน้าปัจจุบัน (หากเป็นหน้าพรีวิว)
             window.print();
         }
     };

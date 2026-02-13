@@ -53,11 +53,24 @@ function DeliveryNoteDetailPageContent() {
     const isCancelled = document?.status === 'CANCELLED';
 
     const handlePrint = () => {
-        if (printFrameRef.current) {
-            // โหลดหน้าพิมพ์ลงใน iframe ลับ และสั่ง autoprint
-            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`;
-            toast({ title: "กำลังเตรียมเอกสารสำหรับพิมพ์..." });
-        }
+        const frame = printFrameRef.current;
+        if (!frame) return;
+
+        toast({ title: "กำลังเตรียมเอกสารสำหรับพิมพ์..." });
+        
+        // เมื่อ iframe โหลดเสร็จ ให้สั่งโฟกัสและพิมพ์
+        frame.onload = () => {
+            try {
+                frame.contentWindow?.focus();
+                frame.contentWindow?.print();
+            } catch (e) {
+                console.error("Print failed:", e);
+                // Fallback: ถ้าสั่งพิมพ์ในเฟรมไม่ได้ ให้เปิดหน้าใหม่แทน
+                window.open(frame.src, '_blank');
+            }
+        };
+
+        frame.src = `/app/office/documents/${docId}?print=1&t=${Date.now()}`;
     };
 
     if (isLoading) return (
@@ -224,6 +237,7 @@ function DeliveryNoteDetailPageContent() {
             <iframe 
                 ref={printFrameRef} 
                 className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
+                style={{ visibility: 'hidden' }}
                 title="Print Frame"
             />
         </div>

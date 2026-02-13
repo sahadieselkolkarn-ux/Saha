@@ -72,10 +72,22 @@ function TaxInvoiceDetailPageContent() {
     };
 
     const confirmPrint = () => {
-        if (printFrameRef.current) {
-            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`;
-            toast({ title: "กำลังเตรียมใบกำกับภาษีสำหรับพิมพ์..." });
-        }
+        const frame = printFrameRef.current;
+        if (!frame) return;
+
+        toast({ title: "กำลังเตรียมใบกำกับภาษีสำหรับพิมพ์..." });
+        
+        frame.onload = () => {
+            try {
+                frame.contentWindow?.focus();
+                frame.contentWindow?.print();
+            } catch (e) {
+                console.error("Print failed:", e);
+                window.open(frame.src, '_blank');
+            }
+        };
+
+        frame.src = `/app/office/documents/${docId}?print=1&copies=${printCopies}&t=${Date.now()}`;
         setIsPrintOptionsOpen(false);
     };
 
@@ -231,6 +243,7 @@ function TaxInvoiceDetailPageContent() {
             <iframe 
                 ref={printFrameRef} 
                 className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
+                style={{ visibility: 'hidden' }}
                 title="Print Frame"
             />
 
