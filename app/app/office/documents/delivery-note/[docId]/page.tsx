@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, ExternalLink, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,6 +44,7 @@ function DeliveryNoteDetailPageContent() {
     const router = useRouter();
     const { db } = useFirebase();
     const { profile } = useAuth();
+    const { toast } = useToast();
     const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
@@ -58,7 +60,13 @@ function DeliveryNoteDetailPageContent() {
         }
     };
 
-    if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
+    if (isLoading) return (
+        <div className="space-y-6">
+            <Skeleton className="h-12 w-1/3"/>
+            <Skeleton className="h-64 w-full"/>
+            <Skeleton className="h-96 w-full"/>
+        </div>
+    );
     
     if (error || !document || document.docType !== 'DELIVERY_NOTE') {
         return (
@@ -66,7 +74,9 @@ function DeliveryNoteDetailPageContent() {
                 <AlertCircle className="mx-auto h-12 w-12 text-destructive"/>
                 <h2 className="text-xl font-bold">ไม่พบข้อมูลใบส่งของชั่วคราว</h2>
                 <p className="text-muted-foreground">เอกสารที่ท่านต้องการเข้าถึงอาจไม่มีอยู่ในระบบ</p>
-                <Button variant="outline" onClick={() => router.push('/app/office/documents/delivery-note')}><ArrowLeft className="mr-2 h-4 w-4"/> กลับไปหน้ารายการ</Button>
+                <Button variant="outline" onClick={() => router.push('/app/office/documents/delivery-note')}>
+                    <ArrowLeft className="mr-2 h-4 w-4"/> กลับไปหน้ารายการ
+                </Button>
             </div>
         );
     }
