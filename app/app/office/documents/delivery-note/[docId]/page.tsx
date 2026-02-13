@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense, useRef } from "react";
+import { useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc } from "firebase/firestore";
@@ -41,9 +41,9 @@ const getStatusVariant = (status: string) => {
 function DeliveryNoteDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
+    const pathname = usePathname();
     const { db } = useFirebase();
     const { profile } = useAuth();
-    const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
@@ -51,10 +51,7 @@ function DeliveryNoteDetailPageContent() {
     const isCancelled = document?.status === 'CANCELLED';
 
     const handlePrint = () => {
-        if (printFrameRef.current) {
-            // Use timestamp to force iframe reload and trigger autoprint script inside
-            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`;
-        }
+        window.open(`/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`, '_blank');
     };
 
     if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
@@ -64,7 +61,7 @@ function DeliveryNoteDetailPageContent() {
             <div className="p-8 text-center space-y-4">
                 <AlertCircle className="mx-auto h-12 w-12 text-destructive"/>
                 <h2 className="text-xl font-bold">ไม่พบข้อมูลใบส่งของชั่วคราว</h2>
-                <p className="text-muted-foreground">เอกสารที่ท่านต้องการเข้าถึงอาจไม่มีอยู่ในระบบ หรือเป็นเอกสารประเภทอื่น</p>
+                <p className="text-muted-foreground">เอกสารที่ท่านต้องการเข้าถึงอาจไม่มีอยู่ในระบบ</p>
                 <Button variant="outline" onClick={() => router.push('/app/office/documents/delivery-note')}><ArrowLeft className="mr-2 h-4 w-4"/> กลับไปหน้ารายการ</Button>
             </div>
         );
@@ -74,18 +71,6 @@ function DeliveryNoteDetailPageContent() {
 
     return (
         <div className="space-y-6">
-            {/* 
-                Hidden Print Frame: 
-                Must not be 'display: none' in some browsers to execute scripts.
-                Using absolute positioning and opacity instead.
-            */}
-            <iframe 
-                ref={printFrameRef} 
-                style={{ position: 'absolute', width: 0, height: 0, border: 0, opacity: 0, pointerEvents: 'none' }}
-                title="print-frame" 
-            />
-
-            {/* Action Bar */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <Button variant="outline" onClick={() => router.push('/app/office/documents/delivery-note')}>
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
@@ -101,13 +86,12 @@ function DeliveryNoteDetailPageContent() {
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>เอกสารนี้ถูกยกเลิกแล้ว</AlertTitle>
-                    <AlertDescription>สถานะปัจจุบันคือยกเลิก ไม่สามารถนำไปใช้ในการรับเงินหรือออกใบวางบิลได้</AlertDescription>
+                    <AlertDescription>สถานะปัจจุบันคือยกเลิก ไม่สามารถนำไปใช้งานต่อได้</AlertDescription>
                 </Alert>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-6">
-                    {/* Items Table */}
                     <Card>
                         <CardHeader>
                             <CardTitle>รายการสินค้า / บริการ</CardTitle>
@@ -156,7 +140,6 @@ function DeliveryNoteDetailPageContent() {
                         </CardContent>
                     </Card>
 
-                    {/* Notes */}
                     {document.notes && (
                         <Card>
                             <CardHeader className="pb-2">
@@ -170,7 +153,6 @@ function DeliveryNoteDetailPageContent() {
                 </div>
 
                 <div className="space-y-6">
-                    {/* Metadata Card */}
                     <Card>
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">ข้อมูลเอกสาร</CardTitle>
@@ -200,7 +182,6 @@ function DeliveryNoteDetailPageContent() {
                         </CardContent>
                     </Card>
 
-                    {/* Customer Card */}
                     <Card>
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">ข้อมูลลูกค้า</CardTitle>
@@ -211,7 +192,6 @@ function DeliveryNoteDetailPageContent() {
                                 <div>
                                     <p className="font-bold text-base">{document.customerSnapshot.name}</p>
                                     <p className="text-sm text-muted-foreground">{document.customerSnapshot.phone}</p>
-                                    <p className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap">{document.customerSnapshot.taxAddress || document.customerSnapshot.detail || 'ไม่มีที่อยู่'}</p>
                                 </div>
                             </div>
                             {document.jobId && (
@@ -220,33 +200,6 @@ function DeliveryNoteDetailPageContent() {
                                         <ExternalLink className="mr-2 h-3 w-3" /> ไปที่งานซ่อม (Job)
                                     </Link>
                                 </Button>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Payment Terms Card */}
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">เงื่อนไขการเงิน</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary/10 rounded-full text-primary"><CreditCard className="h-4 w-4"/></div>
-                                <div>
-                                    <p className="text-xs text-muted-foreground">การชำระเงิน</p>
-                                    <p className="font-bold">{document.paymentTerms === 'CREDIT' ? 'เครดิต (Credit)' : 'เงินสด/โอน (Cash)'}</p>
-                                </div>
-                            </div>
-                            {document.billingRequired && (
-                                <Badge variant="outline" className="w-full justify-center bg-amber-50 text-amber-700 border-amber-200">
-                                    ต้องวางบิลรวม
-                                </Badge>
-                            )}
-                            {document.dueDate && (
-                                <div className="pt-2">
-                                    <p className="text-xs text-muted-foreground">วันครบกำหนดชำระ</p>
-                                    <p className="font-semibold text-destructive">{safeFormat(new Date(document.dueDate), 'dd/MM/yyyy')}</p>
-                                </div>
                             )}
                         </CardContent>
                     </Card>

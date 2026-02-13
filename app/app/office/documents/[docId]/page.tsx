@@ -87,7 +87,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none print:bg-white flex flex-col print:min-h-[277mm] print:pb-4">
             <div className="flex-1">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <div className="lg:col-span-2 space-y-2">
+                    <div className="lg:col-span-2 space-y-2 text-left">
                         {isDeliveryNote ? (
                             <>
                                 <h2 className="text-xl font-bold">{document.storeSnapshot.informalName || document.storeSnapshot.taxName}</h2>
@@ -113,7 +113,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 <Card className="mb-8 print:bg-white print:shadow-none print:border-none">
                     <CardContent className="pt-6">
                         <div className={cn("grid grid-cols-1 gap-6", (isDeliveryNote || isQuotation) && "md:grid-cols-2")}>
-                            <div className="space-y-1">
+                            <div className="space-y-1 text-left">
                                 <h4 className="font-semibold text-base mb-2">ข้อมูลลูกค้า</h4>
                                 <p className="font-bold">{displayCustomerName}</p>
                                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{displayCustomerAddress}</p>
@@ -141,7 +141,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                         {document.items.map((item, index) => (
                             <TableRow key={index}>
                                 <TableCell className="text-center">{index + 1}</TableCell>
-                                <TableCell>{item.description}</TableCell>
+                                <TableCell className="text-left">{item.description}</TableCell>
                                 <TableCell className="text-right">{item.quantity}</TableCell>
                                 <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                                 <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
@@ -151,16 +151,16 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 </Table>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4">
+                    <div className="space-y-4 text-left">
                         {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
                     </div>
                     <div className="space-y-2">
-                        <div className="flex justify-between"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                         <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        {document.withTax && <div className="flex justify-between"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                        {document.withTax && <div className="flex justify-between text-sm"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
                         <Separator className="my-2" />
-                        <div className="flex justify-between text-lg font-bold"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between text-lg font-bold text-primary"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                     </div>
                 </div>
             </div>
@@ -203,11 +203,10 @@ function DocumentPageContent() {
     useEffect(() => {
         if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
             printedRef.current = true;
-            
-            // Wait a moment for all elements and styles to settle
+            // ให้หน้าจอพร้อมก่อนสั่งพิมพ์ 1 วินาที
             const timer = setTimeout(() => {
                 window.print();
-            }, 1200);
+            }, 1000);
             return () => clearTimeout(timer);
         }
     }, [isPrintMode, shouldAutoprint, document, isLoading]);
@@ -217,14 +216,14 @@ function DocumentPageContent() {
         if (document?.docType === 'TAX_INVOICE' && !isPrintMode) {
             setIsPrintOptionsOpen(true);
         } else if (!isPrintMode) {
-            router.push(`${pathname}?print=1&autoprint=1&t=${Date.now()}`);
+            window.open(`${pathname}?print=1&autoprint=1&t=${Date.now()}`, '_blank');
         } else {
              window.print();
         }
     };
     
     const confirmPrint = () => {
-        router.push(`${pathname}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`);
+        window.open(`${pathname}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`, '_blank');
         setIsPrintOptionsOpen(false);
     };
 
@@ -236,7 +235,7 @@ function DocumentPageContent() {
         return (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-destructive">
                 <AlertCircle className="w-16 h-16" />
-                <PageHeader title="เกิดข้อผิดพลาด" description="ไม่สามารถโหลดข้อมูลเอกสารได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" />
+                <PageHeader title="เกิดข้อผิดพลาด" description="ไม่สามารถโหลดข้อมูลเอกสารได้" />
             </div>
         );
     }
@@ -245,36 +244,32 @@ function DocumentPageContent() {
          return (
             <div className="flex flex-col items-center justify-center h-full gap-4">
                 <AlertCircle className="w-16 h-16 text-muted-foreground" />
-                <PageHeader title="ไม่พบเอกสาร" description="เอกสารที่คุณต้องการเข้าถึงไม่มีอยู่ในระบบ หรือถูกลบไปแล้ว" />
+                <PageHeader title="ไม่พบเอกสาร" description="เอกสารไม่มีอยู่ในระบบหรือถูกลบไปแล้ว" />
             </div>
         );
     }
 
     if (isPrintMode) {
         const copies = Number(searchParams.get('copies') || '1') as 1 | 2;
-        const isValidCopyCount = copies === 1 || copies === 2;
 
         if (document.docType === 'TAX_INVOICE') {
             return (
-                <div>
+                <div className="bg-white">
                      <style jsx global>{`
                         @media print {
                             .page-break { page-break-after: always; }
                         }
                      `}</style>
                      <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                        <p className="text-muted-foreground">โหมดพิมพ์อัตโนมัติ: หากไม่มีหน้าต่างพิมพ์เด้งขึ้นมา กรุณากดปุ่ม "พิมพ์" อีกครั้ง</p>
-                        <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์</Button>
-                        <Button asChild variant="outline">
-                            <a href={`${pathname}?print=1&copies=${copies}`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2"/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => router.back()}>กลับ</Button>
+                        <p className="font-bold text-primary">โหมดสั่งพิมพ์อัตโนมัติ</p>
+                        <Button type="button" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2"/> พิมพ์อีกครั้ง</Button>
+                        <Button type="button" variant="ghost" onClick={() => window.close()}>ปิดหน้านี้</Button>
                     </div>
                     <div className="print-pages">
                         <DocumentView document={document} taxCopyLabel="ORIGINAL" />
                         <div className="page-break" />
                         <DocumentView document={document} taxCopyLabel="COPY" />
-                        {isValidCopyCount && copies === 2 && (
+                        {copies === 2 && (
                             <>
                                 <div className="page-break" />
                                 <DocumentView document={document} taxCopyLabel="COPY" />
@@ -286,14 +281,11 @@ function DocumentPageContent() {
         }
 
         return (
-            <div>
+            <div className="bg-white">
                  <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                    <p className="text-muted-foreground">โหมดพิมพ์อัตโนมัติ: หากไม่มีหน้าต่างพิมพ์เด้งขึ้นมา กรุณากดปุ่ม "พิมพ์" อีกครั้ง</p>
-                    <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์</Button>
-                    <Button asChild variant="outline">
-                        <a href={`${pathname}?print=1`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2"/> เปิดหน้าพิมพ์ในแท็บใหม่</a>
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => router.back()}>กลับ</Button>
+                    <p className="font-bold text-primary">โหมดสั่งพิมพ์อัตโนมัติ</p>
+                    <Button type="button" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2"/> พิมพ์อีกครั้ง</Button>
+                    <Button type="button" variant="ghost" onClick={() => window.close()}>ปิดหน้านี้</Button>
                 </div>
                 <DocumentView document={document} />
             </div>
@@ -304,7 +296,7 @@ function DocumentPageContent() {
         <div className="space-y-6">
              <div className="flex justify-between items-center">
                 <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="h-4 w-4 mr-2"/> กลับ</Button>
-                 <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์</Button>
+                 <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์ (PDF)</Button>
             </div>
             
             <DocumentView document={document} />
@@ -314,7 +306,7 @@ function DocumentPageContent() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>เลือกรูปแบบการพิมพ์ใบกำกับภาษี</AlertDialogTitle>
                         <AlertDialogDescription>
-                            กรุณาเลือกจำนวนสำเนาที่ต้องการพิมพ์เพื่อใช้ในการยื่นภาษีและเป็นหลักฐาน
+                            กรุณาเลือกจำนวนสำเนาที่ต้องการพิมพ์
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <div className="py-4">
@@ -332,7 +324,7 @@ function DocumentPageContent() {
                     <AlertDialogFooter>
                         <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
                         <AlertDialogAction onClick={confirmPrint}>
-                            พิมพ์
+                            ตกลงและพิมพ์
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
