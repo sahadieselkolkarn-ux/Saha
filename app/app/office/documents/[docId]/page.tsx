@@ -78,8 +78,12 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                     <div className="space-y-1">
                         <h2 className="text-lg font-bold">{(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}</h2>
                         <p className="text-[11px] whitespace-pre-wrap leading-relaxed">{document.storeSnapshot.taxAddress}</p>
-                        <p className="text-[11px]">โทร: {document.storeSnapshot.phone}</p>
-                        {!isDeliveryNote && <p className="text-[11px]">เลขผู้เสียภาษี: {document.storeSnapshot.taxId}</p>}
+                        <p className="text-[11px]">
+                            โทร: {document.storeSnapshot.phone}
+                            {!isDeliveryNote && document.storeSnapshot.taxId && (
+                                <span className="ml-4">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</span>
+                            )}
+                        </p>
                     </div>
                     <div className="text-right space-y-1">
                         <h1 className="text-xl font-bold text-primary">{finalDocTitle}</h1>
@@ -94,8 +98,12 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                         <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
                         <p className="font-bold text-sm">{displayCustomerName}</p>
                         <p className="text-[11px] leading-relaxed whitespace-pre-wrap">{displayCustomerAddress}</p>
-                        <p className="text-[11px]">โทร: {document.customerSnapshot.phone}</p>
-                        {isTaxDoc && <p className="text-[11px]">เลขผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
+                        <p className="text-[11px]">
+                            โทร: {document.customerSnapshot.phone}
+                            {isTaxDoc && document.customerSnapshot.taxId && (
+                                <span className="ml-4">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId}</span>
+                            )}
+                        </p>
                     </div>
                     <VehicleInfo doc={document} />
                 </div>

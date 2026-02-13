@@ -188,8 +188,12 @@ function TaxInvoiceDetailPageContent() {
                                 <div className="p-2 bg-primary/10 rounded-full text-primary mt-1"><User className="h-4 w-4"/></div>
                                 <div>
                                     <p className="font-bold text-base">{document.customerSnapshot.taxName || document.customerSnapshot.name}</p>
-                                    <p className="text-sm text-muted-foreground">{document.customerSnapshot.phone}</p>
-                                    <p className="text-xs text-muted-foreground mt-2 font-mono">เลขผู้เสียภาษี: {document.customerSnapshot.taxId || '-'}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        โทร: {document.customerSnapshot.phone}
+                                        {document.customerSnapshot.taxId && (
+                                            <span className="ml-2">| เลขภาษี: {document.customerSnapshot.taxId}</span>
+                                        )}
+                                    </p>
                                 </div>
                             </div>
                         </CardContent>
