@@ -67,6 +67,10 @@ function TaxInvoiceDetailPageContent() {
 
     const formatCurrency = (val: number) => (val ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+    const branchLabel = document.customerSnapshot.taxBranchType === 'HEAD_OFFICE' 
+        ? 'สำนักงานใหญ่' 
+        : (document.customerSnapshot.taxBranchType === 'BRANCH' ? `สาขา ${document.customerSnapshot.taxBranchNo}` : '');
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -189,11 +193,16 @@ function TaxInvoiceDetailPageContent() {
                                 <div>
                                     <p className="font-bold text-base">{document.customerSnapshot.taxName || document.customerSnapshot.name}</p>
                                     <p className="text-sm text-muted-foreground">
-                                        โทร: {document.customerSnapshot.phone}
-                                        {document.customerSnapshot.taxId && (
-                                            <span className="ml-2">| เลขภาษี: {document.customerSnapshot.taxId}</span>
-                                        )}
+                                        ที่อยู่: {document.customerSnapshot.taxAddress} {branchLabel && `(${branchLabel})`}
                                     </p>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        โทร: {document.customerSnapshot.taxPhone || document.customerSnapshot.phone}
+                                    </p>
+                                    {document.customerSnapshot.taxId && (
+                                        <p className="text-xs font-semibold text-primary mt-1">
+                                            เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         </CardContent>

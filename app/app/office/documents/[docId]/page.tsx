@@ -63,15 +63,13 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
     }
 
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
-    const isQuotation = document.docType === 'QUOTATION';
-
     const isTaxDoc = document.docType === 'TAX_INVOICE' || document.docType === 'CREDIT_NOTE' || (document.docType === 'RECEIPT' && !!document.customerSnapshot.useTax);
 
     const displayCustomerName = isTaxDoc ? (document.customerSnapshot.taxName || document.customerSnapshot.name) : document.customerSnapshot.name;
     const displayCustomerAddress = isTaxDoc ? (document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่') : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่');
     const displayCustomerPhone = isTaxDoc ? (document.customerSnapshot.taxPhone || document.customerSnapshot.phone) : document.customerSnapshot.phone;
 
-    // Branch logic
+    // Branch logic for Customer
     let branchLabel = "";
     if (isTaxDoc) {
         if (document.customerSnapshot.taxBranchType === 'HEAD_OFFICE') {
@@ -81,6 +79,11 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         }
     }
 
+    // Branch logic for Store
+    const storeBranchLabel = document.storeSnapshot.branch === '00000' || document.storeSnapshot.branch === 'สำนักงานใหญ่' 
+        ? 'สำนักงานใหญ่' 
+        : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
+
     return (
         <div className="printable-document p-10 border bg-white shadow-sm flex flex-col min-h-[297mm] w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0">
             <div className="flex-1">
@@ -88,7 +91,10 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 <div className="grid grid-cols-2 gap-8 mb-8">
                     <div className="space-y-1">
                         <h2 className="text-lg font-bold">{(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}</h2>
-                        <p className="text-[11px] whitespace-pre-wrap leading-relaxed">{document.storeSnapshot.taxAddress}</p>
+                        <p className="text-[11px] whitespace-pre-wrap leading-relaxed">
+                            {document.storeSnapshot.taxAddress}
+                            {storeBranchLabel && <span className="ml-2">({storeBranchLabel})</span>}
+                        </p>
                         <p className="text-[11px]">
                             โทร: {document.storeSnapshot.phone}
                             {!isDeliveryNote && document.storeSnapshot.taxId && (
@@ -108,9 +114,11 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                     <div className="space-y-1">
                         <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
                         <p className="font-bold text-sm">{displayCustomerName}</p>
-                        <p className="text-[11px] leading-relaxed whitespace-pre-wrap">{displayCustomerAddress}</p>
+                        <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
+                            {displayCustomerAddress}
+                            {branchLabel && <span className="ml-2">({branchLabel})</span>}
+                        </p>
                         <p className="text-[11px]">
-                            {branchLabel && <span className="font-bold mr-4">{branchLabel}</span>}
                             โทร: {displayCustomerPhone}
                             {isTaxDoc && document.customerSnapshot.taxId && (
                                 <span className="ml-4">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId}</span>
