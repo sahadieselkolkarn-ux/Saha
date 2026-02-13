@@ -45,7 +45,7 @@ interface CreateDocumentOptions {
 
 /**
  * Creates a new document in the 'documents' collection with a transactionally-generated document number.
- * Prevents duplicates by storing counters per-prefix.
+ * Prevents duplicates by storing counters per-prefix and implementing fallback logic.
  */
 export async function createDocument(
   db: Firestore,
@@ -119,7 +119,10 @@ export async function createDocument(
     return { docId, docNo: options.manualDocNo };
 
   } else {
-    const year = new Date(data.docDate).getFullYear();
+    // Robust year calculation
+    const dateObj = data.docDate ? new Date(data.docDate) : new Date();
+    const year = isNaN(dateObj.getTime()) ? new Date().getFullYear() : dateObj.getFullYear();
+    
     const counterRef = doc(db, 'documentCounters', String(year));
     const docSettingsRef = doc(db, 'settings', 'documents');
 
@@ -140,15 +143,30 @@ export async function createDocument(
             currentCounters = counterDoc.data();
         }
         
-        // UNIQUE COUNTER PER PREFIX: This prevents duplicates if prefix is changed and then changed back
+        // --- SMART COUNTER LOGIC ---
+        // 1. Check if we have a counter for this specific prefix
         const specificCounterKey = `${docType}_${prefix}_count`;
-        const lastCount = currentCounters[specificCounterKey] || 0;
-        const newCount = lastCount + 1;
+        let lastCount = currentCounters[specificCounterKey];
 
+        // 2. If no specific counter, check legacy counter for backward compatibility
+        if (lastCount === undefined) {
+            const legacyField = docTypeToCounterField[docType];
+            const legacyPrefixField = `${legacyField}Prefix`;
+            
+            // Only adopt legacy counter if the prefix matches
+            if (currentCounters[legacyPrefixField] === prefix) {
+                lastCount = currentCounters[legacyField] || 0;
+            } else {
+                lastCount = 0;
+            }
+        }
+
+        const newCount = (lastCount || 0) + 1;
         const generatedDocNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
         
         const newDocumentData: Document = {
             ...data,
+            docDate: data.docDate || dateObj.toISOString().split('T')[0], // Ensure docDate is set
             id: docId,
             docNo: generatedDocNo,
             docType,
@@ -163,7 +181,7 @@ export async function createDocument(
         transaction.set(counterRef, { 
             ...currentCounters, 
             [specificCounterKey]: newCount,
-            // Update legacy fields for backward compatibility
+            // Keep legacy fields updated for sync
             [docTypeToCounterField[docType]]: newCount,
             [`${docTypeToCounterField[docType]}Prefix`]: prefix 
         }, { merge: true });

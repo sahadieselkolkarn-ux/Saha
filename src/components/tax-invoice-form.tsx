@@ -11,7 +11,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Badge } from "lucide-react";
@@ -166,7 +166,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   });
 
   const selectedCustomerId = form.watch('customerId');
-  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(useMemo(() => db && selectedCustomerId ? doc(db, 'customers', selectedCustomerId) : null, [db, selectedCustomerId]));
+  const customerDocRef = useMemo(() => db && selectedCustomerId ? doc(db, 'customers', selectedCustomerId) : null, [db, selectedCustomerId]);
+  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
+
   const isLocked = isEditing && docToEdit?.status === 'PAID' && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
 
   useEffect(() => {
@@ -285,7 +287,17 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     } : {};
 
     try {
-        const payload = { ...data, customerSnapshot, carSnapshot, storeSnapshot: storeSettings, withTax: true, paymentSummary: { paidTotal: 0, balance: data.grandTotal, paymentStatus: 'UNPAID' }, arStatus: submitForReview ? 'PENDING' : (isEditing ? docToEdit?.arStatus : null), referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [] };
+        const payload = { 
+          ...data, 
+          docDate: data.issueDate, // Map issueDate to docDate
+          customerSnapshot, 
+          carSnapshot, 
+          storeSnapshot: storeSettings, 
+          withTax: true, 
+          paymentSummary: { paidTotal: 0, balance: data.grandTotal, paymentStatus: 'UNPAID' }, 
+          arStatus: submitForReview ? 'PENDING' : (isEditing ? docToEdit?.arStatus : null), 
+          referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [] 
+        };
         if (isEditing && editDocId) {
             await updateDoc(doc(db, 'documents', editDocId), sanitizeForFirestore({ ...payload, status: targetStatus, updatedAt: serverTimestamp(), dispute: { isDisputed: false, reason: "" } }));
         } else {
