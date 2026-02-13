@@ -1,39 +1,39 @@
 "use client";
 
-import { useMemo, Suspense, useState, useEffect } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/context/auth-context';
+import { useMemo, Suspense, useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useAuth } from "@/context/auth-context";
 import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
-import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy, runTransaction } from 'firebase/firestore';
-import { useToast } from '@/hooks/use-toast';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { collection, query, where, onSnapshot, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, addDoc, limit, orderBy, runTransaction } from "firebase/firestore";
+import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format, parseISO } from 'date-fns';
+import { format, parseISO } from "date-fns";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle, Info } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle, Info } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Separator } from '@/components/ui/separator';
+import { Separator } from "@/components/ui/separator";
 
-import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType, AccountingEntry, PurchaseDoc, StoreSettings, DocumentSettings } from '@/lib/types';
-import { safeFormat } from '@/lib/date-utils';
-import { cn, sanitizeForFirestore } from '@/lib/utils';
+import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType, AccountingEntry, PurchaseDoc, StoreSettings, DocumentSettings } from "@/lib/types";
+import { safeFormat } from "@/lib/date-utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 
-const formatCurrency = (value: number) => {
+const formatCurrency = (value: number | null | undefined) => {
   return (value ?? 0).toLocaleString('th-TH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -195,7 +195,7 @@ function ReceivePaymentDialog({
                           <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                           <SelectContent>
                               <SelectItem value="CASH">เงินสด</SelectItem>
-                              <SelectItem value="TRANSFER">โอน</SelectItem>
+                              <SelectItem value="TRANSFER">โอนเงิน</SelectItem>
                           </SelectContent>
                       </Select>
                       <FormMessage/>
@@ -382,13 +382,22 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
         const whtPrefix = settingsData.withholdingTaxPrefix || 'WHT';
         let currentCounters = counterSnap.exists() ? counterSnap.data() as any : { year };
 
+        // RESET LOGIC: If prefix changed, reset counter to 1
+        const lastWhtPrefix = currentCounters.withholdingTaxPrefix;
+        const lastWhtCount = currentCounters.withholdingTax || 0;
+        let newWhtCount: number;
+        if (lastWhtPrefix !== whtPrefix) {
+            newWhtCount = 1;
+        } else {
+            newWhtCount = lastWhtCount + 1;
+        }
+
         let whtDocId = '';
         let whtDocNo = '';
 
         if (data.withholdingEnabled && obligation.sourceDocType === 'PURCHASE' && sourceDoc) {
             const purchase = sourceDoc as PurchaseDoc;
-            const newCount = (currentCounters.withholdingTax || 0) + 1;
-            whtDocNo = `${whtPrefix}${year}-${String(newCount).padStart(4, '0')}`;
+            whtDocNo = `${whtPrefix}${year}-${String(newWhtCount).padStart(4, '0')}`;
             
             const whtRef = doc(collection(db, 'documents'));
             whtDocId = whtRef.id;
@@ -419,7 +428,11 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                 updatedAt: serverTimestamp(),
             }));
             
-            transaction.update(counterRef, { withholdingTax: newCount });
+            transaction.set(counterRef, { 
+                ...currentCounters,
+                withholdingTax: newWhtCount,
+                withholdingTaxPrefix: whtPrefix
+            }, { merge: true });
         }
 
         const entryRef = doc(collection(db, "accountingEntries"));
@@ -502,7 +515,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                           <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
                           <SelectContent>
                               <SelectItem value="CASH">เงินสด</SelectItem>
-                              <SelectItem value="TRANSFER">โอน</SelectItem>
+                              <SelectItem value="TRANSFER">โอนเงิน</SelectItem>
                           </SelectContent>
                       </Select>
                       <FormMessage/>

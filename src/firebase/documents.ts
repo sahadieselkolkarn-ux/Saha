@@ -45,6 +45,7 @@ interface CreateDocumentOptions {
 
 /**
  * Creates a new document in the 'documents' collection with a transactionally-generated document number.
+ * Implements counter reset if the prefix has changed in settings.
  */
 export async function createDocument(
   db: Firestore,
@@ -140,7 +141,18 @@ export async function createDocument(
         }
         
         const counterField = docTypeToCounterField[docType];
-        const newCount = (currentCounters[counterField] || 0) + 1;
+        const prefixField = `${counterField}Prefix` as keyof DocumentCounters;
+        
+        const lastPrefix = currentCounters[prefixField] as string | undefined;
+        const lastCount = (currentCounters[counterField] as number) || 0;
+
+        let newCount: number;
+        // RESET LOGIC: If prefix changed, reset counter to 1
+        if (lastPrefix !== prefix) {
+            newCount = 1;
+        } else {
+            newCount = lastCount + 1;
+        }
 
         const generatedDocNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
         
@@ -157,7 +169,11 @@ export async function createDocument(
         const sanitizedData = sanitizeForFirestore(newDocumentData);
 
         transaction.set(newDocRef, sanitizedData);
-        transaction.set(counterRef, { ...currentCounters, [counterField]: newCount }, { merge: true });
+        transaction.set(counterRef, { 
+            ...currentCounters, 
+            [counterField]: newCount,
+            [prefixField]: prefix 
+        }, { merge: true });
 
         if (data.jobId) {
             const jobRef = doc(db, 'jobs', data.jobId);

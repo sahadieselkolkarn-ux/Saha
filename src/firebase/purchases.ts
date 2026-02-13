@@ -13,7 +13,7 @@ import { sanitizeForFirestore } from '@/lib/utils';
 
 /**
  * Creates a new purchase document with a transactionally-generated document number.
- * Includes an idempotency check if providedDocId is supplied.
+ * Implements counter reset if the prefix has changed in settings.
  */
 export async function createPurchaseDoc(
   db: Firestore,
@@ -26,11 +26,9 @@ export async function createPurchaseDoc(
   const counterRef = doc(db, 'documentCounters', String(year));
   const docSettingsRef = doc(db, 'settings', 'documents');
   
-  // Use provided ID for idempotency or generate a new reference
   const newDocRef = providedDocId ? doc(db, 'purchaseDocs', providedDocId) : doc(collection(db, 'purchaseDocs'));
 
   const documentNumber = await runTransaction(db, async (transaction) => {
-    // IDEMPOTENCY CHECK: If document already exists, just return its docNo
     if (providedDocId) {
       const existingDoc = await transaction.get(newDocRef);
       if (existingDoc.exists()) {
@@ -48,12 +46,22 @@ export async function createPurchaseDoc(
     const settingsData = docSettingsDoc.data() as DocumentSettings;
     const prefix = settingsData.purchasePrefix || 'PUR';
 
-    let currentCounters: DocumentCounters = { year };
+    let currentCounters: any = { year };
     if (counterDoc.exists()) {
-      currentCounters = counterDoc.data() as DocumentCounters;
+      currentCounters = counterDoc.data();
     }
     
-    const newCount = (currentCounters.purchase || 0) + 1;
+    const lastPrefix = currentCounters.purchasePrefix;
+    const lastCount = currentCounters.purchase || 0;
+
+    let newCount: number;
+    // RESET LOGIC: If prefix changed, reset counter to 1
+    if (lastPrefix !== prefix) {
+        newCount = 1;
+    } else {
+        newCount = lastCount + 1;
+    }
+
     const docNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
     
     const newDocumentData: PurchaseDoc = {
@@ -68,7 +76,11 @@ export async function createPurchaseDoc(
     
     const sanitizedData = sanitizeForFirestore(newDocumentData);
     transaction.set(newDocRef, sanitizedData);
-    transaction.set(counterRef, { ...currentCounters, purchase: newCount }, { merge: true });
+    transaction.set(counterRef, { 
+        ...currentCounters, 
+        purchase: newCount,
+        purchasePrefix: prefix 
+    }, { merge: true });
 
     return docNo;
   });

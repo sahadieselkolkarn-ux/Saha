@@ -531,13 +531,22 @@ export interface QuotationTemplate {
 export interface DocumentCounters {
   year: number;
   quotation?: number;
+  quotationPrefix?: string;
   deliveryNote?: number;
+  deliveryNotePrefix?: string;
   taxInvoice?: number;
+  taxInvoicePrefix?: string;
   receipt?: number;
+  receiptPrefix?: string;
   billingNote?: number;
+  billingNotePrefix?: string;
   creditNote?: number;
+  creditNotePrefix?: string;
   withholdingTax?: number;
+  withholdingTaxPrefix?: string;
   purchase?: number;
+  purchasePrefix?: string;
+  [key: string]: any;
 }
 
 export interface AccountingAccount {

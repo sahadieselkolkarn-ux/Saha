@@ -324,8 +324,18 @@ function EntryFormDialog({
             const prefix = settingsData?.withholdingTaxPrefix || 'WHT';
             
             let currentCounters = counterSnap.exists() ? counterSnap.data() as any : { year };
-            const newCount = (currentCounters.withholdingTax || 0) + 1;
-            const docNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
+            
+            // RESET LOGIC: If prefix changed, reset counter to 1
+            const lastPrefix = currentCounters.withholdingTaxPrefix;
+            const lastCount = currentCounters.withholdingTax || 0;
+            let newWhtCount: number;
+            if (lastPrefix !== prefix) {
+                newWhtCount = 1;
+            } else {
+                newWhtCount = lastCount + 1;
+            }
+
+            const docNo = `${prefix}${year}-${String(newWhtCount).padStart(4, '0')}`;
             
             const whtDocRef = doc(collection(db, 'documents'));
             withholdingTaxDocId = whtDocRef.id;
@@ -365,7 +375,11 @@ function EntryFormDialog({
             });
             
             transaction.set(whtDocRef, whtData);
-            transaction.update(counterRef, { withholdingTax: newCount });
+            transaction.set(counterRef, { 
+                ...currentCounters,
+                withholdingTax: newWhtCount,
+                withholdingTaxPrefix: prefix
+            }, { merge: true });
         }
 
         const entryRef = doc(collection(db, 'accountingEntries'));
