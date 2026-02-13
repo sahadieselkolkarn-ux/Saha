@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, ArrowLeft, Printer, ExternalLink } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 import type { Document } from "@/lib/types";
 
 import {
@@ -36,11 +37,11 @@ function VehicleInfo({ doc }: { doc: Document }) {
     return (
         <div className="space-y-1 text-sm border-l pl-6 print:pl-4 print:border-l-2 print:border-muted">
             <h4 className="font-semibold text-primary mb-2 uppercase tracking-wider text-xs">รายละเอียดรถ / ชิ้นส่วน</h4>
-            {s.brand && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ยี่ห้อ:</span><span className="font-medium">{s.brand}</span></div>}
-            {s.model && <div className="flex justify-between gap-4"><span className="text-muted-foreground">รุ่นรถ:</span><span className="font-medium">{s.model}</span></div>}
-            {s.licensePlate && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ทะเบียน:</span><span className="font-medium">{s.licensePlate}</span></div>}
-            {s.partNumber && <div className="flex justify-between gap-4"><span className="text-muted-foreground">เลขอะไหล่:</span><span className="font-medium">{s.partNumber}</span></div>}
-            {s.registrationNumber && <div className="flex justify-between gap-4"><span className="text-muted-foreground">เลขทะเบียนชิ้นส่วน:</span><span className="font-medium">{s.registrationNumber}</span></div>}
+            {s.brand && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ยี่ห้อ:</span><span className="font-medium text-right">{s.brand}</span></div>}
+            {s.model && <div className="flex justify-between gap-4"><span className="text-muted-foreground">รุ่นรถ:</span><span className="font-medium text-right">{s.model}</span></div>}
+            {s.licensePlate && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ทะเบียน:</span><span className="font-medium text-right">{s.licensePlate}</span></div>}
+            {s.partNumber && <div className="flex justify-between gap-4"><span className="text-muted-foreground">เลขอะไหล่:</span><span className="font-medium text-right">{s.partNumber}</span></div>}
+            {s.registrationNumber && <div className="flex justify-between gap-4"><span className="text-muted-foreground">เลขทะเบียนชิ้นส่วน:</span><span className="font-medium text-right">{s.registrationNumber}</span></div>}
         </div>
     );
 }
