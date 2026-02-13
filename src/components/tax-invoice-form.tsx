@@ -11,7 +11,7 @@ import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, X, Search, Badge } from "lucide-react";
@@ -34,6 +34,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { createDocument } from "@/firebase/documents";
@@ -68,23 +76,17 @@ const taxInvoiceFormSchema = z.object({
   receiverName: z.string().optional(),
   isBackfill: z.boolean().default(false),
   manualDocNo: z.string().optional(),
-  paymentTerms: z.enum(["CASH", "CREDIT"], { required_error: "กรุณาเลือกเงื่อนไขการชำระเงิน" }),
+  paymentTerms: z.enum(["CASH", "CREDIT"]).optional(),
   suggestedPaymentMethod: z.enum(["CASH", "TRANSFER"]).optional(),
   suggestedAccountId: z.string().optional(),
   billingRequired: z.boolean().default(false),
+  dueDate: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
     if (data.isBackfill && !data.manualDocNo) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "กรุณากรอกเลขที่เอกสารเดิม",
             path: ["manualDocNo"],
-        });
-    }
-    if (data.paymentTerms === 'CASH' && !data.suggestedAccountId) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "กรุณาเลือกบัญชีที่รับเงิน",
-            path: ["suggestedAccountId"],
         });
     }
 });
@@ -116,6 +118,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
+
+  // Submission Dialog States
+  const [submitPaymentTerms, setSubmitPaymentTerms] = useState<'CASH' | 'CREDIT'>('CASH');
+  const [submitAccountId, setSubmitAccountId] = useState('');
+  const [submitBillingRequired, setSubmitBillingRequired] = useState(false);
+  const [submitDueDate, setSubmitDueDate] = useState('');
 
   const [selectedLinkDoc, setSelectedLinkDoc] = useState<DocumentType | null>(null);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
@@ -159,7 +167,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   });
 
   const selectedCustomerId = form.watch('customerId');
-  const watchedPaymentTerms = form.watch('paymentTerms');
   
   const customerDocRef = useMemo(() => {
     if (!db || !selectedCustomerId) return null;
@@ -212,7 +219,14 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         suggestedPaymentMethod: docToEdit.suggestedPaymentMethod || 'CASH',
         suggestedAccountId: docToEdit.suggestedAccountId || '',
         billingRequired: docToEdit.billingRequired || false,
+        dueDate: docToEdit.dueDate || null,
       });
+
+      setSubmitPaymentTerms(docToEdit.paymentTerms || 'CASH');
+      setSubmitAccountId(docToEdit.suggestedAccountId || '');
+      setSubmitBillingRequired(docToEdit.billingRequired || false);
+      setSubmitDueDate(docToEdit.dueDate || '');
+
       if (docToEdit.referencesDocIds && docToEdit.referencesDocIds.length > 0) {
           setReferencedQuotationId(docToEdit.referencesDocIds[0]);
       }
@@ -440,10 +454,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         balance: data.grandTotal,
         paymentStatus: 'UNPAID' as 'UNPAID' | 'PARTIAL' | 'PAID',
       },
-      paymentTerms: data.paymentTerms,
-      suggestedPaymentMethod: data.suggestedPaymentMethod,
-      suggestedAccountId: data.suggestedAccountId,
-      billingRequired: data.billingRequired,
+      paymentTerms: data.paymentTerms || 'CASH',
+      suggestedPaymentMethod: data.suggestedPaymentMethod || 'CASH',
+      suggestedAccountId: data.suggestedAccountId || null,
+      billingRequired: data.billingRequired || false,
+      dueDate: data.dueDate || null,
       arStatus: targetArStatus,
       dispute: targetDispute,
       referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
@@ -482,7 +497,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             description: submitForReview ? "เอกสารของคุณถูกส่งไปที่ฝ่ายบัญชีเรียบร้อยแล้วค่ะ" : "บันทึกข้อมูลลงในระบบแล้ว"
         });
         
-        // Redirect back to the list page
         router.push('/app/office/documents/tax-invoice');
 
     } catch (error: any) {
@@ -517,6 +531,20 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         return;
     }
     await executeSave(data, false);
+  };
+
+  const handleFinalSubmit = async () => {
+    if (!pendingData) return;
+    const finalData: TaxInvoiceFormData = {
+        ...pendingData,
+        paymentTerms: submitPaymentTerms,
+        suggestedAccountId: submitPaymentTerms === 'CASH' ? submitAccountId : undefined,
+        suggestedPaymentMethod: 'CASH',
+        billingRequired: submitPaymentTerms === 'CREDIT' ? submitBillingRequired : false,
+        dueDate: submitPaymentTerms === 'CREDIT' ? submitDueDate : null,
+    };
+    await executeSave(finalData, true);
+    setShowReviewConfirm(false);
   };
 
   const handleConfirmCancelAndSave = async () => {
@@ -594,7 +622,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </div>
 
           <Card>
-              <CardHeader><CardTitle className="text-base">ข้อมูลทั่วไป</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">1. ข้อมูลทั่วไป</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                   {!isEditing && (
                       <FormField
@@ -621,7 +649,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
-                <CardHeader><CardTitle>ข้อมูลลูกค้า</CardTitle></CardHeader>
+                <CardHeader><CardTitle>2. ข้อมูลลูกค้า</CardTitle></CardHeader>
                 <CardContent>
                     <FormField
                         name="customerId"
@@ -662,41 +690,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader><CardTitle className="text-base">การชำระเงิน</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                    <FormField control={form.control} name="paymentTerms" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>เงื่อนไขการชำระเงิน</FormLabel>
-                            <FormControl>
-                                <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
-                                    <div className="flex items-center space-x-2"><RadioGroupItem value="CASH" id="cash" disabled={isLocked} /><Label htmlFor="cash">เงินสด/โอน</Label></div>
-                                    <div className="flex items-center space-x-2"><RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} /><Label htmlFor="credit">เครดิต</Label></div>
-                                </RadioGroup>
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )} />
-                    {form.watch('paymentTerms') === 'CASH' && (
-                        <div className="grid grid-cols-2 gap-4 p-4 border rounded-md bg-muted/30">
-                            <FormField control={form.control} name="suggestedPaymentMethod" render={({ field }) => (
-                                <FormItem><FormLabel>รูปแบบรับ</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">เงินโอน</SelectItem></SelectContent></Select></FormItem>
-                            )} />
-                            <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
-                                <FormItem><FormLabel>บัญชีที่รับเงิน</FormLabel><Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
-                                    <SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent>
-                                </Select></FormItem>
-                            )} />
-                        </div>
-                    )}
-                    <FormField control={form.control} name="billingRequired" render={({ field }) => (
-                        <FormItem className="flex flex-row items-center justify-start space-x-3 space-y-0 rounded-md border p-4">
-                            <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
-                            <div className="space-y-1 leading-none"><FormLabel>ต้องออกใบวางบิลรวม</FormLabel></div>
-                        </FormItem>
-                    )} />
-                </CardContent>
+            <Card className="bg-muted/10 border-dashed flex flex-col items-center justify-center text-center p-6">
+                <AlertCircle className="h-12 w-12 text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">ระบุเงื่อนไขการชำระเงิน<br/>ในขั้นตอนการส่งตรวจสอบ</p>
             </Card>
           </div>
 
@@ -792,6 +788,65 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         </form>
       </Form>
 
+      <Dialog open={showReviewConfirm} onOpenChange={(open) => !open && !isSubmitting && setShowReviewConfirm(open)}>
+          <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                  <DialogTitle>ระบุเงื่อนไขการชำระเงิน</DialogTitle>
+                  <DialogDescription>ข้อมูลนี้จะส่งให้แผนกบัญชีเพื่อใช้ในการตรวจสอบรายการขาย</DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-6 py-4">
+                  <div className="space-y-3">
+                      <Label>เงื่อนไขการชำระเงิน</Label>
+                      <RadioGroup value={submitPaymentTerms} onValueChange={(v: any) => setSubmitPaymentTerms(v)} className="flex gap-6">
+                          <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="CASH" id="s-cash" />
+                              <Label htmlFor="s-cash" className="cursor-pointer">เงินสด/โอน (Cash)</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="CREDIT" id="s-credit" />
+                              <Label htmlFor="s-credit" className="cursor-pointer">เครดิต (Credit)</Label>
+                          </div>
+                      </RadioGroup>
+                  </div>
+
+                  {submitPaymentTerms === 'CASH' ? (
+                      <div className="space-y-3 p-4 border rounded-lg bg-muted/30 animate-in fade-in slide-in-from-top-1">
+                          <Label htmlFor="s-account">เข้าบัญชีที่รับเงิน</Label>
+                          <Select value={submitAccountId} onValueChange={setSubmitAccountId}>
+                              <SelectTrigger id="s-account" className="bg-background">
+                                  <SelectValue placeholder="เลือกบัญชีที่รับเงิน..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                  {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}
+                              </SelectContent>
+                          </Select>
+                          <p className="text-[10px] text-muted-foreground italic">* ฝ่ายบัญชีจะตรวจสอบยอดเงินเข้าในบัญชีนี้</p>
+                      </div>
+                  ) : (
+                      <div className="space-y-4 p-4 border rounded-lg bg-muted/30 animate-in fade-in slide-in-from-top-1">
+                          <div className="flex items-center space-x-2">
+                              <Checkbox id="s-billing" checked={submitBillingRequired} onCheckedChange={(v: any) => setSubmitBillingRequired(v)} />
+                              <Label htmlFor="s-billing" className="cursor-pointer font-bold">ต้องออกใบวางบิลรวม</Label>
+                          </div>
+                          <div className="space-y-2">
+                              <Label htmlFor="s-due">วันครบกำหนดชำระ (ถ้ามี)</Label>
+                              <Input type="date" id="s-due" value={submitDueDate} onChange={e => setSubmitDueDate(e.target.value)} className="bg-background" />
+                          </div>
+                      </div>
+                  )}
+              </div>
+
+              <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setShowReviewConfirm(false)} disabled={isSubmitting}>ยกเลิก</Button>
+                  <Button onClick={handleFinalSubmit} disabled={isSubmitting || (submitPaymentTerms === 'CASH' && !submitAccountId)}>
+                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                      ยืนยันและส่งตรวจสอบ
+                  </Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
       <AlertDialog open={showDnCancelDialog} onOpenChange={setShowDnCancelDialog}>
           <AlertDialogContent>
               <AlertDialogHeader>
@@ -802,13 +857,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   <Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); setShowReviewConfirm(true); }}>ไม่ยกเลิก (ออกคู่กัน)</Button>
                   <AlertDialogAction onClick={handleConfirmCancelAndSave} className="bg-destructive hover:bg-destructive/90">ยกเลิกใบเดิมและไปต่อ</AlertDialogAction>
               </AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
-          <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingData) executeSave(pendingData, true); setShowReviewConfirm(false); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
 

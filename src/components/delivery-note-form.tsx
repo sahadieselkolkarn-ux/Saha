@@ -34,6 +34,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { createDocument } from "@/firebase/documents";
@@ -66,23 +74,17 @@ const deliveryNoteFormSchema = z.object({
   receiverName: z.string().optional(),
   isBackfill: z.boolean().default(false),
   manualDocNo: z.string().optional(),
-  paymentTerms: z.enum(["CASH", "CREDIT"], { required_error: "กรุณาเลือกเงื่อนไขการชำระเงิน" }),
+  paymentTerms: z.enum(["CASH", "CREDIT"]).optional(),
   suggestedPaymentMethod: z.enum(["CASH", "TRANSFER"]).optional(),
   suggestedAccountId: z.string().optional(),
   billingRequired: z.boolean().default(false),
+  dueDate: z.string().optional().nullable(),
 }).superRefine((data, ctx) => {
     if (data.isBackfill && !data.manualDocNo) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "กรุณากรอกเลขที่เอกสารเดิม",
             path: ["manualDocNo"],
-        });
-    }
-    if (data.paymentTerms === 'CASH' && !data.suggestedAccountId) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "กรุณาเลือกบัญชีที่รับเงิน",
-            path: ["suggestedAccountId"],
         });
     }
 });
@@ -117,6 +119,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<DeliveryNoteFormData | null>(null);
+
+  // Submission Dialog States
+  const [submitPaymentTerms, setSubmitPaymentTerms] = useState<'CASH' | 'CREDIT'>('CASH');
+  const [submitAccountId, setSubmitAccountId] = useState('');
+  const [submitBillingRequired, setSubmitBillingRequired] = useState(false);
+  const [submitDueDate, setSubmitDueDate] = useState('');
 
   const [selectedLinkDoc, setSelectedLinkDoc] = useState<DocumentType | null>(null);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
@@ -162,7 +170,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   const currentJobId = form.watch('jobId');
   const selectedCustomerId = form.watch('customerId');
-  const watchedPaymentTerms = form.watch('paymentTerms');
   
   const customerDocRef = useMemo(() => {
     if (!db || !selectedCustomerId) return null;
@@ -222,7 +229,15 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         suggestedPaymentMethod: docToEdit.suggestedPaymentMethod || 'CASH',
         suggestedAccountId: docToEdit.suggestedAccountId || '',
         billingRequired: docToEdit.billingRequired || false,
+        dueDate: docToEdit.dueDate || null,
       });
+      
+      // Initialize submission dialog states
+      setSubmitPaymentTerms(docToEdit.paymentTerms || 'CASH');
+      setSubmitAccountId(docToEdit.suggestedAccountId || '');
+      setSubmitBillingRequired(docToEdit.billingRequired || false);
+      setSubmitDueDate(docToEdit.dueDate || '');
+
       if (docToEdit.referencesDocIds && docToEdit.referencesDocIds.length > 0) {
           setReferencedQuotationId(docToEdit.referencesDocIds[0]);
       }
@@ -461,10 +476,11 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         balance: data.grandTotal,
         paymentStatus: 'UNPAID' as 'UNPAID' | 'PARTIAL' | 'PAID',
       },
-      paymentTerms: data.paymentTerms,
-      suggestedPaymentMethod: data.suggestedPaymentMethod,
-      suggestedAccountId: data.suggestedAccountId,
-      billingRequired: data.billingRequired,
+      paymentTerms: data.paymentTerms || 'CASH',
+      suggestedPaymentMethod: data.suggestedPaymentMethod || 'CASH',
+      suggestedAccountId: data.suggestedAccountId || null,
+      billingRequired: data.billingRequired || false,
+      dueDate: data.dueDate || null,
       arStatus: targetArStatus,
       dispute: targetDispute,
       referencesDocIds: referencedQuotationId ? [referencedQuotationId] : [],
@@ -503,7 +519,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             description: submitForReview ? "เอกสารของคุณถูกส่งไปที่ฝ่ายบัญชีเรียบร้อยแล้วค่ะ" : "บันทึกข้อมูลเรียบร้อยแล้ว"
         });
         
-        // Redirect back to the list page
         router.push('/app/office/documents/delivery-note');
 
     } catch (error: any) {
@@ -521,6 +536,20 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         return;
     }
     await executeSave(data, false);
+  };
+
+  const handleFinalSubmit = async () => {
+    if (!pendingFormData) return;
+    const finalData: DeliveryNoteFormData = {
+        ...pendingFormData,
+        paymentTerms: submitPaymentTerms,
+        suggestedAccountId: submitPaymentTerms === 'CASH' ? submitAccountId : undefined,
+        suggestedPaymentMethod: 'CASH', // Default internal
+        billingRequired: submitPaymentTerms === 'CREDIT' ? submitBillingRequired : false,
+        dueDate: submitPaymentTerms === 'CREDIT' ? submitDueDate : null,
+    };
+    await executeSave(finalData, true);
+    setShowReviewConfirm(false);
   };
 
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingCustomer || isLoadingDocToEdit;
@@ -659,72 +688,15 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
                   </CardContent>
               </Card>
 
-              <Card>
-                  <CardHeader><CardTitle className="text-base">2. การชำระเงิน</CardTitle></CardHeader>
-                  <CardContent className="space-y-4">
-                      <FormField control={form.control} name="paymentTerms" render={({ field }) => (
-                          <FormItem>
-                              <FormLabel>เงื่อนไขการชำระเงิน</FormLabel>
-                              <FormControl>
-                                  <RadioGroup onValueChange={field.onChange} value={field.value} className="flex gap-6 pt-2">
-                                      <div className="flex items-center space-x-2">
-                                          <RadioGroupItem value="CASH" id="cash" disabled={isLocked} />
-                                          <Label htmlFor="cash" className="cursor-pointer">เงินสด/โอน (Cash)</Label>
-                                      </div>
-                                      <div className="flex items-center space-x-2">
-                                          <RadioGroupItem value="CREDIT" id="credit" disabled={isLocked} />
-                                          <Label htmlFor="credit" className="cursor-pointer">เครดิต (Credit)</Label>
-                                      </div>
-                                  </RadioGroup>
-                              </FormControl>
-                              <FormMessage />
-                          </FormItem>
-                      )} />
-
-                      {watchedPaymentTerms === 'CASH' && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 border rounded-md bg-muted/30">
-                            <FormField control={form.control} name="suggestedPaymentMethod" render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>รูปแบบที่คาดว่าจะรับ</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                        <FormControl><SelectTrigger className="bg-background"><SelectValue/></SelectTrigger></FormControl>
-                                        <SelectContent>
-                                            <SelectItem value="CASH">เงินสด</SelectItem>
-                                            <SelectItem value="TRANSFER">เงินโอน</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </FormItem>
-                            )} />
-                            <FormField control={form.control} name="suggestedAccountId" render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>เข้าบัญชี (คาดการณ์)</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value}>
-                                        <FormControl><SelectTrigger className="bg-background"><SelectValue placeholder="เลือกบัญชี..."/></SelectTrigger></FormControl>
-                                        <SelectContent>
-                                            {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                </FormItem>
-                            )} />
-                        </div>
-                      )}
-
-                      <FormField control={form.control} name="billingRequired" render={({ field }) => (
-                          <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                              <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl>
-                              <div className="space-y-1 leading-none">
-                                  <FormLabel className="cursor-pointer">ต้องออกใบวางบิลรวม</FormLabel>
-                              </div>
-                          </FormItem>
-                      )} />
-                  </CardContent>
+              <Card className="bg-muted/10 border-dashed flex flex-col items-center justify-center text-center p-6">
+                  <AlertCircle className="h-12 w-12 text-muted-foreground/40 mb-2" />
+                  <p className="text-sm text-muted-foreground">ระบุเงื่อนไขการชำระเงิน<br/>ในขั้นตอนการส่งตรวจสอบ</p>
               </Card>
             </div>
 
             <Card>
                 <CardHeader className="flex flex-row items-center gap-4 py-3">
-                    <CardTitle className="text-base whitespace-nowrap">3. รายการสินค้า/บริการ</CardTitle>
+                    <CardTitle className="text-base whitespace-nowrap">2. รายการสินค้า/บริการ</CardTitle>
                     <div className="flex gap-2">
                         <Popover open={isQtSearchOpen} onOpenChange={setIsQtSearchOpen}>
                             <PopoverTrigger asChild>
@@ -795,7 +767,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             </Card>
 
               <Card>
-                  <CardHeader><CardTitle className="text-base">4. หมายเหตุ และรายละเอียดส่งมอบ</CardTitle></CardHeader>
+                  <CardHeader><CardTitle className="text-base">3. หมายเหตุ และรายละเอียดส่งมอบ</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                       <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุในเอกสาร</FormLabel><FormControl><Textarea placeholder="ระบุรายละเอียดเพิ่มเติม..." rows={4} {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -818,12 +790,64 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </Form>
       </div>
 
-      <AlertDialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
-          <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>ยืนยันการส่งให้ฝ่ายบัญชีตรวจสอบ?</AlertDialogTitle><AlertDialogDescription>เมื่อส่งแล้วจะไม่สามารถแก้ไขเอกสารนี้ได้อีกจนกว่าฝ่ายบัญชีจะตรวจสอบ</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { if(pendingFormData) executeSave(pendingFormData, true); setShowReviewConfirm(false); }}>ตกลง ส่งตรวจสอบ</AlertDialogAction></AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
+      <Dialog open={showReviewConfirm} onOpenChange={(open) => !open && !isSubmitting && setShowReviewConfirm(open)}>
+          <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                  <DialogTitle>ระบุเงื่อนไขการชำระเงิน</DialogTitle>
+                  <DialogDescription>ข้อมูลนี้จะส่งให้แผนกบัญชีเพื่อใช้ในการตรวจสอบรายการขาย</DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-6 py-4">
+                  <div className="space-y-3">
+                      <Label>เงื่อนไขการชำระเงิน</Label>
+                      <RadioGroup value={submitPaymentTerms} onValueChange={(v: any) => setSubmitPaymentTerms(v)} className="flex gap-6">
+                          <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="CASH" id="s-cash" />
+                              <Label htmlFor="s-cash" className="cursor-pointer">เงินสด/โอน (Cash)</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="CREDIT" id="s-credit" />
+                              <Label htmlFor="s-credit" className="cursor-pointer">เครดิต (Credit)</Label>
+                          </div>
+                      </RadioGroup>
+                  </div>
+
+                  {submitPaymentTerms === 'CASH' ? (
+                      <div className="space-y-3 p-4 border rounded-lg bg-muted/30 animate-in fade-in slide-in-from-top-1">
+                          <Label htmlFor="s-account">เข้าบัญชีที่รับเงิน</Label>
+                          <Select value={submitAccountId} onValueChange={setSubmitAccountId}>
+                              <SelectTrigger id="s-account" className="bg-background">
+                                  <SelectValue placeholder="เลือกบัญชีที่รับเงิน..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                  {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}
+                              </SelectContent>
+                          </Select>
+                          <p className="text-[10px] text-muted-foreground italic">* ฝ่ายบัญชีจะตรวจสอบยอดเงินเข้าในบัญชีนี้</p>
+                      </div>
+                  ) : (
+                      <div className="space-y-4 p-4 border rounded-lg bg-muted/30 animate-in fade-in slide-in-from-top-1">
+                          <div className="flex items-center space-x-2">
+                              <Checkbox id="s-billing" checked={submitBillingRequired} onCheckedChange={(v: any) => setSubmitBillingRequired(v)} />
+                              <Label htmlFor="s-billing" className="cursor-pointer font-bold">ต้องออกใบวางบิลรวม</Label>
+                          </div>
+                          <div className="space-y-2">
+                              <Label htmlFor="s-due">วันครบกำหนดชำระ (ถ้ามี)</Label>
+                              <Input type="date" id="s-due" value={submitDueDate} onChange={e => setSubmitDueDate(e.target.value)} className="bg-background" />
+                          </div>
+                      </div>
+                  )}
+              </div>
+
+              <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setShowReviewConfirm(false)} disabled={isSubmitting}>ยกเลิก</Button>
+                  <Button onClick={handleFinalSubmit} disabled={isSubmitting || (submitPaymentTerms === 'CASH' && !submitAccountId)}>
+                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                      ยืนยันและส่งตรวจสอบ
+                  </Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showLinkConfirm} onOpenChange={setShowLinkConfirm}>
           <AlertDialogContent>
