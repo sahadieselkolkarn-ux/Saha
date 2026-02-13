@@ -40,27 +40,21 @@ export async function createPurchaseDoc(
     const docSettingsDoc = await transaction.get(docSettingsRef);
 
     if (!docSettingsDoc.exists()) {
-      throw new Error("Document settings not found. Please configure document prefixes first.");
+      throw new Error("ยังไม่ได้ตั้งค่ารูปแบบเลขที่เอกสารจัดซื้อ กรุณาตั้งค่าที่หน้า 'ตั้งค่าเลขที่เอกสาร' ก่อนค่ะ");
     }
     
     const settingsData = docSettingsDoc.data() as DocumentSettings;
-    const prefix = settingsData.purchasePrefix || 'PUR';
+    const prefix = (settingsData.purchasePrefix || 'PUR').toUpperCase();
 
     let currentCounters: any = { year };
     if (counterDoc.exists()) {
       currentCounters = counterDoc.data();
     }
     
-    const lastPrefix = currentCounters.purchasePrefix;
-    const lastCount = currentCounters.purchase || 0;
-
-    let newCount: number;
-    // RESET LOGIC: If prefix changed, reset counter to 1
-    if (lastPrefix !== prefix) {
-        newCount = 1;
-    } else {
-        newCount = lastCount + 1;
-    }
+    // Per-prefix counter to avoid duplicates
+    const counterKey = `PURCHASE_${prefix}_count`;
+    const lastCount = currentCounters[counterKey] || 0;
+    const newCount = lastCount + 1;
 
     const docNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
     
@@ -79,7 +73,8 @@ export async function createPurchaseDoc(
     transaction.set(counterRef, { 
         ...currentCounters, 
         purchase: newCount,
-        purchasePrefix: prefix 
+        purchasePrefix: prefix,
+        [counterKey]: newCount
     }, { merge: true });
 
     return docNo;

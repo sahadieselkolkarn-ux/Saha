@@ -45,7 +45,7 @@ interface CreateDocumentOptions {
 
 /**
  * Creates a new document in the 'documents' collection with a transactionally-generated document number.
- * Implements counter reset if the prefix has changed in settings.
+ * Prevents duplicates by storing counters per-prefix.
  */
 export async function createDocument(
   db: Firestore,
@@ -79,7 +79,7 @@ export async function createDocument(
     };
     
     const sanitizedData = sanitizeForFirestore(newDocumentData);
-    setDoc(newDocRef, sanitizedData)
+    await setDoc(newDocRef, sanitizedData)
       .catch(async (error) => {
         if (error.code === 'permission-denied') {
           const permissionError = new FirestorePermissionError({
@@ -99,13 +99,13 @@ export async function createDocument(
         }
         const activityRef = doc(collection(db, 'jobs', data.jobId, 'activities'));
         batch.set(activityRef, {
-            text: `Created ${docType} document: ${options.manualDocNo} (backfilled)`,
+            text: `สร้างเอกสาร ${docType} (Backfill): ${options.manualDocNo}`,
             userName: userProfile.displayName,
             userId: userProfile.uid,
             createdAt: serverTimestamp(),
             photos: [],
         });
-        batch.commit().catch(async (error) => {
+        await batch.commit().catch(async (error) => {
           if (error.code === 'permission-denied') {
             const permissionError = new FirestorePermissionError({
               path: jobRef.path,
@@ -128,31 +128,22 @@ export async function createDocument(
         const docSettingsDoc = await transaction.get(docSettingsRef);
 
         if (!docSettingsDoc.exists()) {
-            throw new Error("Document settings not found. Please configure document prefixes first.");
+            throw new Error("ยังไม่ได้ตั้งค่ารูปแบบเลขที่เอกสาร กรุณาตั้งค่าที่หน้า 'ตั้งค่าเลขที่เอกสาร' ก่อนค่ะ");
         }
         
         const settingsData = docSettingsDoc.data() as DocumentSettings;
         const prefixKey = docTypeToPrefixKey[docType];
-        const prefix = settingsData[prefixKey] || docType.substring(0, 2);
+        const prefix = (settingsData[prefixKey] || docType.substring(0, 2)).toUpperCase();
 
-        let currentCounters: DocumentCounters = { year };
+        let currentCounters: any = { year };
         if (counterDoc.exists()) {
-            currentCounters = counterDoc.data() as DocumentCounters;
+            currentCounters = counterDoc.data();
         }
         
-        const counterField = docTypeToCounterField[docType];
-        const prefixField = `${counterField}Prefix` as keyof DocumentCounters;
-        
-        const lastPrefix = currentCounters[prefixField] as string | undefined;
-        const lastCount = (currentCounters[counterField] as number) || 0;
-
-        let newCount: number;
-        // RESET LOGIC: If prefix changed, reset counter to 1
-        if (lastPrefix !== prefix) {
-            newCount = 1;
-        } else {
-            newCount = lastCount + 1;
-        }
+        // UNIQUE COUNTER PER PREFIX: This prevents duplicates if prefix is changed and then changed back
+        const specificCounterKey = `${docType}_${prefix}_count`;
+        const lastCount = currentCounters[specificCounterKey] || 0;
+        const newCount = lastCount + 1;
 
         const generatedDocNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
         
@@ -171,8 +162,10 @@ export async function createDocument(
         transaction.set(newDocRef, sanitizedData);
         transaction.set(counterRef, { 
             ...currentCounters, 
-            [counterField]: newCount,
-            [prefixField]: prefix 
+            [specificCounterKey]: newCount,
+            // Update legacy fields for backward compatibility
+            [docTypeToCounterField[docType]]: newCount,
+            [`${docTypeToCounterField[docType]}Prefix`]: prefix 
         }, { merge: true });
 
         if (data.jobId) {
@@ -182,7 +175,7 @@ export async function createDocument(
             }
             const activityRef = doc(collection(db, 'jobs', data.jobId, 'activities'));
             transaction.set(activityRef, {
-                text: `Created ${docType} document: ${generatedDocNo}`,
+                text: `สร้างเอกสาร ${docType}: ${generatedDocNo}`,
                 userName: userProfile.displayName,
                 userId: userProfile.uid,
                 createdAt: serverTimestamp(),
