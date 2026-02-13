@@ -298,7 +298,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     try {
         const payload = { 
           ...data, 
-          docDate: data.issueDate, // Map issueDate to docDate
+          docDate: data.issueDate, 
           customerSnapshot, 
           carSnapshot, 
           storeSnapshot: storeSettings, 
