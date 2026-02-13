@@ -90,10 +90,12 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 {/* Header Section */}
                 <div className="grid grid-cols-2 gap-8 mb-8">
                     <div className="space-y-1">
-                        <h2 className="text-lg font-bold">{(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}</h2>
+                        <h2 className="text-lg font-bold">
+                            {(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}
+                            {storeBranchLabel && <span className="ml-2 font-bold">({storeBranchLabel})</span>}
+                        </h2>
                         <p className="text-[11px] whitespace-pre-wrap leading-relaxed">
                             {document.storeSnapshot.taxAddress}
-                            {storeBranchLabel && <span className="ml-2">({storeBranchLabel})</span>}
                         </p>
                         <p className="text-[11px]">
                             โทร: {document.storeSnapshot.phone}
@@ -113,10 +115,12 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 <div className="grid grid-cols-2 gap-8 mb-8 p-4 border rounded-md">
                     <div className="space-y-1">
                         <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
-                        <p className="font-bold text-sm">{displayCustomerName}</p>
+                        <p className="font-bold text-sm">
+                            {displayCustomerName}
+                            {branchLabel && <span className="ml-2 font-bold">({branchLabel})</span>}
+                        </p>
                         <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
                             {displayCustomerAddress}
-                            {branchLabel && <span className="ml-2">({branchLabel})</span>}
                         </p>
                         <p className="text-[11px]">
                             โทร: {displayCustomerPhone}

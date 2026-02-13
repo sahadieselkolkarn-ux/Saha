@@ -191,9 +191,12 @@ function TaxInvoiceDetailPageContent() {
                             <div className="flex items-start gap-3">
                                 <div className="p-2 bg-primary/10 rounded-full text-primary mt-1"><User className="h-4 w-4"/></div>
                                 <div>
-                                    <p className="font-bold text-base">{document.customerSnapshot.taxName || document.customerSnapshot.name}</p>
+                                    <p className="font-bold text-base">
+                                        {document.customerSnapshot.taxName || document.customerSnapshot.name}
+                                        {branchLabel && <span className="ml-2 font-bold text-primary">({branchLabel})</span>}
+                                    </p>
                                     <p className="text-sm text-muted-foreground">
-                                        ที่อยู่: {document.customerSnapshot.taxAddress} {branchLabel && `(${branchLabel})`}
+                                        ที่อยู่: {document.customerSnapshot.taxAddress}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-1">
                                         โทร: {document.customerSnapshot.taxPhone || document.customerSnapshot.phone}
