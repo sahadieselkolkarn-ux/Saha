@@ -56,6 +56,16 @@ const getStatusVariant = (status: Job['status']) => {
   }
 }
 
+// Helper for safe timestamp comparison
+const getSafeTime = (val: any): number => {
+    if (!val) return 0;
+    if (typeof val.toMillis === 'function') return val.toMillis();
+    if (val.seconds !== undefined) return val.seconds * 1000;
+    if (val instanceof Date) return val.getTime();
+    if (typeof val === 'number') return val;
+    return 0;
+};
+
 function JobDetailsPageContent() {
   const router = useRouter();
   const params = useParams();
@@ -153,12 +163,12 @@ function JobDetailsPageContent() {
         const grouped: Partial<Record<DocType, DocumentType[]>> = {};
         const relevantDocTypes: DocType[] = ['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'];
 
-        for (const doc of allDocs) {
-            if (relevantDocTypes.includes(doc.docType)) {
-                if (!grouped[doc.docType]) {
-                    grouped[doc.docType] = [];
+        for (const docItem of allDocs) {
+            if (relevantDocTypes.includes(docItem.docType)) {
+                if (!grouped[docItem.docType]) {
+                    grouped[docItem.docType] = [];
                 }
-                grouped[doc.docType]!.push(doc);
+                grouped[docItem.docType]!.push(docItem);
             }
         }
 
@@ -167,7 +177,9 @@ function JobDetailsPageContent() {
                 const dateA = new Date(a.docDate).getTime();
                 const dateB = new Date(b.docDate).getTime();
                 if (dateB !== dateA) return dateB - dateA;
-                return (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0);
+                
+                // Fixed: Use safe timestamp comparison to avoid toMillis error
+                return getSafeTime(b.createdAt) - getSafeTime(a.createdAt);
             });
         }
         
@@ -186,9 +198,9 @@ function JobDetailsPageContent() {
   useEffect(() => {
     if (!jobId || !db) return;
     const jobDocRef = doc(db, "jobs", jobId);
-    const unsubscribe = onSnapshot(jobDocRef, (doc) => {
-      if (doc.exists()) {
-        const jobData = { id: doc.id, ...doc.data() } as Job;
+    const unsubscribe = onSnapshot(jobDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const jobData = { id: docSnap.id, ...docSnap.data() } as Job;
         setJob(jobData);
         setTechReport(jobData.technicalReport || "");
         setLoading(false);
@@ -515,7 +527,7 @@ function JobDetailsPageContent() {
     try {
       const q = query(collection(db, "users"), where("department", "==", job.department), where("role", "==", "WORKER"), where("status", "==", "ACTIVE"));
       const snapshot = await getDocs(q);
-      const workers = snapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id } as UserProfile));
+      const workers = snapshot.docs.map(docSnap => ({ ...docSnap.data(), uid: docSnap.id } as UserProfile));
       setDepartmentWorkers(workers.filter(w => w.uid !== job.assigneeUid));
     } catch (error) {
       toast({ variant: 'destructive', title: "Failed to fetch workers" });

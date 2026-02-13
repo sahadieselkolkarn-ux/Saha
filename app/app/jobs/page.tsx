@@ -14,14 +14,23 @@ import { Input } from "@/components/ui/input";
 import { ArrowRight, Loader2, PlusCircle, Search, FileImage, LayoutGrid, Table as TableIcon, Eye } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobStatus } from "@/lib/types";
-import { safeFormat } from '@/lib/date-utils';
+import { safeFormat } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
-// Helper Functions
+// Helper for safe timestamp comparison
+const getSafeTime = (val: any): number => {
+    if (!val) return 0;
+    if (typeof val.toMillis === 'function') return val.toMillis();
+    if (val.seconds !== undefined) return val.seconds * 1000;
+    if (val instanceof Date) return val.getTime();
+    if (typeof val === 'number') return val;
+    return 0;
+};
+
 const isClosedStatus = (status?: Job['status']) => 
     ["CLOSED", "DONE", "COMPLETED"].includes(String(status || "").toUpperCase());
 
@@ -126,7 +135,7 @@ function JobsStatusBoard({ jobs }: { jobs: Job[] }) {
         });
         
         for (const status in grouped) {
-            grouped[status].sort((a, b) => (b.lastActivityAt?.toMillis() ?? 0) - (a.lastActivityAt?.toMillis() ?? 0));
+            grouped[status].sort((a, b) => getSafeTime(b.lastActivityAt) - getSafeTime(a.lastActivityAt));
         }
         return grouped;
     }, [jobs]);
