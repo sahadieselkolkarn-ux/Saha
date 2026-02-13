@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense, useState, useRef } from "react";
+import { useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc } from "firebase/firestore";
@@ -9,8 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, Loader2 } from "lucide-react";
-import { useAuth } from "@/context/auth-context";
+import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, Loader2, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,19 +17,6 @@ import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
 
 const getStatusVariant = (status: string) => {
   switch (status) {
@@ -55,41 +41,11 @@ function TaxInvoiceDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
     const { db } = useFirebase();
-    const { profile } = useAuth();
-    const { toast } = useToast();
-    const printFrameRef = useRef<HTMLIFrameElement>(null);
     
-    const [isPrintOptionsOpen, setIsPrintOptionsOpen] = useState(false);
-    const [printCopies, setPrintCopies] = useState<1 | 2>(1);
-
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const isCancelled = document?.status === 'CANCELLED';
-
-    const handlePrintRequest = () => {
-        setIsPrintOptionsOpen(true);
-    };
-
-    const confirmPrint = () => {
-        const frame = printFrameRef.current;
-        if (!frame) return;
-
-        toast({ title: "กำลังเตรียมใบกำกับภาษีสำหรับพิมพ์..." });
-        
-        frame.onload = () => {
-            try {
-                frame.contentWindow?.focus();
-                frame.contentWindow?.print();
-            } catch (e) {
-                console.error("Print failed:", e);
-                window.open(frame.src, '_blank');
-            }
-        };
-
-        frame.src = `/app/office/documents/${docId}?print=1&copies=${printCopies}&t=${Date.now()}`;
-        setIsPrintOptionsOpen(false);
-    };
 
     if (isLoading) return (
         <div className="flex flex-col items-center justify-center h-[60vh]">
@@ -118,8 +74,10 @@ function TaxInvoiceDetailPageContent() {
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
                 </Button>
                 <div className="flex flex-wrap gap-2">
-                    <Button variant="default" size="sm" onClick={handlePrintRequest}>
-                        <Printer className="mr-2 h-4 w-4"/> พิมพ์ (PDF)
+                    <Button asChild variant="default" size="sm">
+                        <Link href={`/app/office/documents/${docId}`}>
+                            <Eye className="mr-2 h-4 w-4"/> พรีวิว / พิมพ์เอกสาร
+                        </Link>
                     </Button>
                 </div>
             </div>
@@ -238,44 +196,6 @@ function TaxInvoiceDetailPageContent() {
                     </Card>
                 </div>
             </div>
-
-            {/* Hidden Iframe for Direct Printing */}
-            <iframe 
-                ref={printFrameRef} 
-                className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
-                style={{ visibility: 'hidden' }}
-                title="Print Frame"
-            />
-
-            {/* Print Options Dialog */}
-            <AlertDialog open={isPrintOptionsOpen} onOpenChange={setIsPrintOptionsOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>เลือกรูปแบบการพิมพ์ใบกำกับภาษี</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            กรุณาเลือกจำนวนสำเนาที่ต้องการพิมพ์เพื่อใช้ในงานบัญชี
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <div className="py-4">
-                        <RadioGroup value={String(printCopies)} onValueChange={(v) => setPrintCopies(Number(v) as 1 | 2)}>
-                            <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="1" id="c1" />
-                                <Label htmlFor="c1">ต้นฉบับ 1 ใบ + สำเนา 1 ใบ</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="2" id="c2" />
-                                <Label htmlFor="c2">ต้นฉบับ 1 ใบ + สำเนา 2 ใบ (สำหรับออฟฟิศและบัญชี)</Label>
-                            </div>
-                        </RadioGroup>
-                    </div>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmPrint}>
-                            ตกลงและพิมพ์
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     );
 }

@@ -1,16 +1,16 @@
 "use client";
 
-import { useMemo, Suspense, useEffect, useRef, useState } from "react";
+import { useMemo, Suspense, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, ExternalLink, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
@@ -34,8 +34,8 @@ function VehicleInfo({ doc }: { doc: Document }) {
     if (!s || (!s.licensePlate && !s.brand && !s.model && !s.partNumber && !s.registrationNumber)) return null;
 
     return (
-        <div className="space-y-1 text-sm border-l pl-6 print:pl-4 print:border-l-2 print:border-muted">
-            <h4 className="font-semibold text-primary mb-2 uppercase tracking-wider text-xs">รายละเอียดรถ / ชิ้นส่วน</h4>
+        <div className="space-y-1 text-sm border-l-2 border-muted pl-4">
+            <h4 className="font-bold text-primary mb-2 uppercase tracking-wider text-[10px]">รายละเอียดรถ / ชิ้นส่วน</h4>
             {s.brand && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ยี่ห้อ:</span><span className="font-medium text-right">{s.brand}</span></div>}
             {s.model && <div className="flex justify-between gap-4"><span className="text-muted-foreground">รุ่นรถ:</span><span className="font-medium text-right">{s.model}</span></div>}
             {s.licensePlate && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ทะเบียน:</span><span className="font-medium text-right">{s.licensePlate}</span></div>}
@@ -46,7 +46,7 @@ function VehicleInfo({ doc }: { doc: Document }) {
 }
 
 function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyLabel?: 'ORIGINAL' | 'COPY' }) {
-    const docTypeDisplay: Record<Document['docType'], string> = {
+    const docTypeDisplay: Record<string, string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
         DELIVERY_NOTE: "ใบส่งของชั่วคราว",
         TAX_INVOICE: "ใบกำกับภาษี / Tax Invoice",
@@ -56,120 +56,97 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
     };
     
-    let finalDocTitle = docTypeDisplay[document.docType];
+    let finalDocTitle = docTypeDisplay[document.docType] || document.docType;
     if (document.docType === 'TAX_INVOICE') {
-        if (taxCopyLabel === 'ORIGINAL') {
-            finalDocTitle = "ใบกำกับภาษี ต้นฉบับ / Tax Invoice";
-        } else if (taxCopyLabel === 'COPY') {
-            finalDocTitle = "ใบกำกับภาษี สำเนา / Tax Invoice";
-        }
+        if (taxCopyLabel === 'ORIGINAL') finalDocTitle = "ใบกำกับภาษี ต้นฉบับ / Tax Invoice";
+        else if (taxCopyLabel === 'COPY') finalDocTitle = "ใบกำกับภาษี สำเนา / Tax Invoice";
     }
 
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
     const isQuotation = document.docType === 'QUOTATION';
 
-    const isTaxDoc =
-        document.docType === 'TAX_INVOICE' ||
-        document.docType === 'CREDIT_NOTE' ||
-        document.docType === 'WITHHOLDING_TAX' ||
-        (document.docType === 'RECEIPT' && !!document.customerSnapshot.useTax);
+    const isTaxDoc = document.docType === 'TAX_INVOICE' || document.docType === 'CREDIT_NOTE' || (document.docType === 'RECEIPT' && !!document.customerSnapshot.useTax);
 
-    const displayCustomerName = isTaxDoc
-        ? document.customerSnapshot.taxName || document.customerSnapshot.name
-        : document.customerSnapshot.name;
-        
-    const displayCustomerAddress = isTaxDoc
-        ? document.customerSnapshot.taxAddress || 'ไม่มีข้อมูลที่อยู่'
-        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีข้อมูลที่อยู่');
+    const displayCustomerName = isTaxDoc ? (document.customerSnapshot.taxName || document.customerSnapshot.name) : document.customerSnapshot.name;
+    const displayCustomerAddress = isTaxDoc ? (document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่') : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่');
 
     return (
-        <div className="printable-document p-8 border rounded-lg bg-card text-card-foreground shadow-sm print:shadow-none print:border-none print:bg-white flex flex-col print:min-h-[277mm] print:pb-4">
+        <div className="printable-document p-10 border bg-white shadow-sm flex flex-col min-h-[297mm] w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0">
             <div className="flex-1">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    <div className="lg:col-span-2 space-y-2 text-left">
-                        {isDeliveryNote ? (
-                            <>
-                                <h2 className="text-xl font-bold">{document.storeSnapshot.informalName || document.storeSnapshot.taxName}</h2>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
-                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
-                            </>
-                        ) : (
-                            <>
-                                <h2 className="text-xl font-bold">{document.storeSnapshot.taxName}</h2>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{document.storeSnapshot.taxAddress}</p>
-                                <p className="text-sm text-muted-foreground">โทร: {document.storeSnapshot.phone}</p>
-                                <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.storeSnapshot.taxId}</p>
-                            </>
-                        )}
+                {/* Header Section */}
+                <div className="grid grid-cols-2 gap-8 mb-8">
+                    <div className="space-y-1">
+                        <h2 className="text-lg font-bold">{(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}</h2>
+                        <p className="text-[11px] whitespace-pre-wrap leading-relaxed">{document.storeSnapshot.taxAddress}</p>
+                        <p className="text-[11px]">โทร: {document.storeSnapshot.phone}</p>
+                        {!isDeliveryNote && <p className="text-[11px]">เลขผู้เสียภาษี: {document.storeSnapshot.taxId}</p>}
                     </div>
-                    <div className="space-y-2">
-                        <h1 className="text-2xl font-bold text-right">{finalDocTitle}</h1>
-                        <div className="flex justify-between text-sm"><span className="font-medium">เลขที่:</span><span>{document.docNo}</span></div>
-                        <div className="flex justify-between text-sm"><span className="font-medium">วันที่:</span><span>{safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</span></div>
+                    <div className="text-right space-y-1">
+                        <h1 className="text-xl font-bold text-primary">{finalDocTitle}</h1>
+                        <p className="text-sm font-bold">เลขที่: {document.docNo}</p>
+                        <p className="text-sm">วันที่: {safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</p>
                     </div>
                 </div>
 
-                <Card className="mb-8 print:bg-white print:shadow-none print:border-none">
-                    <CardContent className="pt-6">
-                        <div className={cn("grid grid-cols-1 gap-6", (isDeliveryNote || isQuotation) && "md:grid-cols-2")}>
-                            <div className="space-y-1 text-left">
-                                <h4 className="font-semibold text-base mb-2">ข้อมูลลูกค้า</h4>
-                                <p className="font-bold">{displayCustomerName}</p>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{displayCustomerAddress}</p>
-                                <p className="text-sm text-muted-foreground">โทร: {document.customerSnapshot.phone}</p>
-                                {isTaxDoc && <p className="text-sm text-muted-foreground">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
-                            </div>
-                            {(isDeliveryNote || isQuotation) && (
-                                <VehicleInfo doc={document} />
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
+                {/* Customer & Vehicle Section */}
+                <div className="grid grid-cols-2 gap-8 mb-8 p-4 border rounded-md">
+                    <div className="space-y-1">
+                        <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
+                        <p className="font-bold text-sm">{displayCustomerName}</p>
+                        <p className="text-[11px] leading-relaxed whitespace-pre-wrap">{displayCustomerAddress}</p>
+                        <p className="text-[11px]">โทร: {document.customerSnapshot.phone}</p>
+                        {isTaxDoc && <p className="text-[11px]">เลขผู้เสียภาษี: {document.customerSnapshot.taxId || 'N/A'}</p>}
+                    </div>
+                    <VehicleInfo doc={document} />
+                </div>
 
-                <Table className="mb-8">
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead className="w-12 text-center">#</TableHead>
-                            <TableHead>รายการ</TableHead>
-                            <TableHead className="text-right">จำนวน</TableHead>
-                            <TableHead className="text-right">ราคา/หน่วย</TableHead>
-                            <TableHead className="text-right">จำนวนเงิน</TableHead>
+                {/* Items Table */}
+                <Table className="mb-8 border-t border-b">
+                    <TableHeader className="bg-muted/20">
+                        <TableRow className="hover:bg-transparent">
+                            <TableHead className="w-12 text-center text-black font-bold h-8">#</TableHead>
+                            <TableHead className="text-black font-bold h-8">รายการ</TableHead>
+                            <TableHead className="w-20 text-right text-black font-bold h-8">จำนวน</TableHead>
+                            <TableHead className="w-32 text-right text-black font-bold h-8">ราคา/หน่วย</TableHead>
+                            <TableHead className="w-32 text-right text-black font-bold h-8">รวมเงิน</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {document.items.map((item, index) => (
-                            <TableRow key={index}>
-                                <TableCell className="text-center">{index + 1}</TableCell>
-                                <TableCell className="text-left">{item.description}</TableCell>
-                                <TableCell className="text-right">{item.quantity}</TableCell>
-                                <TableCell className="text-right">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                <TableCell className="text-right">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            <TableRow key={index} className="border-b hover:bg-transparent">
+                                <TableCell className="text-center py-2 h-8">{index + 1}</TableCell>
+                                <TableCell className="py-2 h-8">{item.description}</TableCell>
+                                <TableCell className="text-right py-2 h-8">{item.quantity}</TableCell>
+                                <TableCell className="text-right py-2 h-8">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                <TableCell className="text-right py-2 h-8">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                             </TableRow>
                         ))}
                     </TableBody>
                 </Table>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-4 text-left">
-                        {document.notes && <div className="space-y-1"><p className="font-semibold">หมายเหตุ:</p><p className="text-sm whitespace-pre-wrap">{document.notes}</p></div>}
+                {/* Summary Section */}
+                <div className="grid grid-cols-2 gap-8">
+                    <div className="text-left text-[11px]">
+                        {document.notes && <p className="whitespace-pre-wrap"><span className="font-bold">หมายเหตุ:</span> {document.notes}</p>}
                     </div>
-                    <div className="space-y-2">
-                        <div className="flex justify-between text-sm"><span className="text-muted-foreground">รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-muted-foreground">ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        {document.withTax && <div className="flex justify-between text-sm"><span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                    <div className="space-y-1">
+                        <div className="flex justify-between text-sm"><span>รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between text-sm"><span>ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between font-bold text-sm"><span>ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        {document.withTax && <div className="flex justify-between text-sm"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
                         <Separator className="my-2" />
-                        <div className="flex justify-between text-lg font-bold text-primary"><span>ยอดสุทธิ</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                        <div className="flex justify-between text-base font-bold text-primary uppercase"><span>ยอดสุทธิรวม</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                     </div>
                 </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-8 mt-16 text-center text-sm print:mt-auto print:pt-6">
-                <div className="space-y-16">
+            {/* Signature Section */}
+            <div className="grid grid-cols-2 gap-12 mt-16 text-center text-xs">
+                <div className="space-y-12">
                     <p>.................................................</p>
                     <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
                 </div>
-                <div className="space-y-16">
+                <div className="space-y-12">
                     <p>.................................................</p>
                     <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
                 </div>
@@ -181,152 +158,63 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
 function DocumentPageContent() {
     const { docId } = useParams();
     const router = useRouter();
-    const searchParams = useSearchParams();
     const { db } = useFirebase();
 
     const [isPrintOptionsOpen, setIsPrintOptionsOpen] = useState(false);
     const [printCopies, setPrintCopies] = useState<1 | 2>(1);
 
-    const docRef = useMemo(() => {
-        if (!db || typeof docId !== 'string') return null;
-        return doc(db, 'documents', docId);
-    }, [db, docId]);
-
+    const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
-    const printedRef = useRef(false);
 
-    const isPrintMode = searchParams.get('print') === '1';
-    const shouldAutoprint = searchParams.get('autoprint') === '1';
-    
-    useEffect(() => {
-        // เมื่อโหลดหน้าสำเร็จ และอยู่ในโหมดสั่งพิมพ์อัตโนมัติ (มักจะโหลดผ่าน iframe)
-        if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
-            printedRef.current = true;
-            // ให้เวลาบราวเซอร์ประมวลผลสไตล์และฟอนต์ 1.2 วินาที
-            const timer = setTimeout(() => {
-                window.print();
-            }, 1200);
-            return () => clearTimeout(timer);
-        }
-    }, [isPrintMode, shouldAutoprint, document, isLoading]);
-
-
-    const handlePrint = () => {
-        // หากอยู่นอกโหมดพิมพ์ และเป็นใบกำกับภาษี ให้ถามก่อน
-        if (document?.docType === 'TAX_INVOICE' && !isPrintMode) {
-            setIsPrintOptionsOpen(true);
-        } else {
-            window.print();
-        }
-    };
-    
-    const confirmPrint = () => {
-        // ในหน้าพรีวิวนี้ ถ้าเลือกสำเนา ให้เปิดพิมพ์อัตโนมัติแบบกำหนดสำเนา
-        const url = `/app/office/documents/${docId}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`;
-        window.open(url, '_blank');
-        setIsPrintOptionsOpen(false);
+    const handlePrintRequest = () => {
+        if (document?.docType === 'TAX_INVOICE') setIsPrintOptionsOpen(true);
+        else window.print();
     };
 
-    if (isLoading) {
-        return <Skeleton className="h-screen w-full" />;
-    }
-
-    if (error) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-destructive">
-                <AlertCircle className="w-16 h-16" />
-                <PageHeader title="เกิดข้อผิดพลาด" description="ไม่สามารถโหลดข้อมูลเอกสารได้" />
-            </div>
-        );
-    }
-    
-    if (!document) {
-         return (
-            <div className="flex flex-col items-center justify-center h-full gap-4">
-                <AlertCircle className="w-16 h-16 text-muted-foreground" />
-                <PageHeader title="ไม่พบเอกสาร" description="เอกสารไม่มีอยู่ในระบบหรือถูกลบไปแล้ว" />
-            </div>
-        );
-    }
-
-    if (isPrintMode) {
-        const copies = Number(searchParams.get('copies') || '1') as 1 | 2;
-
-        if (document.docType === 'TAX_INVOICE') {
-            return (
-                <div className="bg-white">
-                     <style jsx global>{`
-                        @media print {
-                            .page-break { page-break-after: always; }
-                        }
-                     `}</style>
-                     <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                        <p className="font-bold text-primary italic">โหมดสั่งพิมพ์อัตโนมัติ (กำลังทำงาน...)</p>
-                        <Button type="button" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2"/> พิมพ์อีกครั้ง</Button>
-                        <Button type="button" variant="ghost" onClick={() => window.close()}>ปิดหน้านี้</Button>
-                    </div>
-                    <div className="print-pages">
-                        <DocumentView document={document} taxCopyLabel="ORIGINAL" />
-                        <div className="page-break" />
-                        <DocumentView document={document} taxCopyLabel="COPY" />
-                        {copies === 2 && (
-                            <>
-                                <div className="page-break" />
-                                <DocumentView document={document} taxCopyLabel="COPY" />
-                            </>
-                        )}
-                    </div>
-                </div>
-            );
-        }
-
-        return (
-            <div className="bg-white">
-                 <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                    <p className="font-bold text-primary italic">โหมดสั่งพิมพ์อัตโนมัติ (กำลังทำงาน...)</p>
-                    <Button type="button" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2"/> พิมพ์อีกครั้ง</Button>
-                    <Button type="button" variant="ghost" onClick={() => window.close()}>ปิดหน้านี้</Button>
-                </div>
-                <DocumentView document={document} />
-            </div>
-        );
-    }
+    if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+    if (error || !document) return <div className="p-12 text-center space-y-4"><AlertCircle className="mx-auto h-12 w-12 text-destructive"/><h2 className="text-xl font-bold">ไม่พบเอกสาร</h2><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button></div>;
 
     return (
-        <div className="space-y-6">
-             <div className="flex justify-between items-center">
-                <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="h-4 w-4 mr-2"/> กลับ</Button>
-                 <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์ (PDF)</Button>
+        <div className="min-h-screen bg-muted/20 py-8 print:p-0 print:bg-white">
+            <div className="max-w-[210mm] mx-auto space-y-6">
+                <div className="flex justify-between items-center bg-background p-4 rounded-lg border shadow-sm print:hidden">
+                    <Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+                    <div className="flex gap-2">
+                        <Button onClick={handlePrintRequest}><Printer className="mr-2 h-4 w-4"/> สั่งพิมพ์ (Ctrl+P)</Button>
+                    </div>
+                </div>
+
+                <div className="print:m-0">
+                    {document.docType === 'TAX_INVOICE' && printCopies === 2 ? (
+                        <div className="space-y-8 print:space-y-0">
+                            <DocumentView document={document} taxCopyLabel="ORIGINAL" />
+                            <div className="print:page-break-after-always" />
+                            <DocumentView document={document} taxCopyLabel="COPY" />
+                            <div className="print:page-break-after-always" />
+                            <DocumentView document={document} taxCopyLabel="COPY" />
+                        </div>
+                    ) : document.docType === 'TAX_INVOICE' ? (
+                        <div className="space-y-8 print:space-y-0">
+                            <DocumentView document={document} taxCopyLabel="ORIGINAL" />
+                            <div className="print:page-break-after-always" />
+                            <DocumentView document={document} taxCopyLabel="COPY" />
+                        </div>
+                    ) : (
+                        <DocumentView document={document} />
+                    )}
+                </div>
             </div>
-            
-            <DocumentView document={document} />
 
             <AlertDialog open={isPrintOptionsOpen} onOpenChange={setIsPrintOptionsOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>เลือกรูปแบบการพิมพ์ใบกำกับภาษี</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            กรุณาเลือกจำนวนสำเนาที่ต้องการพิมพ์
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
+                    <AlertDialogHeader><AlertDialogTitle>พิมพ์ใบกำกับภาษี</AlertDialogTitle><AlertDialogDescription>เลือกจำนวนสำเนาที่ต้องการพิมพ์</AlertDialogDescription></AlertDialogHeader>
                     <div className="py-4">
                         <RadioGroup value={String(printCopies)} onValueChange={(v) => setPrintCopies(Number(v) as 1 | 2)}>
-                            <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="1" id="c1" />
-                                <Label htmlFor="c1">ต้นฉบับ 1 ใบ + สำเนา 1 ใบ</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="2" id="c2" />
-                                <Label htmlFor="c2">ต้นฉบับ 1 ใบ + สำเนา 2 ใบ (สำหรับออฟฟิศและบัญชี)</Label>
-                            </div>
+                            <div className="flex items-center space-x-2"><RadioGroupItem value="1" id="c1" /><Label htmlFor="c1" className="cursor-pointer">ต้นฉบับ 1 + สำเนา 1</Label></div>
+                            <div className="flex items-center space-x-2"><RadioGroupItem value="2" id="c2" /><Label htmlFor="c2" className="cursor-pointer">ต้นฉบับ 1 + สำเนา 2 (ออฟฟิศ/บัญชี)</Label></div>
                         </RadioGroup>
                     </div>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                        <AlertDialogAction onClick={confirmPrint}>
-                            ตกลงและพิมพ์
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
+                    <AlertDialogFooter><AlertDialogCancel>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={() => { setIsPrintOptionsOpen(false); setTimeout(() => window.print(), 300); }}>ยืนยันและเปิดหน้าต่างพิมพ์</AlertDialogAction></AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
         </div>
@@ -335,8 +223,8 @@ function DocumentPageContent() {
 
 export default function DocumentPageWrapper() {
   return (
-    <Suspense fallback={<Skeleton className="h-screen w-full" />}>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>}>
       <DocumentPageContent />
     </Suspense>
-  )
+  );
 }

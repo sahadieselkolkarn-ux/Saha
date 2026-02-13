@@ -1,51 +1,30 @@
 "use client";
 
-import { useMemo, Suspense, useRef } from "react";
+import { useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { doc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, Clock, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, Loader2, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
 
 function QuotationDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
     const { db } = useFirebase();
-    const { toast } = useToast();
-    const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const isCancelled = document?.status === 'CANCELLED';
-
-    const handlePrint = () => {
-        const frame = printFrameRef.current;
-        if (!frame) return;
-
-        toast({ title: "กำลังเตรียมใบเสนอราคาสำหรับพิมพ์..." });
-        
-        frame.onload = () => {
-            try {
-                frame.contentWindow?.focus();
-                frame.contentWindow?.print();
-            } catch (e) {
-                console.error("Print failed:", e);
-                window.open(frame.src, '_blank');
-            }
-        };
-
-        frame.src = `/app/office/documents/${docId}?print=1&t=${Date.now()}`;
-    };
 
     if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
     
@@ -68,8 +47,10 @@ function QuotationDetailPageContent() {
                 <Button variant="outline" onClick={() => router.back()}>
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
                 </Button>
-                <Button variant="default" size="sm" onClick={handlePrint}>
-                    <Printer className="mr-2 h-4 w-4"/> พิมพ์ (PDF)
+                <Button asChild variant="default" size="sm">
+                    <Link href={`/app/office/documents/${docId}`}>
+                        <Eye className="mr-2 h-4 w-4"/> พรีวิว / พิมพ์เอกสาร
+                    </Link>
                 </Button>
             </div>
 
@@ -189,14 +170,6 @@ function QuotationDetailPageContent() {
                     </Card>
                 </div>
             </div>
-
-            {/* Hidden Iframe for Direct Printing */}
-            <iframe 
-                ref={printFrameRef} 
-                className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
-                style={{ visibility: 'hidden' }}
-                title="Print Frame"
-            />
         </div>
     );
 }
