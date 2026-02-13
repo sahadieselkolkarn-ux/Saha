@@ -7,7 +7,7 @@ import Image from "next/image";
 import Link from 'next/link';
 import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where, getDocs, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase, useCollection, type WithId } from "@/firebase";
+import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
@@ -68,7 +68,7 @@ function JobDetailsPageContent() {
   // Extract jobId safely
   const jobId = useMemo(() => {
     const id = params?.jobId;
-    return Array.isArray(id) ? id[0] : id;
+    return (Array.isArray(id) ? id[0] : id) as string;
   }, [params]);
 
   const [job, setJob] = useState<Job | null>(null);
@@ -417,14 +417,18 @@ function JobDetailsPageContent() {
 
   const handleQuickPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !jobId || !db || !storage || !profile) return;
+    
     setIsAddingPhotos(true);
     const files = Array.from(e.target.files);
-    const totalPhotos = (job?.photos?.length || 0) + files.length;
-    if (totalPhotos > 4) {
+    
+    const currentPhotoCount = job?.photos?.length || 0;
+    if (currentPhotoCount + files.length > 4) {
       toast({ variant: "destructive", title: "คุณสามารถอัปโหลดรูปภาพรวมกันได้ไม่เกิน 4 รูปค่ะ" });
       setIsAddingPhotos(false);
+      e.target.value = '';
       return;
     }
+
     const validFiles = files.filter(file => {
         if (file.size > 5 * 1024 * 1024) {
             toast({ variant: "destructive", title: `ไฟล์ ${file.name} ใหญ่เกินไป`, description: "ขนาดสูงสุดที่รองรับคือ 5MB ค่ะ" });
@@ -432,26 +436,47 @@ function JobDetailsPageContent() {
         }
         return true;
     });
+
     if (validFiles.length === 0) {
         setIsAddingPhotos(false);
+        e.target.value = '';
         return;
     }
+
     try {
-        const jobDocRef = doc(db, "jobs", jobId);
-        const activitiesColRef = collection(db, "jobs", jobId, "activities");
+        const jobDocRef = job?.isArchived 
+          ? doc(db, archiveCollectionNameByYear(new Date(job.closedDate!).getFullYear()), jobId)
+          : doc(db, "jobs", jobId);
+        
+        const activitiesColRef = collection(jobDocRef, "activities");
         const photoURLs: string[] = [];
+
         for (const photo of validFiles) {
             const photoRef = ref(storage, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
             await uploadBytes(photoRef, photo);
-            photoURLs.push(await getDownloadURL(photoRef));
+            const url = await getDownloadURL(photoRef);
+            photoURLs.push(url);
         }
+
         const batch = writeBatch(db);
-        batch.set(doc(activitiesColRef), { text: `อัปโหลดรูปประกอบงานเพิ่ม ${validFiles.length} รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
-        batch.update(jobDocRef, { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() });
+        batch.set(doc(activitiesColRef), { 
+          text: `อัปโหลดรูปประกอบงานเพิ่ม ${validFiles.length} รูป`, 
+          userName: profile.displayName, 
+          userId: profile.uid, 
+          createdAt: serverTimestamp(), 
+          photos: photoURLs 
+        });
+        
+        batch.update(jobDocRef, { 
+          photos: arrayUnion(...photoURLs), 
+          lastActivityAt: serverTimestamp() 
+        });
+
         await batch.commit();
         toast({title: `อัปโหลดรูปภาพ ${validFiles.length} รูปสำเร็จแล้วค่ะ`});
     } catch(error: any) {
-        toast({variant: "destructive", title: "Failed to add photos", description: error.message});
+        console.error("Upload error:", error);
+        toast({variant: "destructive", title: "ไม่สามารถอัปโหลดรูปภาพได้", description: error.message});
     } finally {
         setIsAddingPhotos(false);
         e.target.value = '';
@@ -651,7 +676,6 @@ function JobDetailsPageContent() {
                             </label>
                         </Button>
                         
-                        {/* Hidden Inputs outside for better reliability */}
                         <input id="camera-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
                         <input id="library-photo-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
                     </div>
