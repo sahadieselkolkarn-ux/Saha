@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
@@ -133,6 +132,11 @@ function JobDetailsPageContent() {
 
   const isUserAdmin = profile?.role === 'ADMIN';
   const isManager = profile?.role === 'MANAGER';
+  const isService = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
+  
+  // Can edit based on User's request: Admin, Office, Service
+  const canEditDetails = isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT' || isService;
+  
   const isOfficeOrAdminOrMgmt = isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || job?.status === 'WAITING_CUSTOMER_PICKUP';
@@ -484,7 +488,7 @@ function JobDetailsPageContent() {
   }
 
   const handleTransferJob = async () => {
-    if (!isOfficeOrAdminOrMgmt) return;
+    if (!canEditDetails) return;
     if (!transferDepartment || !job || !db || !profile) return;
     setIsTransferring(true);
     try {
@@ -492,7 +496,7 @@ function JobDetailsPageContent() {
         const activitiesColRef = collection(db, "jobs", job.id, "activities");
         const batch = writeBatch(db);
         batch.update(jobDocRef, { department: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
-        batch.set(doc(activitiesColRef), { text: `แอดมิน/ผู้จัดการเปลี่ยนแผนกหลักเป็น ${transferDepartment} และคืนงานเข้าคิว. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
+        batch.set(doc(activitiesColRef), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${transferDepartment} และคืนงานเข้าคิว. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
         await batch.commit();
         toast({ title: 'โอนย้ายแผนกสำเร็จ', description: `งานถูกย้ายไปยังแผนก ${transferDepartment}`});
         setIsTransferDialogOpen(false);
@@ -630,20 +634,20 @@ function JobDetailsPageContent() {
               <div>
                 <div className="flex items-center gap-4">
                     <h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4>
-                    {isOfficeOrAdminOrMgmt && <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}
+                    {canEditDetails && <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}
                 </div>
                 <p className="whitespace-pre-wrap pt-1">{job.description}</p>
               </div>
               <div className="border-t pt-4">
                   <div className="flex items-center gap-4 mb-2">
                       <h4 className="font-semibold text-base">รายละเอียดรถ/ชิ้นส่วน</h4>
-                      {isOfficeOrAdminOrMgmt && <Button onClick={handleOpenEditVehicleDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}
+                      {canEditDetails && <Button onClick={handleOpenEditVehicleDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}
                   </div>
                   <JobVehicleDetails job={job} />
               </div>
                <div className="flex gap-2 pt-4 border-t">
-                  {isOfficeOrAdminOrMgmt && <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>เปลี่ยนแปลงแผนก</Button>}
-                  {isOfficeOrAdminOrMgmt && job.assigneeUid && <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}><UserCheck className="mr-2 h-4 w-4" /> เปลี่ยนพนักงานซ่อม</Button>}
+                  {canEditDetails && <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>เปลี่ยนแปลงแผนก</Button>}
+                  {canEditDetails && job.assigneeUid && <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}><UserCheck className="mr-2 h-4 w-4" /> เปลี่ยนพนักงานซ่อม</Button>}
               </div>
             </CardContent>
           </Card>
@@ -661,7 +665,7 @@ function JobDetailsPageContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
-                {isOfficeOrAdminOrMgmt && (
+                {canEditDetails && (
                     <div className="flex gap-2">
                         <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
                             <label htmlFor="camera-photo-upload" className="cursor-pointer flex items-center">
@@ -694,7 +698,7 @@ function JobDetailsPageContent() {
             </CardContent>
           </Card>
 
-          {isOfficeOrAdminOrMgmt && (
+          {canEditDetails && (
             <Card>
               <CardHeader className="flex items-center gap-4">
                   <CardTitle>บันทึกข้อความ</CardTitle>
@@ -727,7 +731,7 @@ function JobDetailsPageContent() {
                     </Button>
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline">{isRequestingQuotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4"/>} แจ้งเสนอราคา</Button>}
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isViewOnly} variant="outline"><CheckCircle className="mr-2 h-4 w-4" /> จบงาน</Button>}
-                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && isOfficeOrAdmin && <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote || isViewOnly} variant="outline" className="border-primary text-primary hover:bg-primary/10"><Receipt className="mr-2 h-4 w-4" /> ออกบิล</Button>}
+                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canEditDetails && <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote || isViewOnly} variant="outline" className="border-primary text-primary hover:bg-primary/10"><Receipt className="mr-2 h-4 w-4" /> ออกบิล</Button>}
                 </div>
               </CardContent>
             </Card>
@@ -800,7 +804,7 @@ function JobDetailsPageContent() {
             </CardContent>
           </Card>
           
-          {isOfficeOrAdmin && ['WAITING_APPROVE', 'PENDING_PARTS'].includes(job.status) && (
+          {canEditDetails && ['WAITING_APPROVE', 'PENDING_PARTS'].includes(job.status) && (
             <Card>
               <CardHeader><CardTitle className="text-base font-semibold">การอนุมัติของลูกค้า</CardTitle></CardHeader>
               <CardContent className="space-y-2">

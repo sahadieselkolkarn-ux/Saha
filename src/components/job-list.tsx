@@ -116,7 +116,9 @@ export function JobList({
   const [billingJob, setBillingJob] = useState<Job | null>(null);
   
   const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
-  const isOfficer = isOfficeOrAdmin || profile?.role === 'OFFICER';
+  const isService = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
+  
+  const isOfficer = isOfficeOrAdmin || isService || profile?.role === 'OFFICER';
 
   const [assigningJob, setAssigningJob] = useState<Job | null>(null);
   const [workers, setWorkers] = useState<UserProfile[]>([]);
@@ -745,7 +747,7 @@ export function JobList({
 
               {!isEffectivelyLocked && (
                 <>
-                  {actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS' && isOfficeOrAdmin && (
+                  {actionPreset === 'pendingPartsReady' && job.status === 'PENDING_PARTS' && isOfficer && (
                       <Button variant="default" className="w-full" onClick={() => setJobForPartsReady(job)}>
                           <PackageCheck className="mr-2 h-4 w-4" />
                           จัดอะไหล่เรียบร้อย
@@ -787,7 +789,7 @@ export function JobList({
                     </Button>
                   )}
 
-                  {job.status === 'DONE' && isOfficeOrAdmin && (
+                  {job.status === 'DONE' && isOfficer && (
                     <>
                       {!isBilled ? (
                         <Button

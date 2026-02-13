@@ -36,6 +36,18 @@ service cloud.firestore {
       return isSystemAdmin() || (signedIn() && (dept() == "MANAGEMENT" || role() == "ADMIN" || role() == "MANAGER"));
     }
     
+    function isOffice() {
+      return signedIn() && (dept() == "OFFICE" || dept() == "MANAGEMENT");
+    }
+
+    function isService() {
+      return signedIn() && (dept() == "CAR_SERVICE" || dept() == "COMMONRAIL" || dept() == "MECHANIC");
+    }
+
+    function canEditJobs() {
+      return isAdmin() || isMgmt() || isOffice() || isService();
+    }
+    
     function isOfficeOrMgmt() {
       return isMgmt() || (signedIn() && (dept() == "OFFICE" || role() == "ADMIN" || role() == "MANAGER" || role() == "OFFICER"));
     }
@@ -89,12 +101,12 @@ service cloud.firestore {
     // Customers & Vendors
     match /customers/{id} {
       allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow create, update: if canEditJobs();
       allow delete: if isAdmin();
     }
     match /vendors/{id} {
       allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow create, update: if canEditJobs();
       allow delete: if isAdmin();
     }
 
@@ -102,12 +114,12 @@ service cloud.firestore {
     match /jobs/{jobId} {
       allow read: if signedIn();
       allow create: if signedIn();
-      allow update: if signedIn();
+      allow update: if canEditJobs();
       allow delete: if isMgmt();
       match /activities/{activityId} {
         allow read: if signedIn();
         allow create: if signedIn();
-        allow update, delete: if isMgmt();
+        allow update, delete: if canEditJobs();
       }
     }
     
