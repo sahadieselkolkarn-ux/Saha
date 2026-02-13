@@ -206,7 +206,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         issueDate: docToEdit.docDate,
         items: docToEdit.items.map(item => ({...item})),
         notes: docToEdit.notes ?? '',
-        isVat: docToEdit.withTax,
+        isVat: true, // Force to true for Tax Invoice
         discountAmount: docToEdit.discountAmount || 0,
         senderName: profile?.displayName || docToEdit.senderName,
         receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
@@ -240,6 +240,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       form.setValue('jobId', jobId || undefined);
       form.setValue('customerId', job.customerId);
       form.setValue('receiverName', job.customerSnapshot.name ?? '');
+      form.setValue('isVat', true);
     }
      if (profile) {
       form.setValue('senderName', profile.displayName ?? '');
@@ -265,20 +266,21 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   
   const watchedItems = useWatch({ control: form.control, name: "items" });
   const watchedDiscount = useWatch({ control: form.control, name: "discountAmount" });
-  const watchedIsVat = useWatch({ control: form.control, name: "isVat" });
 
   useEffect(() => {
     const subtotal = watchedItems.reduce((sum, item) => sum + (item.total || 0), 0);
     const discount = watchedDiscount || 0;
     const net = subtotal - discount;
-    const vatAmount = watchedIsVat ? net * 0.07 : 0;
+    // For Tax Invoice, we always calculate VAT 7%
+    const vatAmount = net * 0.07;
     const grandTotal = net + vatAmount;
 
     form.setValue("subtotal", subtotal, { shouldValidate: true });
     form.setValue("net", net, { shouldValidate: true });
     form.setValue("vatAmount", vatAmount, { shouldValidate: true });
     form.setValue("grandTotal", grandTotal, { shouldValidate: true });
-  }, [watchedItems, watchedDiscount, watchedIsVat, form]);
+    form.setValue("isVat", true, { shouldValidate: true });
+  }, [watchedItems, watchedDiscount, form]);
 
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
     const itemsFromDoc = (sourceDoc.items || []).map((item: any) => {
@@ -443,7 +445,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       subtotal: data.subtotal,
       discountAmount: data.discountAmount || 0,
       net: data.net,
-      withTax: data.isVat,
+      withTax: true, // Always true for Tax Invoice
       vatAmount: data.vatAmount,
       grandTotal: data.grandTotal,
       notes: data.notes,
@@ -486,7 +488,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 'TAX_INVOICE',
                 documentDataPayload,
                 profile,
-                data.jobId ? 'WAITING_APPROVE' : undefined,
+                data.jobId ? 'WAITING_CUSTOMER_PICKUP' : undefined,
                 options
             );
             docId = result.docId;
@@ -776,9 +778,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                   </div>
                   <div className="flex justify-between items-center font-medium"><span className="text-muted-foreground">ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div>
                   <div className="flex justify-between items-center text-sm">
-                      <FormField control={form.control} name="isVat" render={({ field }) => (
-                          <div className="flex items-center gap-2"><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked}/><Label className="font-normal cursor-pointer">ภาษีมูลค่าเพิ่ม 7%</Label></div>
-                      )}/>
+                      <div className="flex items-center gap-2">
+                          <span className="text-sm font-normal">ภาษีมูลค่าเพิ่ม 7%</span>
+                      </div>
                       <span>{formatCurrency(form.watch('vatAmount'))}</span>
                   </div>
                   <Separator/>
