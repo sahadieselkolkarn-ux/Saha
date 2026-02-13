@@ -45,12 +45,18 @@ const customerSchema = z.object({
   taxName: z.string().optional(),
   taxAddress: z.string().optional(),
   taxId: z.string().optional(),
+  taxPhone: z.string().optional(),
+  taxBranchType: z.enum(['HEAD_OFFICE', 'BRANCH']).optional(),
+  taxBranchNo: z.string().optional(),
   acquisitionSource: z.enum(ACQUISITION_SOURCES, {
     errorMap: () => ({ message: "กรุณาเลือกช่องทางที่ลูกค้ารู้จักร้าน เพื่อใช้ทำสถิติในแดชบอร์ด" })
   }),
 }).refine(data => !data.useTax || (data.taxName && data.taxAddress && data.taxId), {
   message: "กรุณากรอกข้อมูลภาษีให้ครบถ้วนเมื่อเลือก 'ต้องการใบกำกับภาษี'",
   path: ["taxName"], 
+}).refine(data => !data.useTax || data.taxBranchType !== 'BRANCH' || (data.taxBranchNo && data.taxBranchNo.length === 5), {
+  message: "กรุณาระบุรหัสสาขา 5 หลัก",
+  path: ["taxBranchNo"],
 });
 
 
@@ -70,12 +76,16 @@ export default function OfficeCustomersNewPage() {
       taxName: "",
       taxAddress: "",
       taxId: "",
+      taxPhone: "",
+      taxBranchType: 'HEAD_OFFICE',
+      taxBranchNo: '00000',
       // @ts-ignore - Let it be empty to trigger validation
       acquisitionSource: undefined,
     },
   });
 
   const useTax = form.watch("useTax");
+  const taxBranchType = form.watch("taxBranchType");
 
   const onSubmit = async (values: z.infer<typeof customerSchema>) => {
     if (!db) return;
@@ -90,6 +100,9 @@ export default function OfficeCustomersNewPage() {
         taxName: values.useTax ? values.taxName : "",
         taxAddress: values.useTax ? values.taxAddress : "",
         taxId: values.useTax ? values.taxId : "",
+        taxPhone: values.useTax ? values.taxPhone : "",
+        taxBranchType: values.useTax ? values.taxBranchType : null,
+        taxBranchNo: values.useTax && values.taxBranchType === 'BRANCH' ? values.taxBranchNo : (values.taxBranchType === 'HEAD_OFFICE' ? '00000' : null),
         acquisitionSource: values.acquisitionSource,
         createdAt: serverTimestamp(), 
         updatedAt: serverTimestamp() 
@@ -183,22 +196,67 @@ export default function OfficeCustomersNewPage() {
                         <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                         <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                         <div className="space-y-1 leading-none">
-                            <FormLabel className="cursor-pointer">ต้องการใบกำกับภาษี (Use Tax Invoice)</FormLabel>
+                            <FormLabel className="cursor-pointer font-bold text-primary">ต้องการใบกำกับภาษี (Use Tax Invoice)</FormLabel>
                             <FormDescription className="text-xs">ระบุข้อมูลเพื่อใช้ในการออกใบกำกับภาษีเต็มรูปแบบ</FormDescription>
                         </div>
                         </FormItem>
                     )} />
                     {useTax && (
-                        <div className="space-y-4 p-4 border rounded-md bg-muted/50">
+                        <div className="space-y-4 p-4 border rounded-md bg-muted/50 border-primary/20 animate-in fade-in slide-in-from-top-1">
+                            <h4 className="text-sm font-bold text-primary uppercase tracking-wider border-b pb-2">รายละเอียดสำหรับการออกใบกำกับภาษี</h4>
+                            
                             <FormField name="taxName" control={form.control} render={({ field }) => (
-                                <FormItem><FormLabel>ชื่อผู้เสียภาษี (Tax Name)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>ชื่อผู้เสียภาษี (Tax Name)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ชื่อบริษัท หรือ ชื่อ-นามสกุล" /></FormControl><FormMessage /></FormItem>
                             )} />
+                            
                             <FormField name="taxAddress" control={form.control} render={({ field }) => (
-                                <FormItem><FormLabel>ที่อยู่ผู้เสียภาษี (Tax Address)</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>ที่อยู่ผู้เสียภาษี (Tax Address)</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} placeholder="ระบุเลขที่บ้าน ถนน..." /></FormControl><FormMessage /></FormItem>
                             )} />
-                            <FormField name="taxId" control={form.control} render={({ field }) => (
-                                <FormItem><FormLabel>เลขที่ผู้เสียภาษี (Tax ID)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
-                            )} />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <FormField name="taxId" control={form.control} render={({ field }) => (
+                                    <FormItem><FormLabel>เลขประจำตัวผู้เสียภาษี (Tax ID)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="เลข 13 หลัก" /></FormControl><FormMessage /></FormItem>
+                                )} />
+                                <FormField name="taxPhone" control={form.control} render={({ field }) => (
+                                    <FormItem><FormLabel>เบอร์โทรศัพท์ (สำหรับบิล)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ระบุเบอร์โทร" /></FormControl><FormMessage /></FormItem>
+                                )} />
+                            </div>
+
+                            <FormField
+                                control={form.control}
+                                name="taxBranchType"
+                                render={({ field }) => (
+                                    <FormItem className="space-y-3">
+                                    <FormLabel>สถานะสถานประกอบการ</FormLabel>
+                                    <FormControl>
+                                        <RadioGroup
+                                        onValueChange={field.onChange}
+                                        defaultValue={field.value}
+                                        className="flex flex-col space-y-1"
+                                        >
+                                        <FormItem className="flex items-center space-x-3 space-y-0">
+                                            <FormControl><RadioGroupItem value="HEAD_OFFICE" /></FormControl>
+                                            <Label className="font-normal cursor-pointer">สำนักงานใหญ่</Label>
+                                        </FormItem>
+                                        <FormItem className="flex items-center space-x-3 space-y-0">
+                                            <FormControl><RadioGroupItem value="BRANCH" /></FormControl>
+                                            <Label className="font-normal cursor-pointer">สาขา</Label>
+                                        </FormItem>
+                                        </RadioGroup>
+                                    </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+
+                            {taxBranchType === 'BRANCH' && (
+                                <FormField name="taxBranchNo" control={form.control} render={({ field }) => (
+                                    <FormItem className="animate-in fade-in slide-in-from-left-1">
+                                        <FormLabel>รหัสสาขา (5 หลัก)</FormLabel>
+                                        <FormControl><Input {...field} value={field.value ?? ''} placeholder="เช่น 00001" maxLength={5} /></FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                            )}
                         </div>
                     )}
                     <div className="flex gap-4">

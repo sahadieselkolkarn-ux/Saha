@@ -69,6 +69,17 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
 
     const displayCustomerName = isTaxDoc ? (document.customerSnapshot.taxName || document.customerSnapshot.name) : document.customerSnapshot.name;
     const displayCustomerAddress = isTaxDoc ? (document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่') : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่');
+    const displayCustomerPhone = isTaxDoc ? (document.customerSnapshot.taxPhone || document.customerSnapshot.phone) : document.customerSnapshot.phone;
+
+    // Branch logic
+    let branchLabel = "";
+    if (isTaxDoc) {
+        if (document.customerSnapshot.taxBranchType === 'HEAD_OFFICE') {
+            branchLabel = "สำนักงานใหญ่";
+        } else if (document.customerSnapshot.taxBranchType === 'BRANCH') {
+            branchLabel = `สาขา ${document.customerSnapshot.taxBranchNo || '-----'}`;
+        }
+    }
 
     return (
         <div className="printable-document p-10 border bg-white shadow-sm flex flex-col min-h-[297mm] w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0">
@@ -99,7 +110,8 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                         <p className="font-bold text-sm">{displayCustomerName}</p>
                         <p className="text-[11px] leading-relaxed whitespace-pre-wrap">{displayCustomerAddress}</p>
                         <p className="text-[11px]">
-                            โทร: {document.customerSnapshot.phone}
+                            {branchLabel && <span className="font-bold mr-4">{branchLabel}</span>}
+                            โทร: {displayCustomerPhone}
                             {isTaxDoc && document.customerSnapshot.taxId && (
                                 <span className="ml-4">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId}</span>
                             )}

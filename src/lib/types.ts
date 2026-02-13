@@ -50,6 +50,7 @@ export interface Customer {
   taxName?: string;
   taxAddress?: string;
   taxId?: string;
+  taxPhone?: string;
   taxBranchType?: 'HEAD_OFFICE' | 'BRANCH';
   taxBranchNo?: string;
   acquisitionSource?: AcquisitionSource;
@@ -94,6 +95,12 @@ export interface Job {
     name: string;
     phone: string;
     useTax?: boolean;
+    taxName?: string;
+    taxAddress?: string;
+    taxId?: string;
+    taxPhone?: string;
+    taxBranchType?: 'HEAD_OFFICE' | 'BRANCH';
+    taxBranchNo?: string;
   };
   department: JobDepartment;
   status: JobStatus;
