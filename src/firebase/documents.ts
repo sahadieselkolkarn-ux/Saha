@@ -6,17 +6,16 @@ import {
   runTransaction,
   collection,
   serverTimestamp,
-  Timestamp,
   getDocs,
   query,
   where,
   setDoc,
-  writeBatch,
   limit,
   orderBy,
   getDoc,
+  updateDoc,
 } from 'firebase/firestore';
-import type { DocumentSettings, Document, DocType, DocumentCounters, JobStatus, UserProfile } from '@/lib/types';
+import type { DocumentSettings, Document, DocType, JobStatus, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
 
 /**
@@ -104,7 +103,7 @@ export async function createDocument(
   };
   const prefix = (docSettingsSnap.data()[prefixes[docType]] || docType.substring(0, 2)).toUpperCase();
 
-  // Baseline check: Find highest number actually existing in DB for this prefix/year
+  // Baseline check: Find highest number actually existing in DB for THIS specific prefix and year
   const prefixSearch = `${prefix}${year}-`;
   const highestQ = query(
     collection(db, "documents"),
@@ -125,15 +124,27 @@ export async function createDocument(
     const counterSnap = await transaction.get(counterRef);
     let counters = counterSnap.exists() ? counterSnap.data() : { year };
 
-    const specificKey = `${docType}_${prefix}_count`;
-    const lastCount = counters[specificKey] || 0;
+    // Prefix Change Detection:
+    // If the prefix has changed since the last document of this type was created,
+    // we reset the counter base to 0 (so it starts at 0001, unless collectionMax says otherwise).
+    const lastPrefixKey = `${docType}_last_prefix`;
+    const lastPrefix = counters[lastPrefixKey];
+    
+    const countKey = `${docType}_${prefix}_count`;
+    let lastCount = counters[countKey] || 0;
+
+    if (lastPrefix !== prefix) {
+        // Prefix changed! Reset counter for this specific prefix-type combo
+        lastCount = 0;
+    }
     
     let nextCount = Math.max(lastCount, collectionMax) + 1;
     let finalDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
 
-    // Final collision safety loop
+    // Final collision safety loop (Checking against all docs just in case)
     let isUsed = true;
-    while (isUsed) {
+    let safetyCap = 0;
+    while (isUsed && safetyCap < 100) {
       const collCheck = query(collection(db, "documents"), where("docNo", "==", finalDocNo), where("docType", "==", docType), limit(1));
       const collSnap = await getDocs(collCheck);
       if (collSnap.empty) {
@@ -141,6 +152,7 @@ export async function createDocument(
       } else {
         nextCount++;
         finalDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
+        safetyCap++;
       }
     }
 
@@ -156,7 +168,11 @@ export async function createDocument(
     });
 
     transaction.set(newDocRef, docData);
-    transaction.set(counterRef, { ...counters, [specificKey]: nextCount }, { merge: true });
+    transaction.set(counterRef, { 
+        ...counters, 
+        [countKey]: nextCount,
+        [lastPrefixKey]: prefix // Store this as the last used prefix for this type
+    }, { merge: true });
 
     if (data.jobId) {
       transaction.update(doc(db, 'jobs', data.jobId), {

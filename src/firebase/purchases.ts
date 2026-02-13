@@ -6,7 +6,6 @@ import {
   runTransaction,
   collection,
   serverTimestamp,
-  Timestamp,
   getDocs,
   query,
   where,
@@ -14,7 +13,7 @@ import {
   orderBy,
   getDoc
 } from 'firebase/firestore';
-import type { DocumentSettings, DocumentCounters, PurchaseDoc, UserProfile } from '@/lib/types';
+import type { DocumentSettings, PurchaseDoc, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
 
 function normalizeYear(year: number): number {
@@ -47,7 +46,7 @@ export async function createPurchaseDoc(
   if (!docSettingsSnap.exists()) throw new Error("ยังไม่ได้ตั้งค่ารูปแบบเลขที่เอกสารจัดซื้อ");
   const prefix = (docSettingsSnap.data() as DocumentSettings).purchasePrefix || 'PUR';
 
-  // Collection baseline sync for this specific prefix
+  // Baseline sync for this specific prefix
   const prefixSearch = `${prefix}${year}-`;
   const highestQ = query(
     collection(db, "purchaseDocs"),
@@ -72,15 +71,25 @@ export async function createPurchaseDoc(
     const counterDoc = await transaction.get(counterRef);
     let counters = counterDoc.exists() ? counterDoc.data() : { year };
     
-    const specificKey = `PURCHASE_${prefix}_count`;
-    const lastCount = counters[specificKey] || 0;
+    // Prefix Change Detection for Purchases
+    const lastPrefixKey = `PURCHASE_last_prefix`;
+    const lastPrefix = counters[lastPrefixKey];
     
-    let nextCount = Math.max(lastCount, collectionBaseline) + 1;
+    const countKey = `PURCHASE_${prefix}_count`;
+    const lastCount = counters[countKey] || 0;
+    
+    let baseCount = lastCount;
+    if (lastPrefix !== prefix) {
+        baseCount = 0; // Reset for new prefix
+    }
+    
+    let nextCount = Math.max(baseCount, collectionBaseline) + 1;
     let docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
 
     // Collision check loop
     let isUsed = true;
-    while (isUsed) {
+    let safetyCap = 0;
+    while (isUsed && safetyCap < 100) {
       const collCheck = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo), limit(1));
       const collSnap = await getDocs(collCheck);
       if (collSnap.empty) {
@@ -88,6 +97,7 @@ export async function createPurchaseDoc(
       } else {
         nextCount++;
         docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
+        safetyCap++;
       }
     }
 
@@ -102,7 +112,11 @@ export async function createPurchaseDoc(
     });
 
     transaction.set(newDocRef, docData);
-    transaction.set(counterRef, { ...counters, [specificKey]: nextCount }, { merge: true });
+    transaction.set(counterRef, { 
+        ...counters, 
+        [countKey]: nextCount,
+        [lastPrefixKey]: prefix
+    }, { merge: true });
 
     return docNo;
   });
