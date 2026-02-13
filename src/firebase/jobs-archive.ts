@@ -9,13 +9,13 @@ import {
   getDocs,
   writeBatch,
 } from 'firebase/firestore';
-import { getYearFromDateOnly, archiveCollectionNameByYear } from '@/lib/archive-utils';
+import { archiveCollectionNameByYear } from '@/lib/archive-utils';
 import type { UserProfile, Job } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
 
 /**
  * Moves a job and its activities subcollection to an annual archive collection.
- * This is done in a transaction for the main documents and batched writes for subcollections.
+ * Normalizes year to Gregorian.
  */
 export async function archiveAndCloseJob(
   db: Firestore,
@@ -25,20 +25,22 @@ export async function archiveAndCloseJob(
   salesDocInfo: { salesDocType: string; salesDocId: string; salesDocNo: string; paymentStatusAtClose: 'PAID' | 'UNPAID'; }
 ) {
   const jobRef = doc(db, 'jobs', jobId);
-  const year = getYearFromDateOnly(closedDate);
+  
+  // Extract and normalize year
+  const rawYear = Number(String(closedDate || "").slice(0, 4));
+  const year = rawYear > 2400 ? rawYear - 543 : (Number.isFinite(rawYear) ? rawYear : new Date().getFullYear());
+  
   const archiveColName = archiveCollectionNameByYear(year);
   const archiveCol = collection(db, archiveColName);
   const archiveRef = doc(archiveCol, jobId);
 
-  // 1. Transaction to move the main job document and update the linked sales document
   await runTransaction(db, async (transaction) => {
     const jobDoc = await transaction.get(jobRef);
     if (!jobDoc.exists()) {
-      throw new Error("Job not found, it might have been deleted or moved already.");
+      throw new Error("ไม่พบข้อมูลงานซ่อมในระบบปัจจุบัน (อาจถูกย้ายไปประวัติแล้ว)");
     }
     const jobData = jobDoc.data() as Job;
 
-    // Update the sales document to point to this job (to ensure it shows up in history)
     if (salesDocInfo.salesDocId) {
         const docRef = doc(db, 'documents', salesDocInfo.salesDocId);
         transaction.update(docRef, { 
@@ -49,7 +51,7 @@ export async function archiveAndCloseJob(
 
     const archivedJobData = {
       ...jobData,
-      status: 'CLOSED', // Ensure status is CLOSED
+      status: 'CLOSED',
       isArchived: true,
       archivedAt: serverTimestamp(),
       archivedAtDate: closedDate,
@@ -64,24 +66,18 @@ export async function archiveAndCloseJob(
     transaction.delete(jobRef);
   });
 
-  // 2. Move activities subcollection
   await moveJobActivities(db, jobId, archiveColName);
   
   return { archiveCollection: archiveColName, archiveJobId: jobId };
 }
 
-/**
- * Moves ONLY the activities subcollection from active jobs to archive.
- */
 export async function moveJobActivities(db: Firestore, jobId: string, targetCollectionName: string) {
   const activitiesRef = collection(db, 'jobs', jobId, 'activities');
   const archiveActivitiesRef = collection(db, targetCollectionName, jobId, 'activities');
 
   try {
     const activitiesSnapshot = await getDocs(activitiesRef);
-    if (activitiesSnapshot.empty) {
-      return;
-    }
+    if (activitiesSnapshot.empty) return;
 
     let writeBatchCount = 0;
     let batch = writeBatch(db);
@@ -98,7 +94,6 @@ export async function moveJobActivities(db: Firestore, jobId: string, targetColl
         const deleteBatch = writeBatch(db);
         docsToDelete.forEach(ref => deleteBatch.delete(ref));
         await deleteBatch.commit();
-        
         batch = writeBatch(db);
         writeBatchCount = 0;
         docsToDelete.length = 0;

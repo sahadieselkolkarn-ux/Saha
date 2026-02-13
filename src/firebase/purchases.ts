@@ -7,13 +7,30 @@ import {
   collection,
   serverTimestamp,
   Timestamp,
+  getDocs,
+  query,
+  where,
+  limit,
+  orderBy,
+  getDoc
 } from 'firebase/firestore';
 import type { DocumentSettings, DocumentCounters, PurchaseDoc, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
 
+function normalizeYear(year: number): number {
+  return year > 2400 ? year - 543 : year;
+}
+
+function extractSequence(docNo: string): number {
+  const parts = docNo.split('-');
+  if (parts.length < 2) return 0;
+  const num = parseInt(parts[parts.length - 1], 10);
+  return isNaN(num) ? 0 : num;
+}
+
 /**
  * Creates a new purchase document with a transactionally-generated document number.
- * Implements counter reset if the prefix has changed in settings.
+ * Implements counter reset protection, year normalization, and collision prevention.
  */
 export async function createPurchaseDoc(
   db: Firestore,
@@ -22,11 +39,33 @@ export async function createPurchaseDoc(
   initialStatus: PurchaseDoc['status'] = 'DRAFT',
   providedDocId?: string
 ): Promise<string> {
-  const year = new Date(data.docDate).getFullYear();
-  const counterRef = doc(db, 'documentCounters', String(year));
-  const docSettingsRef = doc(db, 'settings', 'documents');
+  const dateObj = new Date(data.docDate);
+  const year = normalizeYear(dateObj.getFullYear());
   
   const newDocRef = providedDocId ? doc(db, 'purchaseDocs', providedDocId) : doc(collection(db, 'purchaseDocs'));
+
+  // Get current settings
+  const docSettingsRef = doc(db, 'settings', 'documents');
+  const docSettingsDoc = await getDoc(docSettingsRef);
+  if (!docSettingsDoc.exists()) {
+    throw new Error("ยังไม่ได้ตั้งค่ารูปแบบเลขที่เอกสารจัดซื้อ");
+  }
+  const prefix = (docSettingsDoc.data() as DocumentSettings).purchasePrefix || 'PUR';
+
+  // Collection baseline sync
+  const prefixYearSearch = `${prefix}${year}-`;
+  const highestQuery = query(
+    collection(db, "purchaseDocs"),
+    where("docNo", ">=", prefixYearSearch),
+    where("docNo", "<=", prefixYearSearch + "\uf8ff"),
+    orderBy("docNo", "desc"),
+    limit(1)
+  );
+  const highestSnap = await getDocs(highestQuery);
+  let collectionBaseline = 0;
+  if (!highestSnap.empty) {
+    collectionBaseline = extractSequence(highestSnap.docs[0].data().docNo);
+  }
 
   const documentNumber = await runTransaction(db, async (transaction) => {
     if (providedDocId) {
@@ -36,28 +75,33 @@ export async function createPurchaseDoc(
       }
     }
 
+    const counterRef = doc(db, 'documentCounters', String(year));
     const counterDoc = await transaction.get(counterRef);
-    const docSettingsDoc = await transaction.get(docSettingsRef);
-
-    if (!docSettingsDoc.exists()) {
-      throw new Error("ยังไม่ได้ตั้งค่ารูปแบบเลขที่เอกสารจัดซื้อ กรุณาตั้งค่าที่หน้า 'ตั้งค่าเลขที่เอกสาร' ก่อนค่ะ");
-    }
-    
-    const settingsData = docSettingsDoc.data() as DocumentSettings;
-    const prefix = (settingsData.purchasePrefix || 'PUR').toUpperCase();
 
     let currentCounters: any = { year };
     if (counterDoc.exists()) {
       currentCounters = counterDoc.data();
     }
     
-    // Per-prefix counter to avoid duplicates
     const counterKey = `PURCHASE_${prefix}_count`;
-    const lastCount = currentCounters[counterKey] || 0;
-    const newCount = lastCount + 1;
-
-    const docNo = `${prefix}${year}-${String(newCount).padStart(4, '0')}`;
+    const counterValue = currentCounters[counterKey] || 0;
     
+    let nextCount = Math.max(counterValue, collectionBaseline) + 1;
+    let docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
+
+    // Internal collision check
+    let isUnique = false;
+    while (!isUnique) {
+      const collisionQuery = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo), limit(1));
+      const collisionSnap = await getDocs(collisionQuery);
+      if (collisionSnap.empty) {
+        isUnique = true;
+      } else {
+        nextCount++;
+        docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
+      }
+    }
+
     const newDocumentData: PurchaseDoc = {
       ...data,
       id: newDocRef.id,
@@ -72,9 +116,9 @@ export async function createPurchaseDoc(
     transaction.set(newDocRef, sanitizedData);
     transaction.set(counterRef, { 
         ...currentCounters, 
-        purchase: newCount,
+        purchase: nextCount,
         purchasePrefix: prefix,
-        [counterKey]: newCount
+        [counterKey]: nextCount
     }, { merge: true });
 
     return docNo;
