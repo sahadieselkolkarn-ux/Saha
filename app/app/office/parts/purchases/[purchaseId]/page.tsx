@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, Suspense, useEffect, useRef } from "react";
-import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
@@ -10,11 +10,12 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, ExternalLink, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { safeFormat } from "@/lib/date-utils";
 import type { PurchaseDoc } from "@/lib/types";
+import { useToast } from "@/hooks/use-toast";
 
 // Helper for currency formatting
 const formatCurrency = (value: number | null | undefined) => (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -119,9 +120,9 @@ function PurchaseDocView({ document }: { document: PurchaseDoc }) {
 function PurchaseViewPageContent() {
     const { purchaseId } = useParams();
     const router = useRouter();
-    const pathname = usePathname();
-    const searchParams = useSearchParams();
     const { db } = useFirebase();
+    const { toast } = useToast();
+    const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => {
         if (!db || typeof purchaseId !== 'string') return null;
@@ -129,25 +130,12 @@ function PurchaseViewPageContent() {
     }, [db, purchaseId]);
 
     const { data: document, isLoading, error } = useDoc<PurchaseDoc>(docRef);
-    const printedRef = useRef(false);
-
-    const isPrintMode = searchParams.get('print') === '1';
-    const shouldAutoprint = searchParams.get('autoprint') === '1';
-    
-    useEffect(() => {
-        if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
-            printedRef.current = true;
-            const newUrl = `${pathname}?print=1`;
-            router.replace(newUrl, { scroll: false });
-            setTimeout(() => window.print(), 500);
-        }
-    }, [isPrintMode, shouldAutoprint, document, isLoading, router, pathname]);
 
     const handlePrint = () => {
-        if (!isPrintMode) {
-             router.push(`${pathname}?print=1&autoprint=1`);
-        } else {
-             window.print();
+        if (printFrameRef.current) {
+            // สั่งพิมพ์โดยตรงผ่าน iframe
+            printFrameRef.current.src = `/app/office/documents/${purchaseId}?print=1&autoprint=1&t=${Date.now()}`;
+            toast({ title: "กำลังเตรียมข้อมูลการซื้อสำหรับพิมพ์..." });
         }
     };
 
@@ -165,24 +153,6 @@ function PurchaseViewPageContent() {
         );
     }
 
-    if (isPrintMode) {
-        return (
-            <div className="bg-white min-h-screen">
-                 <div className="print-hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                    <p className="text-muted-foreground">โหมดพิมพ์: ถ้าไม่ขึ้นหน้าต่างพิมพ์ ให้กด ‘เปิดหน้าพิมพ์ในแท็บใหม่’ หรือกด Ctrl+P</p>
-                    <Button type="button" onClick={handlePrint}><Printer className="h-4 w-4 mr-2"/> พิมพ์</Button>
-                    <Button asChild variant="outline">
-                        <a href={`${pathname}?print=1`} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-4 w-4 mr-2"/> เปิดในแท็บใหม่</a>
-                    </Button>
-                    <Button type="button" variant="ghost" onClick={() => router.replace(pathname)}>กลับ</Button>
-                </div>
-                <div className="p-4">
-                    <PurchaseDocView document={document} />
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -193,6 +163,13 @@ function PurchaseViewPageContent() {
             </div>
             
             <PurchaseDocView document={document} />
+
+            {/* Hidden Iframe for Direct Printing */}
+            <iframe 
+                ref={printFrameRef} 
+                className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
+                title="Print Frame"
+            />
         </div>
     );
 }

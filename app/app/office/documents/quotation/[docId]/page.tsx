@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense } from "react";
+import { useMemo, Suspense, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
@@ -14,11 +14,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { safeFormat } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
 
 function QuotationDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
     const { db } = useFirebase();
+    const { toast } = useToast();
+    const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
@@ -26,7 +29,10 @@ function QuotationDetailPageContent() {
     const isCancelled = document?.status === 'CANCELLED';
 
     const handlePrint = () => {
-        window.open(`/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`, '_blank');
+        if (printFrameRef.current) {
+            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`;
+            toast({ title: "กำลังเตรียมใบเสนอราคาสำหรับพิมพ์..." });
+        }
     };
 
     if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
@@ -46,7 +52,7 @@ function QuotationDetailPageContent() {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center print:hidden">
+            <div className="flex justify-between items-center">
                 <Button variant="outline" onClick={() => router.back()}>
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
                 </Button>
@@ -171,6 +177,13 @@ function QuotationDetailPageContent() {
                     </Card>
                 </div>
             </div>
+
+            {/* Hidden Iframe for Direct Printing */}
+            <iframe 
+                ref={printFrameRef} 
+                className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
+                title="Print Frame"
+            />
         </div>
     );
 }

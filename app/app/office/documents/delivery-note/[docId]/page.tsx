@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, Suspense } from "react";
-import { useParams, useRouter, usePathname } from "next/navigation";
+import { useMemo, Suspense, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
@@ -41,9 +41,9 @@ const getStatusVariant = (status: string) => {
 function DeliveryNoteDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
-    const pathname = usePathname();
     const { db } = useFirebase();
     const { profile } = useAuth();
+    const printFrameRef = useRef<HTMLIFrameElement>(null);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
@@ -51,8 +51,11 @@ function DeliveryNoteDetailPageContent() {
     const isCancelled = document?.status === 'CANCELLED';
 
     const handlePrint = () => {
-        // Direct Print: Open the central document viewer with print flags
-        window.open(`/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`, '_blank');
+        if (printFrameRef.current) {
+            // โหลดหน้าพิมพ์ลงใน iframe ลับ และสั่ง autoprint
+            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`;
+            toast({ title: "กำลังเตรียมเอกสารสำหรับพิมพ์..." });
+        }
     };
 
     if (isLoading) return <div className="space-y-6"><Skeleton className="h-12 w-1/3"/><Skeleton className="h-64 w-full"/><Skeleton className="h-96 w-full"/></div>;
@@ -149,7 +152,7 @@ function DeliveryNoteDetailPageContent() {
                             <CardContent>
                                 <p className="whitespace-pre-wrap text-sm">{document.notes}</p>
                             </CardContent>
-                        </Card>
+                    </Card>
                     )}
                 </div>
 
@@ -206,6 +209,13 @@ function DeliveryNoteDetailPageContent() {
                     </Card>
                 </div>
             </div>
+
+            {/* Hidden Iframe for Direct Printing */}
+            <iframe 
+                ref={printFrameRef} 
+                className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
+                title="Print Frame"
+            />
         </div>
     );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense, useState } from "react";
+import { useMemo, Suspense, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { doc } from "firebase/firestore";
@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, CreditCard, ExternalLink, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 const getStatusVariant = (status: string) => {
   switch (status) {
@@ -55,6 +56,8 @@ function TaxInvoiceDetailPageContent() {
     const router = useRouter();
     const { db } = useFirebase();
     const { profile } = useAuth();
+    const { toast } = useToast();
+    const printFrameRef = useRef<HTMLIFrameElement>(null);
     
     const [isPrintOptionsOpen, setIsPrintOptionsOpen] = useState(false);
     const [printCopies, setPrintCopies] = useState<1 | 2>(1);
@@ -69,7 +72,10 @@ function TaxInvoiceDetailPageContent() {
     };
 
     const confirmPrint = () => {
-        window.open(`/app/office/documents/${docId}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`, '_blank');
+        if (printFrameRef.current) {
+            printFrameRef.current.src = `/app/office/documents/${docId}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`;
+            toast({ title: "กำลังเตรียมใบกำกับภาษีสำหรับพิมพ์..." });
+        }
         setIsPrintOptionsOpen(false);
     };
 
@@ -220,6 +226,13 @@ function TaxInvoiceDetailPageContent() {
                     </Card>
                 </div>
             </div>
+
+            {/* Hidden Iframe for Direct Printing */}
+            <iframe 
+                ref={printFrameRef} 
+                className="fixed bottom-0 right-0 w-0 h-0 border-0 opacity-0 pointer-events-none" 
+                title="Print Frame"
+            />
 
             {/* Print Options Dialog */}
             <AlertDialog open={isPrintOptionsOpen} onOpenChange={setIsPrintOptionsOpen}>

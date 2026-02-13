@@ -182,7 +182,6 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
 function DocumentPageContent() {
     const { docId } = useParams();
     const router = useRouter();
-    const pathname = usePathname();
     const searchParams = useSearchParams();
     const { db } = useFirebase();
 
@@ -201,9 +200,10 @@ function DocumentPageContent() {
     const shouldAutoprint = searchParams.get('autoprint') === '1';
     
     useEffect(() => {
+        // เมื่อโหลดหน้าสำเร็จ และอยู่ในโหมดสั่งพิมพ์อัตโนมัติ (มักจะโหลดผ่าน iframe หรือหน้าต่างใหม่)
         if (isPrintMode && shouldAutoprint && document && !isLoading && !printedRef.current) {
             printedRef.current = true;
-            // ให้หน้าจอพร้อมก่อนสั่งพิมพ์ 1 วินาที
+            // ให้เวลาบราวเซอร์ประมวลผลสไตล์และฟอนต์ 1 วินาที
             const timer = setTimeout(() => {
                 window.print();
             }, 1000);
@@ -213,17 +213,19 @@ function DocumentPageContent() {
 
 
     const handlePrint = () => {
+        // หากอยู่นอกโหมดพิมพ์ และเป็นใบกำกับภาษี ให้ถามก่อน
         if (document?.docType === 'TAX_INVOICE' && !isPrintMode) {
             setIsPrintOptionsOpen(true);
-        } else if (!isPrintMode) {
-            window.open(`${pathname}?print=1&autoprint=1&t=${Date.now()}`, '_blank');
         } else {
-             window.print();
+            // สั่งพิมพ์หน้าปัจจุบัน (หากเป็นหน้าพรีวิว)
+            window.print();
         }
     };
     
     const confirmPrint = () => {
-        window.open(`${pathname}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`, '_blank');
+        // ในหน้าพรีวิวนี้ ถ้าเลือกสำเนา ให้เปิดพิมพ์อัตโนมัติแบบกำหนดสำเนา
+        const url = `/app/office/documents/${docId}?print=1&autoprint=1&copies=${printCopies}&t=${Date.now()}`;
+        window.open(url, '_blank');
         setIsPrintOptionsOpen(false);
     };
 
@@ -261,7 +263,7 @@ function DocumentPageContent() {
                         }
                      `}</style>
                      <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                        <p className="font-bold text-primary">โหมดสั่งพิมพ์อัตโนมัติ</p>
+                        <p className="font-bold text-primary italic">โหมดสั่งพิมพ์อัตโนมัติ (กำลังทำงาน...)</p>
                         <Button type="button" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2"/> พิมพ์อีกครั้ง</Button>
                         <Button type="button" variant="ghost" onClick={() => window.close()}>ปิดหน้านี้</Button>
                     </div>
@@ -283,7 +285,7 @@ function DocumentPageContent() {
         return (
             <div className="bg-white">
                  <div className="print:hidden sticky top-0 bg-background/80 backdrop-blur-sm border-b p-2 flex items-center justify-center gap-4 text-sm z-50">
-                    <p className="font-bold text-primary">โหมดสั่งพิมพ์อัตโนมัติ</p>
+                    <p className="font-bold text-primary italic">โหมดสั่งพิมพ์อัตโนมัติ (กำลังทำงาน...)</p>
                     <Button type="button" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2"/> พิมพ์อีกครั้ง</Button>
                     <Button type="button" variant="ghost" onClick={() => window.close()}>ปิดหน้านี้</Button>
                 </div>
