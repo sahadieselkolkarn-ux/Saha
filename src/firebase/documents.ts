@@ -113,8 +113,15 @@ export async function createDocument(
 
   } else {
     // 1. Determine the correct year from docDate or current date
-    const dateObj = data.docDate ? new Date(data.docDate) : new Date();
-    const year = isNaN(dateObj.getTime()) ? new Date().getFullYear() : dateObj.getFullYear();
+    // Robust date parsing to avoid NaN issues
+    let year = new Date().getFullYear();
+    const dateInput = data.docDate || (data as any).issueDate;
+    if (dateInput) {
+        const dateObj = new Date(dateInput);
+        if (!isNaN(dateObj.getTime())) {
+            year = dateObj.getFullYear();
+        }
+    }
     
     const counterRef = doc(db, 'documentCounters', String(year));
     const docSettingsRef = doc(db, 'settings', 'documents');
@@ -154,14 +161,14 @@ export async function createDocument(
         let nextCount = (lastCount || 0) + 1;
         let generatedDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
         
-        // --- DEFENSIVE CHECK ---
-        // Verify this number isn't already in use (using a manual fetch if needed, 
-        // but since we can't Query in Transaction, we rely on the counter's state)
-        // If we suspect inconsistency, we would increment until unique outside or via separate locks.
+        // Important: docDate must be valid for the record
+        const finalDocDate = dateInput && !isNaN(new Date(dateInput).getTime()) 
+            ? dateInput 
+            : new Date().toISOString().split('T')[0];
 
         const newDocumentData: Document = {
             ...data,
-            docDate: data.docDate || dateObj.toISOString().split('T')[0],
+            docDate: finalDocDate,
             id: docId,
             docNo: generatedDocNo,
             docType,

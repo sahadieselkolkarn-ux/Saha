@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { doc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, CreditCard, ExternalLink, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, FileText, User, Calendar, ExternalLink, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -51,6 +51,7 @@ function DeliveryNoteDetailPageContent() {
     const isCancelled = document?.status === 'CANCELLED';
 
     const handlePrint = () => {
+        // Direct Print: Open the central document viewer with print flags
         window.open(`/app/office/documents/${docId}?print=1&autoprint=1&t=${Date.now()}`, '_blank');
     };
 
