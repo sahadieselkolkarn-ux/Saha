@@ -34,7 +34,7 @@ export default function WorkerJobsPage() {
       <PageHeader title={`งานของ ${worker.displayName}`} description={`งานทั้งหมดที่ ${worker.displayName} กำลังรับผิดชอบ`} />
       <JobList 
         department="CAR_SERVICE" 
-        status="IN_PROGRESS"
+        status={['RECEIVED', 'IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'PENDING_PARTS', 'IN_REPAIR_PROCESS']}
         assigneeUid={worker.id}
         emptyTitle="ไม่มีงานที่กำลังทำ"
         emptyDescription={`${worker.displayName} ยังไม่มีงานที่รับผิดชอบในขณะนี้`}
