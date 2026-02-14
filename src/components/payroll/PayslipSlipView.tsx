@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { useMemo } from "react";
@@ -10,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, Trash2, AlertCircle } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -119,11 +117,11 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
 
         <Card>
             <CardHeader>
-                <CardTitle className="text-lg">สรุป</CardTitle>
+                <CardTitle className="text-lg">สรุปการจ่ายเงิน</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
                 <div className="flex justify-between items-center">
-                    <Label htmlFor="basePay" className={cn(isEdit && "text-base")}>ฐานเงินเดือน</Label>
+                    <Label htmlFor="basePay" className={cn(isEdit && "text-base")}>ฐานเงินเดือน (ในงวดนี้)</Label>
                     {isEdit ? (
                         <Input id="basePay" type="number" className="w-40 text-right font-semibold" value={snapshot?.basePay || ''} onChange={(e) => handleFieldChange('basePay', safeParseFloat(e.target.value))}/>
                     ) : (
@@ -140,9 +138,35 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
                 </div>
                 <Separator />
                 <div className="flex justify-between text-xl font-bold">
-                    <span>ยอดสุทธิ</span>
-                    <span>{formatCurrency(totals.netPay)}</span>
+                    <span>ยอดสุทธิที่ได้รับ</span>
+                    <span className="text-primary">{formatCurrency(totals.netPay)}</span>
                 </div>
+            </CardContent>
+        </Card>
+
+        {/* Attendance Day Log Section */}
+        <Card>
+            <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4"/> รายละเอียดการ สาย ขาด ลา</CardTitle>
+            </CardHeader>
+            <CardContent>
+                {snapshot.attendanceSummary?.dayLogs && snapshot.attendanceSummary.dayLogs.length > 0 ? (
+                    <div className="space-y-2">
+                        {snapshot.attendanceSummary.dayLogs.map((log, i) => (
+                            <div key={i} className="flex justify-between items-center text-xs border-b border-dashed pb-1 last:border-0">
+                                <div className="flex items-center gap-2">
+                                    <Badge variant={log.type === 'ABSENT' ? 'destructive' : log.type === 'LATE' ? 'secondary' : 'outline'} className="text-[9px] px-1 h-4">
+                                        {log.type === 'ABSENT' ? 'ขาด' : log.type === 'LATE' ? 'สาย' : 'ลา'}
+                                    </Badge>
+                                    <span className="font-medium">{log.date}</span>
+                                </div>
+                                <span className="text-muted-foreground">{log.detail}</span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-center py-4 text-xs text-muted-foreground italic">ไม่มีรายการ สาย ขาด หรือ ลา ในงวดนี้ค่ะ</p>
+                )}
             </CardContent>
         </Card>
 
@@ -152,14 +176,13 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
                     <CardHeader><CardTitle className="text-base">สรุปการลงเวลา</CardTitle></CardHeader>
                     <CardContent>
                         <Table>
-                            <TableHeader><TableRow><TableHead>รายการ</TableHead><TableHead className="text-right">งวดนี้</TableHead><TableHead className="text-right">สะสมปีนี้</TableHead></TableRow></TableHeader>
-                            <TableBody>
-                                <TableRow><TableCell>วันทำงานตามตาราง</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.scheduledWorkDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.scheduledWorkDays ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>วันทำงาน</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.presentDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.presentDays ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>วันมาสาย</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.lateDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.lateDays ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>จำนวนนาทีที่สาย</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.lateMinutes ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.lateMinutes ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>หน่วยที่ขาด</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.absentUnits ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.absentUnits ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>วันลา</TableCell><TableCell className="text-right">{snapshot.attendanceSummary?.leaveDays ?? '-'}</TableCell><TableCell className="text-right">{snapshot.attendanceSummaryYtd?.leaveDays ?? '-'}</TableCell></TableRow>
+                            <TableHeader><TableRow><TableHead className="text-[10px]">รายการ</TableHead><TableHead className="text-right text-[10px]">งวดนี้</TableHead></TableRow></TableHeader>
+                            <TableBody className="text-xs">
+                                <TableRow><TableCell>วันทำงานตามตาราง</TableCell><TableCell className="text-right font-medium">{snapshot.attendanceSummary?.scheduledWorkDays ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>วันทำงานจริง</TableCell><TableCell className="text-right font-medium">{snapshot.attendanceSummary?.presentDays ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>วันมาสาย</TableCell><TableCell className="text-right font-medium text-destructive">{snapshot.attendanceSummary?.lateDays ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>หน่วยที่ขาด</TableCell><TableCell className="text-right font-medium text-destructive">{snapshot.attendanceSummary?.absentUnits ?? '-'}</TableCell></TableRow>
+                                <TableRow><TableCell>วันลาที่อนุมัติ</TableCell><TableCell className="text-right font-medium">{snapshot.attendanceSummary?.leaveDays ?? '-'}</TableCell></TableRow>
                             </TableBody>
                         </Table>
                     </CardContent>
@@ -169,12 +192,12 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
                 <CardHeader><CardTitle className="text-base">สรุปการลา</CardTitle></CardHeader>
                 <CardContent>
                      <Table>
-                        <TableHeader><TableRow><TableHead>รายการ</TableHead><TableHead className="text-right">งวดนี้</TableHead><TableHead className="text-right">สะสมปีนี้</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                            <TableRow><TableCell>ลาป่วย</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.sickDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.sickDays ?? 0}</TableCell></TableRow>
-                            <TableRow><TableCell>ลากิจ</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.businessDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.businessDays ?? 0}</TableCell></TableRow>
-                            <TableRow><TableCell>ลาพักร้อน</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.vacationDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.vacationDays ?? 0}</TableCell></TableRow>
-                            <TableRow><TableCell>ลาเกินสิทธิ์</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.overLimitDays ?? 0}</TableCell><TableCell className="text-right">{snapshot.leaveSummaryYtd?.overLimitDays ?? 0}</TableCell></TableRow>
+                        <TableHeader><TableRow><TableHead className="text-[10px]">รายการ</TableHead><TableHead className="text-right text-[10px]">งวดนี้</TableHead></TableRow></TableHeader>
+                        <TableBody className="text-xs">
+                            <TableRow><TableCell>ลาป่วย</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.sickDays ?? 0}</TableCell></TableRow>
+                            <TableRow><TableCell>ลากิจ</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.businessDays ?? 0}</TableCell></TableRow>
+                            <TableRow><TableCell>ลาพักร้อน</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.vacationDays ?? 0}</TableCell></TableRow>
+                            <TableRow><TableCell>ลาเกินสิทธิ์</TableCell><TableCell className="text-right text-destructive">{snapshot.leaveSummary?.overLimitDays ?? 0}</TableCell></TableRow>
                         </TableBody>
                     </Table>
                 </CardContent>
@@ -199,28 +222,28 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
                     </CardContent>
                 </Card>
                  <Card>
-                    <CardHeader><CardTitle className="text-lg">หมายเหตุ (สำหรับ HR)</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-lg">หมายเหตุ (HR)</CardTitle></CardHeader>
                     <CardContent>
-                        <Textarea placeholder="เช่น สูตรการคำนวณ..." value={snapshot.calcNotes || ''} onChange={(e) => handleFieldChange('calcNotes', e.target.value)} />
+                        <Textarea placeholder="ระบุสูตรการคำนวณ หรือบันทึกเพื่อคุยกับพนักงาน..." value={snapshot.calcNotes || ''} onChange={(e) => handleFieldChange('calcNotes', e.target.value)} />
                     </CardContent>
                 </Card>
             </>
         ) : (
             <>
                 <Card>
-                    <CardHeader><CardTitle className="text-lg">รายละเอียด</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-lg">รายละเอียดรายรับ/หัก</CardTitle></CardHeader>
                     <CardContent>
-                        <h4 className="font-semibold text-sm mb-2">รายรับเพิ่มเติม</h4>
-                        {(snapshot.additions && snapshot.additions.length > 0) ? snapshot.additions.map((item, i)=><div key={i} className="flex justify-between text-sm"><p>{item.name}</p><p>{formatCurrency(item.amount)}</p></div>) : <p className="text-sm text-muted-foreground">- ไม่มี -</p>}
+                        <h4 className="font-semibold text-sm mb-2 text-green-600">รายรับเพิ่มเติม</h4>
+                        {(snapshot.additions && snapshot.additions.length > 0) ? snapshot.additions.map((item, i)=><div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-dashed"><p>{item.name}</p><p className="font-medium">{formatCurrency(item.amount)}</p></div>) : <p className="text-sm text-muted-foreground">- ไม่มี -</p>}
                         <Separator className="my-4"/>
-                        <h4 className="font-semibold text-sm mb-2">รายการหัก</h4>
-                         {(snapshot.deductions && snapshot.deductions.length > 0) ? snapshot.deductions.map((item, i)=><div key={i} className="flex justify-between text-sm"><p>{item.name}</p><p>{formatCurrency(item.amount)}</p></div>) : <p className="text-sm text-muted-foreground">- ไม่มี -</p>}
+                        <h4 className="font-semibold text-sm mb-2 text-destructive">รายการหัก</h4>
+                         {(snapshot.deductions && snapshot.deductions.length > 0) ? snapshot.deductions.map((item, i)=><div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-dashed"><p>{item.name}</p><p className="font-medium text-destructive">{`-${formatCurrency(item.amount)}`}</p></div>) : <p className="text-sm text-muted-foreground">- ไม่มี -</p>}
                     </CardContent>
                 </Card>
                  <Card>
-                    <CardHeader><CardTitle className="text-lg">หมายเหตุ</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-lg">หมายเหตุจาก HR</CardTitle></CardHeader>
                     <CardContent>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{snapshot.calcNotes || '- ไม่มี -'}</p>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap italic">{snapshot.calcNotes || '- ไม่มีหมายเหตุ -'}</p>
                     </CardContent>
                 </Card>
             </>

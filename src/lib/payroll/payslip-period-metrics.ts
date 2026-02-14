@@ -1,5 +1,3 @@
-
-
 import {
   format,
   eachDayOfInterval,
@@ -23,20 +21,22 @@ import type {
   AttendanceAdjustment,
   PayslipSnapshot,
   PayslipDeduction,
-  LeaveType as TLeaveType
+  LeaveType as TLeaveType,
+  AttendanceDayLog
 } from '@/lib/types';
 import { WithId } from '@/firebase/firestore/use-collection';
 
 export type PeriodMetrics = {
   attendanceSummary: {
     scheduledWorkDays: number;
-    presentDays: number;         // for MONTHLY: scheduled minus absentUnits minus leaveDays (clamped)
+    presentDays: number;
     lateDays: number;
     lateMinutes: number;
-    absentUnits: number;         // 0.5, 1.0 ...
+    absentUnits: number;
     leaveDays: number;
-    payableUnits: number;        // for DAILY: sum of payable day units (1 - absentUnits that day), excluding leave
-    warnings: string[];          // e.g. missing OUT dates
+    payableUnits: number;
+    warnings: string[];
+    dayLogs: AttendanceDayLog[];
   };
   leaveSummary: {
     sickDays: number;
@@ -71,7 +71,8 @@ export function computePeriodMetrics(params: {
     today,
   } = params;
 
-  let attendanceSummary = { scheduledWorkDays: 0, presentDays: 0, lateDays: 0, lateMinutes: 0, absentUnits: 0, leaveDays: 0, payableUnits: 0, warnings: [] as string[] };
+  let dayLogs: AttendanceDayLog[] = [];
+  let attendanceSummary = { scheduledWorkDays: 0, presentDays: 0, lateDays: 0, lateMinutes: 0, absentUnits: 0, leaveDays: 0, payableUnits: 0, warnings: [] as string[], dayLogs };
   let leaveSummary = { sickDays: 0, businessDays: 0, vacationDays: 0, overLimitDays: 0 };
   let calcNotes = '';
   let autoDeductions: PayslipDeduction[] = [];
@@ -106,7 +107,13 @@ export function computePeriodMetrics(params: {
       if (onLeave.leaveType === 'SICK') leaveSummary.sickDays++;
       if (onLeave.leaveType === 'BUSINESS') leaveSummary.businessDays++;
       if (onLeave.leaveType === 'VACATION') leaveSummary.vacationDays++;
-      return; // Skip attendance processing for leave days
+      
+      dayLogs.push({
+          date: dayStr,
+          type: 'LEAVE',
+          detail: `ลา${onLeave.leaveType === 'SICK' ? 'ป่วย' : onLeave.leaveType === 'BUSINESS' ? 'กิจ' : 'พักร้อน'}: ${onLeave.reason || '-'}`
+      });
+      return; 
     }
 
     if (payType === 'MONTHLY' || payType === 'DAILY') {
@@ -125,17 +132,21 @@ export function computePeriodMetrics(params: {
         if (!firstIn) {
             attendanceSummary.absentUnits += 1;
             dayPayableUnit = 0;
+            dayLogs.push({ date: dayStr, type: 'ABSENT', detail: 'ขาดงาน (ไม่มีสแกนเข้า)' });
         } else {
             const absentCutoff = set(day, { hours: absentCutoffHour, minutes: absentCutoffMinute });
             if (isAfter(firstIn, absentCutoff)) {
-                attendanceSummary.absentUnits += 0.5; // Morning absent
+                attendanceSummary.absentUnits += 0.5; 
                 dayPayableUnit -= 0.5;
+                dayLogs.push({ date: dayStr, type: 'ABSENT', detail: 'ขาดเช้า (สแกนหลังเส้นตาย)' });
             } else {
                 const lateThreshold = set(day, { hours: workStartHour, minutes: workStartMinute + graceMinutes });
                 const isForgiven = adjustmentForDay?.type === 'FORGIVE_LATE';
                 if (isAfter(firstIn, lateThreshold) && !isForgiven) {
+                    const lateMins = differenceInMinutes(firstIn, set(day, { hours: workStartHour, minutes: workStartMinute }));
                     attendanceSummary.lateDays++;
-                    attendanceSummary.lateMinutes += differenceInMinutes(firstIn, set(day, { hours: workStartHour, minutes: workStartMinute }));
+                    attendanceSummary.lateMinutes += lateMins;
+                    dayLogs.push({ date: dayStr, type: 'LATE', detail: `สาย ${lateMins} นาที (สแกน ${format(firstIn, 'HH:mm')})` });
                 }
             }
             if (!lastOut && isBefore(day, today)) {
@@ -154,6 +165,7 @@ export function computePeriodMetrics(params: {
     attendanceSummary.payableUnits = tempPayableUnits;
   }
   attendanceSummary.scheduledWorkDays = scheduledWorkDays;
+  attendanceSummary.dayLogs = dayLogs;
 
   // Over-limit leave calculation
   (Object.keys(hrSettings.leavePolicy?.leaveTypes || {}) as TLeaveType[]).forEach(leaveType => {
@@ -222,5 +234,3 @@ export function computePeriodMetrics(params: {
 
   return { attendanceSummary, leaveSummary, calcNotes: calcNotes.trim(), autoDeductions };
 }
-
-    

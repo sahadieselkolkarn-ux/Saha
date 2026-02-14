@@ -125,18 +125,9 @@ export async function createDocument(
     let counters = counterSnap.exists() ? counterSnap.data() : { year };
 
     // Prefix Change Detection:
-    // If the prefix has changed since the last document of this type was created,
-    // we reset the counter base to 0 (so it starts at 0001, unless collectionMax says otherwise).
-    const lastPrefixKey = `${docType}_last_prefix`;
-    const lastPrefix = counters[lastPrefixKey];
-    
+    // We use a specific key for each Prefix to ensure they never share a counter.
     const countKey = `${docType}_${prefix}_count`;
     let lastCount = counters[countKey] || 0;
-
-    if (lastPrefix !== prefix) {
-        // Prefix changed! Reset counter for this specific prefix-type combo
-        lastCount = 0;
-    }
     
     let nextCount = Math.max(lastCount, collectionMax) + 1;
     let finalDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
@@ -170,8 +161,7 @@ export async function createDocument(
     transaction.set(newDocRef, docData);
     transaction.set(counterRef, { 
         ...counters, 
-        [countKey]: nextCount,
-        [lastPrefixKey]: prefix // Store this as the last used prefix for this type
+        [countKey]: nextCount
     }, { merge: true });
 
     if (data.jobId) {

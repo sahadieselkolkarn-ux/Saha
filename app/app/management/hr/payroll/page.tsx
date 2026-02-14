@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical, Save, AlertCircle } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical, Save, AlertCircle, Eye } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -28,7 +28,7 @@ import { computePeriodMetrics, PeriodMetrics } from "@/lib/payroll/payslip-perio
 import { SsoDecisionDialog } from "@/components/payroll/SsoDecisionDialog";
 import { round2, calcSsoMonthly, splitSsoHalf } from "@/lib/payroll/sso";
 
-const getStatusBadgeVariant = (status?: PayslipStatusNew) => {
+const getStatusBadgeVariant = (status?: PayslipStatusNew | string) => {
     switch (status) {
         case 'DRAFT': return 'secondary';
         case 'SENT_TO_EMPLOYEE': return 'default';
@@ -149,15 +149,13 @@ export default function HRGeneratePayslipsPage() {
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            const activeUsers = allUsers.filter(u => u?.hr?.payType && u.hr.payType !== 'NOPAY');
+            // Filter: Monthly and Daily only (Exclude NOSCAN and NOPAY)
+            const activeUsers = allUsers.filter(u => u?.hr?.payType === 'MONTHLY' || u?.hr?.payType === 'DAILY');
 
             const allHolidays = new Map(
               holidaysSnap.docs.map(d => {
                 const raw = d.data().date;
-                const key =
-                  typeof raw === "string"
-                    ? raw.trim().slice(0, 10)                      // "YYYY-MM-DD"
-                    : (raw?.toDate ? format(raw.toDate(), "yyyy-MM-dd") : "");
+                const key = typeof raw === "string" ? raw.trim().slice(0, 10) : (raw?.toDate ? format(raw.toDate(), "yyyy-MM-dd") : "");
                 return [key, d.data().name];
               }).filter(([k]) => !!k)
             );
@@ -208,7 +206,7 @@ export default function HRGeneratePayslipsPage() {
         setEditingPayslip(user);
         const { periodMetrics, periodMetricsYtd, snapshot: existingSnapshot, hr } = user;
 
-        if (!hr?.payType || hr.payType === 'NOPAY') return;
+        if (!hr?.payType || hr.payType === 'NOPAY' || hr.payType === 'MONTHLY_NOSCAN') return;
         if (!periodMetrics || !periodMetricsYtd) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); setEditingPayslip(null); return; }
         
         let basePay = 0;
@@ -235,7 +233,7 @@ export default function HRGeneratePayslipsPage() {
         };
         
         // SSO Calculation
-        if (ssoDecision && (hr.payType === 'MONTHLY' || hr.payType === 'MONTHLY_NOSCAN') && hr.salaryMonthly) {
+        if (ssoDecision && (hr.payType === 'MONTHLY') && hr.salaryMonthly) {
             const { employeePercent = 0, monthlyMinBase = 0, monthlyCap = Infinity } = ssoDecision;
             const ssoMonthly = calcSsoMonthly(hr.salaryMonthly, employeePercent, monthlyMinBase, monthlyCap);
             const { p1, p2 } = splitSsoHalf(ssoMonthly);
@@ -243,7 +241,7 @@ export default function HRGeneratePayslipsPage() {
             let ssoAmountThisPeriod = 0;
             if (period === 1) {
                 ssoAmountThisPeriod = p1;
-            } else { // period === 2
+            } else { 
                 const p1BatchId = `${format(currentMonth, 'yyyy-MM')}-1`;
                 const p1PayslipRef = doc(db, 'payrollBatches', p1BatchId, 'payslips', user.uid);
                 const p1PayslipSnap = await getDoc(p1PayslipRef);
@@ -254,8 +252,6 @@ export default function HRGeneratePayslipsPage() {
             initialSnapshot.deductions = initialSnapshot.deductions.filter(d => d.name !== '[AUTO] ประกันสังคม');
             if (ssoAmountThisPeriod > 0) {
                 initialSnapshot.deductions.push({ name: '[AUTO] ประกันสังคม', amount: ssoAmountThisPeriod, notes: `หักครึ่งงวด (เดือนนี้ใช้เรท ${employeePercent}%)` });
-            } else if (ssoAmountThisPeriod < 0) {
-                 initialSnapshot.additions.push({ name: '[AUTO] คืนประกันสังคม', amount: Math.abs(ssoAmountThisPeriod), notes: `ปรับยอดจากงวดที่ 1` });
             }
         }
 
@@ -311,11 +307,11 @@ export default function HRGeneratePayslipsPage() {
 
     return (
         <>
-            <PageHeader title="สร้างสลิปเงินเดือน" description="คำนวณและสร้างสลิปเงินเดือนฉบับร่างสำหรับพนักงานแต่ละคน" />
+            <PageHeader title="สร้างสลิปเงินเดือน" description="คำนวณ สรุป สาย ขาด ลา และสร้างสลิปเงินเดือนประจำงวด" />
             <Card>
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <CardTitle>เลือกช่วงเวลา</CardTitle>
+                        <CardTitle className="text-lg">เลือกช่วงเวลางวดบัญชี</CardTitle>
                         <div className="flex items-center gap-2 self-end sm:self-center">
                             <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft /></Button>
                             <span className="font-semibold text-lg text-center w-32">{format(currentMonth, 'MMMM yyyy')}</span>
@@ -331,41 +327,34 @@ export default function HRGeneratePayslipsPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Button onClick={handleFetchEmployees} disabled={isLoading}>
+                    <Button onClick={handleFetchEmployees} disabled={isLoading} className="shadow-md">
                         {isLoading ? <Loader2 className="animate-spin mr-2" /> : <CalendarDays className="mr-2"/>}
-                        ดึงรายชื่อพนักงานในช่วงนี้
+                        ดึงข้อมูลพนักงาน (รายเดือน/รายวัน)
                     </Button>
                 </CardContent>
             </Card>
 
             {isLoading && <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}
-            {error && <Card className="mt-6 bg-destructive/10"><CardHeader><CardTitle className="text-destructive">Error</CardTitle><CardDescription className="text-destructive">{error.message}</CardDescription></CardHeader></Card>}
+            {error && <Card className="mt-6 bg-destructive/10 border-destructive/20"><CardHeader><CardTitle className="text-destructive flex items-center gap-2"><AlertCircle/> เกิดข้อผิดพลาด</CardTitle><CardDescription className="text-destructive">{error.message}</CardDescription></CardHeader></Card>}
             
             {employeeData.length > 0 && (
                 <Card className="mt-6">
-                    <CardHeader><CardTitle>รายชื่อพนักงาน</CardTitle></CardHeader>
-                    <CardContent>
+                    <CardHeader><CardTitle>รายชื่อที่พบบนระบบ ({employeeData.length} ท่าน)</CardTitle></CardHeader>
+                    <CardContent className="p-0">
                         <Table>
-                            <TableHeader><TableRow><TableHead>ชื่อพนักงาน</TableHead><TableHead>แผนก</TableHead><TableHead>ประเภทการจ่าย</TableHead><TableHead>วันทำงาน</TableHead><TableHead>สถานะสลิป</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow><TableHead className="pl-6">ชื่อพนักงาน</TableHead><TableHead>แผนก</TableHead><TableHead>ประเภท</TableHead><TableHead className="text-right">วันทำงาน</TableHead><TableHead>สถานะสลิป</TableHead><TableHead className="text-right pr-6">จัดการ</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {employeeData.map(user => (
-                                    <TableRow key={user.id}>
-                                        <TableCell>{user.displayName}</TableCell>
-                                        <TableCell>{deptLabel(user.department)}</TableCell>
-                                        <TableCell>{payTypeLabel(user.hr?.payType)}</TableCell>
-                                        <TableCell>{user.periodMetrics?.attendanceSummary.payableUnits ?? '-'}</TableCell>
+                                    <TableRow key={user.id} className="hover:bg-muted/30">
+                                        <TableCell className="pl-6 font-medium">{user.displayName}</TableCell>
+                                        <TableCell className="text-xs text-muted-foreground">{deptLabel(user.department)}</TableCell>
+                                        <TableCell><Badge variant="outline" className="text-[10px] font-normal">{payTypeLabel(user.hr?.payType)}</Badge></TableCell>
+                                        <TableCell className="text-right font-bold text-primary">{user.periodMetrics?.attendanceSummary.payableUnits ?? '-'}</TableCell>
                                         <TableCell><Badge variant={getStatusBadgeVariant(user.payslipStatus)}>{newPayslipStatusLabel(user.payslipStatus) || user.payslipStatus}</Badge></TableCell>
-                                        <TableCell className="text-right">
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" disabled={isActing !== null || user.hr?.payType === 'NOPAY'} aria-label="เมนูการจัดการ"><MoreVertical className="h-4 w-4" /></Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => void handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID' || user.hr?.payType === 'NOPAY'}>
-                                                        <FilePlus className="mr-2 h-4 w-4" /> สร้าง/แก้ไขสลิป
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                                        <TableCell className="text-right pr-6">
+                                            <Button variant="ghost" size="icon" onClick={() => void handleOpenDrawer(user)} disabled={isActing !== null || user.payslipStatus === 'PAID'} title="สร้างหรือแก้ไขสลิป">
+                                                {user.snapshot ? <Eye className="h-4 w-4" /> : <FilePlus className="h-4 w-4" />}
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -378,14 +367,14 @@ export default function HRGeneratePayslipsPage() {
             {editingPayslip && drawerSnapshot && (
                 <PayslipSlipDrawer
                     open={!!editingPayslip} onOpenChange={(open) => !open && setEditingPayslip(null)}
-                    title="แก้ไขสลิปเงินเดือน" description={`${editingPayslip.displayName} - ${periodLabel}`}
+                    title="แบบฟอร์มสลิปเงินเดือน" description={`${editingPayslip.displayName} - ${periodLabel}`}
                     copyText={formatPayslipAsText({ userName: editingPayslip.displayName, periodLabel, snapshot: drawerSnapshot, payType: editingPayslip.hr?.payType, totals: drawerTotals })}
                     copyJson={formatPayslipAsJson(drawerSnapshot)}
                     footerActions={ (editingPayslip.payslipStatus !== 'PAID' && editingPayslip.payslipStatus !== 'READY_TO_PAY') && (
                         <>
                           <Button variant="outline" onClick={() => setEditingPayslip(null)} disabled={isActing === editingPayslip.uid}>ยกเลิก</Button>
-                          <Button onClick={handleSaveDraft} disabled={isActing === editingPayslip.uid}><Save className="mr-2"/>บันทึกฉบับร่าง</Button>
-                          <Button onClick={handleSaveAndSend} disabled={isActing === editingPayslip.uid}>{isActing === editingPayslip.uid ? <Loader2 className="mr-2 animate-spin mr-2"/> : <Send className="mr-2"/>}บันทึกแล้วส่ง</Button>
+                          <Button onClick={handleSaveDraft} disabled={isActing === editingPayslip.uid} variant="secondary"><Save className="mr-2 h-4 w-4"/>บันทึกร่าง</Button>
+                          <Button onClick={handleSaveAndSend} disabled={isActing === editingPayslip.uid} className="bg-primary">{isActing === editingPayslip.uid ? <Loader2 className="mr-2 animate-spin h-4 w-4"/> : <Send className="mr-2 h-4 w-4"/>}บันทึกและส่งให้พนักงาน</Button>
                         </>
                       )
                     }

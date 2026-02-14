@@ -311,6 +311,12 @@ export interface PayslipAddition {
     notes?: string;
 }
 
+export interface AttendanceDayLog {
+    date: string;
+    type: 'LATE' | 'ABSENT' | 'LEAVE';
+    detail: string;
+}
+
 export interface PayslipSnapshot {
     basePay: number;
     netPay: number;
@@ -325,6 +331,7 @@ export interface PayslipSnapshot {
         scheduledWorkDays?: number;
         payableUnits?: number;
         warnings?: string[];
+        dayLogs?: AttendanceDayLog[];
     };
     leaveSummary: {
         sickDays?: number;

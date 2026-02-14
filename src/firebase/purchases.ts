@@ -71,19 +71,11 @@ export async function createPurchaseDoc(
     const counterDoc = await transaction.get(counterRef);
     let counters = counterDoc.exists() ? counterDoc.data() : { year };
     
-    // Prefix Change Detection for Purchases
-    const lastPrefixKey = `PURCHASE_last_prefix`;
-    const lastPrefix = counters[lastPrefixKey];
-    
+    // Prefix Change Detection for Purchases - Isolated key
     const countKey = `PURCHASE_${prefix}_count`;
     const lastCount = counters[countKey] || 0;
     
-    let baseCount = lastCount;
-    if (lastPrefix !== prefix) {
-        baseCount = 0; // Reset for new prefix
-    }
-    
-    let nextCount = Math.max(baseCount, collectionBaseline) + 1;
+    let nextCount = Math.max(lastCount, collectionBaseline) + 1;
     let docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
 
     // Collision check loop
@@ -114,8 +106,7 @@ export async function createPurchaseDoc(
     transaction.set(newDocRef, docData);
     transaction.set(counterRef, { 
         ...counters, 
-        [countKey]: nextCount,
-        [lastPrefixKey]: prefix
+        [countKey]: nextCount
     }, { merge: true });
 
     return docNo;
