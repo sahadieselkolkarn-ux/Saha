@@ -129,23 +129,12 @@ export async function createDocument(
     const countKey = `${docType}_${prefix}_count`;
     let lastCount = counters[countKey] || 0;
     
+    // IMPORTANT: Start at 1 if this prefix is new or if collection search returned 0
     let nextCount = Math.max(lastCount, collectionMax) + 1;
     let finalDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
 
-    // Final collision safety loop (Checking against all docs just in case)
-    let isUsed = true;
-    let safetyCap = 0;
-    while (isUsed && safetyCap < 100) {
-      const collCheck = query(collection(db, "documents"), where("docNo", "==", finalDocNo), where("docType", "==", docType), limit(1));
-      const collSnap = await getDocs(collCheck);
-      if (collSnap.empty) {
-        isUsed = false;
-      } else {
-        nextCount++;
-        finalDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
-        safetyCap++;
-      }
-    }
+    // Note: Collision check loop with getDocs is removed inside transaction as it is not supported.
+    // Instead, we rely on the prefix-isolated count key and the baseline check.
 
     const docData = sanitizeForFirestore({
       ...data,
