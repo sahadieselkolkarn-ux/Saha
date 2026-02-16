@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
@@ -225,7 +224,7 @@ export default function HRGeneratePayslipsPage() {
                 };
                 await setDoc(batchDocRef, { ssoDecision: finalSsoDecision }, { merge: true });
             } else if (period === 2 && finalSsoDecision) {
-                // Improved SSO Change Detection (Strict numeric comparison)
+                // SSO Change Detection (Strict numeric comparison)
                 const checkDiff = (v1: any, v2: any) => Math.abs(Number(v1 || 0) - Number(v2 || 0)) > 0.01;
                 
                 const hasChanged = 
@@ -258,7 +257,7 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(usersQuery),
                 getDocs(holidaysQuery),
                 getDocs(leavesQuery),
-                getDocs(attendancePeriodQuery),
+                getDocs(attendancePeriodSnap),
                 getDocs(adjustmentsPeriodQuery),
                 getDocs(attendanceYtdQuery),
                 getDocs(adjustmentsYtdQuery),
@@ -266,7 +265,6 @@ export default function HRGeneratePayslipsPage() {
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            // FIXED: Include MONTHLY_NOSCAN so Managers show up too.
             const activeUsers = allUsers.filter(u => u?.hr?.payType === 'MONTHLY' || u?.hr?.payType === 'DAILY' || u?.hr?.payType === 'MONTHLY_NOSCAN');
 
             const allHolidays = new Map(
@@ -339,14 +337,12 @@ export default function HRGeneratePayslipsPage() {
         setEditingPayslip(user);
         const { periodMetrics, periodMetricsYtd, snapshot: existingSnapshot, hr } = user;
 
-        // FIXED: Allow MONTHLY_NOSCAN to open the drawer
         if (!hr?.payType || hr.payType === 'NOPAY') return;
         if (!periodMetrics || !periodMetricsYtd) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); setEditingPayslip(null); return; }
         
         // Fetch Other Period Data
         const otherPeriodNo = period === 1 ? 2 : 1;
         const otherBatchId = `${format(currentMonth, 'yyyy-MM')}-${otherPeriodNo}`;
-        // FIXED: Use user.id instead of user.uid
         const otherPayslipRef = doc(db, 'payrollBatches', otherBatchId, 'payslips', user.id);
         const otherPayslipSnap = await getDoc(otherPayslipRef);
         const otherSnapshot = otherPayslipSnap.exists() ? (otherPayslipSnap.data().snapshot as PayslipSnapshot) : null;
@@ -375,8 +371,8 @@ export default function HRGeneratePayslipsPage() {
             calcNotes: periodMetrics.calcNotes,
         };
         
-        // SSO Calculation
-        if (ssoDecision && (hr.payType === 'MONTHLY' || hr.payType === 'DAILY' || hr.payType === 'MONTHLY_NOSCAN')) {
+        // SSO Calculation - Only if ssoRegistered is true or undefined (default true)
+        if (user.hr?.ssoRegistered !== false && ssoDecision && (hr.payType === 'MONTHLY' || hr.payType === 'DAILY' || hr.payType === 'MONTHLY_NOSCAN')) {
             const { employeePercent = 0, monthlyMinBase = 0, monthlyCap = Infinity } = ssoDecision;
             let ssoAmountThisPeriod = 0;
 
@@ -391,19 +387,15 @@ export default function HRGeneratePayslipsPage() {
                     ssoAmountThisPeriod = Math.max(0, round2(ssoMonthly - p1Deducted));
                 }
             } else if (hr.payType === 'DAILY' && hr.salaryDaily) {
-                // For Daily: Based on actual work days
                 if (period === 1) {
                     const incomeP1 = hr.salaryDaily * periodMetrics.attendanceSummary.payableUnits;
                     ssoAmountThisPeriod = round2(incomeP1 * (employeePercent / 100));
                 } else {
-                    // Period 2: Calculate total monthly income
                     const incomeP1 = hr.salaryDaily * (otherSnapshot?.attendanceSummary?.payableUnits || 0);
                     const incomeP2 = hr.salaryDaily * periodMetrics.attendanceSummary.payableUnits;
                     const totalMonthlyIncome = incomeP1 + incomeP2;
-                    
                     const totalSsoMonthly = calcSsoMonthly(totalMonthlyIncome, employeePercent, monthlyMinBase, monthlyCap);
                     const p1Deducted = otherSnapshot?.deductions?.find((d:any) => d.name === '[AUTO] ประกันสังคม')?.amount ?? 0;
-                    
                     ssoAmountThisPeriod = Math.max(0, round2(totalSsoMonthly - p1Deducted));
                 }
             }

@@ -62,6 +62,7 @@ const userProfileSchema = z.object({
     endDate: z.string().optional().default(''),
     ssoHospital: z.string().optional().default(''),
     note: z.string().optional().default(''),
+    ssoRegistered: z.boolean().default(true),
   }).optional(),
 });
 
@@ -151,6 +152,7 @@ export default function ManagementHREmployeesPage() {
         endDate: '',
         ssoHospital: '',
         note: '',
+        ssoRegistered: true,
       },
     },
   });
@@ -214,7 +216,8 @@ export default function ManagementHREmployeesPage() {
               startDate: editingUser.hr?.startDate || '',
               endDate: editingUser.hr?.endDate || '',
               ssoHospital: editingUser.hr?.ssoHospital || '',
-              note: editingUser.hr?.note || ''
+              note: editingUser.hr?.note || '',
+              ssoRegistered: editingUser.hr?.ssoRegistered ?? true,
           }
         });
       }
@@ -254,6 +257,7 @@ export default function ManagementHREmployeesPage() {
             'hr.endDate': formValues.hr?.endDate || null,
             'hr.ssoHospital': formValues.hr?.ssoHospital || null,
             'hr.note': formValues.hr?.note || null,
+            'hr.ssoRegistered': formValues.hr?.ssoRegistered ?? true,
             updatedAt: serverTimestamp()
         };
         
@@ -465,18 +469,44 @@ export default function ManagementHREmployeesPage() {
                                     </FormItem>
                                 )}/>
                               </div>
-                            <FormField name="hr.payType" control={form.control} render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>ประเภทการจ่ายเงิน</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                  <FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl>
-                                  <SelectContent>
-                                    {PAY_TYPES.map(p => <SelectItem key={p} value={p}>{payTypeLabel(p)}</SelectItem>)}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )} />
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <FormField name="hr.payType" control={form.control} render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>ประเภทการจ่ายเงิน</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl>
+                                    <SelectContent>
+                                        {PAY_TYPES.map(p => <SelectItem key={p} value={p}>{payTypeLabel(p)}</SelectItem>)}
+                                    </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                                )} />
+                                <FormField
+                                    name="hr.ssoRegistered"
+                                    control={form.control}
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>สิทธิ์ประกันสังคม</FormLabel>
+                                            <Select 
+                                                onValueChange={(v) => field.onChange(v === 'true')} 
+                                                value={field.value ? "true" : "false"}
+                                            >
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="true">ยื่นประกันสังคม</SelectItem>
+                                                    <SelectItem value="false">ไม่ยื่นประกันสังคม</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
                              <FormField
                                 name="hr.ssoHospital"
                                 control={form.control}

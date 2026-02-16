@@ -31,6 +31,7 @@ export interface UserProfile {
     note?: string;
     startDate?: string; // YYYY-MM-DD
     endDate?: string | null; // YYYY-MM-DD
+    ssoRegistered?: boolean; // New field to check if SSO should be deducted
   };
   createdAt: Timestamp;
   updatedAt?: Timestamp;
