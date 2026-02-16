@@ -257,7 +257,7 @@ export default function HRGeneratePayslipsPage() {
                 getDocs(usersQuery),
                 getDocs(holidaysQuery),
                 getDocs(leavesQuery),
-                getDocs(attendancePeriodSnap),
+                getDocs(attendancePeriodQuery),
                 getDocs(adjustmentsPeriodQuery),
                 getDocs(attendanceYtdQuery),
                 getDocs(adjustmentsYtdQuery),
