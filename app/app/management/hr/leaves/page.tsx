@@ -8,7 +8,7 @@ import { useDoc } from "@/firebase/firestore/use-doc";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval, startOfMonth, endOfMonth, isAfter, startOfToday } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval, startOfMonth, endOfMonth, isAfter, startOfToday, set } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -47,7 +47,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 
 import { LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
-import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus, Attendance, HRHoliday } from "@/lib/types";
+import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus, Attendance, HRHoliday, AttendanceAdjustment } from "@/lib/types";
 import { leaveStatusLabel, leaveTypeLabel, deptLabel } from "@/lib/ui-labels";
 
 const leaveSchema = z.object({
@@ -224,6 +224,7 @@ export default function ManagementHRLeavesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [periodAttendance, setPeriodAttendance] = useState<Attendance[]>([]);
+  const [periodAdjustments, setPeriodAdjustments] = useState<WithId<AttendanceAdjustment>[]>([]);
   const [periodHolidays, setPeriodHolidays] = useState<Map<string, string>>(new Map());
   const [isLoadingExtras, setIsLoadingExtras] = useState(false);
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
@@ -255,17 +256,19 @@ export default function ManagementHRLeavesPage() {
                 end = endOfMonth(new Date(selectedYear, monthIndex, 1));
             }
             
-            const [attSnap, holSnap] = await Promise.all([
+            const [attSnap, holSnap, adjSnap] = await Promise.all([
                 getDocs(query(collection(db, 'attendance'), where('timestamp', '>=', start), where('timestamp', '<=', end))),
-                getDocs(query(collection(db, 'hrHolidays'), where('date', '>=', format(start, 'yyyy-MM-dd')), where('date', '<=', format(end, 'yyyy-MM-dd'))))
+                getDocs(query(collection(db, 'hrHolidays'), where('date', '>=', format(start, 'yyyy-MM-dd')), where('date', '<=', format(end, 'yyyy-MM-dd')))),
+                getDocs(query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', format(start, 'yyyy-MM-dd')), where('date', '<=', format(end, 'yyyy-MM-dd'))))
             ]);
 
             setPeriodAttendance(attSnap.docs.map(d => ({ id: d.id, ...d.data() } as Attendance)));
             setPeriodHolidays(new Map(holSnap.docs.map(d => [d.data().date, d.data().name])));
+            setPeriodAdjustments(adjSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AttendanceAdjustment>)));
         } catch (e: any) {
             console.error("Failed to fetch summary extras:", e);
             if (e.message?.includes('requires an index')) {
-                const urlMatch = e.message.match(/https?:\/\/[^\s]+/);
+                const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
                 if (urlMatch) setIndexCreationUrl(urlMatch[0]);
             }
         } finally {
@@ -318,7 +321,12 @@ export default function ManagementHRLeavesPage() {
       .map(user => {
         const userApprovedLeaves = allLeaves.filter(l => l.userId === user.id && l.status === 'APPROVED');
         const userAttendance = periodAttendance.filter(a => a.userId === user.id);
-        const attendanceDates = new Set(userAttendance.map(a => format(a.timestamp.toDate(), 'yyyy-MM-dd')));
+        const userAdjustments = periodAdjustments.filter(a => a.userId === user.id);
+
+        const attendanceDates = new Set([
+            ...userAttendance.map(a => format(a.timestamp.toDate(), 'yyyy-MM-dd')),
+            ...userAdjustments.filter(a => a.type === 'ADD_RECORD').map(a => a.date)
+        ]);
 
         let sickDays = 0;
         let businessDays = 0;
@@ -328,9 +336,18 @@ export default function ManagementHRLeavesPage() {
 
         daysInterval.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
+            const isToday = dayStr === format(today, 'yyyy-MM-dd');
             
-            // Skip future days
+            // 1. Skip future days
             if (isAfter(day, today)) return;
+            
+            // 2. Skip today if it's before the end-of-day cutoff AND they haven't scanned yet
+            if (isToday) {
+                const now = new Date();
+                const cutoff = set(now, { hours: 23, minutes: 50, seconds: 0 });
+                if (isBefore(now, cutoff) && !attendanceDates.has(dayStr)) return;
+            }
+
             // Skip if before hire date
             if (user.hr?.startDate && isBefore(day, parseISO(user.hr.startDate))) return;
             // Skip if after end date
@@ -388,7 +405,7 @@ export default function ManagementHRLeavesPage() {
     });
 
     return { leaveSummary: summary, filteredLeaves: filtered, yearOptions: sortedYears };
-  }, [allLeaves, users, selectedYear, selectedMonth, filters, periodAttendance, periodHolidays, hrSettings]);
+  }, [allLeaves, users, selectedYear, selectedMonth, filters, periodAttendance, periodAdjustments, periodHolidays, hrSettings]);
 
   const overLimitDetails = useMemo(() => {
     if (!approvingLeave || !hrSettings || !allLeaves || !users) return null;
