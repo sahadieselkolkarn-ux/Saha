@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText, Edit, BadgeCheck, Landmark, Calculator } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText, Edit, BadgeCheck, Landmark, Calculator, FilePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -28,7 +28,7 @@ const safeParseFloat = (value: any): number => {
 
 
 export const calcTotals = (snapshot: PayslipSnapshot | null | undefined) => {
-    if (!snapshot) return { basePay: 0, addTotal: 0, dedTotal: 0, netPay: 0 };
+    if (!snapshot) return { basePay: 0, addTotal: 0, netPay: 0 };
     const basePay = safeParseFloat(snapshot?.basePay);
     const addTotal = (snapshot?.additions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0);
     const dedTotal = (snapshot?.deductions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0);
@@ -48,6 +48,7 @@ interface PayslipSlipViewProps {
   payType?: PayType;
   onChange?: (nextSnapshot: PayslipSnapshot) => void;
   onAdjustAttendance?: () => void;
+  onAdjustLeave?: () => void;
   className?: string;
 }
 
@@ -63,6 +64,7 @@ export function PayslipSlipView({
   payType, 
   onChange, 
   onAdjustAttendance, 
+  onAdjustLeave,
   className 
 }: PayslipSlipViewProps) {
   const isEdit = mode === 'edit';
@@ -326,8 +328,20 @@ export function PayslipSlipView({
                 </Card>
             )}
              <Card>
-                <CardHeader className="pb-2">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-[13px] font-bold uppercase tracking-wide">สรุปการลา</CardTitle>
+                    {isEdit && onAdjustLeave && (
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-6 text-[9px] px-2 gap-1 border-primary/30 text-primary hover:bg-primary/5"
+                            onClick={onAdjustLeave}
+                        >
+                            <FilePlus className="h-3 w-3" />
+                            ปรับปรุงการลา
+                        </Button>
+                    )}
                 </CardHeader>
                 <CardContent>
                      <Table>
@@ -365,8 +379,7 @@ export function PayslipSlipView({
                 <CardContent className="pt-4">
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap">"{snapshot.calcNotes}"</p>
                 </CardContent>
-            </Card>
-        )}
+            )}
     </div>
   );
 }

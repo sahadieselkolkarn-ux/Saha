@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc, addDoc } from "firebase/firestore";
 import { useFirebase, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear, eachDayOfInterval, isSaturday, isSunday, parseISO } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear, eachDayOfInterval, isSaturday, isSunday, parseISO, differenceInCalendarDays, getYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,15 +21,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayslipSnapshot, StoreSettings } from "@/lib/types";
-import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
+import { deptLabel, payTypeLabel, newPayslipStatusLabel, leaveTypeLabel } from "@/lib/ui-labels";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
 import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
 import { computePeriodMetrics, PeriodMetrics } from "@/lib/payroll/payslip-period-metrics";
 import { SsoDecisionDialog } from "@/components/payroll/SsoDecisionDialog";
 import { round2, calcSsoMonthly, splitSsoHalf } from "@/lib/payroll/sso";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { LEAVE_TYPES } from "@/lib/constants";
 
 const getStatusBadgeVariant = (status?: PayslipStatusNew | string) => {
     switch (status) {
@@ -49,6 +57,89 @@ interface EmployeeRowData extends WithId<UserProfile> {
     revisionNo?: number;
 }
 
+const leaveSchema = z.object({
+  leaveType: z.enum(LEAVE_TYPES),
+  startDate: z.string().min(1, "กรุณาเลือกวันเริ่ม"),
+  endDate: z.string().min(1, "กรุณาเลือกวันสิ้นสุด"),
+  reason: z.string().min(1, "กรุณาระบุเหตุผล"),
+}).refine(data => !isAfter(new Date(data.startDate), new Date(data.endDate)), {
+    message: 'วันที่สิ้นสุดต้องไม่มาก่อนวันเริ่มต้น',
+    path: ['endDate'],
+});
+
+type LeaveFormData = z.infer<typeof leaveSchema>;
+
+function LeaveManageDialog({ 
+  targetUser,
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  isSubmitting 
+}: { 
+  targetUser: WithId<UserProfile>,
+  isOpen: boolean, 
+  onClose: () => void, 
+  onConfirm: (data: LeaveFormData) => Promise<void>, 
+  isSubmitting: boolean 
+}) {
+  const form = useForm<LeaveFormData>({
+    resolver: zodResolver(leaveSchema),
+    defaultValues: {
+      leaveType: 'SICK',
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: format(new Date(), 'yyyy-MM-dd'),
+      reason: 'บันทึกด่วนจากหน้าสลิปเงินเดือน',
+    }
+  });
+
+  useEffect(() => {
+    if (isOpen) {
+        form.reset({
+          leaveType: 'SICK',
+          startDate: format(new Date(), 'yyyy-MM-dd'),
+          endDate: format(new Date(), 'yyyy-MM-dd'),
+          reason: 'บันทึกด่วนจากหน้าสลิปเงินเดือน',
+        });
+    }
+  }, [form, isOpen]);
+  
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>สร้างรายการลาใหม่ (โดย Admin)</DialogTitle>
+            <DialogDescription>
+              พนักงาน: {targetUser?.displayName}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form id="payroll-leave-form" onSubmit={form.handleSubmit(onConfirm)} className="space-y-4 py-4">
+               <FormField control={form.control} name="leaveType" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ประเภทการลา</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                      <SelectContent>{LEAVE_TYPES.map(t => <SelectItem key={t} value={t}>{leaveTypeLabel(t)}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+                <div className="grid grid-cols-2 gap-4">
+                    <FormField control={form.control} name="startDate" render={({ field }) => (<FormItem><FormLabel>วันเริ่มลา</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                    <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem><FormLabel>วันสิ้นสุด</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                </div>
+                <FormField control={form.control} name="reason" render={({ field }) => (<FormItem><FormLabel>เหตุผล/หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+            </form>
+          </Form>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
+            <Button type="submit" form="payroll-leave-form" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 animate-spin"/> : 'สร้างและอนุมัติทันที'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+  );
+}
 
 export default function HRGeneratePayslipsPage() {
     const { db } = useFirebase();
@@ -74,6 +165,7 @@ export default function HRGeneratePayslipsPage() {
     // Day selection states for adjustment
     const [isDaySelectOpen, setIsDaySelectOpen] = useState(false);
     const [selectedDayToAdjust, setSelectedDayToAdjust] = useState<any>(null);
+    const [isLeaveManageOpen, setIsLeaveManageOpen] = useState(false);
     
     const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
     const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
@@ -471,6 +563,36 @@ export default function HRGeneratePayslipsPage() {
         return eachDayOfInterval({ start, end });
     }, [currentMonth, period, hrSettings]);
 
+    const handleAdminLeaveSave = async (data: LeaveFormData) => {
+        if (!db || !adminProfile || !editingPayslip) return;
+        setIsActing(editingPayslip.id);
+        try {
+            const days = differenceInCalendarDays(new Date(data.endDate), new Date(data.startDate)) + 1;
+            const year = getYear(new Date(data.startDate));
+
+            await addDoc(collection(db, 'hrLeaves'), {
+                userId: editingPayslip.id,
+                userName: editingPayslip.displayName,
+                ...data,
+                days,
+                year,
+                status: 'APPROVED', 
+                approvedByName: adminProfile.displayName,
+                approvedAt: serverTimestamp(),
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+            toast({ title: "สร้างและอนุมัติใบลาเรียบร้อย" });
+            setIsLeaveManageOpen(false);
+            // Re-fetch to update metrics and recalculate
+            handleFetchEmployees(editingPayslip.id);
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "ทำรายการไม่สำเร็จ", description: e.message });
+        } finally {
+            setIsActing(null);
+        }
+    };
+
     if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle></CardHeader></Card>;
 
     const periodLabel = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
@@ -559,6 +681,7 @@ export default function HRGeneratePayslipsPage() {
                         payType={editingPayslip.hr?.payType} 
                         onChange={setDrawerSnapshot}
                         onAdjustAttendance={() => setIsDaySelectOpen(true)}
+                        onAdjustLeave={() => setIsLeaveManageOpen(true)}
                     />
                 </PayslipSlipDrawer>
             )}
@@ -601,6 +724,17 @@ export default function HRGeneratePayslipsPage() {
                     onSaved={() => {
                         handleFetchEmployees(editingPayslip.id);
                     }}
+                />
+            )}
+
+            {/* Leave Manage Dialog */}
+            {editingPayslip && (
+                <LeaveManageDialog
+                    targetUser={editingPayslip}
+                    isOpen={isLeaveManageOpen}
+                    onClose={() => setIsLeaveManageOpen(false)}
+                    onConfirm={handleAdminLeaveSave}
+                    isSubmitting={isActing === editingPayslip.id}
                 />
             )}
 
