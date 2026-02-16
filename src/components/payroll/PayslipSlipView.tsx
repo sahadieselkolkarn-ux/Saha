@@ -2,17 +2,17 @@
 "use client";
 
 import { useMemo } from "react";
-import type { PayslipSnapshot, PayType, UserProfile } from "@/lib/types";
+import type { PayslipSnapshot, PayType, UserProfile, AttendanceDayLog } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText, Edit, BadgeCheck, Landmark, Calculator, FilePlus } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, Clock, FileText, Edit, BadgeCheck, Calculator, FilePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
 // --- Helper Functions ---
@@ -28,7 +28,7 @@ const safeParseFloat = (value: any): number => {
 
 
 export const calcTotals = (snapshot: PayslipSnapshot | null | undefined) => {
-    if (!snapshot) return { basePay: 0, addTotal: 0, netPay: 0 };
+    if (!snapshot) return { basePay: 0, addTotal: 0, dedTotal: 0, netPay: 0 };
     const basePay = safeParseFloat(snapshot?.basePay);
     const addTotal = (snapshot?.additions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0);
     const dedTotal = (snapshot?.deductions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0);
@@ -91,7 +91,7 @@ export function PayslipSlipView({
         const [arrayName, indexStr, propName] = parts as ['additions' | 'deductions', string, 'name' | 'amount' | 'notes'];
         const index = parseInt(indexStr, 10);
         if (!newSnapshot[arrayName]) newSnapshot[arrayName] = [];
-        if (!newSnapshot[arrayName][index]) newSnapshot[arrayName][index] = {name:'',amount:0, notes:''};
+        if (!newSnapshot[arrayName]![index]) newSnapshot[arrayName]![index] = {name:'',amount:0, notes:''};
         (newSnapshot[arrayName]![index] as any)[propName] = value;
     } else {
         (newSnapshot as any)[field as keyof PayslipSnapshot] = value;
@@ -379,7 +379,8 @@ export function PayslipSlipView({
                 <CardContent className="pt-4">
                     <p className="text-xs text-muted-foreground whitespace-pre-wrap">"{snapshot.calcNotes}"</p>
                 </CardContent>
-            )}
+            </Card>
+        )}
     </div>
   );
 }
