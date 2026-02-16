@@ -68,7 +68,7 @@ function EditVendorPageContent() {
   const isViewMode = searchParams.get("view") === "1";
   
   const canEditPermission = useMemo(() => {
-    if (!profile) return false;
+    if (!profile || profile.role === 'VIEWER') return false;
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE';
   }, [profile]);
 

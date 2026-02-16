@@ -1,7 +1,7 @@
 export const DEPARTMENTS = ["MANAGEMENT", "OFFICE", "CAR_SERVICE", "COMMONRAIL", "MECHANIC", "OUTSOURCE"] as const;
 export type Department = (typeof DEPARTMENTS)[number];
 
-export const USER_ROLES = ["ADMIN", "MANAGER", "OFFICER", "WORKER"] as const;
+export const USER_ROLES = ["ADMIN", "MANAGER", "OFFICER", "WORKER", "VIEWER"] as const;
 export type Role = (typeof USER_ROLES)[number];
 
 export const USER_STATUSES = ["ACTIVE", "PENDING", "SUSPENDED"] as const;

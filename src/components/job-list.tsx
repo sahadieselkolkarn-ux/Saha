@@ -115,10 +115,11 @@ export function JobList({
   const [isAccepting, setIsAccepting] = useState<string | null>(null);
   const [billingJob, setBillingJob] = useState<Job | null>(null);
   
+  const isViewer = profile?.role === 'VIEWER';
   const isOfficeOrAdmin = profile?.department === 'OFFICE' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
   const isService = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
   
-  const isOfficer = isOfficeOrAdmin || isService || profile?.role === 'OFFICER';
+  const isOfficer = (isOfficeOrAdmin || isService || profile?.role === 'OFFICER') && !isViewer;
 
   const [assigningJob, setAssigningJob] = useState<Job | null>(null);
   const [workers, setWorkers] = useState<UserProfile[]>([]);

@@ -28,6 +28,10 @@ service cloud.firestore {
       return userExists() ? getProfile().department : '';
     }
     
+    function isViewer() {
+      return signedIn() && role() == "VIEWER";
+    }
+
     function isAdmin() {
       return isSystemAdmin() || (signedIn() && role() == "ADMIN");
     }
@@ -37,19 +41,19 @@ service cloud.firestore {
     }
     
     function isOffice() {
-      return signedIn() && (dept() == "OFFICE" || dept() == "MANAGEMENT");
+      return signedIn() && (dept() == "OFFICE" || dept() == "MANAGEMENT") && !isViewer();
     }
 
     function isService() {
-      return signedIn() && (dept() == "CAR_SERVICE" || dept() == "COMMONRAIL" || dept() == "MECHANIC");
+      return signedIn() && (dept() == "CAR_SERVICE" || dept() == "COMMONRAIL" || dept() == "MECHANIC") && !isViewer();
     }
 
     function canEditJobs() {
-      return isAdmin() || isMgmt() || isOffice() || isService();
+      return (isAdmin() || isMgmt() || isOffice() || isService()) && !isViewer();
     }
     
     function isOfficeOrMgmt() {
-      return isMgmt() || (signedIn() && (dept() == "OFFICE" || role() == "ADMIN" || role() == "MANAGER" || role() == "OFFICER"));
+      return (isMgmt() || (signedIn() && (dept() == "OFFICE" || role() == "ADMIN" || role() == "MANAGER" || role() == "OFFICER"))) && !isViewer();
     }
     
     function isAccountingAllowed() {
@@ -75,7 +79,7 @@ service cloud.firestore {
     // User Profiles
     match /users/{uid} {
       allow read: if signedIn();
-      allow create, update: if isMgmt() || (signedIn() && request.auth.uid == uid);
+      allow create, update: if (isMgmt() || (signedIn() && request.auth.uid == uid)) && !isViewer();
       allow delete: if isAdmin();
     }
 
@@ -113,12 +117,12 @@ service cloud.firestore {
     // Jobs & Main Documents
     match /jobs/{jobId} {
       allow read: if signedIn();
-      allow create: if signedIn();
+      allow create: if signedIn() && !isViewer();
       allow update: if canEditJobs();
       allow delete: if isMgmt();
       match /activities/{activityId} {
         allow read: if signedIn();
-        allow create: if signedIn();
+        allow create: if signedIn() && !isViewer();
         allow update, delete: if canEditJobs();
       }
     }
@@ -135,21 +139,21 @@ service cloud.firestore {
 
     match /documents/{docId} {
       allow read: if signedIn();
-      allow create: if signedIn();
-      allow update: if isAccountingAllowed() || signedIn();
+      allow create: if signedIn() && !isViewer();
+      allow update: if (isAccountingAllowed() || signedIn()) && !isViewer();
       allow delete: if isAdmin();
     }
     
     match /documentCounters/{yearId} {
       allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow create, update: if signedIn() && !isViewer();
       allow delete: if isAdmin();
     }
 
     match /purchaseDocs/{docId} {
       allow read: if signedIn();
-      allow create: if signedIn();
-      allow update: if signedIn();
+      allow create: if signedIn() && !isViewer();
+      allow update: if signedIn() && !isViewer();
       allow delete: if isAdmin();
     }
     
@@ -168,7 +172,7 @@ service cloud.firestore {
     }
     
     match /accountingObligations/{id} {
-      allow read, create, update: if signedIn();
+      allow read, create, update: if signedIn() && !isViewer();
       allow delete: if isMgmt();
     }
     
@@ -199,8 +203,8 @@ service cloud.firestore {
     
     match /hrLeaves/{id} {
         allow read: if isMgmt() || (signedIn() && request.auth.uid == resource.data.userId);
-        allow create: if signedIn();
-        allow update: if isMgmt() || (signedIn() && request.auth.uid == resource.data.userId);
+        allow create: if signedIn() && !isViewer();
+        allow update: if (isMgmt() || (signedIn() && request.auth.uid == resource.data.userId)) && !isViewer();
         allow delete: if isAdmin();
     }
 
@@ -208,7 +212,7 @@ service cloud.firestore {
       allow read, write: if isMgmt();
       match /payslips/{userId} {
         allow read: if (signedIn() && request.auth.uid == userId) || isMgmt();
-        allow write: if isMgmt() || (signedIn() && request.auth.uid == userId);
+        allow write: if (isMgmt() || (signedIn() && request.auth.uid == userId)) && !isViewer();
       }
     }
 

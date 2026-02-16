@@ -140,16 +140,17 @@ function JobDetailsPageContent() {
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
+  const isStaff = profile?.role !== 'VIEWER';
   const isUserAdmin = profile?.role === 'ADMIN';
   const isManager = profile?.role === 'MANAGER';
-  const isService = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
+  const isService = (profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC') && isStaff;
   
-  // Can edit based on User's request: Admin, Office, Service
-  const canEditDetails = isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT' || isService;
+  // Can edit based on User's request: Admin, Office, Service (Non-Viewer)
+  const canEditDetails = isStaff && (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT' || isService);
   
-  const isOfficeOrAdminOrMgmt = isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
+  const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
-  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || job?.status === 'WAITING_CUSTOMER_PICKUP';
+  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || job?.status === 'WAITING_CUSTOMER_PICKUP' || profile?.role === 'VIEWER';
   const isOfficeOrAdmin = isOfficeOrAdminOrMgmt;
 
   useEffect(() => {
@@ -427,7 +428,7 @@ function JobDetailsPageContent() {
     } catch (error: any) {
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
-        setIsSubmittingNote(false);
+        setIsSubmitting(false);
     }
   };
 
@@ -839,7 +840,7 @@ function JobDetailsPageContent() {
             <AlertDialogFooter>
                 <Button variant="outline" onClick={() => setBillingJob(null)}>ยกเลิก</Button>
                 <Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }}>ใบส่งของชั่วคราว</Button>
-                <Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}>ใบกำกับภาษี</Button>
+                <Button onClick={{"@": { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}}>ใบกำกับภาษี</Button>
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -950,14 +951,7 @@ function JobDetailsPageContent() {
       <AlertDialog open={isRejectConfirmOpen} onOpenChange={setIsRejectConfirmOpen}>
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>ยืนยันการไม่อนุมัติ</AlertDialogTitle><AlertDialogDescription>{rejectionChoice === 'with_cost' ? 'ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.' : 'ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.'}</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading} onClick={() => setRejectionChoice(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerRejection} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={isPartsReadyConfirmOpen} onOpenChange={setIsPartsReadyConfirmOpen}>
-          <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>ยืนยันการเตรียมอะไหล่</AlertDialogTitle><AlertDialogDescription>จัดเตรียมอะไหล่เรียบร้อยแล้ว ให้ดำเนินการเบิกอะไหล่ และจัดการซ่อมได้</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handlePartsReady} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
+              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading} onClick={() => setRejectionChoice(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerRejection} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
     </>

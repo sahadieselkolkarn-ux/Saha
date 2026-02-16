@@ -179,12 +179,9 @@ export default function ManagementHREmployeesPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
         setSsoHospitals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<SSOHospital>)));
         setIsLoadingHospitals(false);
-    }, (error) => {
-        toast({ variant: "destructive", title: "Failed to load SSO hospitals" });
-        setIsLoadingHospitals(false);
     });
     return () => unsubscribe();
-  }, [db, toast]);
+  }, [db]);
   
   useEffect(() => {
     if (isDialogOpen) {

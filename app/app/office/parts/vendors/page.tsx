@@ -41,7 +41,7 @@ function VendorsPageContent() {
   }, [profile]);
   
   const canEdit = useMemo(() => {
-    if (!profile) return false;
+    if (!profile || profile.role === 'VIEWER') return false;
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE';
   }, [profile]);
 
@@ -122,12 +122,14 @@ function VendorsPageContent() {
   return (
     <>
       <PageHeader title="รายชื่อร้านค้า" description="จัดการข้อมูลร้านค้า คู่ค้า และผู้รับเหมางานนอก">
-        <Button asChild>
-          <Link href="/app/office/parts/vendors/new">
-            <PlusCircle className="mr-2 h-4 w-4" />
-            เพิ่มร้านค้า/ผู้รับเหมา
-          </Link>
-        </Button>
+        {canEdit && (
+          <Button asChild>
+            <Link href="/app/office/parts/vendors/new">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              เพิ่มร้านค้า/ผู้รับเหมา
+            </Link>
+          </Button>
+        )}
       </PageHeader>
 
       <Card>
