@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, deleteDoc } from "firebase/firestore";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, deleteDoc, getDocs, addDoc, Timestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase/client-provider";
 import { useCollection } from "@/firebase/firestore/use-collection";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO, differenceInCalendarDays, isBefore } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, CheckCircle, XCircle, ShieldAlert, MoreHorizontal, Trash2, Edit } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, ShieldAlert, MoreHorizontal, Trash2, Edit, PlusCircle, FileText, Search } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -46,10 +46,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
-import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus } from "@/lib/types";
-import { leaveStatusLabel, leaveTypeLabel } from "@/lib/ui-labels";
+import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus, Attendance, HRHoliday } from "@/lib/types";
+import { leaveStatusLabel, leaveTypeLabel, deptLabel } from "@/lib/ui-labels";
 
-const editLeaveSchema = z.object({
+const leaveSchema = z.object({
   leaveType: z.enum(LEAVE_TYPES),
   startDate: z.string().min(1, "กรุณาเลือกวันเริ่ม"),
   endDate: z.string().min(1, "กรุณาเลือกวันสิ้นสุด"),
@@ -58,28 +58,52 @@ const editLeaveSchema = z.object({
     message: 'วันที่สิ้นสุดต้องไม่มาก่อนวันเริ่มต้น',
     path: ['endDate'],
 });
-type EditLeaveFormData = z.infer<typeof editLeaveSchema>;
 
+type LeaveFormData = z.infer<typeof leaveSchema>;
 
-function EditLeaveDialog({ leave, isOpen, onClose, onConfirm, isSubmitting }: { leave: WithId<LeaveRequest>, isOpen: boolean, onClose: () => void, onConfirm: (data: EditLeaveFormData) => Promise<void>, isSubmitting: boolean }) {
-  const form = useForm<EditLeaveFormData>({
-    resolver: zodResolver(editLeaveSchema),
+// Dialog for Creating or Editing Leaves by Admin
+function LeaveManageDialog({ 
+  leave, 
+  targetUser,
+  isOpen, 
+  onClose, 
+  onConfirm, 
+  isSubmitting 
+}: { 
+  leave?: WithId<LeaveRequest> | null, 
+  targetUser?: WithId<UserProfile> | null,
+  isOpen: boolean, 
+  onClose: () => void, 
+  onConfirm: (data: LeaveFormData) => Promise<void>, 
+  isSubmitting: boolean 
+}) {
+  const form = useForm<LeaveFormData>({
+    resolver: zodResolver(leaveSchema),
     defaultValues: {
-      leaveType: leave.leaveType,
-      startDate: leave.startDate,
-      endDate: leave.endDate,
-      reason: leave.reason,
+      leaveType: 'SICK',
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: format(new Date(), 'yyyy-MM-dd'),
+      reason: '',
     }
   });
 
   useEffect(() => {
     if (isOpen) {
-      form.reset({
-        leaveType: leave.leaveType,
-        startDate: leave.startDate,
-        endDate: leave.endDate,
-        reason: leave.reason,
-      });
+      if (leave) {
+        form.reset({
+          leaveType: leave.leaveType,
+          startDate: leave.startDate,
+          endDate: leave.endDate,
+          reason: leave.reason,
+        });
+      } else {
+        form.reset({
+          leaveType: 'SICK',
+          startDate: format(new Date(), 'yyyy-MM-dd'),
+          endDate: format(new Date(), 'yyyy-MM-dd'),
+          reason: 'Admin บันทึกให้',
+        });
+      }
     }
   }, [leave, form, isOpen]);
   
@@ -87,13 +111,13 @@ function EditLeaveDialog({ leave, isOpen, onClose, onConfirm, isSubmitting }: { 
     <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>แก้ไขข้อมูลการลา</DialogTitle>
+            <DialogTitle>{leave ? 'แก้ไขข้อมูลการลา' : 'สร้างรายการลาใหม่ (โดย Admin)'}</DialogTitle>
             <DialogDescription>
-              สำหรับ: {leave.userName}
+              พนักงาน: {leave?.userName || targetUser?.displayName || 'ไม่ระบุ'}
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form id="edit-leave-form" onSubmit={form.handleSubmit(onConfirm)} className="space-y-4 py-4">
+            <form id="manage-leave-form" onSubmit={form.handleSubmit(onConfirm)} className="space-y-4 py-4">
                <FormField control={form.control} name="leaveType" render={({ field }) => (
                   <FormItem>
                     <FormLabel>ประเภทการลา</FormLabel>
@@ -107,13 +131,13 @@ function EditLeaveDialog({ leave, isOpen, onClose, onConfirm, isSubmitting }: { 
                     <FormField control={form.control} name="startDate" render={({ field }) => (<FormItem><FormLabel>วันเริ่มลา</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
                     <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem><FormLabel>วันสิ้นสุด</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
                 </div>
-                <FormField control={form.control} name="reason" render={({ field }) => (<FormItem><FormLabel>เหตุผล</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+                <FormField control={form.control} name="reason" render={({ field }) => (<FormItem><FormLabel>เหตุผล/หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
             </form>
           </Form>
           <DialogFooter>
             <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button type="submit" form="edit-leave-form" disabled={isSubmitting}>
-                {isSubmitting ? <Loader2 className="mr-2 animate-spin"/> : 'บันทึกการแก้ไข'}
+            <Button type="submit" form="manage-leave-form" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 animate-spin"/> : (leave ? 'บันทึกการแก้ไข' : 'สร้างและอนุมัติทันที')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -121,12 +145,12 @@ function EditLeaveDialog({ leave, isOpen, onClose, onConfirm, isSubmitting }: { 
   );
 }
 
-
 export default function ManagementHRLeavesPage() {
   const { db } = useFirebase();
   const { profile: adminProfile } = useAuth();
   const { toast } = useToast();
 
+  const [activeTab, setActiveTab] = useState('summary');
   const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
   const [filters, setFilters] = useState({ status: 'ALL', userId: 'ALL' });
   
@@ -135,7 +159,13 @@ export default function ManagementHRLeavesPage() {
   const [approvingLeave, setApprovingLeave] = useState<WithId<LeaveRequest> | null>(null);
   const [deletingLeave, setDeletingLeave] = useState<WithId<LeaveRequest> | null>(null);
   const [editingLeave, setEditingLeave] = useState<WithId<LeaveRequest> | null>(null);
+  const [creatingForUser, setCreatingForUser] = useState<WithId<UserProfile> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // For Summary data including Absences
+  const [yearlyAttendance, setYearlyAttendance] = useState<Attendance[]>([]);
+  const [yearlyHolidays, setYearlyHolidays] = useState<Map<string, string>>(new Map());
+  const [isLoadingSummaryExtras, setIsLoadingSummaryExtras] = useState(false);
 
   // Real-time Queries
   const usersQuery = useMemo(() => db ? query(collection(db, 'users'), orderBy('displayName', 'asc')) : null, [db]);
@@ -146,7 +176,32 @@ export default function ManagementHRLeavesPage() {
   const { data: allLeaves, isLoading: isLoadingLeaves } = useCollection<LeaveRequest>(leavesQuery);
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
 
-  const isLoading = isLoadingSettings || isLoadingUsers || isLoadingLeaves;
+  // Fetch Attendance and Holidays for the selected year to calculate Absences
+  useEffect(() => {
+    if (!db || !selectedYear) return;
+    
+    const fetchSummaryExtras = async () => {
+        setIsLoadingSummaryExtras(true);
+        try {
+            const start = startOfYear(new Date(selectedYear, 0, 1));
+            const end = endOfYear(new Date(selectedYear, 0, 1));
+            
+            const [attSnap, holSnap] = await Promise.all([
+                getDocs(query(collection(db, 'attendance'), where('timestamp', '>=', start), where('timestamp', '<=', end))),
+                getDocs(query(collection(db, 'hrHolidays'), where('date', '>=', format(start, 'yyyy-MM-dd')), where('date', '<=', format(end, 'yyyy-MM-dd'))))
+            ]);
+
+            setYearlyAttendance(attSnap.docs.map(d => ({ id: d.id, ...d.data() } as Attendance)));
+            setYearlyHolidays(new Map(holSnap.docs.map(d => [d.data().date, d.data().name])));
+        } catch (e) {
+            console.error("Failed to fetch summary extras:", e);
+        } finally {
+            setIsLoadingSummaryExtras(false);
+        }
+    };
+
+    fetchSummaryExtras();
+  }, [db, selectedYear]);
 
   const { leaveSummary, filteredLeaves, yearOptions } = useMemo(() => {
     const years = new Set<number>();
@@ -166,30 +221,65 @@ export default function ManagementHRLeavesPage() {
       return { leaveSummary: [], filteredLeaves: [], yearOptions: sortedYears };
     }
 
-    const approvedLeaveDaysMap = new Map<string, { SICK: number; BUSINESS: number; VACATION: number; TOTAL: number }>();
-    users.forEach(user => {
-        approvedLeaveDaysMap.set(user.id, { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 });
-    });
-    
-    allLeaves.forEach(leave => {
-        const leaveYear = leave.year || (leave.startDate ? getYear(parseISO(leave.startDate)) : null);
-        if (leave.status === 'APPROVED' && leaveYear === selectedYear) {
-            const userLeave = approvedLeaveDaysMap.get(leave.userId);
-            if (userLeave && leave.leaveType in userLeave) {
-                (userLeave as any)[leave.leaveType] += (leave.days || 0);
-                userLeave.TOTAL += (leave.days || 0);
-            }
-        }
-    });
+    // Attendance/Absence Calculation
+    const today = new Date();
+    const start = startOfYear(new Date(selectedYear, 0, 1));
+    const endBound = selectedYear === getYear(today) ? today : endOfYear(new Date(selectedYear, 0, 1));
+    const daysInterval = eachDayOfInterval({ start, end: endBound });
+    const weekendMode = hrSettings?.weekendPolicy?.mode || 'SAT_SUN';
 
     const summary = users.map(user => {
-        const userLeaveDays = approvedLeaveDaysMap.get(user.id) || { SICK: 0, BUSINESS: 0, VACATION: 0, TOTAL: 0 };
+        const userLeaves = allLeaves.filter(l => 
+            l.userId === user.id && 
+            l.status === 'APPROVED' && 
+            (l.year === selectedYear || (l.startDate && getYear(parseISO(l.startDate)) === selectedYear))
+        );
+
+        const sickDays = userLeaves.filter(l => l.leaveType === 'SICK').reduce((s, l) => s + (l.days || 0), 0);
+        const businessDays = userLeaves.filter(l => l.leaveType === 'BUSINESS').reduce((s, l) => s + (l.days || 0), 0);
+        const vacationDays = userLeaves.filter(l => l.leaveType === 'VACATION').reduce((s, l) => s + (l.days || 0), 0);
+        const totalLeave = sickDays + businessDays + vacationDays;
+
+        // Calculate Absences
+        let absentDays = 0;
+        const userAttendance = yearlyAttendance.filter(a => a.userId === user.id);
+        const attendanceDates = new Set(userAttendance.map(a => format(a.timestamp.toDate(), 'yyyy-MM-dd')));
+
+        if (user.hr?.payType === 'MONTHLY' || user.hr?.payType === 'DAILY') {
+            daysInterval.forEach(day => {
+                const dayStr = format(day, 'yyyy-MM-dd');
+                
+                // Skip if before hire date
+                if (user.hr?.startDate && isBefore(day, parseISO(user.hr.startDate))) return;
+                // Skip if after end date
+                if (user.hr?.endDate && isBefore(parseISO(user.hr.endDate), day)) return;
+                // Skip holidays
+                if (yearlyHolidays.has(dayStr)) return;
+                // Skip weekends
+                const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
+                if (isWeekendDay) return;
+                // Skip if on approved leave
+                const onLeave = userLeaves.some(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+                if (onLeave) return;
+
+                // If no clock-in record found for a work day -> Absent
+                if (!attendanceDates.has(dayStr)) {
+                    absentDays++;
+                }
+            });
+        }
+
         return {
             userId: user.id,
             userName: user.displayName,
-            ...userLeaveDays
+            user,
+            SICK: sickDays,
+            BUSINESS: businessDays,
+            VACATION: vacationDays,
+            TOTAL: totalLeave,
+            ABSENT: absentDays
         };
-    }).filter(s => s.TOTAL > 0 || filters.userId === 'ALL' || filters.userId === s.userId);
+    }).filter(s => s.TOTAL > 0 || s.ABSENT > 0 || filters.userId === 'ALL' || filters.userId === s.userId);
     
     const filtered = allLeaves.filter(leave => {
       const leaveYear = leave.year || (leave.startDate ? getYear(parseISO(leave.startDate)) : null);
@@ -201,7 +291,7 @@ export default function ManagementHRLeavesPage() {
     });
 
     return { leaveSummary: summary, filteredLeaves: filtered, yearOptions: sortedYears };
-  }, [allLeaves, users, selectedYear, filters]);
+  }, [allLeaves, users, selectedYear, filters, yearlyAttendance, yearlyHolidays, hrSettings]);
 
   const overLimitDetails = useMemo(() => {
     if (!approvingLeave || !hrSettings || !allLeaves || !users) return null;
@@ -276,21 +366,40 @@ export default function ManagementHRLeavesPage() {
     }
   };
 
-  const handleEditSave = async (data: EditLeaveFormData) => {
-    if (!db || !editingLeave) return;
+  const handleAdminManageSave = async (data: LeaveFormData) => {
+    if (!db || !adminProfile) return;
     setIsSubmitting(true);
     try {
         const days = differenceInCalendarDays(new Date(data.endDate), new Date(data.startDate)) + 1;
-        await updateDoc(doc(db, 'hrLeaves', editingLeave.id), {
-            ...data,
-            days,
-            year: getYear(new Date(data.startDate)),
-            updatedAt: serverTimestamp(),
-        });
-        toast({ title: "แก้ไขใบลาสำเร็จ" });
-        setEditingLeave(null);
+        const year = getYear(new Date(data.startDate));
+
+        if (editingLeave) {
+            await updateDoc(doc(db, 'hrLeaves', editingLeave.id), {
+                ...data,
+                days,
+                year,
+                updatedAt: serverTimestamp(),
+            });
+            toast({ title: "แก้ไขใบลาสำเร็จ" });
+            setEditingLeave(null);
+        } else if (creatingForUser) {
+            await addDoc(collection(db, 'hrLeaves'), {
+                userId: creatingForUser.id,
+                userName: creatingForUser.displayName,
+                ...data,
+                days,
+                year,
+                status: 'APPROVED', // Direct approved by admin
+                approvedByName: adminProfile.displayName,
+                approvedAt: serverTimestamp(),
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+            toast({ title: "สร้างและอนุมัติใบลาเรียบร้อย" });
+            setCreatingForUser(null);
+        }
     } catch (e: any) {
-        toast({ variant: 'destructive', title: "แก้ไขไม่สำเร็จ", description: e.message });
+        toast({ variant: 'destructive', title: "ทำรายการไม่สำเร็จ", description: e.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -320,30 +429,37 @@ export default function ManagementHRLeavesPage() {
     }
   };
 
-  if (isLoading) {
+  const isWithinInterval = (date: Date, interval: { start: Date; end: Date }) => {
+    return date >= interval.start && date <= interval.end;
+  }
+
+  if (isLoadingUsers || isLoadingSettings || isLoadingLeaves) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
   }
 
   return (
     <>
-        <PageHeader title="วันลา" description="จัดการและตรวจสอบข้อมูลการลาของพนักงาน" />
-        <Tabs defaultValue="summary">
+        <PageHeader title="จัดการวันลา" description="จัดการและตรวจสอบข้อมูลการลา/ขาดงาน ของพนักงาน" />
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-            <TabsTrigger value="summary">สรุปวันลา</TabsTrigger>
+            <TabsTrigger value="summary">สรุปวันลาและวันขาด</TabsTrigger>
             <TabsTrigger value="requests">คำขอทั้งหมด</TabsTrigger>
         </TabsList>
         <TabsContent value="summary" className="space-y-4">
             <Card>
             <CardHeader>
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <CardTitle>สรุปวันลาสะสม</CardTitle>
-                    <CardDescription>จำนวนวันลาที่อนุมัติแล้วประจำปี {selectedYear}</CardDescription>
+                    <CardTitle>สรุปวันลาและวันขาดสะสม</CardTitle>
+                    <CardDescription>ข้อมูลที่อนุมัติแล้วประจำปี {selectedYear}</CardDescription>
                   </div>
-                  <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number(v))}>
-                      <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-                      <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    {isLoadingSummaryExtras && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number(v))}>
+                        <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
                 </div>
             </CardHeader>
             <CardContent>
@@ -351,22 +467,43 @@ export default function ManagementHRLeavesPage() {
                 <TableHeader>
                     <TableRow>
                     <TableHead>พนักงาน</TableHead>
-                    <TableHead className="text-center">ป่วย</TableHead>
-                    <TableHead className="text-center">กิจ</TableHead>
-                    <TableHead className="text-center">พักร้อน</TableHead>
-                    <TableHead className="text-right">รวมทั้งหมด</TableHead>
+                    <TableHead className="text-center">ป่วย (วัน)</TableHead>
+                    <TableHead className="text-center">กิจ (วัน)</TableHead>
+                    <TableHead className="text-center">พักร้อน (วัน)</TableHead>
+                    <TableHead className="text-center">รวมลา (วัน)</TableHead>
+                    <TableHead className="text-center text-destructive font-bold">วันขาด (Absent)</TableHead>
+                    <TableHead className="text-right">จัดการ</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
                     {leaveSummary.length > 0 ? leaveSummary.map(s => (
-                    <TableRow key={s.userId}>
-                        <TableCell className="font-medium">{s.userName}</TableCell>
+                    <TableRow key={s.userId} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-medium">
+                            {s.userName}
+                            <p className="text-[10px] text-muted-foreground">{deptLabel(s.user.department)}</p>
+                        </TableCell>
                         <TableCell className="text-center">{s.SICK}</TableCell>
                         <TableCell className="text-center">{s.BUSINESS}</TableCell>
                         <TableCell className="text-center">{s.VACATION}</TableCell>
-                        <TableCell className="text-right font-bold">{s.TOTAL} วัน</TableCell>
+                        <TableCell className="text-center font-semibold text-primary">{s.TOTAL}</TableCell>
+                        <TableCell className="text-center font-bold text-destructive bg-destructive/5">{s.ABSENT}</TableCell>
+                        <TableCell className="text-right">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4"/></Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onSelect={() => { setFilters(f => ({ ...f, userId: s.userId })); setActiveTab('requests'); }}>
+                                        <FileText className="mr-2 h-4 w-4"/> ดูรายการใบลา
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => setCreatingForUser(s.user)}>
+                                        <PlusCircle className="mr-2 h-4 w-4"/> สร้างใบลาให้ (แก้ขาดงาน)
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </TableCell>
                     </TableRow>
-                    )) : <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">ยังไม่มีการลาที่อนุมัติในปีนี้</TableCell></TableRow>}
+                    )) : <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground">ยังไม่มีข้อมูลในปีนี้</TableCell></TableRow>}
                 </TableBody>
                 </Table>
             </CardContent>
@@ -380,7 +517,7 @@ export default function ManagementHRLeavesPage() {
             </CardHeader>
             <CardContent>
                 <div className="flex flex-wrap gap-4 mb-6">
-                <div className="flex flex-col gap-1.5 flex-1 min-w-[150px]">
+                <div className="flex flex-col gap-1.5 flex-1 min-w-[100px] max-w-[120px]">
                   <Label className="text-xs">ปี</Label>
                   <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number(v))}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -464,7 +601,19 @@ export default function ManagementHRLeavesPage() {
             </CardContent>
             </Card>
         </TabsContent>
-        {editingLeave && <EditLeaveDialog leave={editingLeave} isOpen={!!editingLeave} onClose={() => setEditingLeave(null)} onConfirm={handleEditSave} isSubmitting={isSubmitting} />}
+        
+        {/* Manage Leave Dialog (Shared for Create/Edit) */}
+        {(editingLeave || creatingForUser) && (
+            <LeaveManageDialog 
+                leave={editingLeave} 
+                targetUser={creatingForUser}
+                isOpen={!!editingLeave || !!creatingForUser} 
+                onClose={() => { setEditingLeave(null); setCreatingForUser(null); }} 
+                onConfirm={handleAdminManageSave} 
+                isSubmitting={isSubmitting} 
+            />
+        )}
+
         <AlertDialog open={!!approvingLeave} onOpenChange={(open) => !open && setApprovingLeave(null)}>
             <AlertDialogContent>
             <AlertDialogHeader>
