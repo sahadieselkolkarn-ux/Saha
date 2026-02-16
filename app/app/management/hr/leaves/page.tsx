@@ -228,7 +228,10 @@ export default function ManagementHRLeavesPage() {
     const daysInterval = eachDayOfInterval({ start, end: endBound });
     const weekendMode = hrSettings?.weekendPolicy?.mode || 'SAT_SUN';
 
-    const summary = users.map(user => {
+    // กรองเฉพาะพนักงานที่ต้องสแกนนิ้ว (รายเดือน และ รายวัน)
+    const summary = users
+      .filter(u => u.hr?.payType === 'MONTHLY' || u.hr?.payType === 'DAILY')
+      .map(user => {
         const userLeaves = allLeaves.filter(l => 
             l.userId === user.id && 
             l.status === 'APPROVED' && 
@@ -245,29 +248,27 @@ export default function ManagementHRLeavesPage() {
         const userAttendance = yearlyAttendance.filter(a => a.userId === user.id);
         const attendanceDates = new Set(userAttendance.map(a => format(a.timestamp.toDate(), 'yyyy-MM-dd')));
 
-        if (user.hr?.payType === 'MONTHLY' || user.hr?.payType === 'DAILY') {
-            daysInterval.forEach(day => {
-                const dayStr = format(day, 'yyyy-MM-dd');
-                
-                // Skip if before hire date
-                if (user.hr?.startDate && isBefore(day, parseISO(user.hr.startDate))) return;
-                // Skip if after end date
-                if (user.hr?.endDate && isBefore(parseISO(user.hr.endDate), day)) return;
-                // Skip holidays
-                if (yearlyHolidays.has(dayStr)) return;
-                // Skip weekends
-                const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
-                if (isWeekendDay) return;
-                // Skip if on approved leave
-                const onLeave = userLeaves.some(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
-                if (onLeave) return;
+        daysInterval.forEach(day => {
+            const dayStr = format(day, 'yyyy-MM-dd');
+            
+            // Skip if before hire date
+            if (user.hr?.startDate && isBefore(day, parseISO(user.hr.startDate))) return;
+            // Skip if after end date
+            if (user.hr?.endDate && isBefore(parseISO(user.hr.endDate), day)) return;
+            // Skip holidays
+            if (yearlyHolidays.has(dayStr)) return;
+            // Skip weekends
+            const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
+            if (isWeekendDay) return;
+            // Skip if on approved leave
+            const onLeave = userLeaves.some(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+            if (onLeave) return;
 
-                // If no clock-in record found for a work day -> Absent
-                if (!attendanceDates.has(dayStr)) {
-                    absentDays++;
-                }
-            });
-        }
+            // If no clock-in record found for a work day -> Absent
+            if (!attendanceDates.has(dayStr)) {
+                absentDays++;
+            }
+        });
 
         return {
             userId: user.id,
@@ -279,7 +280,7 @@ export default function ManagementHRLeavesPage() {
             TOTAL: totalLeave,
             ABSENT: absentDays
         };
-    }).filter(s => s.TOTAL > 0 || s.ABSENT > 0 || filters.userId === 'ALL' || filters.userId === s.userId);
+    }).filter(s => filters.userId === 'ALL' || filters.userId === s.userId);
     
     const filtered = allLeaves.filter(leave => {
       const leaveYear = leave.year || (leave.startDate ? getYear(parseISO(leave.startDate)) : null);
@@ -447,7 +448,7 @@ export default function ManagementHRLeavesPage() {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <CardTitle>สรุปวันลาและวันขาดสะสม</CardTitle>
-                    <CardDescription>ข้อมูลที่อนุมัติแล้วประจำปี {selectedYear}</CardDescription>
+                    <CardDescription>ข้อมูลเฉพาะพนักงานที่ต้องสแกนนิ้วประจำปี {selectedYear}</CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
                     {isLoadingSummaryExtras && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -499,7 +500,7 @@ export default function ManagementHRLeavesPage() {
                             </DropdownMenu>
                         </TableCell>
                     </TableRow>
-                    )) : <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground">ยังไม่มีข้อมูลในปีนี้</TableCell></TableRow>}
+                    )) : <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground">ไม่พบข้อมูลพนักงานที่ต้องสแกนในปีนี้</TableCell></TableRow>}
                 </TableBody>
                 </Table>
             </CardContent>
