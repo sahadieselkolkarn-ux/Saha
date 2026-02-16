@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useFirebase, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -20,11 +19,10 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayslipSnapshot } from "@/lib/types";
+import type { HRSettings, UserProfile, LeaveRequest, PayslipNew, Attendance, HRHoliday, AttendanceAdjustment, PayslipStatusNew, PayslipSnapshot, StoreSettings } from "@/lib/types";
 import { deptLabel, payTypeLabel, newPayslipStatusLabel } from "@/lib/ui-labels";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
 import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
-import { formatPayslipAsText, formatPayslipAsJson } from "@/lib/payroll/formatPayslipCopy";
 import { computePeriodMetrics, PeriodMetrics } from "@/lib/payroll/payslip-period-metrics";
 import { SsoDecisionDialog } from "@/components/payroll/SsoDecisionDialog";
 import { round2, calcSsoMonthly, splitSsoHalf } from "@/lib/payroll/sso";
@@ -56,6 +54,8 @@ export default function HRGeneratePayslipsPage() {
     const { db } = useFirebase();
     const { toast } = useToast();
     const { profile: adminProfile } = useAuth();
+    const printFrameRef = useRef<HTMLIFrameElement | null>(null);
+
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [period, setPeriod] = useState<1 | 2>(new Date().getDate() <= 15 ? 1 : 2);
     
@@ -77,6 +77,9 @@ export default function HRGeneratePayslipsPage() {
     
     const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
     const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
+
+    const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
+    const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
     
     const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.role === 'MANAGER' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
 
@@ -360,6 +363,103 @@ export default function HRGeneratePayslipsPage() {
         } catch (e: any) { toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message }); } finally { setIsActing(null); }
     };
 
+    const handlePrintInDrawer = () => {
+        if (!editingPayslip || !drawerSnapshot || !storeSettings) return;
+        
+        try {
+          const frame = printFrameRef.current;
+          if (!frame) return;
+      
+          const totals = calcTotals(drawerSnapshot);
+          const periodLabel = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
+          
+          const html = `
+          <!doctype html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Payslip ${editingPayslip.displayName}</title>
+            <style>
+              @page { size: A4; margin: 15mm; }
+              body { font-family: 'Sarabun', sans-serif; font-size: 14px; line-height: 1.5; color: #333; margin: 0; padding: 0; }
+              .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+              .header h1 { margin: 0; font-size: 20px; color: #000; }
+              .header p { margin: 5px 0 0; font-size: 12px; color: #666; }
+              .doc-title { text-align: center; margin-bottom: 20px; }
+              .doc-title h2 { margin: 0; font-size: 18px; text-decoration: underline; }
+              .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+              .section-title { font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; margin-top: 20px; }
+              table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f9f9f9; }
+              .text-right { text-align: right; }
+              .total-row { font-weight: bold; background-color: #eee; }
+              .footer { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px; text-align: center; }
+              .signature { border-top: 1px solid #333; padding-top: 5px; margin-top: 40px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>${storeSettings.taxName || 'ห้างหุ้นส่วนจำกัด สหดีเซลกลการ'}</h1>
+              <p>${storeSettings.taxAddress || ''}</p>
+              <p>โทร: ${storeSettings.phone || ''}</p>
+            </div>
+            <div class="doc-title">
+              <h2>ใบแจ้งยอดเงินเดือน / PAY SLIP</h2>
+            </div>
+            <div class="info-grid">
+              <div><strong>ชื่อพนักงาน:</strong> ${editingPayslip.displayName}</div>
+              <div class="text-right"><strong>ประจำงวด:</strong> ${periodLabel}</div>
+              <div><strong>แผนก:</strong> ${deptLabel(editingPayslip.department)}</div>
+              <div class="text-right"><strong>ประเภท:</strong> ${payTypeLabel(editingPayslip.hr?.payType)}</div>
+            </div>
+            
+            <div class="section-title">รายได้ / Earnings</div>
+            <table>
+              <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
+              <tbody>
+                <tr><td>เงินเดือนพื้นฐาน / Base Salary (งวด)</td><td class="text-right">${formatCurrency(totals.basePay)}</td></tr>
+                ${(drawerSnapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${formatCurrency(a.amount)}</td></tr>`).join('')}
+                <tr class="total-row"><td>รวมรายได้ / Total Earnings</td><td class="text-right">${formatCurrency(totals.basePay + totals.addTotal)}</td></tr>
+              </tbody>
+            </table>
+
+            <div class="section-title">รายการหัก / Deductions</div>
+            <table>
+              <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
+              <tbody>
+                ${(drawerSnapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">${formatCurrency(d.amount)}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0.00</td></tr>'}
+                <tr class="total-row"><td>รวมรายการหัก / Total Deductions</td><td class="text-right">${formatCurrency(totals.dedTotal)}</td></tr>
+              </tbody>
+            </table>
+
+            <div style="margin-top: 20px; padding: 10px; border: 2px solid #333; text-align: right; font-size: 18px; font-weight: bold;">
+              เงินได้สุทธิ / NET PAY: <span style="margin-left: 20px;">${formatCurrency(totals.netPay)} บาท</span>
+            </div>
+
+            <div class="footer">
+              <div>
+                <div class="signature"></div>
+                <p>ผู้อนุมัติจ่าย / Authorized Signature</p>
+              </div>
+              <div>
+                <div class="signature"></div>
+                <p>ผู้รับเงิน / Employee Signature</p>
+              </div>
+            </div>
+          </body>
+          </html>`;
+      
+          frame.onload = () => {
+            frame.contentWindow?.focus();
+            frame.contentWindow?.print();
+          };
+          frame.srcdoc = html;
+        } catch (e) {
+          toast({ variant: 'destructive', title: 'ไม่สามารถพิมพ์ได้' });
+        }
+    };
+
     const periodDaysList = useMemo(() => {
         if (!hrSettings) return [];
         const p1EndDay = hrSettings.payroll?.period1End || 15;
@@ -374,7 +474,6 @@ export default function HRGeneratePayslipsPage() {
     if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle></CardHeader></Card>;
 
     const periodLabel = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
-    const drawerTotals = useMemo(() => calcTotals(drawerSnapshot), [drawerSnapshot]);
 
     return (
         <>
@@ -439,8 +538,7 @@ export default function HRGeneratePayslipsPage() {
                 <PayslipSlipDrawer
                     open={!!editingPayslip} onOpenChange={(open) => !open && setEditingPayslip(null)}
                     title="แบบฟอร์มสลิปเงินเดือน" description={`${editingPayslip.displayName} - ${periodLabel}`}
-                    copyText={formatPayslipAsText({ userName: editingPayslip.displayName, periodLabel, snapshot: drawerSnapshot, payType: editingPayslip.hr?.payType, totals: drawerTotals })}
-                    copyJson={formatPayslipAsJson(drawerSnapshot)}
+                    onPrint={handlePrintInDrawer}
                     footerActions={ (editingPayslip.payslipStatus !== 'PAID' && editingPayslip.payslipStatus !== 'READY_TO_PAY') && (
                         <>
                           <Button variant="outline" onClick={() => setEditingPayslip(null)} disabled={isActing === editingPayslip.id}>ยกเลิก</Button>
@@ -515,6 +613,10 @@ export default function HRGeneratePayslipsPage() {
                     currentSettings={hrSettings.sso}
                 />
              )}
+
+             <iframe ref={printFrameRef} className="hidden" title="Print Frame" />
         </>
     );
 }
+
+const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

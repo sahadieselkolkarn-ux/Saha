@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
-import { useToast } from "@/hooks/use-toast";
+import React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
-import { Copy, CopyCheck, X } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Printer, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
@@ -17,8 +15,7 @@ interface PayslipSlipDrawerProps {
   description?: string;
   children: React.ReactNode;
   footerActions?: React.ReactNode;
-  copyText?: string;
-  copyJson?: string;
+  onPrint?: () => void; // New prop for printing
 }
 
 export function PayslipSlipDrawer({
@@ -28,29 +25,9 @@ export function PayslipSlipDrawer({
   description,
   children,
   footerActions,
-  copyText,
-  copyJson
+  onPrint
 }: PayslipSlipDrawerProps) {
-  const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 640px)");
-
-  const handleCopy = async (textToCopy: string | undefined, format: 'Text' | 'JSON') => {
-    if (!textToCopy) {
-      toast({ variant: 'destructive', title: 'ไม่สามารถคัดลอกได้', description: 'ไม่มีข้อมูลให้คัดลอก' });
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-      setCopied(true);
-      toast({ title: 'คัดลอกแล้ว', description: `คัดลอกสลิปในรูปแบบ ${format} แล้ว` });
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy: ', err);
-      toast({ variant: 'destructive', title: 'คัดลอกไม่สำเร็จ' });
-    }
-  };
 
   const DrawerHeader = () => (
     <div className="sticky top-0 z-10 bg-background border-b p-4 flex items-center justify-between shrink-0">
@@ -59,18 +36,12 @@ export function PayslipSlipDrawer({
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
-              {copied ? <CopyCheck className="mr-2"/> : <Copy className="mr-2"/>}
-              คัดลอก
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onSelect={() => handleCopy(copyText, 'Text')} disabled={!copyText}>คัดลอกเป็นข้อความ</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => handleCopy(copyJson, 'JSON')} disabled={!copyJson}>คัดลอกเป็น JSON</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {onPrint && (
+          <Button variant="outline" size="sm" onClick={onPrint} className="gap-2">
+            <Printer className="h-4 w-4" />
+            พิมพ์สลิป
+          </Button>
+        )}
         <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}><X/></Button>
       </div>
     </div>

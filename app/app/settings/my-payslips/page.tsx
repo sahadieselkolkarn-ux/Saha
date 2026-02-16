@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { collection, getDocs, getDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase, useDoc } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -13,11 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CheckCircle, MessageSquareWarning, Printer } from "lucide-react";
-import type { PayslipNew } from "@/lib/types";
+import type { PayslipNew, StoreSettings } from "@/lib/types";
 import type { WithId } from "@/firebase/firestore/use-collection";
-import { newPayslipStatusLabel } from "@/lib/ui-labels";
+import { newPayslipStatusLabel, deptLabel, payTypeLabel } from "@/lib/ui-labels";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
-import { PayslipSlipView } from "@/components/payroll/PayslipSlipView";
+import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
 
 const formatCurrency = (value: number | undefined) => {
   return (value ?? 0).toLocaleString("th-TH", {
@@ -102,6 +102,9 @@ export default function MyPayslipsPage() {
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [revisionPayslip, setRevisionPayslip] = useState<WithId<PayslipNew> & { refPath: string } | null>(null);
   const [viewPayslip, setViewPayslip] = useState<(WithId<PayslipNew> & { refPath: string }) | null>(null);
+
+  const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
+  const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
 
   useEffect(() => {
     if (!db || !profile?.uid) {
@@ -196,140 +199,99 @@ export default function MyPayslipsPage() {
     setViewPayslip(payslip);
   };
 
-  function buildPayslipPrintHtml(p: WithId<PayslipNew>) {
-    return `
-    <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>Payslip ${p.batchId}</title>
-      <style>
-        @page { size: A4; margin: 12mm; }
-        html, body { background: #fff !important; color: #000; font-family: system-ui, -apple-system, "Segoe UI", Arial; }
-        * { box-shadow: none !important; }
-        .box { border: 1px solid #ddd; border-radius: 8px; padding: 12px; }
-        h1,h2,h3 { margin: 0; }
-        .muted { color: #444; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { border-bottom: 1px solid #e5e5e5; padding: 6px 8px; font-size: 12px; }
-        th { text-align: left; background: #fff; }
-        .right { text-align: right; }
-        .total { font-size: 14px; font-weight: 700; }
-        .section { margin-top: 12px; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-      </style>
-    </head>
-    <body>
-      <div class="box">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-          <div>
-            <h2>สลิปเงินเดือน</h2>
-            <div class="muted">งวด: ${p.batchId}</div>
-          </div>
-          <div style="text-align:right">
-            <div><b>${p.userName}</b></div>
-          </div>
-        </div>
-  
-        <div class="section box">
-          <div style="display:flex; justify-content:space-between;">
-            <div>ฐานเงินเดือน</div>
-            <div class="right">${(p.snapshot?.basePay ?? 0).toLocaleString('th-TH',{minimumFractionDigits:2})}</div>
-          </div>
-          <div style="display:flex; justify-content:space-between;">
-            <div>รายรับเพิ่มเติม</div>
-            <div class="right">${(p.snapshot?.additions ?? []).reduce((s,i)=>s+(i.amount||0),0).toLocaleString('th-TH',{minimumFractionDigits:2})}</div>
-          </div>
-          <div style="display:flex; justify-content:space-between;">
-            <div>รายการหัก</div>
-            <div class="right">-${(p.snapshot?.deductions ?? []).reduce((s,i)=>s+(i.amount||0),0).toLocaleString('th-TH',{minimumFractionDigits:2})}</div>
-          </div>
-          <hr />
-          <div style="display:flex; justify-content:space-between;" class="total">
-            <div>ยอดสุทธิ</div>
-            <div class="right">${(p.snapshot?.netPay ?? 0).toLocaleString('th-TH',{minimumFractionDigits:2})}</div>
-          </div>
-        </div>
-  
-        <div class="grid section">
-          <div class="box">
-            <b>สรุปการลงเวลา</b>
-            <table>
-              <tbody>
-                <tr><td>วันทำงานตามตาราง</td><td class="right">${p.snapshot?.attendanceSummary?.scheduledWorkDays ?? '-'}</td></tr>
-                <tr><td>วันทำงาน</td><td class="right">${p.snapshot?.attendanceSummary?.presentDays ?? '-'}</td></tr>
-                <tr><td>วันมาสาย</td><td class="right">${p.snapshot?.attendanceSummary?.lateDays ?? '-'}</td></tr>
-                <tr><td>นาทีสายรวม</td><td class="right">${p.snapshot?.attendanceSummary?.lateMinutes ?? '-'}</td></tr>
-                <tr><td>หน่วยที่ขาด</td><td class="right">${p.snapshot?.attendanceSummary?.absentUnits ?? '-'}</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="box">
-            <b>สรุปการลา</b>
-            <table>
-              <tbody>
-                <tr><td>ลาป่วย</td><td class="right">${p.snapshot?.leaveSummary?.sickDays ?? 0}</td></tr>
-                <tr><td>ลากิจ</td><td class="right">${p.snapshot?.leaveSummary?.businessDays ?? 0}</td></tr>
-                <tr><td>ลาพักร้อน</td><td class="right">${p.snapshot?.leaveSummary?.vacationDays ?? 0}</td></tr>
-                <tr><td>ลาเกินสิทธิ์</td><td class="right">${p.snapshot?.leaveSummary?.overLimitDays ?? 0}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-  
-        <div class="section box">
-          <b>รายการหัก</b>
-          <table>
-            <thead><tr><th>รายการ</th><th class="right">จำนวนเงิน</th></tr></thead>
-            <tbody>
-              ${(p.snapshot?.deductions ?? []).map(d => `
-                <tr><td>${d.name}</td><td class="right">${(d.amount||0).toLocaleString('th-TH',{minimumFractionDigits:2})}</td></tr>
-              `).join('') || `<tr><td colspan="2" class="muted">-</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-  
-        <div class="section box">
-          <b>รายรับเพิ่มเติม</b>
-          <table>
-            <thead><tr><th>รายการ</th><th class="right">จำนวนเงิน</th></tr></thead>
-            <tbody>
-              ${(p.snapshot?.additions ?? []).map(a => `
-                <tr><td>${a.name}</td><td class="right">${(a.amount||0).toLocaleString('th-TH',{minimumFractionDigits:2})}</td></tr>
-              `).join('') || `<tr><td colspan="2" class="muted">-</td></tr>`}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </body>
-    </html>`;
-  }
-
-  const handlePrintInDrawer = (p: WithId<PayslipNew>) => {
+  const handlePrintInDrawer = () => {
+    if (!viewPayslip || !storeSettings || !profile) return;
+    
     try {
       const frame = printFrameRef.current;
-      if (!frame) {
-        toast({ variant: "destructive", title: "พิมพ์ไม่สำเร็จ", description: "ไม่พบ print frame" });
-        return;
-      }
+      if (!frame) return;
   
-      const html = buildPayslipPrintHtml(p);
+      const totals = calcTotals(viewPayslip.snapshot);
+      
+      const html = `
+      <!doctype html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Payslip ${viewPayslip.userName}</title>
+        <style>
+          @page { size: A4; margin: 15mm; }
+          body { font-family: 'Sarabun', sans-serif; font-size: 14px; line-height: 1.5; color: #333; margin: 0; padding: 0; }
+          .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+          .header h1 { margin: 0; font-size: 20px; color: #000; }
+          .header p { margin: 5px 0 0; font-size: 12px; color: #666; }
+          .doc-title { text-align: center; margin-bottom: 20px; }
+          .doc-title h2 { margin: 0; font-size: 18px; text-decoration: underline; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+          .section-title { font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; margin-top: 20px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f9f9f9; }
+          .text-right { text-align: right; }
+          .total-row { font-weight: bold; background-color: #eee; }
+          .footer { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px; text-align: center; }
+          .signature { border-top: 1px solid #333; padding-top: 5px; margin-top: 40px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>${storeSettings.taxName || 'ห้างหุ้นส่วนจำกัด สหดีเซลกลการ'}</h1>
+          <p>${storeSettings.taxAddress || ''}</p>
+          <p>โทร: ${storeSettings.phone || ''}</p>
+        </div>
+        <div class="doc-title">
+          <h2>ใบแจ้งยอดเงินเดือน / PAY SLIP</h2>
+        </div>
+        <div class="info-grid">
+          <div><strong>ชื่อพนักงาน:</strong> ${viewPayslip.userName}</div>
+          <div class="text-right"><strong>ประจำงวด:</strong> ${viewPayslip.batchId}</div>
+          <div><strong>แผนก:</strong> ${deptLabel(profile.department)}</div>
+          <div class="text-right"><strong>ประเภท:</strong> ${payTypeLabel(profile.hr?.payType)}</div>
+        </div>
+        
+        <div class="section-title">รายได้ / Earnings</div>
+        <table>
+          <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
+          <tbody>
+            <tr><td>เงินเดือนพื้นฐาน / Base Salary (งวด)</td><td class="text-right">${formatCurrency(totals.basePay)}</td></tr>
+            ${(viewPayslip.snapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${formatCurrency(a.amount)}</td></tr>`).join('')}
+            <tr class="total-row"><td>รวมรายได้ / Total Earnings</td><td class="text-right">${formatCurrency(totals.basePay + totals.addTotal)}</td></tr>
+          </tbody>
+        </table>
+
+        <div class="section-title">รายการหัก / Deductions</div>
+        <table>
+          <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
+          <tbody>
+            ${(viewPayslip.snapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">${formatCurrency(d.amount)}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0.00</td></tr>'}
+            <tr class="total-row"><td>รวมรายการหัก / Total Deductions</td><td class="text-right">${formatCurrency(totals.dedTotal)}</td></tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top: 20px; padding: 10px; border: 2px solid #333; text-align: right; font-size: 18px; font-weight: bold;">
+          เงินได้สุทธิ / NET PAY: <span style="margin-left: 20px;">${formatCurrency(totals.netPay)} บาท</span>
+        </div>
+
+        <div class="footer">
+          <div>
+            <div class="signature"></div>
+            <p>ผู้อนุมัติจ่าย / Authorized Signature</p>
+          </div>
+          <div>
+            <div class="signature"></div>
+            <p>ผู้รับเงิน / Employee Signature</p>
+          </div>
+        </div>
+      </body>
+      </html>`;
   
       frame.onload = () => {
-        try {
-          frame.contentWindow?.focus();
-          frame.contentWindow?.print();
-          toast({ title: "กำลังเปิดหน้าพิมพ์..." });
-        } catch (e) {
-          console.error(e);
-          toast({ variant: "destructive", title: "พิมพ์ไม่สำเร็จ", description: "เรียกคำสั่งพิมพ์ไม่ได้" });
-        }
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
       };
-  
       frame.srcdoc = html;
     } catch (e) {
-      console.error(e);
-      toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการสร้างเอกสารพิมพ์" });
+      toast({ variant: 'destructive', title: 'ไม่สามารถพิมพ์ได้' });
     }
   };
 
@@ -412,16 +374,9 @@ export default function MyPayslipsPage() {
           onOpenChange={(open) => !open && setViewPayslip(null)}
           title="ดูสลิปเงินเดือน"
           description={`งวด: ${viewPayslip.batchId}`}
+          onPrint={handlePrintInDrawer}
           footerActions={
             <div className="flex gap-2 justify-end w-full">
-              <Button
-                variant="outline"
-                onClick={() => viewPayslip && handlePrintInDrawer(viewPayslip)}
-              >
-                <Printer/>
-                พิมพ์
-              </Button>
-
               <Button
                 onClick={() => handleAccept(viewPayslip)}
                 disabled={actioningId !== null || viewPayslip.status !== 'SENT_TO_EMPLOYEE'}
@@ -453,20 +408,7 @@ export default function MyPayslipsPage() {
           />
         </PayslipSlipDrawer>
       )}
-       <iframe
-        ref={printFrameRef}
-        title="payslip-print-frame"
-        style={{
-            position: "fixed",
-            right: "0",
-            bottom: "0",
-            width: "0",
-            height: "0",
-            border: "0",
-            opacity: 0,
-            pointerEvents: "none",
-        }}
-      />
+      <iframe ref={printFrameRef} className="hidden" title="Print Frame" />
     </>
   );
 }
