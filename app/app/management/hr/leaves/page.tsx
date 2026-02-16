@@ -8,7 +8,7 @@ import { useDoc } from "@/firebase/firestore/use-doc";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval, startOfMonth, endOfMonth, isAfter, startOfToday } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -21,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, CheckCircle, XCircle, ShieldAlert, MoreHorizontal, Trash2, Edit, PlusCircle, FileText, Search } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, ShieldAlert, MoreHorizontal, Trash2, Edit, PlusCircle, FileText, Search, ExternalLink, AlertCircle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -64,7 +64,6 @@ const leaveSchema = z.object({
 
 type LeaveFormData = z.infer<typeof leaveSchema>;
 
-// Month options for filtering
 const monthOptions = [
   { value: "ALL", label: "ทั้งหมด (ทั้งปี)" },
   { value: "1", label: "มกราคม" },
@@ -81,7 +80,6 @@ const monthOptions = [
   { value: "12", label: "ธันวาคม" },
 ];
 
-// Dialog for Creating or Editing Leaves by Admin
 function LeaveManageDialog({ 
   leave, 
   targetUser,
@@ -214,7 +212,7 @@ export default function ManagementHRLeavesPage() {
 
   const [activeTab, setActiveTab] = useState('summary');
   const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
-  const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
+  const [selectedMonth, setSelectedMonth] = useState<string>(String(new Date().getMonth() + 1));
   const [filters, setFilters] = useState({ status: 'ALL', userId: 'ALL' });
   
   const [rejectingLeave, setRejectingLeave] = useState<WithId<LeaveRequest> | null>(null);
@@ -225,12 +223,11 @@ export default function ManagementHRLeavesPage() {
   const [creatingForUser, setCreatingForUser] = useState<WithId<UserProfile> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // For Summary data including Absences
-  const [yearlyAttendance, setYearlyAttendance] = useState<Attendance[]>([]);
-  const [yearlyHolidays, setYearlyHolidays] = useState<Map<string, string>>(new Map());
-  const [isLoadingSummaryExtras, setIsLoadingSummaryExtras] = useState(false);
+  const [periodAttendance, setPeriodAttendance] = useState<Attendance[]>([]);
+  const [periodHolidays, setPeriodHolidays] = useState<Map<string, string>>(new Map());
+  const [isLoadingExtras, setIsLoadingExtras] = useState(false);
+  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
-  // Real-time Queries
   const usersQuery = useMemo(() => db ? query(collection(db, 'users'), orderBy('displayName', 'asc')) : null, [db]);
   const leavesQuery = useMemo(() => db ? query(collection(db, 'hrLeaves'), orderBy('createdAt', 'desc')) : null, [db]);
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
@@ -239,32 +236,45 @@ export default function ManagementHRLeavesPage() {
   const { data: allLeaves, isLoading: isLoadingLeaves } = useCollection<LeaveRequest>(leavesQuery);
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
 
-  // Fetch Attendance and Holidays for the selected year to calculate Absences
   useEffect(() => {
     if (!db || !selectedYear) return;
     
-    const fetchSummaryExtras = async () => {
-        setIsLoadingSummaryExtras(true);
+    const fetchPeriodData = async () => {
+        setIsLoadingExtras(true);
+        setIndexCreationUrl(null);
         try {
-            const start = startOfYear(new Date(selectedYear, 0, 1));
-            const end = endOfYear(new Date(selectedYear, 0, 1));
+            let start: Date;
+            let end: Date;
+
+            if (selectedMonth === "ALL") {
+                start = startOfYear(new Date(selectedYear, 0, 1));
+                end = endOfYear(new Date(selectedYear, 0, 1));
+            } else {
+                const monthIndex = parseInt(selectedMonth) - 1;
+                start = startOfMonth(new Date(selectedYear, monthIndex, 1));
+                end = endOfMonth(new Date(selectedYear, monthIndex, 1));
+            }
             
             const [attSnap, holSnap] = await Promise.all([
                 getDocs(query(collection(db, 'attendance'), where('timestamp', '>=', start), where('timestamp', '<=', end))),
                 getDocs(query(collection(db, 'hrHolidays'), where('date', '>=', format(start, 'yyyy-MM-dd')), where('date', '<=', format(end, 'yyyy-MM-dd'))))
             ]);
 
-            setYearlyAttendance(attSnap.docs.map(d => ({ id: d.id, ...d.data() } as Attendance)));
-            setYearlyHolidays(new Map(holSnap.docs.map(d => [d.data().date, d.data().name])));
-        } catch (e) {
+            setPeriodAttendance(attSnap.docs.map(d => ({ id: d.id, ...d.data() } as Attendance)));
+            setPeriodHolidays(new Map(holSnap.docs.map(d => [d.data().date, d.data().name])));
+        } catch (e: any) {
             console.error("Failed to fetch summary extras:", e);
+            if (e.message?.includes('requires an index')) {
+                const urlMatch = e.message.match(/https?:\/\/[^\s]+/);
+                if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+            }
         } finally {
-            setIsLoadingSummaryExtras(false);
+            setIsLoadingExtras(false);
         }
     };
 
-    fetchSummaryExtras();
-  }, [db, selectedYear]);
+    fetchPeriodData();
+  }, [db, selectedYear, selectedMonth]);
 
   const { leaveSummary, filteredLeaves, yearOptions } = useMemo(() => {
     const years = new Set<number>();
@@ -284,8 +294,7 @@ export default function ManagementHRLeavesPage() {
       return { leaveSummary: [], filteredLeaves: [], yearOptions: sortedYears };
     }
 
-    // Attendance/Absence Calculation
-    const today = new Date();
+    const today = startOfToday();
     let dateRangeForSummary: { start: Date; end: Date };
 
     if (selectedMonth === "ALL") {
@@ -295,23 +304,20 @@ export default function ManagementHRLeavesPage() {
       };
     } else {
       const monthIndex = parseInt(selectedMonth) - 1;
-      dateRangeForSummary = {
-        start: startOfMonth(new Date(selectedYear, monthIndex, 1)),
-        end: (selectedYear === getYear(today) && monthIndex === today.getMonth()) 
-          ? today 
-          : endOfMonth(new Date(selectedYear, monthIndex, 1)),
-      };
+      const start = startOfMonth(new Date(selectedYear, monthIndex, 1));
+      const end = endOfMonth(new Date(selectedYear, monthIndex, 1));
+      
+      dateRangeForSummary = { start, end };
     }
 
     const daysInterval = eachDayOfInterval({ start: dateRangeForSummary.start, end: dateRangeForSummary.end });
     const weekendMode = hrSettings?.weekendPolicy?.mode || 'SAT_SUN';
 
-    // กรองเฉพาะพนักงานที่ต้องสแกนนิ้ว (รายเดือน และ รายวัน)
     const summary = users
       .filter(u => u.hr?.payType === 'MONTHLY' || u.hr?.payType === 'DAILY')
       .map(user => {
         const userApprovedLeaves = allLeaves.filter(l => l.userId === user.id && l.status === 'APPROVED');
-        const userAttendance = yearlyAttendance.filter(a => a.userId === user.id);
+        const userAttendance = periodAttendance.filter(a => a.userId === user.id);
         const attendanceDates = new Set(userAttendance.map(a => format(a.timestamp.toDate(), 'yyyy-MM-dd')));
 
         let sickDays = 0;
@@ -323,18 +329,20 @@ export default function ManagementHRLeavesPage() {
         daysInterval.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             
+            // Skip future days
+            if (isAfter(day, today)) return;
             // Skip if before hire date
             if (user.hr?.startDate && isBefore(day, parseISO(user.hr.startDate))) return;
             // Skip if after end date
             if (user.hr?.endDate && isBefore(parseISO(user.hr.endDate), day)) return;
             // Skip holidays
-            if (yearlyHolidays.has(dayStr)) return;
+            if (periodHolidays.has(dayStr)) return;
             // Skip weekends
             const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
             if (isWeekendDay) return;
             
-            // Check for leave on this day
-            const onLeaveOnThisDay = userApprovedLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+            // Check for leave on this day (String comparison is more reliable)
+            const onLeaveOnThisDay = userApprovedLeaves.find(l => dayStr >= l.startDate && dayStr <= l.endDate);
             
             let leaveUnits = 0;
             if (onLeaveOnThisDay) {
@@ -380,7 +388,7 @@ export default function ManagementHRLeavesPage() {
     });
 
     return { leaveSummary: summary, filteredLeaves: filtered, yearOptions: sortedYears };
-  }, [allLeaves, users, selectedYear, selectedMonth, filters, yearlyAttendance, yearlyHolidays, hrSettings]);
+  }, [allLeaves, users, selectedYear, selectedMonth, filters, periodAttendance, periodHolidays, hrSettings]);
 
   const overLimitDetails = useMemo(() => {
     if (!approvingLeave || !hrSettings || !allLeaves || !users) return null;
@@ -480,7 +488,7 @@ export default function ManagementHRLeavesPage() {
                 ...data,
                 days,
                 year,
-                status: 'APPROVED', // Direct approved by admin
+                status: 'APPROVED', 
                 approvedByName: adminProfile.displayName,
                 approvedAt: serverTimestamp(),
                 createdAt: serverTimestamp(),
@@ -546,7 +554,7 @@ export default function ManagementHRLeavesPage() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isLoadingSummaryExtras && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    {isLoadingExtras && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                     <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                         <SelectTrigger className="w-[150px]"><SelectValue placeholder="เลือกเดือน..." /></SelectTrigger>
                         <SelectContent>{monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
@@ -559,6 +567,18 @@ export default function ManagementHRLeavesPage() {
                 </div>
             </CardHeader>
             <CardContent>
+                {indexCreationUrl && (
+                    <Alert variant="destructive" className="mb-4">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertTitle>ต้องสร้างดัชนี (Index) ก่อนดูสรุป</AlertTitle>
+                        <AlertDescription className="flex flex-col gap-2">
+                            <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงข้อมูลสแกนนิ้ว กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
+                            <Button asChild variant="outline" size="sm" className="w-fit">
+                                <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index</a>
+                            </Button>
+                        </AlertDescription>
+                    </Alert>
+                )}
                 <Table>
                 <TableHeader>
                     <TableRow>
@@ -705,7 +725,6 @@ export default function ManagementHRLeavesPage() {
             </Card>
         </TabsContent>
         
-        {/* Manage Leave Dialog (Shared for Create/Edit) */}
         {(editingLeave || creatingForUser) && (
             <LeaveManageDialog 
                 leave={editingLeave} 
