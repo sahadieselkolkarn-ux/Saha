@@ -79,8 +79,8 @@ export default function HRGeneratePayslipsPage() {
     const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.role === 'MANAGER' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
 
     const handleFetchEmployees = useCallback(async (autoOpenUid?: string) => {
-        if (!db || !hrSettings) {
-            toast({ variant: 'destructive', title: 'ยังไม่พร้อม', description: 'ไม่สามารถโหลดการตั้งค่า HR ได้' });
+        if (!db || !hrSettings || !adminProfile) {
+            toast({ variant: 'destructive', title: 'ยังไม่พร้อม', description: 'ไม่สามารถโหลดข้อมูลที่จำเป็นได้' });
             return;
         }
         setIsLoading(true);
@@ -109,23 +109,48 @@ export default function HRGeneratePayslipsPage() {
             
             const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
             
-            // SSO Decision Logic
+            // SSO Decision Logic - Improved to compare specific values
             const monthBatchId = `${format(currentMonth, 'yyyy-MM')}`;
             const batchDocRef = doc(db, 'payrollBatches', monthBatchId);
             const batchDocSnap = await getDoc(batchDocRef);
             let finalSsoDecision = batchDocSnap.exists() ? batchDocSnap.data().ssoDecision : null;
-            const currentSsoHash = JSON.stringify(hrSettings.sso || {});
             
             if (!finalSsoDecision && period === 1) {
-                finalSsoDecision = { ...hrSettings.sso, source: 'AUTO_LOCK' };
+                // Auto-lock for Period 1
+                finalSsoDecision = { 
+                    employeePercent: hrSettings.sso?.employeePercent ?? 0,
+                    employerPercent: hrSettings.sso?.employerPercent ?? 0,
+                    monthlyMinBase: hrSettings.sso?.monthlyMinBase ?? 0,
+                    monthlyCap: hrSettings.sso?.monthlyCap ?? 0,
+                    source: 'AUTO_LOCK',
+                    decidedAt: Timestamp.now(),
+                    decidedByUid: adminProfile.uid,
+                    decidedByName: adminProfile.displayName
+                };
             } else if (period === 2) {
                  if (finalSsoDecision) {
-                    if (currentSsoHash !== batchDocSnap.data().ssoDecisionHash) {
+                    // Compare CORE values only to avoid false triggers from metadata (source, timestamp, etc.)
+                    const hasChanged = 
+                        (finalSsoDecision.employeePercent !== (hrSettings.sso?.employeePercent ?? 0)) ||
+                        (finalSsoDecision.monthlyMinBase !== (hrSettings.sso?.monthlyMinBase ?? 0)) ||
+                        (finalSsoDecision.monthlyCap !== (hrSettings.sso?.monthlyCap ?? 0));
+                    
+                    if (hasChanged) {
                         setIsSsoDecisionDialogOpen(true);
                     }
                  } else {
-                     finalSsoDecision = { ...hrSettings.sso, source: 'AUTO_LOCK' };
-                     await setDoc(batchDocRef, { ssoDecision: finalSsoDecision, ssoDecisionHash: currentSsoHash }, { merge: true });
+                     // Auto-lock for Period 2 if P1 wasn't run
+                     finalSsoDecision = { 
+                        employeePercent: hrSettings.sso?.employeePercent ?? 0,
+                        employerPercent: hrSettings.sso?.employerPercent ?? 0,
+                        monthlyMinBase: hrSettings.sso?.monthlyMinBase ?? 0,
+                        monthlyCap: hrSettings.sso?.monthlyCap ?? 0,
+                        source: 'AUTO_LOCK',
+                        decidedAt: Timestamp.now(),
+                        decidedByUid: adminProfile.uid,
+                        decidedByName: adminProfile.displayName
+                    };
+                     await setDoc(batchDocRef, { ssoDecision: finalSsoDecision }, { merge: true });
                  }
             }
             setSsoDecision(finalSsoDecision);
@@ -156,7 +181,6 @@ export default function HRGeneratePayslipsPage() {
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            // Filter: Monthly and Daily only (Exclude NOSCAN and NOPAY)
             const activeUsers = allUsers.filter(u => u?.hr?.payType === 'MONTHLY' || u?.hr?.payType === 'DAILY');
 
             const allHolidays = new Map(
@@ -201,19 +225,27 @@ export default function HRGeneratePayslipsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [db, hrSettings, currentMonth, period, toast]);
+    }, [db, hrSettings, currentMonth, period, adminProfile, toast]);
     
     const handleSsoDecisionConfirm = async (decision: any) => {
         if (!db || !adminProfile) return;
         const monthBatchId = `${format(currentMonth, 'yyyy-MM')}`;
         const batchRef = doc(db, 'payrollBatches', monthBatchId);
+        
+        const finalDecision = {
+            ...decision,
+            decidedAt: serverTimestamp(),
+            decidedByUid: adminProfile.uid,
+            decidedByName: adminProfile.displayName
+        };
+
         await setDoc(batchRef, {
-            ssoDecision: decision,
-            ssoDecisionHash: JSON.stringify(decision)
+            ssoDecision: finalDecision,
         }, { merge: true });
+        
         setSsoDecision(decision);
         setIsSsoDecisionDialogOpen(false);
-        toast({ title: 'อัปเดตการตั้งค่า SSO สำหรับเดือนนี้แล้ว', description: 'กรุณากดดึงข้อมูลอีกครั้ง' });
+        toast({ title: 'อัปเดตการตั้งค่า SSO สำหรับเดือนนี้แล้ว', description: 'กรุณากดดึงข้อมูลอีกครั้งเพื่อใช้ค่าใหม่นี้ค่ะ' });
     };
 
     const handleOpenDrawer = async (user: EmployeeRowData, isAuto: boolean = false) => {
