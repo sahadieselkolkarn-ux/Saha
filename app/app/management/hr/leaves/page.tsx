@@ -44,6 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 
 import { LEAVE_STATUSES, LEAVE_TYPES } from "@/lib/constants";
 import type { UserProfile, LeaveRequest, HRSettings, LeaveStatus, Attendance, HRHoliday } from "@/lib/types";
@@ -54,6 +55,8 @@ const leaveSchema = z.object({
   startDate: z.string().min(1, "กรุณาเลือกวันเริ่ม"),
   endDate: z.string().min(1, "กรุณาเลือกวันสิ้นสุด"),
   reason: z.string().min(1, "กรุณาระบุเหตุผล"),
+  isHalfDay: z.boolean().default(false),
+  halfDaySession: z.enum(['MORNING', 'AFTERNOON']).optional(),
 }).refine(data => !isBefore(new Date(data.endDate), new Date(data.startDate)), {
     message: 'วันที่สิ้นสุดต้องไม่มาก่อนวันเริ่มต้น',
     path: ['endDate'],
@@ -101,8 +104,19 @@ function LeaveManageDialog({
       startDate: format(new Date(), 'yyyy-MM-dd'),
       endDate: format(new Date(), 'yyyy-MM-dd'),
       reason: '',
+      isHalfDay: false,
+      halfDaySession: 'MORNING',
     }
   });
+
+  const watchedIsHalfDay = form.watch('isHalfDay');
+  const watchedStartDate = form.watch('startDate');
+
+  useEffect(() => {
+    if (watchedIsHalfDay && watchedStartDate) {
+        form.setValue('endDate', watchedStartDate);
+    }
+  }, [watchedIsHalfDay, watchedStartDate, form]);
 
   useEffect(() => {
     if (isOpen) {
@@ -112,6 +126,8 @@ function LeaveManageDialog({
           startDate: leave.startDate,
           endDate: leave.endDate,
           reason: leave.reason,
+          isHalfDay: leave.isHalfDay || false,
+          halfDaySession: leave.halfDaySession || 'MORNING',
         });
       } else {
         form.reset({
@@ -119,6 +135,8 @@ function LeaveManageDialog({
           startDate: format(new Date(), 'yyyy-MM-dd'),
           endDate: format(new Date(), 'yyyy-MM-dd'),
           reason: 'Admin บันทึกให้',
+          isHalfDay: false,
+          halfDaySession: 'MORNING',
         });
       }
     }
@@ -144,9 +162,36 @@ function LeaveManageDialog({
                     </Select>
                   </FormItem>
                 )} />
+
+                <div className="flex items-center space-x-2 border p-3 rounded-md bg-muted/20">
+                    <FormField control={form.control} name="isHalfDay" render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                            <FormControl>
+                                <Switch checked={field.value} onCheckedChange={field.onChange} />
+                            </FormControl>
+                            <FormLabel className="font-bold cursor-pointer">ลาครึ่งวัน (0.5 วัน)</FormLabel>
+                        </FormItem>
+                    )} />
+                </div>
+
+                {watchedIsHalfDay && (
+                    <FormField control={form.control} name="halfDaySession" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>ช่วงเวลาที่ลา</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                                <SelectContent>
+                                    <SelectItem value="MORNING">ครึ่งเช้า</SelectItem>
+                                    <SelectItem value="AFTERNOON">ครึ่งบ่าย</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </FormItem>
+                    )} />
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                     <FormField control={form.control} name="startDate" render={({ field }) => (<FormItem><FormLabel>วันเริ่มลา</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
-                    <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem><FormLabel>วันสิ้นสุด</FormLabel><FormControl><Input type="date" {...field}/></FormControl></FormItem>)} />
+                    <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem><FormLabel>วันสิ้นสุด</FormLabel><FormControl><Input type="date" {...field} disabled={watchedIsHalfDay}/></FormControl></FormItem>)} />
                 </div>
                 <FormField control={form.control} name="reason" render={({ field }) => (<FormItem><FormLabel>เหตุผล/หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
             </form>
@@ -288,19 +333,28 @@ export default function ManagementHRLeavesPage() {
             const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
             if (isWeekendDay) return;
             
-            // Skip if on approved leave
+            // Check for leave on this day
             const onLeaveOnThisDay = userApprovedLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+            
+            let leaveUnits = 0;
             if (onLeaveOnThisDay) {
-                if (onLeaveOnThisDay.leaveType === 'SICK') sickDays++;
-                else if (onLeaveOnThisDay.leaveType === 'BUSINESS') businessDays++;
-                else if (onLeaveOnThisDay.leaveType === 'VACATION') vacationDays++;
-                totalLeaveCount++;
-                return;
+                if (onLeaveOnThisDay.isHalfDay && onLeaveOnThisDay.startDate === onLeaveOnThisDay.endDate && dayStr === onLeaveOnThisDay.startDate) {
+                    leaveUnits = 0.5;
+                } else {
+                    leaveUnits = 1;
+                }
+                
+                if (onLeaveOnThisDay.leaveType === 'SICK') sickDays += leaveUnits;
+                else if (onLeaveOnThisDay.leaveType === 'BUSINESS') businessDays += leaveUnits;
+                else if (onLeaveOnThisDay.leaveType === 'VACATION') vacationDays += leaveUnits;
+                totalLeaveCount += leaveUnits;
+                
+                if (leaveUnits === 1) return; // Full day leave covers it
             }
 
             // If no clock-in record found for a work day -> Absent
             if (!attendanceDates.has(dayStr)) {
-                absentDays++;
+                absentDays += (1 - leaveUnits);
             }
         });
 
@@ -405,7 +459,9 @@ export default function ManagementHRLeavesPage() {
     if (!db || !adminProfile) return;
     setIsSubmitting(true);
     try {
-        const days = differenceInCalendarDays(new Date(data.endDate), new Date(data.startDate)) + 1;
+        let days = differenceInCalendarDays(new Date(data.endDate), new Date(data.startDate)) + 1;
+        if (data.isHalfDay) days = 0.5;
+        
         const year = getYear(new Date(data.startDate));
 
         if (editingLeave) {
@@ -594,8 +650,15 @@ export default function ManagementHRLeavesPage() {
                     {filteredLeaves.length > 0 ? filteredLeaves.map(leave => (
                     <TableRow key={leave.id}>
                         <TableCell className="font-medium">{leave.userName}</TableCell>
-                        <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
-                        <TableCell className="text-sm">{safeFormat(parseISO(leave.startDate), 'dd/MM/yy')} - {safeFormat(parseISO(leave.endDate), 'dd/MM/yy')}</TableCell>
+                        <TableCell>
+                            {leaveTypeLabel(leave.leaveType)}
+                            {leave.isHalfDay && <Badge variant="outline" className="ml-2 text-[9px] h-4">0.5 วัน</Badge>}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                            {safeFormat(parseISO(leave.startDate), 'dd/MM/yy')} 
+                            {!leave.isHalfDay && leave.endDate !== leave.startDate && ` - ${safeFormat(parseISO(leave.endDate), 'dd/MM/yy')}`}
+                            {leave.isHalfDay && <span className="ml-1 text-muted-foreground text-[10px]">({leave.halfDaySession === 'MORNING' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})</span>}
+                        </TableCell>
                         <TableCell className="text-center">{leave.days}</TableCell>
                         <TableCell><Badge variant={getStatusVariant(leave.status)}>{leaveStatusLabel(leave.status)}</Badge></TableCell>
                         <TableCell className="text-right">
@@ -712,7 +775,7 @@ export default function ManagementHRLeavesPage() {
             <AlertDialogFooter>
                 <AlertDialogCancel disabled={isSubmitting}>ยกเลิก</AlertDialogCancel>
                 <AlertDialogAction onClick={confirmDelete} disabled={isSubmitting} className="bg-destructive hover:bg-destructive/90">
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันลบข้อมูล'}
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 'ยืนยันลบข้อมูล'}
                 </AlertDialogAction>
             </AlertDialogFooter>
             </AlertDialogContent>

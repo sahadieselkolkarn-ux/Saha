@@ -102,18 +102,30 @@ export function computePeriodMetrics(params: {
     scheduledWorkDays++;
 
     const onLeave = userLeavesApprovedYear.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+    
+    let leaveUnits = 0;
     if (onLeave) {
-      attendanceSummary.leaveDays++;
-      if (onLeave.leaveType === 'SICK') leaveSummary.sickDays++;
-      if (onLeave.leaveType === 'BUSINESS') leaveSummary.businessDays++;
-      if (onLeave.leaveType === 'VACATION') leaveSummary.vacationDays++;
-      
-      dayLogs.push({
-          date: dayStr,
-          type: 'LEAVE',
-          detail: `ลา${onLeave.leaveType === 'SICK' ? 'ป่วย' : onLeave.leaveType === 'BUSINESS' ? 'กิจ' : 'พักร้อน'}: ${onLeave.reason || '-'}`
-      });
-      return; 
+        if (onLeave.isHalfDay && onLeave.startDate === onLeave.endDate && dayStr === onLeave.startDate) {
+            leaveUnits = 0.5;
+        } else {
+            leaveUnits = 1;
+        }
+        
+        attendanceSummary.leaveDays += leaveUnits;
+        if (onLeave.leaveType === 'SICK') leaveSummary.sickDays += leaveUnits;
+        if (onLeave.leaveType === 'BUSINESS') leaveSummary.businessDays += leaveUnits;
+        if (onLeave.leaveType === 'VACATION') leaveSummary.vacationDays += leaveUnits;
+        
+        dayLogs.push({
+            date: dayStr,
+            type: 'LEAVE',
+            detail: `ลา${onLeave.leaveType === 'SICK' ? 'ป่วย' : onLeave.leaveType === 'BUSINESS' ? 'กิจ' : 'พักร้อน'}${onLeave.isHalfDay ? ` (ครึ่ง${onLeave.halfDaySession === 'MORNING' ? 'เช้า' : 'บ่าย'})` : ''}: ${onLeave.reason || '-'}`
+        });
+        
+        if (leaveUnits === 1) {
+            tempPayableUnits += 1;
+            return; // Full day leave covered, move to next day
+        }
     }
 
     if (payType === 'MONTHLY' || payType === 'DAILY') {
@@ -128,27 +140,40 @@ export function computePeriodMetrics(params: {
             if (adjustmentForDay.adjustedOut) lastOut = adjustmentForDay.adjustedOut.toDate();
         }
 
-        let dayPayableUnit = 1;
+        let dayPayableUnit = leaveUnits; // Start with the 0.5 from leave if any
+        const remainingCapacity = 1 - leaveUnits;
+
         if (!firstIn) {
-            attendanceSummary.absentUnits += 1;
-            dayPayableUnit = 0;
-            dayLogs.push({ date: dayStr, type: 'ABSENT', detail: 'ขาดงาน (ไม่มีสแกนเข้า)' });
+            // No clock-in
+            if (remainingCapacity > 0) {
+                attendanceSummary.absentUnits += remainingCapacity;
+                dayLogs.push({ date: dayStr, type: 'ABSENT', detail: leaveUnits > 0 ? 'ขาดงาน (ไม่มีสแกนในส่วนที่เหลือ)' : 'ขาดงาน (ไม่มีสแกนเข้า)' });
+            }
         } else {
+            // Has clock-in
             const absentCutoff = set(day, { hours: absentCutoffHour, minutes: absentCutoffMinute });
-            if (isAfter(firstIn, absentCutoff)) {
-                attendanceSummary.absentUnits += 0.5; 
-                dayPayableUnit -= 0.5;
+            
+            // If it was a morning leave, we don't apply morning cutoff to the afternoon session
+            const isMorningLeave = onLeave?.isHalfDay && onLeave?.halfDaySession === 'MORNING';
+            
+            if (isAfter(firstIn, absentCutoff) && !isMorningLeave) {
+                attendanceSummary.absentUnits += (remainingCapacity * 0.5); 
+                dayPayableUnit += (remainingCapacity * 0.5);
                 dayLogs.push({ date: dayStr, type: 'ABSENT', detail: 'ขาดเช้า (สแกนหลังเส้นตาย)' });
             } else {
                 const lateThreshold = set(day, { hours: workStartHour, minutes: workStartMinute + graceMinutes });
                 const isForgiven = adjustmentForDay?.type === 'FORGIVE_LATE';
-                if (isAfter(firstIn, lateThreshold) && !isForgiven) {
+                
+                // Only mark late if they were supposed to be there in the morning
+                if (!isMorningLeave && isAfter(firstIn, lateThreshold) && !isForgiven) {
                     const lateMins = differenceInMinutes(firstIn, set(day, { hours: workStartHour, minutes: workStartMinute }));
                     attendanceSummary.lateDays++;
                     attendanceSummary.lateMinutes += lateMins;
                     dayLogs.push({ date: dayStr, type: 'LATE', detail: `สาย ${lateMins} นาที (สแกน ${format(firstIn, 'HH:mm')})` });
                 }
+                dayPayableUnit += remainingCapacity;
             }
+            
             if (!lastOut && isBefore(day, today)) {
                  attendanceSummary.warnings.push(`วันที่ ${dayStr} ไม่มีสแกนออก (OUT) กรุณาแก้ไข`);
             }
@@ -183,10 +208,13 @@ export function computePeriodMetrics(params: {
           const leaveEnd = parseISO(leave.endDate);
 
           for (let day = startOfDay(leaveStart); day <= endOfDay(leaveEnd); day.setDate(day.getDate() + 1)) {
-              daysTakenThisYear++;
+              const dayUnits = (leave.isHalfDay && format(day, 'yyyy-MM-dd') === leave.startDate) ? 0.5 : 1;
+              daysTakenThisYear += dayUnits;
+              
               if (daysTakenThisYear > annualEntitlement) {
+                  const overage = Math.min(dayUnits, daysTakenThisYear - annualEntitlement);
                   if (isWithinInterval(day, {start: period.start, end: period.end})) {
-                      overLimitDaysThisPeriod++;
+                      overLimitDaysThisPeriod += overage;
                   }
               }
           }

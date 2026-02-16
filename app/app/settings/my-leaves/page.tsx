@@ -5,12 +5,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from "zod";
 import { addDoc, collection, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
-import { format, differenceInCalendarDays, getYear, isBefore, startOfToday, subMonths } from 'date-fns';
+import { format, differenceInCalendarDays, getYear, isBefore, startOfToday, subMonths, parseISO } from 'date-fns';
 
 import { useFirebase } from '@/firebase/client-provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { useDoc } from '@/firebase/firestore/use-doc';
-import type { WithId } from '@/firebase/firestore/use-collection';
 import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -23,29 +22,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Loader2, Calendar as CalendarIcon, Send, Trash2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Loader2, Send, Trash2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Switch } from "@/components/ui/switch";
 
 const leaveRequestSchema = z.object({
   leaveType: z.enum(LEAVE_TYPES, { required_error: 'กรุณาเลือกประเภทการลา' }),
-  dateRange: z.object({
-    from: z.date({ required_error: 'กรุณาเลือกวันเริ่มลา' }),
-    to: z.date().optional(),
-  }),
+  startDate: z.string().min(1, 'กรุณาเลือกวันเริ่มลา'),
+  endDate: z.string().min(1, 'กรุณาเลือกวันสิ้นสุด'),
   reason: z.string().min(1, 'กรุณาระบุเหตุผลการลา'),
+  isHalfDay: z.boolean().default(false),
+  halfDaySession: z.enum(['MORNING', 'AFTERNOON']).optional(),
 }).refine(data => {
-    if (data.dateRange.from && data.dateRange.to) {
-        return !isBefore(data.dateRange.to, data.dateRange.from);
+    if (data.startDate && data.endDate) {
+        return !isBefore(new Date(data.endDate), new Date(data.startDate));
     }
     return true;
 }, {
     message: 'วันที่สิ้นสุดต้องไม่มาก่อนวันเริ่มลา',
-    path: ['dateRange', 'to'],
+    path: ['endDate'],
 });
 
 type LeaveFormData = z.infer<typeof leaveRequestSchema>;
@@ -59,7 +58,6 @@ export default function MyLeavesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingLeaveData, setPendingLeaveData] = useState<LeaveFormData | null>(null);
   const [isOverLimitConfirmOpen, setIsOverLimitConfirmOpen] = useState(false);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const employeeLeaveTypes = LEAVE_TYPES.filter(t => t === 'SICK' || t === 'BUSINESS' || t === 'VACATION');
@@ -67,10 +65,23 @@ export default function MyLeavesPage() {
   const form = useForm<LeaveFormData>({
     resolver: zodResolver(leaveRequestSchema),
     defaultValues: {
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: format(new Date(), 'yyyy-MM-dd'),
       reason: '',
+      isHalfDay: false,
+      halfDaySession: 'MORNING',
     },
   });
   
+  const watchedIsHalfDay = form.watch('isHalfDay');
+  const watchedStartDate = form.watch('startDate');
+
+  useEffect(() => {
+    if (watchedIsHalfDay && watchedStartDate) {
+        form.setValue('endDate', watchedStartDate);
+    }
+  }, [watchedIsHalfDay, watchedStartDate, form]);
+
   const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
   const { data: hrSettings, isLoading: isLoadingSettings } = useDoc<HRSettings>(settingsDocRef);
 
@@ -99,31 +110,38 @@ export default function MyLeavesPage() {
   }, [error]);
 
   const submitToFirestore = async (data: LeaveFormData) => {
-    if (!db || !profile || !data.dateRange.from) return;
+    if (!db || !profile || !data.startDate) return;
     setIsSubmitting(true);
 
-    const { leaveType, dateRange, reason } = data;
-    const { from, to } = dateRange;
-    const endDate = to || from;
-    const days = differenceInCalendarDays(endDate, from) + 1;
+    const { leaveType, startDate, endDate, reason, isHalfDay, halfDaySession } = data;
+    let days = differenceInCalendarDays(new Date(endDate), new Date(startDate)) + 1;
+    if (isHalfDay) days = 0.5;
 
     try {
       await addDoc(collection(db, 'hrLeaves'), {
         userId: profile.uid,
         userName: profile.displayName,
         leaveType,
-        startDate: format(from, 'yyyy-MM-dd'),
-        endDate: format(endDate, 'yyyy-MM-dd'),
+        startDate,
+        endDate,
         days,
         reason,
         status: 'SUBMITTED',
-        year: getYear(from),
+        isHalfDay,
+        halfDaySession: isHalfDay ? halfDaySession : null,
+        year: getYear(parseISO(startDate)),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       
       toast({ title: 'ส่งใบลาสำเร็จ', description: 'คำขอของคุณถูกส่งไปรอการพิจารณาแล้ว' });
-      form.reset({ reason: '', dateRange: { from: undefined, to: undefined } as any, leaveType: undefined });
+      form.reset({ 
+          reason: '', 
+          startDate: format(new Date(), 'yyyy-MM-dd'), 
+          endDate: format(new Date(), 'yyyy-MM-dd'), 
+          isHalfDay: false, 
+          halfDaySession: 'MORNING' 
+      });
     } catch (error: any) {
       toast({ variant: 'destructive', title: 'ส่งใบลาไม่สำเร็จ', description: error.message });
     } finally {
@@ -132,16 +150,18 @@ export default function MyLeavesPage() {
   };
 
   const onSubmit = async (data: LeaveFormData) => {
-    if (!hrSettings || !myLeaves || !data.dateRange.from) {
+    if (!hrSettings || !myLeaves || !data.startDate) {
       await submitToFirestore(data);
       return;
     };
 
-    const approvedLeavesThisYear = myLeaves.filter(l => l.year === getYear(data.dateRange.from!) && l.leaveType === data.leaveType && l.status === 'APPROVED');
+    const approvedLeavesThisYear = myLeaves.filter(l => l.year === getYear(parseISO(data.startDate)) && l.leaveType === data.leaveType && l.status === 'APPROVED');
     const daysTaken = approvedLeavesThisYear.reduce((sum, l) => sum + l.days, 0);
     const policy = hrSettings.leavePolicy?.leaveTypes?.[data.leaveType];
     const entitlement = policy?.annualEntitlement ?? 0;
-    const daysInRequest = differenceInCalendarDays(data.dateRange.to || data.dateRange.from, data.dateRange.from) + 1;
+    
+    let daysInRequest = differenceInCalendarDays(new Date(data.endDate), new Date(data.startDate)) + 1;
+    if (data.isHalfDay) daysInRequest = 0.5;
 
     if (entitlement > 0 && (daysTaken + daysInRequest) > entitlement) {
       setPendingLeaveData(data);
@@ -223,8 +243,9 @@ export default function MyLeavesPage() {
       return myLeaves.map((leave) => (
         <TableRow key={leave.id}>
           <TableCell className="font-medium">
-            {format(new Date(leave.startDate), 'dd/MM/yy')} 
-            {leave.endDate !== leave.startDate && ` - ${format(new Date(leave.endDate), 'dd/MM/yy')}`}
+            {format(parseISO(leave.startDate), 'dd/MM/yy')} 
+            {!leave.isHalfDay && leave.endDate !== leave.startDate && ` - ${format(parseISO(leave.endDate), 'dd/MM/yy')}`}
+            {leave.isHalfDay && <span className="ml-1 text-muted-foreground text-[10px]">({leave.halfDaySession === 'MORNING' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})</span>}
           </TableCell>
           <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
           <TableCell className="text-center">{leave.days}</TableCell>
@@ -243,7 +264,7 @@ export default function MyLeavesPage() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>ยืนยันการยกเลิกคำขอลา?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      คุณต้องการยกเลิกใบลาประเภท {leaveTypeLabel(leave.leaveType)} วันที่ {format(new Date(leave.startDate), 'dd/MM/yyyy')} ใช่หรือไม่?
+                      คุณต้องการยกเลิกใบลาประเภท {leaveTypeLabel(leave.leaveType)} วันที่ {format(parseISO(leave.startDate), 'dd/MM/yyyy')} ใช่หรือไม่?
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -304,61 +325,38 @@ export default function MyLeavesPage() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="dateRange"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>ช่วงวันที่ต้องการลา</FormLabel>
-                        <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                          <PopoverTrigger asChild>
+
+                  <div className="flex items-center space-x-2 border p-3 rounded-md bg-muted/20">
+                    <FormField control={form.control} name="isHalfDay" render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-3 space-y-0">
                             <FormControl>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "w-full justify-start text-left font-normal",
-                                  !field.value?.from && "text-muted-foreground"
-                                )}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {field.value?.from ? (
-                                  field.value.to ? (
-                                    <>
-                                      {format(field.value.from, "dd/MM/yyyy")} -{" "}
-                                      {format(field.value.to, "dd/MM/yyyy")}
-                                    </>
-                                  ) : (
-                                    format(field.value.from, "dd/MM/yyyy")
-                                  )
-                                ) : (
-                                  <span>เลือกวันที่...</span>
-                                )}
-                              </Button>
+                                <Switch checked={field.value} onCheckedChange={field.onChange} />
                             </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <div className="flex flex-col">
-                              <Calendar
-                                initialFocus
-                                mode="range"
-                                defaultMonth={field.value?.from}
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                disabled={(date) => isBefore(date, subMonths(startOfToday(), 1))}
-                                numberOfMonths={1}
-                              />
-                              <div className="p-3 border-t flex justify-end">
-                                <Button size="sm" type="button" onClick={() => setIsCalendarOpen(false)}>
-                                  ตกลง
-                                </Button>
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                            <FormLabel className="font-bold cursor-pointer">ลาครึ่งวัน (0.5 วัน)</FormLabel>
+                        </FormItem>
+                    )} />
+                  </div>
+
+                  {watchedIsHalfDay && (
+                    <FormField control={form.control} name="halfDaySession" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>ช่วงเวลาที่ลา</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl>
+                                <SelectContent>
+                                    <SelectItem value="MORNING">ครึ่งเช้า</SelectItem>
+                                    <SelectItem value="AFTERNOON">ครึ่งบ่าย</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </FormItem>
+                    )} />
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FormField control={form.control} name="startDate" render={({ field }) => (<FormItem><FormLabel>วันเริ่มลา</FormLabel><FormControl><Input type="date" {...field}/></FormControl><FormMessage/></FormItem>)} />
+                    <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem><FormLabel>วันสิ้นสุด</FormLabel><FormControl><Input type="date" {...field} disabled={watchedIsHalfDay}/></FormControl><FormMessage/></FormItem>)} />
+                  </div>
+
                    <FormField
                     control={form.control}
                     name="reason"

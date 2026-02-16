@@ -248,6 +248,8 @@ export interface LeaveRequest {
   reason: string;
   status: LeaveStatus;
   year: number;
+  isHalfDay?: boolean;
+  halfDaySession?: 'MORNING' | 'AFTERNOON';
   approvedByName?: string;
   approvedAt?: Timestamp;
   rejectedByName?: string;
