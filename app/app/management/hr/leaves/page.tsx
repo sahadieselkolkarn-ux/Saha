@@ -8,7 +8,7 @@ import { useDoc } from "@/firebase/firestore/use-doc";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval, startOfMonth, endOfMonth } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -60,6 +60,23 @@ const leaveSchema = z.object({
 });
 
 type LeaveFormData = z.infer<typeof leaveSchema>;
+
+// Month options for filtering
+const monthOptions = [
+  { value: "ALL", label: "ทั้งหมด (ทั้งปี)" },
+  { value: "1", label: "มกราคม" },
+  { value: "2", label: "กุมภาพันธ์" },
+  { value: "3", label: "มีนาคม" },
+  { value: "4", label: "เมษายน" },
+  { value: "5", label: "พฤษภาคม" },
+  { value: "6", label: "มิถุนายน" },
+  { value: "7", label: "กรกฎาคม" },
+  { value: "8", label: "สิงหาคม" },
+  { value: "9", label: "กันยายน" },
+  { value: "10", label: "ตุลาคม" },
+  { value: "11", label: "พฤศจิกายน" },
+  { value: "12", label: "ธันวาคม" },
+];
 
 // Dialog for Creating or Editing Leaves by Admin
 function LeaveManageDialog({ 
@@ -152,6 +169,7 @@ export default function ManagementHRLeavesPage() {
 
   const [activeTab, setActiveTab] = useState('summary');
   const [selectedYear, setSelectedYear] = useState(getYear(new Date()));
+  const [selectedMonth, setSelectedMonth] = useState<string>("ALL");
   const [filters, setFilters] = useState({ status: 'ALL', userId: 'ALL' });
   
   const [rejectingLeave, setRejectingLeave] = useState<WithId<LeaveRequest> | null>(null);
@@ -223,30 +241,39 @@ export default function ManagementHRLeavesPage() {
 
     // Attendance/Absence Calculation
     const today = new Date();
-    const start = startOfYear(new Date(selectedYear, 0, 1));
-    const endBound = selectedYear === getYear(today) ? today : endOfYear(new Date(selectedYear, 0, 1));
-    const daysInterval = eachDayOfInterval({ start, end: endBound });
+    let dateRangeForSummary: { start: Date; end: Date };
+
+    if (selectedMonth === "ALL") {
+      dateRangeForSummary = {
+        start: startOfYear(new Date(selectedYear, 0, 1)),
+        end: selectedYear === getYear(today) ? today : endOfYear(new Date(selectedYear, 0, 1)),
+      };
+    } else {
+      const monthIndex = parseInt(selectedMonth) - 1;
+      dateRangeForSummary = {
+        start: startOfMonth(new Date(selectedYear, monthIndex, 1)),
+        end: (selectedYear === getYear(today) && monthIndex === today.getMonth()) 
+          ? today 
+          : endOfMonth(new Date(selectedYear, monthIndex, 1)),
+      };
+    }
+
+    const daysInterval = eachDayOfInterval({ start: dateRangeForSummary.start, end: dateRangeForSummary.end });
     const weekendMode = hrSettings?.weekendPolicy?.mode || 'SAT_SUN';
 
     // กรองเฉพาะพนักงานที่ต้องสแกนนิ้ว (รายเดือน และ รายวัน)
     const summary = users
       .filter(u => u.hr?.payType === 'MONTHLY' || u.hr?.payType === 'DAILY')
       .map(user => {
-        const userLeaves = allLeaves.filter(l => 
-            l.userId === user.id && 
-            l.status === 'APPROVED' && 
-            (l.year === selectedYear || (l.startDate && getYear(parseISO(l.startDate)) === selectedYear))
-        );
-
-        const sickDays = userLeaves.filter(l => l.leaveType === 'SICK').reduce((s, l) => s + (l.days || 0), 0);
-        const businessDays = userLeaves.filter(l => l.leaveType === 'BUSINESS').reduce((s, l) => s + (l.days || 0), 0);
-        const vacationDays = userLeaves.filter(l => l.leaveType === 'VACATION').reduce((s, l) => s + (l.days || 0), 0);
-        const totalLeave = sickDays + businessDays + vacationDays;
-
-        // Calculate Absences
-        let absentDays = 0;
+        const userApprovedLeaves = allLeaves.filter(l => l.userId === user.id && l.status === 'APPROVED');
         const userAttendance = yearlyAttendance.filter(a => a.userId === user.id);
         const attendanceDates = new Set(userAttendance.map(a => format(a.timestamp.toDate(), 'yyyy-MM-dd')));
+
+        let sickDays = 0;
+        let businessDays = 0;
+        let vacationDays = 0;
+        let totalLeaveCount = 0;
+        let absentDays = 0;
 
         daysInterval.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
@@ -260,9 +287,16 @@ export default function ManagementHRLeavesPage() {
             // Skip weekends
             const isWeekendDay = (weekendMode === 'SAT_SUN' && (isSaturday(day) || isSunday(day))) || (weekendMode === 'SUN_ONLY' && isSunday(day));
             if (isWeekendDay) return;
+            
             // Skip if on approved leave
-            const onLeave = userLeaves.some(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
-            if (onLeave) return;
+            const onLeaveOnThisDay = userApprovedLeaves.find(l => isWithinInterval(day, { start: parseISO(l.startDate), end: parseISO(l.endDate) }));
+            if (onLeaveOnThisDay) {
+                if (onLeaveOnThisDay.leaveType === 'SICK') sickDays++;
+                else if (onLeaveOnThisDay.leaveType === 'BUSINESS') businessDays++;
+                else if (onLeaveOnThisDay.leaveType === 'VACATION') vacationDays++;
+                totalLeaveCount++;
+                return;
+            }
 
             // If no clock-in record found for a work day -> Absent
             if (!attendanceDates.has(dayStr)) {
@@ -277,7 +311,7 @@ export default function ManagementHRLeavesPage() {
             SICK: sickDays,
             BUSINESS: businessDays,
             VACATION: vacationDays,
-            TOTAL: totalLeave,
+            TOTAL: totalLeaveCount,
             ABSENT: absentDays
         };
     }).filter(s => filters.userId === 'ALL' || filters.userId === s.userId);
@@ -292,7 +326,7 @@ export default function ManagementHRLeavesPage() {
     });
 
     return { leaveSummary: summary, filteredLeaves: filtered, yearOptions: sortedYears };
-  }, [allLeaves, users, selectedYear, filters, yearlyAttendance, yearlyHolidays, hrSettings]);
+  }, [allLeaves, users, selectedYear, selectedMonth, filters, yearlyAttendance, yearlyHolidays, hrSettings]);
 
   const overLimitDetails = useMemo(() => {
     if (!approvingLeave || !hrSettings || !allLeaves || !users) return null;
@@ -448,12 +482,21 @@ export default function ManagementHRLeavesPage() {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <CardTitle>สรุปวันลาและวันขาดสะสม</CardTitle>
-                    <CardDescription>ข้อมูลเฉพาะพนักงานที่ต้องสแกนนิ้วประจำปี {selectedYear}</CardDescription>
+                    <CardDescription>
+                      {selectedMonth === "ALL" 
+                        ? `ข้อมูลเฉพาะพนักงานที่ต้องสแกนนิ้วประจำปี ${selectedYear}`
+                        : `ข้อมูลเฉพาะพนักงานที่ต้องสแกนนิ้วประจำเดือน ${monthOptions.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
+                      }
+                    </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
                     {isLoadingSummaryExtras && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                        <SelectTrigger className="w-[150px]"><SelectValue placeholder="เลือกเดือน..." /></SelectTrigger>
+                        <SelectContent>{monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                    </Select>
                     <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number(v))}>
-                        <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
                         <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
@@ -500,7 +543,7 @@ export default function ManagementHRLeavesPage() {
                             </DropdownMenu>
                         </TableCell>
                     </TableRow>
-                    )) : <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground">ไม่พบข้อมูลพนักงานที่ต้องสแกนในปีนี้</TableCell></TableRow>}
+                    )) : <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground">ไม่พบข้อมูลพนักงานที่ต้องสแกนในคาบเวลาที่เลือก</TableCell></TableRow>}
                 </TableBody>
                 </Table>
             </CardContent>
