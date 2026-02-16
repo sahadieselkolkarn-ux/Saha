@@ -225,7 +225,7 @@ export default function HRGeneratePayslipsPage() {
                 };
                 await setDoc(batchDocRef, { ssoDecision: finalSsoDecision }, { merge: true });
             } else if (period === 2 && finalSsoDecision) {
-                // Improved SSO Change Detection (Fuzzy comparison to avoid typo alerts)
+                // Improved SSO Change Detection (Strict numeric comparison)
                 const checkDiff = (v1: any, v2: any) => Math.abs(Number(v1 || 0) - Number(v2 || 0)) > 0.01;
                 
                 const hasChanged = 
@@ -266,7 +266,8 @@ export default function HRGeneratePayslipsPage() {
             ]);
 
             const allUsers = usersSnap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<UserProfile>));
-            const activeUsers = allUsers.filter(u => u?.hr?.payType === 'MONTHLY' || u?.hr?.payType === 'DAILY');
+            // FIXED: Include MONTHLY_NOSCAN so Managers show up too.
+            const activeUsers = allUsers.filter(u => u?.hr?.payType === 'MONTHLY' || u?.hr?.payType === 'DAILY' || u?.hr?.payType === 'MONTHLY_NOSCAN');
 
             const allHolidays = new Map(
               holidaysSnap.docs.map(d => {
@@ -338,12 +339,14 @@ export default function HRGeneratePayslipsPage() {
         setEditingPayslip(user);
         const { periodMetrics, periodMetricsYtd, snapshot: existingSnapshot, hr } = user;
 
-        if (!hr?.payType || hr.payType === 'NOPAY' || hr.payType === 'MONTHLY_NOSCAN') return;
+        // FIXED: Allow MONTHLY_NOSCAN to open the drawer
+        if (!hr?.payType || hr.payType === 'NOPAY') return;
         if (!periodMetrics || !periodMetricsYtd) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); setEditingPayslip(null); return; }
         
         // Fetch Other Period Data
         const otherPeriodNo = period === 1 ? 2 : 1;
         const otherBatchId = `${format(currentMonth, 'yyyy-MM')}-${otherPeriodNo}`;
+        // FIXED: Use user.id instead of user.uid
         const otherPayslipRef = doc(db, 'payrollBatches', otherBatchId, 'payslips', user.id);
         const otherPayslipSnap = await getDoc(otherPayslipRef);
         const otherSnapshot = otherPayslipSnap.exists() ? (otherPayslipSnap.data().snapshot as PayslipSnapshot) : null;
@@ -373,11 +376,11 @@ export default function HRGeneratePayslipsPage() {
         };
         
         // SSO Calculation
-        if (ssoDecision && (hr.payType === 'MONTHLY' || hr.payType === 'DAILY')) {
+        if (ssoDecision && (hr.payType === 'MONTHLY' || hr.payType === 'DAILY' || hr.payType === 'MONTHLY_NOSCAN')) {
             const { employeePercent = 0, monthlyMinBase = 0, monthlyCap = Infinity } = ssoDecision;
             let ssoAmountThisPeriod = 0;
 
-            if (hr.payType === 'MONTHLY' && hr.salaryMonthly) {
+            if ((hr.payType === 'MONTHLY' || hr.payType === 'MONTHLY_NOSCAN') && hr.salaryMonthly) {
                 const ssoMonthly = calcSsoMonthly(hr.salaryMonthly, employeePercent, monthlyMinBase, monthlyCap);
                 const { p1, p2 } = splitSsoHalf(ssoMonthly);
 
@@ -391,7 +394,6 @@ export default function HRGeneratePayslipsPage() {
                 // For Daily: Based on actual work days
                 if (period === 1) {
                     const incomeP1 = hr.salaryDaily * periodMetrics.attendanceSummary.payableUnits;
-                    // For P1 daily, we calculate based on income. P2 will handle the monthly total/cap.
                     ssoAmountThisPeriod = round2(incomeP1 * (employeePercent / 100));
                 } else {
                     // Period 2: Calculate total monthly income
