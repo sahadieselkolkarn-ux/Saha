@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -16,12 +15,12 @@ import { safeFormat } from "@/lib/date-utils";
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Save, ArrowLeft, BookOpen } from "lucide-react";
+import { Loader2, Save, ArrowLeft, BookOpen, ShieldAlert } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AccountingAccount } from "@/lib/types";
 
@@ -49,11 +48,15 @@ export default function EditAccountPage() {
   const { toast } = useToast();
 
   const isUserAdmin = profile?.role === 'ADMIN';
+  const hasPermission = useMemo(() => {
+    if (!profile) return false;
+    return (profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT') && profile.role !== 'WORKER';
+  }, [profile]);
 
   const accountDocRef = useMemo(() => {
-    if (!db || !accountId) return null;
+    if (!db || !accountId || !hasPermission) return null;
     return doc(db, "accountingAccounts", accountId);
-  }, [db, accountId]);
+  }, [db, accountId, hasPermission]);
 
   const { data: account, isLoading, error } = useDoc<AccountingAccount>(accountDocRef);
 
@@ -105,7 +108,6 @@ export default function EditAccountPage() {
       if (isUserAdmin) {
         dataToUpdate.openingBalance = values.openingBalance;
         dataToUpdate.openingBalanceDate = values.openingBalanceDate;
-        // Update audit fields only if the balance has actually changed
         if (values.openingBalance !== account?.openingBalance || values.openingBalanceDate !== account?.openingBalanceDate) {
             dataToUpdate.openingBalanceSetByUid = profile.uid;
             dataToUpdate.openingBalanceSetAt = serverTimestamp();
@@ -114,11 +116,28 @@ export default function EditAccountPage() {
 
       await updateDoc(accountDocRef, dataToUpdate);
       toast({ title: "บันทึกการแก้ไขสำเร็จ" });
-      router.push("/management/accounting/accounts");
+      router.push("/app/management/accounting/accounts");
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
     }
   };
+
+  if (!hasPermission) {
+    return (
+      <div className="w-full flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <ShieldAlert className="h-16 w-16 text-destructive" />
+        <Card className="max-w-md text-center">
+            <CardHeader>
+                <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
+                <CardDescription>พนักงานตำแหน่งช่างไม่ได้รับอนุญาตให้จัดการบัญชีการเงินค่ะ</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Button variant="outline" onClick={() => router.back()}>กลับ</Button>
+            </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -146,7 +165,7 @@ export default function EditAccountPage() {
     <>
       <PageHeader title="แก้ไขบัญชี" description={`กำลังแก้ไขบัญชี: ${account.name}`}>
         <Button asChild variant="outline">
-          <Link href={`/management/accounting/accounts/${accountId}/ledger`}>
+          <Link href={`/app/management/accounting/accounts/${accountId}/ledger`}>
             <BookOpen className="mr-2 h-4 w-4" /> ดูรายการเข้า-ออก
           </Link>
         </Button>
@@ -277,7 +296,7 @@ export default function EditAccountPage() {
               บันทึกการแก้ไข
             </Button>
              <Button type="button" variant="outline" asChild>
-              <Link href="/management/accounting/accounts"><ArrowLeft className="mr-2 h-4 w-4" /> ยกเลิก</Link>
+              <Link href="/app/management/accounting/accounts"><ArrowLeft className="mr-2 h-4 w-4" /> ยกเลิก</Link>
             </Button>
           </div>
         </form>

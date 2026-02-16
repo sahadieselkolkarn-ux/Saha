@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, ArrowLeft, CalendarIcon } from 'lucide-react';
+import { Loader2, Search, ArrowLeft, CalendarIcon, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { safeFormat } from '@/lib/date-utils';
 import type { AccountingAccount, AccountingEntry } from '@/lib/types';
@@ -44,10 +44,16 @@ export default function AccountLedgerPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+    const hasPermission = useMemo(() => {
+        if (!profile) return false;
+        return (profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT') && profile.role !== 'WORKER';
+    }, [profile]);
 
     useEffect(() => {
-        if (!db || !accountId) return;
+        if (!db || !accountId || !hasPermission) {
+            if (!hasPermission) setLoading(false);
+            return;
+        }
 
         const fetchData = async () => {
             setLoading(true);
@@ -79,7 +85,7 @@ export default function AccountLedgerPage() {
         };
 
         fetchData();
-    }, [db, accountId, toast]);
+    }, [db, accountId, toast, hasPermission]);
 
     const processedData = useMemo(() => {
         if (!account) return { items: [], totals: { totalIncome: 0, totalExpense: 0, periodEndBalance: 0 }, periodStartingBalance: 0 };
@@ -88,7 +94,6 @@ export default function AccountLedgerPage() {
             const dateA = parseISO(a.entryDate).getTime();
             const dateB = parseISO(b.entryDate).getTime();
             if (dateA !== dateB) return dateA - dateB;
-            // Secondary sort by creation time if available
             const timeA = (a as any).createdAt?.toMillis?.() || 0;
             const timeB = (b as any).createdAt?.toMillis?.() || 0;
             return timeA - timeB;
@@ -97,7 +102,6 @@ export default function AccountLedgerPage() {
         const openingBalanceDate = account.openingBalanceDate ? parseISO(account.openingBalanceDate) : new Date(0);
         let periodStartingBalance = account.openingBalance ?? 0;
         
-        // Calculate starting balance for the selected period
         if (dateRange?.from) {
              sortedAllEntries.forEach(entry => {
                 const entryDate = parseISO(entry.entryDate);
@@ -111,7 +115,6 @@ export default function AccountLedgerPage() {
             });
         }
     
-        // Filter entries for the visible table
         const visibleEntries = sortedAllEntries.filter(entry => {
             const entryDate = parseISO(entry.entryDate);
             const isInRange = dateRange?.from && dateRange?.to ? (entryDate >= dateRange.from && entryDate <= dateRange.to) : true;
@@ -168,7 +171,24 @@ export default function AccountLedgerPage() {
     }, [account, entries, dateRange, searchTerm]);
 
     if (!profile) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
-    if (!hasPermission) return <PageHeader title="ไม่มีสิทธิ์เข้าถึง" description="หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น" />;
+    
+    if (!hasPermission) {
+        return (
+          <div className="w-full flex flex-col items-center justify-center min-h-[60vh] gap-4">
+            <ShieldAlert className="h-16 w-16 text-destructive" />
+            <Card className="max-w-md text-center">
+                <CardHeader>
+                    <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
+                    <CardDescription>พนักงานตำแหน่งช่างไม่ได้รับอนุญาตให้ดูรายการเดินบัญชีค่ะ</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button variant="outline" onClick={() => router.back()}>กลับ</Button>
+                </CardContent>
+            </Card>
+          </div>
+        );
+    }
+
     if (loading) return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
     if (error) return <PageHeader title="เกิดข้อผิดพลาด" description={error} />;
     if (!account) return <PageHeader title="ไม่พบบัญชี" />;

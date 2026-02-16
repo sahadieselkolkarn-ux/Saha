@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, BookOpen } from "lucide-react";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, BookOpen, ShieldAlert } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { AccountingAccount } from "@/lib/types";
@@ -32,10 +32,17 @@ export default function ManagementAccountingAccountsPage() {
   const [accountToAction, setAccountToAction] = useState<WithId<AccountingAccount> | null>(null);
   const [isDeactivateAlertOpen, setIsDeactivateAlertOpen] = useState(false);
 
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT', [profile]);
+  // Strictly block WORKER from management accounting
+  const hasPermission = useMemo(() => {
+    if (!profile) return false;
+    return (profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT') && profile.role !== 'WORKER';
+  }, [profile]);
 
   useEffect(() => {
-    if (!db) return;
+    if (!db || !hasPermission) {
+      if (!hasPermission) setLoading(false);
+      return;
+    }
     setLoading(true);
     const q = query(collection(db, "accountingAccounts"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -54,7 +61,7 @@ export default function ManagementAccountingAccountsPage() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [db, toast]);
+  }, [db, toast, hasPermission]);
 
   const filteredAccounts = useMemo(() => {
     if (!searchTerm.trim()) return accounts;
@@ -111,13 +118,18 @@ export default function ManagementAccountingAccountsPage() {
 
   if (!hasPermission) {
     return (
-      <div className="w-full">
-        <PageHeader title="บัญชีเงินสด/ธนาคาร" description="จัดการและดูข้อมูลบัญชีการเงิน" />
-        <Card className="text-center py-12">
+      <div className="w-full flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <ShieldAlert className="h-16 w-16 text-destructive" />
+        <Card className="max-w-md text-center">
             <CardHeader>
                 <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
-                <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
+                <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น พนักงานตำแหน่งช่างไม่สามารถเข้าถึงได้ค่ะ</CardDescription>
             </CardHeader>
+            <CardContent>
+                <Button asChild variant="outline" onClick={() => router.back()}>
+                    ย้อนกลับ
+                </Button>
+            </CardContent>
         </Card>
       </div>
     );
