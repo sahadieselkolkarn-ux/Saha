@@ -346,11 +346,8 @@ export default function HRGeneratePayslipsPage() {
         const otherBatchId = `${format(currentMonth, 'yyyy-MM')}-${otherPeriodNo}`;
         const otherPayslipRef = doc(db, 'payrollBatches', otherBatchId, 'payslips', user.id);
         const otherPayslipSnap = await getDoc(otherPayslipRef);
-        if (otherPayslipSnap.exists()) {
-            setOtherPeriodSnapshot(otherPayslipSnap.data().snapshot || null);
-        } else {
-            setOtherPeriodSnapshot(null);
-        }
+        const otherSnapshot = otherPayslipSnap.exists() ? (otherPayslipSnap.data().snapshot as PayslipSnapshot) : null;
+        setOtherPeriodSnapshot(otherSnapshot);
 
         let basePay = 0;
         if (hr.payType === 'DAILY') {
@@ -376,32 +373,53 @@ export default function HRGeneratePayslipsPage() {
         };
         
         // SSO Calculation
-        if (ssoDecision && (hr.payType === 'MONTHLY') && hr.salaryMonthly) {
+        if (ssoDecision && (hr.payType === 'MONTHLY' || hr.payType === 'DAILY')) {
             const { employeePercent = 0, monthlyMinBase = 0, monthlyCap = Infinity } = ssoDecision;
-            const ssoMonthly = calcSsoMonthly(hr.salaryMonthly, employeePercent, monthlyMinBase, monthlyCap);
-            const { p1, p2 } = splitSsoHalf(ssoMonthly);
-
             let ssoAmountThisPeriod = 0;
-            if (period === 1) {
-                ssoAmountThisPeriod = p1;
-            } else { 
-                const p1BatchId = `${format(currentMonth, 'yyyy-MM')}-1`;
-                const p1PayslipRef = doc(db, 'payrollBatches', p1BatchId, 'payslips', user.id);
-                const p1PayslipSnap = await getDoc(p1PayslipRef);
-                const p1Deducted = p1PayslipSnap.exists() ? (p1PayslipSnap.data().snapshot?.deductions?.find((d:any) => d.name === '[AUTO] ประกันสังคม')?.amount ?? 0) : 0;
-                ssoAmountThisPeriod = round2(ssoMonthly - p1Deducted);
+
+            if (hr.payType === 'MONTHLY' && hr.salaryMonthly) {
+                const ssoMonthly = calcSsoMonthly(hr.salaryMonthly, employeePercent, monthlyMinBase, monthlyCap);
+                const { p1, p2 } = splitSsoHalf(ssoMonthly);
+
+                if (period === 1) {
+                    ssoAmountThisPeriod = p1;
+                } else { 
+                    const p1Deducted = otherSnapshot?.deductions?.find((d:any) => d.name === '[AUTO] ประกันสังคม')?.amount ?? 0;
+                    ssoAmountThisPeriod = Math.max(0, round2(ssoMonthly - p1Deducted));
+                }
+            } else if (hr.payType === 'DAILY' && hr.salaryDaily) {
+                // For Daily: Based on actual work days
+                if (period === 1) {
+                    const incomeP1 = hr.salaryDaily * periodMetrics.attendanceSummary.payableUnits;
+                    // For P1 daily, we calculate based on income. P2 will handle the monthly total/cap.
+                    ssoAmountThisPeriod = round2(incomeP1 * (employeePercent / 100));
+                } else {
+                    // Period 2: Calculate total monthly income
+                    const incomeP1 = hr.salaryDaily * (otherSnapshot?.attendanceSummary?.payableUnits || 0);
+                    const incomeP2 = hr.salaryDaily * periodMetrics.attendanceSummary.payableUnits;
+                    const totalMonthlyIncome = incomeP1 + incomeP2;
+                    
+                    const totalSsoMonthly = calcSsoMonthly(totalMonthlyIncome, employeePercent, monthlyMinBase, monthlyCap);
+                    const p1Deducted = otherSnapshot?.deductions?.find((d:any) => d.name === '[AUTO] ประกันสังคม')?.amount ?? 0;
+                    
+                    ssoAmountThisPeriod = Math.max(0, round2(totalSsoMonthly - p1Deducted));
+                }
             }
             
             initialSnapshot.deductions = initialSnapshot.deductions.filter(d => d.name !== '[AUTO] ประกันสังคม');
             if (ssoAmountThisPeriod > 0) {
-                initialSnapshot.deductions.push({ name: '[AUTO] ประกันสังคม', amount: ssoAmountThisPeriod, notes: `หักครึ่งงวด (เดือนนี้ใช้เรท ${employeePercent}%)` });
+                initialSnapshot.deductions.push({ 
+                    name: '[AUTO] ประกันสังคม', 
+                    amount: ssoAmountThisPeriod, 
+                    notes: hr.payType === 'DAILY' ? `คำนวณจากวันทำงานจริง (เรท ${employeePercent}%)` : `หักครึ่งงวด (เดือนนี้ใช้เรท ${employeePercent}%)` 
+                });
             }
         }
 
         const totals = calcTotals(initialSnapshot);
         setDrawerSnapshot({ ...initialSnapshot, netPay: totals.netPay });
     };
-
+    
     const handleSaveDraft = async () => {
         if (!db || !adminProfile || !editingPayslip || !drawerSnapshot) return;
         setIsActing(editingPayslip.id);
