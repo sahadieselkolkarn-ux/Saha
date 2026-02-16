@@ -109,7 +109,7 @@ export default function HRGeneratePayslipsPage() {
             
             const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
             
-            // SSO Decision Logic - Improved to compare specific values
+            // SSO Decision Logic - Monthly isolation
             const monthBatchId = `${format(currentMonth, 'yyyy-MM')}`;
             const batchDocRef = doc(db, 'payrollBatches', monthBatchId);
             const batchDocSnap = await getDoc(batchDocRef);
@@ -118,22 +118,25 @@ export default function HRGeneratePayslipsPage() {
             if (!finalSsoDecision && period === 1) {
                 // Auto-lock for Period 1
                 finalSsoDecision = { 
-                    employeePercent: hrSettings.sso?.employeePercent ?? 0,
-                    employerPercent: hrSettings.sso?.employerPercent ?? 0,
-                    monthlyMinBase: hrSettings.sso?.monthlyMinBase ?? 0,
-                    monthlyCap: hrSettings.sso?.monthlyCap ?? 0,
+                    employeePercent: Number(hrSettings.sso?.employeePercent ?? 0),
+                    employerPercent: Number(hrSettings.sso?.employerPercent ?? 0),
+                    monthlyMinBase: Number(hrSettings.sso?.monthlyMinBase ?? 0),
+                    monthlyCap: Number(hrSettings.sso?.monthlyCap ?? 0),
                     source: 'AUTO_LOCK',
                     decidedAt: Timestamp.now(),
                     decidedByUid: adminProfile.uid,
                     decidedByName: adminProfile.displayName
                 };
+                await setDoc(batchDocRef, { ssoDecision: finalSsoDecision }, { merge: true });
             } else if (period === 2) {
                  if (finalSsoDecision) {
-                    // Compare CORE values only to avoid false triggers from metadata (source, timestamp, etc.)
+                    // STRICT NUMERIC COMPARISON
+                    // Compare core values only to avoid false triggers from metadata (source, timestamp, etc.)
                     const hasChanged = 
-                        (finalSsoDecision.employeePercent !== (hrSettings.sso?.employeePercent ?? 0)) ||
-                        (finalSsoDecision.monthlyMinBase !== (hrSettings.sso?.monthlyMinBase ?? 0)) ||
-                        (finalSsoDecision.monthlyCap !== (hrSettings.sso?.monthlyCap ?? 0));
+                        Number(finalSsoDecision.employeePercent || 0) !== Number(hrSettings.sso?.employeePercent || 0) ||
+                        Number(finalSsoDecision.employerPercent || 0) !== Number(hrSettings.sso?.employerPercent || 0) ||
+                        Number(finalSsoDecision.monthlyMinBase || 0) !== Number(hrSettings.sso?.monthlyMinBase || 0) ||
+                        Number(finalSsoDecision.monthlyCap || 0) !== Number(hrSettings.sso?.monthlyCap || 0);
                     
                     if (hasChanged) {
                         setIsSsoDecisionDialogOpen(true);
@@ -141,10 +144,10 @@ export default function HRGeneratePayslipsPage() {
                  } else {
                      // Auto-lock for Period 2 if P1 wasn't run
                      finalSsoDecision = { 
-                        employeePercent: hrSettings.sso?.employeePercent ?? 0,
-                        employerPercent: hrSettings.sso?.employerPercent ?? 0,
-                        monthlyMinBase: hrSettings.sso?.monthlyMinBase ?? 0,
-                        monthlyCap: hrSettings.sso?.monthlyCap ?? 0,
+                        employeePercent: Number(hrSettings.sso?.employeePercent ?? 0),
+                        employerPercent: Number(hrSettings.sso?.employerPercent ?? 0),
+                        monthlyMinBase: Number(hrSettings.sso?.monthlyMinBase ?? 0),
+                        monthlyCap: Number(hrSettings.sso?.monthlyCap ?? 0),
                         source: 'AUTO_LOCK',
                         decidedAt: Timestamp.now(),
                         decidedByUid: adminProfile.uid,
