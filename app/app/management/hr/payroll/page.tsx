@@ -4,14 +4,14 @@ import { useMemo, useState, useEffect, useCallback } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useFirebase, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear, eachDayOfInterval, isSaturday, isSunday, parseISO } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical, Save, AlertCircle, Eye } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, FilePlus, Send, CalendarDays, MoreVertical, Save, AlertCircle, Eye, CalendarCheck } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -27,6 +27,9 @@ import { formatPayslipAsText, formatPayslipAsJson } from "@/lib/payroll/formatPa
 import { computePeriodMetrics, PeriodMetrics } from "@/lib/payroll/payslip-period-metrics";
 import { SsoDecisionDialog } from "@/components/payroll/SsoDecisionDialog";
 import { round2, calcSsoMonthly, splitSsoHalf } from "@/lib/payroll/sso";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { AttendanceAdjustmentDialog } from "@/components/attendance-adjustment-dialog";
 
 const getStatusBadgeVariant = (status?: PayslipStatusNew | string) => {
     switch (status) {
@@ -65,13 +68,17 @@ export default function HRGeneratePayslipsPage() {
     
     const [editingPayslip, setEditingPayslip] = useState<EmployeeRowData | null>(null);
     const [drawerSnapshot, setDrawerSnapshot] = useState<PayslipSnapshot | null>(null);
+
+    // Day selection states for adjustment
+    const [isDaySelectOpen, setIsDaySelectOpen] = useState(false);
+    const [selectedDayToAdjust, setSelectedDayToAdjust] = useState<any>(null);
     
     const settingsDocRef = useMemo(() => db ? doc(db, 'settings', 'hr') : null, [db]);
     const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
     
     const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.role === 'MANAGER' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
 
-    const handleFetchEmployees = useCallback(async () => {
+    const handleFetchEmployees = useCallback(async (autoOpenUid?: string) => {
         if (!db || !hrSettings) {
             toast({ variant: 'destructive', title: 'ยังไม่พร้อม', description: 'ไม่สามารถโหลดการตั้งค่า HR ได้' });
             return;
@@ -181,6 +188,13 @@ export default function HRGeneratePayslipsPage() {
                 return { ...user, periodMetrics, periodMetricsYtd, payslipStatus: existingSlip?.status ?? 'ไม่มีสลิป', snapshot: existingSlip?.snapshot ?? null, revisionNo: existingSlip?.revisionNo };
             });
             setEmployeeData(data);
+
+            if (autoOpenUid) {
+                const target = data.find(e => e.uid === autoOpenUid);
+                if (target) {
+                    handleOpenDrawer(target, true);
+                }
+            }
         } catch (e: any) {
             setError(e);
             toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message });
@@ -202,7 +216,7 @@ export default function HRGeneratePayslipsPage() {
         toast({ title: 'อัปเดตการตั้งค่า SSO สำหรับเดือนนี้แล้ว', description: 'กรุณากดดึงข้อมูลอีกครั้ง' });
     };
 
-    const handleOpenDrawer = async (user: EmployeeRowData) => {
+    const handleOpenDrawer = async (user: EmployeeRowData, isAuto: boolean = false) => {
         setEditingPayslip(user);
         const { periodMetrics, periodMetricsYtd, snapshot: existingSnapshot, hr } = user;
 
@@ -300,6 +314,17 @@ export default function HRGeneratePayslipsPage() {
         } catch (e: any) { toast({ variant: 'destructive', title: 'เกิดข้อผิดพลาด', description: e.message }); } finally { setIsActing(null); }
     };
 
+    const periodDaysList = useMemo(() => {
+        if (!hrSettings) return [];
+        const p1EndDay = hrSettings.payroll?.period1End || 15;
+        const p2StartDay = hrSettings.payroll?.period2Start || 16;
+        
+        const start = period === 1 ? startOfMonth(currentMonth) : set(currentMonth, { date: p2StartDay });
+        const end = period === 1 ? set(currentMonth, { date: p1EndDay }) : endOfMonth(currentMonth);
+        
+        return eachDayOfInterval({ start, end });
+    }, [currentMonth, period, hrSettings]);
+
     if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle></CardHeader></Card>;
 
     const periodLabel = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
@@ -327,7 +352,7 @@ export default function HRGeneratePayslipsPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <Button onClick={handleFetchEmployees} disabled={isLoading} className="shadow-md">
+                    <Button onClick={() => handleFetchEmployees()} disabled={isLoading} className="shadow-md">
                         {isLoading ? <Loader2 className="animate-spin mr-2" /> : <CalendarDays className="mr-2"/>}
                         ดึงข้อมูลพนักงาน (รายเดือน/รายวัน)
                     </Button>
@@ -379,9 +404,59 @@ export default function HRGeneratePayslipsPage() {
                       )
                     }
                 >
-                    <PayslipSlipView userName={editingPayslip.displayName} periodLabel={periodLabel} snapshot={drawerSnapshot} mode="edit" payType={editingPayslip.hr?.payType} onChange={setDrawerSnapshot}/>
+                    <PayslipSlipView 
+                        userName={editingPayslip.displayName} 
+                        periodLabel={periodLabel} 
+                        snapshot={drawerSnapshot} 
+                        mode="edit" 
+                        payType={editingPayslip.hr?.payType} 
+                        onChange={setDrawerSnapshot}
+                        onAdjustAttendance={() => setIsDaySelectOpen(true)}
+                    />
                 </PayslipSlipDrawer>
             )}
+
+            {/* Select Day Dialog */}
+            <Dialog open={isDaySelectOpen} onOpenChange={setIsDaySelectOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>เลือกวันที่ต้องการปรับปรุงเวลา</DialogTitle>
+                        <DialogDescription>สำหรับ: {editingPayslip?.displayName}</DialogDescription>
+                    </DialogHeader>
+                    <ScrollArea className="h-80 pr-4">
+                        <div className="space-y-1">
+                            {periodDaysList.map(day => (
+                                <Button 
+                                    key={day.toISOString()} 
+                                    variant="ghost" 
+                                    className="w-full justify-between"
+                                    onClick={() => {
+                                        setSelectedDayToAdjust({ date: day });
+                                        setIsDaySelectOpen(false);
+                                    }}
+                                >
+                                    <span>{format(day, 'dd/MM/yyyy')}</span>
+                                    <span className="text-[10px] text-muted-foreground">{format(day, 'EEEE')}</span>
+                                </Button>
+                            ))}
+                        </div>
+                    </ScrollArea>
+                </DialogContent>
+            </Dialog>
+
+            {/* Adjustment Dialog */}
+            {selectedDayToAdjust && editingPayslip && (
+                <AttendanceAdjustmentDialog
+                    isOpen={!!selectedDayToAdjust}
+                    onOpenChange={(open) => !open && setSelectedDayToAdjust(null)}
+                    dayInfo={{ date: selectedDayToAdjust.date, status: 'NO_DATA' }} // Re-computed in dialog
+                    user={editingPayslip}
+                    onSaved={() => {
+                        handleFetchEmployees(editingPayslip.uid);
+                    }}
+                />
+            )}
+
              {isSsoDecisionDialogOpen && ssoDecision && hrSettings?.sso && (
                 <SsoDecisionDialog
                     isOpen={isSsoDecisionDialogOpen}

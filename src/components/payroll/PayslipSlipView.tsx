@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText, Edit, BadgeCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,11 +43,12 @@ interface PayslipSlipViewProps {
   mode: "read" | "edit";
   payType?: PayType;
   onChange?: (nextSnapshot: PayslipSnapshot) => void;
+  onAdjustAttendance?: () => void;
   className?: string;
 }
 
 // --- Main Component ---
-export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType, onChange, className }: PayslipSlipViewProps) {
+export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType, onChange, onAdjustAttendance, className }: PayslipSlipViewProps) {
   const isEdit = mode === 'edit';
   const totals = useMemo(() => calcTotals(snapshot), [snapshot]);
 
@@ -174,7 +175,21 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {payType !== 'MONTHLY_NOSCAN' && snapshot.attendanceSummary && (
                 <Card>
-                    <CardHeader><CardTitle className="text-base">สรุปการลงเวลา</CardTitle></CardHeader>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                        <CardTitle className="text-base">สรุปการลงเวลา</CardTitle>
+                        {isEdit && onAdjustAttendance && (
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-7 text-[10px] px-2 gap-1 border-primary/30 text-primary hover:bg-primary/5"
+                                onClick={onAdjustAttendance}
+                            >
+                                <Edit className="h-3 w-3" />
+                                ปรับปรุงเวลา
+                            </Button>
+                        )}
+                    </CardHeader>
                     <CardContent>
                         <Table>
                             <TableHeader><TableRow><TableHead className="text-[10px]">รายการ</TableHead><TableHead className="text-right text-[10px]">งวดนี้</TableHead></TableRow></TableHeader>
