@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { PlusCircle, Trash2, AlertCircle, Clock, FileText, Edit, BadgeCheck, Calculator, FilePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
 // --- Helper Functions ---
@@ -316,12 +316,39 @@ export function PayslipSlipView({
                     </CardHeader>
                     <CardContent>
                         <Table>
+                            <TableHeader>
+                                <TableRow className="h-8 border-b">
+                                    <TableHead className="p-1 text-[10px] font-bold">รายการ</TableHead>
+                                    <TableHead className="p-1 text-[10px] font-bold text-right">งวดนี้</TableHead>
+                                    <TableHead className="p-1 text-[10px] font-bold text-right">สะสมปีนี้</TableHead>
+                                </TableRow>
+                            </TableHeader>
                             <TableBody className="text-[11px]">
-                                <TableRow className="h-8"><TableCell className="p-1">วันทำงานตามตาราง</TableCell><TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.scheduledWorkDays ?? '-'}</TableCell></TableRow>
-                                <TableRow className="h-8"><TableCell className="p-1">วันทำงานจริง</TableCell><TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.presentDays ?? '-'}</TableCell></TableRow>
-                                <TableRow className="h-8"><TableCell className="p-1">วันมาสาย</TableCell><TableCell className="text-right font-medium text-destructive p-1">{snapshot.attendanceSummary?.lateDays ?? '-'}</TableCell></TableRow>
-                                <TableRow className="h-8"><TableCell className="p-1">หน่วยที่ขาด</TableCell><TableCell className="text-right font-medium text-destructive p-1">{snapshot.attendanceSummary?.absentUnits ?? '-'}</TableCell></TableRow>
-                                <TableRow className="h-8 border-0"><TableCell className="p-1">วันลาที่อนุมัติ</TableCell><TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.leaveDays ?? '-'}</TableCell></TableRow>
+                                <TableRow className="h-8">
+                                    <TableCell className="p-1">วันทำงานตามตาราง</TableCell>
+                                    <TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.scheduledWorkDays ?? '-'}</TableCell>
+                                    <TableCell className="text-right font-medium p-1 text-muted-foreground">{snapshot.attendanceSummaryYtd?.scheduledWorkDays ?? '-'}</TableCell>
+                                </TableRow>
+                                <TableRow className="h-8">
+                                    <TableCell className="p-1">วันทำงานจริง</TableCell>
+                                    <TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.presentDays ?? '-'}</TableCell>
+                                    <TableCell className="text-right font-medium p-1 text-muted-foreground">{snapshot.attendanceSummaryYtd?.presentDays ?? '-'}</TableCell>
+                                </TableRow>
+                                <TableRow className="h-8">
+                                    <TableCell className="p-1">วันมาสาย</TableCell>
+                                    <TableCell className="text-right font-medium text-destructive p-1">{snapshot.attendanceSummary?.lateDays ?? '-'}</TableCell>
+                                    <TableCell className="text-right font-medium p-1 text-muted-foreground">{snapshot.attendanceSummaryYtd?.lateDays ?? '-'}</TableCell>
+                                </TableRow>
+                                <TableRow className="h-8">
+                                    <TableCell className="p-1">หน่วยที่ขาด</TableCell>
+                                    <TableCell className="text-right font-medium text-destructive p-1">{snapshot.attendanceSummary?.absentUnits ?? '-'}</TableCell>
+                                    <TableCell className="text-right font-medium p-1 text-muted-foreground">{snapshot.attendanceSummaryYtd?.absentUnits ?? '-'}</TableCell>
+                                </TableRow>
+                                <TableRow className="h-8 border-0">
+                                    <TableCell className="p-1">วันลาที่อนุมัติ</TableCell>
+                                    <TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.leaveDays ?? '-'}</TableCell>
+                                    <TableCell className="text-right font-medium p-1 text-muted-foreground">{snapshot.attendanceSummaryYtd?.leaveDays ?? '-'}</TableCell>
+                                </TableRow>
                             </TableBody>
                         </Table>
                     </CardContent>
@@ -345,11 +372,18 @@ export function PayslipSlipView({
                 </CardHeader>
                 <CardContent>
                      <Table>
+                        <TableHeader>
+                            <TableRow className="h-8 border-b">
+                                <TableHead className="p-1 text-[10px] font-bold">รายการ</TableHead>
+                                <TableHead className="p-1 text-[10px] font-bold text-right">งวดนี้</TableHead>
+                                <TableHead className="p-1 text-[10px] font-bold text-right">สะสมปีนี้</TableHead>
+                            </TableRow>
+                        </TableHeader>
                         <TableBody className="text-[11px]">
-                            <TableRow className="h-8"><TableCell className="p-1">ลาป่วย</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.sickDays ?? 0}</TableCell></TableRow>
-                            <TableRow className="h-8"><TableCell className="p-1">ลากิจ</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.businessDays ?? 0}</TableCell></TableRow>
-                            <TableRow className="h-8"><TableCell className="p-1">ลาพักร้อน</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.vacationDays ?? 0}</TableCell></TableRow>
-                            <TableRow className="h-8 border-0"><TableCell className="p-1">ลาเกินสิทธิ์</TableCell><TableCell className="text-right text-destructive font-bold p-1">{snapshot.leaveSummary?.overLimitDays ?? 0}</TableCell></TableRow>
+                            <TableRow className="h-8"><TableCell className="p-1">ลาป่วย</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.sickDays ?? 0}</TableCell><TableCell className="text-right p-1 text-muted-foreground">{snapshot.leaveSummaryYtd?.sickDays ?? 0}</TableCell></TableRow>
+                            <TableRow className="h-8"><TableCell className="p-1">ลากิจ</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.businessDays ?? 0}</TableCell><TableCell className="text-right p-1 text-muted-foreground">{snapshot.leaveSummaryYtd?.businessDays ?? 0}</TableCell></TableRow>
+                            <TableRow className="h-8"><TableCell className="p-1">ลาพักร้อน</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.vacationDays ?? 0}</TableCell><TableCell className="text-right p-1 text-muted-foreground">{snapshot.leaveSummaryYtd?.vacationDays ?? 0}</TableCell></TableRow>
+                            <TableRow className="h-8 border-0"><TableCell className="p-1">ลาเกินสิทธิ์</TableCell><TableCell className="text-right text-destructive font-bold p-1">{snapshot.leaveSummary?.overLimitDays ?? 0}</TableCell><TableCell className="text-right p-1 text-muted-foreground">{snapshot.leaveSummaryYtd?.overLimitDays ?? 0}</TableCell></TableRow>
                         </TableBody>
                     </Table>
                 </CardContent>
