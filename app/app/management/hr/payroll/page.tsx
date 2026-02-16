@@ -142,7 +142,7 @@ function LeaveManageDialog({
 }
 
 export default function HRGeneratePayslipsPage() {
-    const { db } = useFirebase();
+    const { db, firebaseApp } = useFirebase();
     const { toast } = useToast();
     const { profile: adminProfile } = useAuth();
     const printFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -171,13 +171,12 @@ export default function HRGeneratePayslipsPage() {
     const { data: hrSettings } = useDoc<HRSettings>(settingsDocRef);
 
     const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
-    const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
+    const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
     
     const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.role === 'MANAGER' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
 
     const handleFetchEmployees = useCallback(async (autoOpenUid?: string) => {
         if (!db || !hrSettings || !adminProfile) {
-            toast({ variant: 'destructive', title: 'ยังไม่พร้อม', description: 'ไม่สามารถโหลดข้อมูลที่จำเป็นได้' });
             return;
         }
         setIsLoading(true);
@@ -225,30 +224,19 @@ export default function HRGeneratePayslipsPage() {
                     decidedByName: adminProfile.displayName
                 };
                 await setDoc(batchDocRef, { ssoDecision: finalSsoDecision }, { merge: true });
-            } else if (period === 2) {
-                 if (finalSsoDecision) {
-                    const hasChanged = 
-                        Number(finalSsoDecision.employeePercent || 0) !== Number(hrSettings.sso?.employeePercent || 0) ||
-                        Number(finalSsoDecision.employerPercent || 0) !== Number(hrSettings.sso?.employerPercent || 0) ||
-                        Number(finalSsoDecision.monthlyMinBase || 0) !== Number(hrSettings.sso?.monthlyMinBase || 0) ||
-                        Number(finalSsoDecision.monthlyCap || 0) !== Number(hrSettings.sso?.monthlyCap || 0);
-                    
-                    if (hasChanged) {
-                        setIsSsoDecisionDialogOpen(true);
-                    }
-                 } else {
-                     finalSsoDecision = { 
-                        employeePercent: Number(hrSettings.sso?.employeePercent ?? 0),
-                        employerPercent: Number(hrSettings.sso?.employerPercent ?? 0),
-                        monthlyMinBase: Number(hrSettings.sso?.monthlyMinBase ?? 0),
-                        monthlyCap: Number(hrSettings.sso?.monthlyCap ?? 0),
-                        source: 'AUTO_LOCK',
-                        decidedAt: Timestamp.now(),
-                        decidedByUid: adminProfile.uid,
-                        decidedByName: adminProfile.displayName
-                    };
-                     await setDoc(batchDocRef, { ssoDecision: finalSsoDecision }, { merge: true });
-                 }
+            } else if (period === 2 && finalSsoDecision) {
+                // Improved SSO Change Detection (Fuzzy comparison to avoid typo alerts)
+                const checkDiff = (v1: any, v2: any) => Math.abs(Number(v1 || 0) - Number(v2 || 0)) > 0.01;
+                
+                const hasChanged = 
+                    checkDiff(finalSsoDecision.employeePercent, hrSettings.sso?.employeePercent) ||
+                    checkDiff(finalSsoDecision.employerPercent, hrSettings.sso?.employerPercent) ||
+                    checkDiff(finalSsoDecision.monthlyMinBase, hrSettings.sso?.monthlyMinBase) ||
+                    checkDiff(finalSsoDecision.monthlyCap, hrSettings.sso?.monthlyCap);
+                
+                if (hasChanged) {
+                    setIsSsoDecisionDialogOpen(true);
+                }
             }
             setSsoDecision(finalSsoDecision);
 
@@ -463,7 +451,7 @@ export default function HRGeneratePayslipsPage() {
           if (!frame) return;
       
           const totals = calcTotals(drawerSnapshot);
-          const periodLabel = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
+          const periodLabelText = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
           
           const html = `
           <!doctype html>
@@ -501,7 +489,7 @@ export default function HRGeneratePayslipsPage() {
             </div>
             <div class="info-grid">
               <div><strong>ชื่อพนักงาน:</strong> ${editingPayslip.displayName}</div>
-              <div class="text-right"><strong>ประจำงวด:</strong> ${periodLabel}</div>
+              <div class="text-right"><strong>ประจำงวด:</strong> ${periodLabelText}</div>
               <div><strong>แผนก:</strong> ${deptLabel(editingPayslip.department)}</div>
               <div class="text-right"><strong>ประเภท:</strong> ${payTypeLabel(editingPayslip.hr?.payType)}</div>
             </div>
@@ -510,9 +498,9 @@ export default function HRGeneratePayslipsPage() {
             <table>
               <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
               <tbody>
-                <tr><td>เงินเดือนพื้นฐาน / Base Salary (งวด)</td><td class="text-right">${formatCurrency(totals.basePay)}</td></tr>
-                ${(drawerSnapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${formatCurrency(a.amount)}</td></tr>`).join('')}
-                <tr class="total-row"><td>รวมรายได้ / Total Earnings</td><td class="text-right">${formatCurrency(totals.basePay + totals.addTotal)}</td></tr>
+                <tr><td>เงินเดือนพื้นฐาน / Base Salary (งวด)</td><td class="text-right">${totals.basePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
+                ${(drawerSnapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${a.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>`).join('')}
+                <tr class="total-row"><td>รวมรายได้ / Total Earnings</td><td class="text-right">${(totals.basePay + totals.addTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
               </tbody>
             </table>
 
@@ -520,13 +508,13 @@ export default function HRGeneratePayslipsPage() {
             <table>
               <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
               <tbody>
-                ${(drawerSnapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">${formatCurrency(d.amount)}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0.00</td></tr>'}
-                <tr class="total-row"><td>รวมรายการหัก / Total Deductions</td><td class="text-right">${formatCurrency(totals.dedTotal)}</td></tr>
+                ${(drawerSnapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">${d.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0.00</td></tr>'}
+                <tr class="total-row"><td>รวมรายการหัก / Total Deductions</td><td class="text-right">${totals.dedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
               </tbody>
             </table>
 
             <div style="margin-top: 20px; padding: 10px; border: 2px solid #333; text-align: right; font-size: 18px; font-weight: bold;">
-              เงินได้สุทธิ / NET PAY: <span style="margin-left: 20px;">${formatCurrency(totals.netPay)} บาท</span>
+              เงินได้สุทธิ / NET PAY: <span style="margin-left: 20px;">${totals.netPay.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
             </div>
 
             <div class="footer">
@@ -752,5 +740,3 @@ export default function HRGeneratePayslipsPage() {
         </>
     );
 }
-
-const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
