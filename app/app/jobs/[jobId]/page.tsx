@@ -428,7 +428,7 @@ function JobDetailsPageContent() {
     } catch (error: any) {
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
-        setIsSubmitting(false);
+        setIsSubmittingNote(false);
     }
   };
 
@@ -840,7 +840,7 @@ function JobDetailsPageContent() {
             <AlertDialogFooter>
                 <Button variant="outline" onClick={() => setBillingJob(null)}>ยกเลิก</Button>
                 <Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }}>ใบส่งของชั่วคราว</Button>
-                <Button onClick={{"@": { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}}>ใบกำกับภาษี</Button>
+                <Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}>ใบกำกับภาษี</Button>
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -951,7 +951,7 @@ function JobDetailsPageContent() {
       <AlertDialog open={isRejectConfirmOpen} onOpenChange={setIsRejectConfirmOpen}>
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>ยืนยันการไม่อนุมัติ</AlertDialogTitle><AlertDialogDescription>{rejectionChoice === 'with_cost' ? 'ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.' : 'ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.'}</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading} onClick={() => setRejectionChoice(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerRejection} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
+              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading} onClick={() => setRejectionChoice(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerRejection} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
     </>
