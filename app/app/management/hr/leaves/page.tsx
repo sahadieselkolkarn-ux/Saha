@@ -8,7 +8,7 @@ import { useDoc } from "@/firebase/firestore/use-doc";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -428,10 +428,6 @@ export default function ManagementHRLeavesPage() {
       default: return 'outline';
     }
   };
-
-  const isWithinInterval = (date: Date, interval: { start: Date; end: Date }) => {
-    return date >= interval.start && date <= interval.end;
-  }
 
   if (isLoadingUsers || isLoadingSettings || isLoadingLeaves) {
     return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
