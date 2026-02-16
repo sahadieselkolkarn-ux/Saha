@@ -1,14 +1,15 @@
+
 "use client";
 
 import { useMemo } from "react";
-import type { PayslipSnapshot, PayType } from "@/lib/types";
+import type { PayslipSnapshot, PayType, UserProfile } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText, Edit, BadgeCheck } from "lucide-react";
+import { PlusCircle, Trash2, AlertCircle, Clock, CalendarX, FileText, Edit, BadgeCheck, Landmark, Calculator } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -40,6 +41,9 @@ interface PayslipSlipViewProps {
   userName: string;
   periodLabel: string;
   snapshot: PayslipSnapshot;
+  otherPeriodSnapshot?: PayslipSnapshot | null;
+  currentPeriodNo?: number;
+  userProfile?: UserProfile;
   mode: "read" | "edit";
   payType?: PayType;
   onChange?: (nextSnapshot: PayslipSnapshot) => void;
@@ -48,9 +52,32 @@ interface PayslipSlipViewProps {
 }
 
 // --- Main Component ---
-export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType, onChange, onAdjustAttendance, className }: PayslipSlipViewProps) {
+export function PayslipSlipView({ 
+  userName, 
+  periodLabel, 
+  snapshot, 
+  otherPeriodSnapshot,
+  currentPeriodNo,
+  userProfile,
+  mode, 
+  payType, 
+  onChange, 
+  onAdjustAttendance, 
+  className 
+}: PayslipSlipViewProps) {
   const isEdit = mode === 'edit';
-  const totals = useMemo(() => calcTotals(snapshot), [snapshot]);
+  
+  const currentTotals = useMemo(() => calcTotals(snapshot), [snapshot]);
+  const otherTotals = useMemo(() => calcTotals(otherPeriodSnapshot), [otherPeriodSnapshot]);
+
+  // Determine P1 vs P2 snapshots for side-by-side display
+  const p1Data = currentPeriodNo === 1 ? snapshot : otherPeriodSnapshot;
+  const p2Data = currentPeriodNo === 2 ? snapshot : otherPeriodSnapshot;
+  
+  const p1Totals = currentPeriodNo === 1 ? currentTotals : otherTotals;
+  const p2Totals = currentPeriodNo === 2 ? currentTotals : otherTotals;
+
+  const monthlyTotalNet = p1Totals.netPay + p2Totals.netPay;
 
   const handleFieldChange = (field: keyof PayslipSnapshot | `additions.${number}.${string}` | `deductions.${number}.${string}`, value: any) => {
     if (!onChange) return;
@@ -99,75 +126,170 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
   );
 
   return (
-    <div className={cn("space-y-4", className)}>
-        <div className="text-center">
-            <h2 className="text-xl font-bold">{userName}</h2>
-            <p className="text-muted-foreground">{periodLabel}</p>
+    <div className={cn("space-y-6 pb-8", className)}>
+        <div className="text-center space-y-1">
+            <h2 className="text-2xl font-bold text-primary">{userName}</h2>
+            <p className="text-muted-foreground font-medium">{periodLabel}</p>
         </div>
 
         {snapshot.attendanceSummary?.warnings && snapshot.attendanceSummary.warnings.length > 0 && (
-            <Alert variant="destructive">
+            <Alert variant="destructive" className="animate-pulse">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>คำเตือน</AlertTitle>
+                <AlertTitle>คำเตือนระบบ</AlertTitle>
                 <AlertDescription>
-                    <ul className="list-disc pl-4">
+                    <ul className="list-disc pl-4 text-xs">
                        {snapshot.attendanceSummary.warnings.map((warn, i) => <li key={i}>{warn}</li>)}
                     </ul>
                 </AlertDescription>
             </Alert>
         )}
 
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-lg">สรุปการจ่ายเงิน</CardTitle>
+        {/* --- Monthly Overview --- */}
+        <Card className="border-primary/20 bg-primary/5 shadow-md">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
+                    <Calculator className="h-4 w-4 text-primary" />
+                    ภาพรวมรายเดือน (Monthly Overview)
+                </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-4">
+                <div className="flex justify-between items-end border-b border-dashed pb-3">
+                    <div className="space-y-0.5">
+                        <p className="text-xs text-muted-foreground">เงินเดือนรวม / ค่าแรงทั้งหมด</p>
+                        <p className="text-2xl font-black text-primary">฿{formatCurrency(userProfile?.hr?.salaryMonthly || userProfile?.hr?.salaryDaily ? (userProfile.hr.salaryMonthly || 0) : 0)}</p>
+                    </div>
+                    <div className="text-right space-y-0.5">
+                        <p className="text-xs text-muted-foreground">ยอดรับสุทธิรวมทั้งเดือน</p>
+                        <p className="text-2xl font-black text-green-600">฿{formatCurrency(monthlyTotalNet)}</p>
+                    </div>
+                </div>
+
+                {/* Period Comparison Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div className={cn("p-3 rounded-lg border bg-background", currentPeriodNo === 1 && "ring-2 ring-primary shadow-sm")}>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-bold uppercase text-muted-foreground">งวดที่ 1 (1-15)</span>
+                            {currentPeriodNo === 1 && <Badge className="h-4 text-[8px] px-1">แก้ไขอยู่</Badge>}
+                        </div>
+                        {p1Data ? (
+                            <div className="space-y-1 text-xs">
+                                <div className="flex justify-between"><span>ฐานเงินเดือน:</span><span className="font-bold">{formatCurrency(p1Totals.basePay)}</span></div>
+                                <div className="flex justify-between text-green-600"><span>รับเพิ่ม:</span><span>+{formatCurrency(p1Totals.addTotal)}</span></div>
+                                <div className="flex justify-between text-destructive"><span>รายการหัก:</span><span>-{formatCurrency(p1Totals.dedTotal)}</span></div>
+                                <Separator className="my-1"/>
+                                <div className="flex justify-between font-bold text-sm text-primary"><span>สุทธิ:</span><span>{formatCurrency(p1Totals.netPay)}</span></div>
+                            </div>
+                        ) : (
+                            <div className="flex h-20 items-center justify-center text-[10px] text-muted-foreground italic bg-muted/20 rounded border-dashed border">รอประมวลผล</div>
+                        )}
+                    </div>
+
+                    <div className={cn("p-3 rounded-lg border bg-background", currentPeriodNo === 2 && "ring-2 ring-primary shadow-sm")}>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-bold uppercase text-muted-foreground">งวดที่ 2 (16-สิ้นเดือน)</span>
+                            {currentPeriodNo === 2 && <Badge className="h-4 text-[8px] px-1">แก้ไขอยู่</Badge>}
+                        </div>
+                        {p2Data ? (
+                            <div className="space-y-1 text-xs">
+                                <div className="flex justify-between"><span>ฐานเงินเดือน:</span><span className="font-bold">{formatCurrency(p2Totals.basePay)}</span></div>
+                                <div className="flex justify-between text-green-600"><span>รับเพิ่ม:</span><span>+{formatCurrency(p2Totals.addTotal)}</span></div>
+                                <div className="flex justify-between text-destructive"><span>รายการหัก:</span><span>-{formatCurrency(p2Totals.dedTotal)}</span></div>
+                                <Separator className="my-1"/>
+                                <div className="flex justify-between font-bold text-sm text-primary"><span>สุทธิ:</span><span>{formatCurrency(p2Totals.netPay)}</span></div>
+                            </div>
+                        ) : (
+                            <div className="flex h-20 items-center justify-center text-[10px] text-muted-foreground italic bg-muted/20 rounded border-dashed border">รอประมวลผล</div>
+                        )}
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+
+        {/* --- Current Period Detailed Breakdown --- */}
+        <Card className="shadow-sm">
+            <CardHeader className="bg-muted/30 pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                    รายละเอียดรายรับ/หัก (งวดปัจจุบัน)
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 pt-6">
                 <div className="flex justify-between items-center">
-                    <Label htmlFor="basePay" className={cn(isEdit && "text-base")}>ฐานเงินเดือน (ในงวดนี้)</Label>
+                    <Label htmlFor="basePay" className={cn(isEdit ? "text-base font-bold" : "text-sm text-muted-foreground")}>ฐานเงินเดือน (ในงวดนี้)</Label>
                     {isEdit ? (
-                        <Input id="basePay" type="number" className="w-40 text-right font-semibold" value={snapshot?.basePay || ''} onChange={(e) => handleFieldChange('basePay', safeParseFloat(e.target.value))}/>
+                        <div className="relative">
+                            <Input id="basePay" type="number" className="w-40 text-right font-bold text-lg bg-muted/20 focus:bg-background transition-colors" value={snapshot?.basePay || ''} onChange={(e) => handleFieldChange('basePay', safeParseFloat(e.target.value))}/>
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-bold">฿</span>
+                        </div>
                     ) : (
-                         <span className="font-semibold">{formatCurrency(totals.basePay)}</span>
+                         <span className="font-bold text-lg">{formatCurrency(currentTotals.basePay)}</span>
                     )}
                 </div>
-                 <div className="flex justify-between">
-                    <span className="text-muted-foreground">รายรับเพิ่มเติม</span>
-                    <span className="text-green-600">{formatCurrency(totals.addTotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                    <span className="text-muted-foreground">รายการหัก</span>
-                    <span className="text-destructive">{`-${formatCurrency(totals.dedTotal)}`}</span>
-                </div>
+
                 <Separator />
-                <div className="flex justify-between text-xl font-bold">
-                    <span>ยอดสุทธิที่ได้รับ</span>
-                    <span className="text-primary">{formatCurrency(totals.netPay)}</span>
+
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-sm text-green-600 flex items-center gap-2"><PlusCircle className="h-4 w-4"/> รายรับเพิ่มเติม</h4>
+                        {isEdit && <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => handleAddRow('additions')}>+ เพิ่ม</Button>}
+                    </div>
+                    <div className="space-y-2">
+                        {isEdit ? (
+                            snapshot.additions?.map((item, index) => renderEditableRow('additions', item, index))
+                        ) : (
+                            (snapshot.additions && snapshot.additions.length > 0) ? snapshot.additions.map((item, i)=><div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-dashed"><p>{item.name}</p><p className="font-medium text-green-600">+{formatCurrency(item.amount)}</p></div>) : <p className="text-xs text-muted-foreground italic">- ไม่มีรายการรับเพิ่ม -</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-sm text-destructive flex items-center gap-2"><Trash2 className="h-4 w-4"/> รายการหัก</h4>
+                        {isEdit && <Button type="button" variant="outline" size="sm" className="h-7 text-[10px]" onClick={() => handleAddRow('deductions')}>+ เพิ่ม</Button>}
+                    </div>
+                    <div className="space-y-2">
+                        {isEdit ? (
+                            snapshot.deductions?.map((item, index) => renderEditableRow('deductions', item, index))
+                        ) : (
+                            (snapshot.deductions && snapshot.deductions.length > 0) ? snapshot.deductions.map((item, i)=><div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-dashed"><p>{item.name}</p><p className="font-medium text-destructive">-{formatCurrency(item.amount)}</p></div>) : <p className="text-xs text-muted-foreground italic">- ไม่มีรายการหัก -</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="bg-primary/5 p-4 rounded-xl border border-primary/10">
+                    <div className="flex justify-between items-center text-xl font-black">
+                        <span className="text-primary">ยอดสุทธิที่ได้รับงวดนี้</span>
+                        <span className="text-primary underline decoration-double underline-offset-4">฿{formatCurrency(currentTotals.netPay)}</span>
+                    </div>
                 </div>
             </CardContent>
         </Card>
 
         {/* Attendance Day Log Section */}
-        <Card>
+        <Card className="border-dashed">
             <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4"/> รายละเอียดการ สาย ขาด ลา</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2 text-muted-foreground"><Clock className="h-4 w-4"/> รายละเอียดการ สาย ขาด ลา (งวดปัจจุบัน)</CardTitle>
             </CardHeader>
             <CardContent>
                 {snapshot.attendanceSummary?.dayLogs && snapshot.attendanceSummary.dayLogs.length > 0 ? (
                     <div className="space-y-2">
                         {snapshot.attendanceSummary.dayLogs.map((log, i) => (
-                            <div key={i} className="flex justify-between items-center text-xs border-b border-dashed pb-1 last:border-0">
-                                <div className="flex items-center gap-2">
-                                    <Badge variant={log.type === 'ABSENT' ? 'destructive' : log.type === 'LATE' ? 'secondary' : 'outline'} className="text-[9px] px-1 h-4">
+                            <div key={i} className="flex justify-between items-center text-xs border-b border-dashed pb-1.5 last:border-0 hover:bg-muted/20 transition-colors px-1">
+                                <div className="flex items-center gap-3">
+                                    <Badge variant={log.type === 'ABSENT' ? 'destructive' : log.type === 'LATE' ? 'secondary' : 'outline'} className="text-[9px] px-1.5 h-4 font-bold shadow-sm">
                                         {log.type === 'ABSENT' ? 'ขาด' : log.type === 'LATE' ? 'สาย' : 'ลา'}
                                     </Badge>
-                                    <span className="font-medium">{log.date}</span>
+                                    <span className="font-bold text-foreground/80">{log.date}</span>
                                 </div>
-                                <span className="text-muted-foreground">{log.detail}</span>
+                                <span className="text-muted-foreground italic">{log.detail}</span>
                             </div>
                         ))}
                     </div>
                 ) : (
-                    <p className="text-center py-4 text-xs text-muted-foreground italic">ไม่มีรายการ สาย ขาด หรือ ลา ในงวดนี้ค่ะ</p>
+                    <p className="text-center py-6 text-xs text-muted-foreground italic flex items-center justify-center gap-2">
+                        <BadgeCheck className="h-4 w-4 text-green-500"/>
+                        ไม่มีรายการ สาย ขาด หรือ ลา ในงวดนี้ค่ะ เยี่ยมมาก!
+                    </p>
                 )}
             </CardContent>
         </Card>
@@ -175,14 +297,14 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {payType !== 'MONTHLY_NOSCAN' && snapshot.attendanceSummary && (
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                        <CardTitle className="text-base">สรุปการลงเวลา</CardTitle>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-[13px] font-bold uppercase tracking-wide">สรุปการลงเวลา</CardTitle>
                         {isEdit && onAdjustAttendance && (
                             <Button 
                                 type="button" 
                                 variant="outline" 
                                 size="sm" 
-                                className="h-7 text-[10px] px-2 gap-1 border-primary/30 text-primary hover:bg-primary/5"
+                                className="h-6 text-[9px] px-2 gap-1 border-primary/30 text-primary hover:bg-primary/5"
                                 onClick={onAdjustAttendance}
                             >
                                 <Edit className="h-3 w-3" />
@@ -192,77 +314,58 @@ export function PayslipSlipView({ userName, periodLabel, snapshot, mode, payType
                     </CardHeader>
                     <CardContent>
                         <Table>
-                            <TableHeader><TableRow><TableHead className="text-[10px]">รายการ</TableHead><TableHead className="text-right text-[10px]">งวดนี้</TableHead></TableRow></TableHeader>
-                            <TableBody className="text-xs">
-                                <TableRow><TableCell>วันทำงานตามตาราง</TableCell><TableCell className="text-right font-medium">{snapshot.attendanceSummary?.scheduledWorkDays ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>วันทำงานจริง</TableCell><TableCell className="text-right font-medium">{snapshot.attendanceSummary?.presentDays ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>วันมาสาย</TableCell><TableCell className="text-right font-medium text-destructive">{snapshot.attendanceSummary?.lateDays ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>หน่วยที่ขาด</TableCell><TableCell className="text-right font-medium text-destructive">{snapshot.attendanceSummary?.absentUnits ?? '-'}</TableCell></TableRow>
-                                <TableRow><TableCell>วันลาที่อนุมัติ</TableCell><TableCell className="text-right font-medium">{snapshot.attendanceSummary?.leaveDays ?? '-'}</TableCell></TableRow>
+                            <TableBody className="text-[11px]">
+                                <TableRow className="h-8"><TableCell className="p-1">วันทำงานตามตาราง</TableCell><TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.scheduledWorkDays ?? '-'}</TableCell></TableRow>
+                                <TableRow className="h-8"><TableCell className="p-1">วันทำงานจริง</TableCell><TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.presentDays ?? '-'}</TableCell></TableRow>
+                                <TableRow className="h-8"><TableCell className="p-1">วันมาสาย</TableCell><TableCell className="text-right font-medium text-destructive p-1">{snapshot.attendanceSummary?.lateDays ?? '-'}</TableCell></TableRow>
+                                <TableRow className="h-8"><TableCell className="p-1">หน่วยที่ขาด</TableCell><TableCell className="text-right font-medium text-destructive p-1">{snapshot.attendanceSummary?.absentUnits ?? '-'}</TableCell></TableRow>
+                                <TableRow className="h-8 border-0"><TableCell className="p-1">วันลาที่อนุมัติ</TableCell><TableCell className="text-right font-medium p-1">{snapshot.attendanceSummary?.leaveDays ?? '-'}</TableCell></TableRow>
                             </TableBody>
                         </Table>
                     </CardContent>
                 </Card>
             )}
              <Card>
-                <CardHeader><CardTitle className="text-base">สรุปการลา</CardTitle></CardHeader>
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-[13px] font-bold uppercase tracking-wide">สรุปการลา</CardTitle>
+                </CardHeader>
                 <CardContent>
                      <Table>
-                        <TableHeader><TableRow><TableHead className="text-[10px]">รายการ</TableHead><TableHead className="text-right text-[10px]">งวดนี้</TableHead></TableRow></TableHeader>
-                        <TableBody className="text-xs">
-                            <TableRow><TableCell>ลาป่วย</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.sickDays ?? 0}</TableCell></TableRow>
-                            <TableRow><TableCell>ลากิจ</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.businessDays ?? 0}</TableCell></TableRow>
-                            <TableRow><TableCell>ลาพักร้อน</TableCell><TableCell className="text-right">{snapshot.leaveSummary?.vacationDays ?? 0}</TableCell></TableRow>
-                            <TableRow><TableCell>ลาเกินสิทธิ์</TableCell><TableCell className="text-right text-destructive">{snapshot.leaveSummary?.overLimitDays ?? 0}</TableCell></TableRow>
+                        <TableBody className="text-[11px]">
+                            <TableRow className="h-8"><TableCell className="p-1">ลาป่วย</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.sickDays ?? 0}</TableCell></TableRow>
+                            <TableRow className="h-8"><TableCell className="p-1">ลากิจ</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.businessDays ?? 0}</TableCell></TableRow>
+                            <TableRow className="h-8"><TableCell className="p-1">ลาพักร้อน</TableCell><TableCell className="text-right p-1">{snapshot.leaveSummary?.vacationDays ?? 0}</TableCell></TableRow>
+                            <TableRow className="h-8 border-0"><TableCell className="p-1">ลาเกินสิทธิ์</TableCell><TableCell className="text-right text-destructive font-bold p-1">{snapshot.leaveSummary?.overLimitDays ?? 0}</TableCell></TableRow>
                         </TableBody>
                     </Table>
                 </CardContent>
             </Card>
         </div>
 
+        {isEdit && (
+            <Card className="border-amber-200 bg-amber-50/20">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-bold text-amber-700 flex items-center gap-2">
+                        <FileText className="h-4 w-4"/> หมายเหตุจาก HR
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Textarea 
+                        placeholder="ระบุสูตรการคำนวณ หรือบันทึกเพื่อคุยกับพนักงาน..." 
+                        className="bg-background text-sm min-h-[100px]"
+                        value={snapshot.calcNotes || ''} 
+                        onChange={(e) => handleFieldChange('calcNotes', e.target.value)} 
+                    />
+                </CardContent>
+            </Card>
+        )}
 
-        {isEdit ? (
-            <>
-                <Card>
-                    <CardHeader><CardTitle className="text-lg">รายรับเพิ่มเติม</CardTitle></CardHeader>
-                    <CardContent className="space-y-2">
-                        {(snapshot.additions || []).map((item, index) => renderEditableRow('additions', item, index))}
-                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddRow('additions')}><PlusCircle /> เพิ่มรายการ</Button>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><CardTitle className="text-lg">รายการหัก</CardTitle></CardHeader>
-                    <CardContent className="space-y-2">
-                        {(snapshot.deductions || []).map((item, index) => renderEditableRow('deductions', item, index))}
-                        <Button type="button" variant="outline" size="sm" onClick={() => handleAddRow('deductions')}><PlusCircle /> เพิ่มรายการ</Button>
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader><CardTitle className="text-lg">หมายเหตุ (HR)</CardTitle></CardHeader>
-                    <CardContent>
-                        <Textarea placeholder="ระบุสูตรการคำนวณ หรือบันทึกเพื่อคุยกับพนักงาน..." value={snapshot.calcNotes || ''} onChange={(e) => handleFieldChange('calcNotes', e.target.value)} />
-                    </CardContent>
-                </Card>
-            </>
-        ) : (
-            <>
-                <Card>
-                    <CardHeader><CardTitle className="text-lg">รายละเอียดรายรับ/หัก</CardTitle></CardHeader>
-                    <CardContent>
-                        <h4 className="font-semibold text-sm mb-2 text-green-600">รายรับเพิ่มเติม</h4>
-                        {(snapshot.additions && snapshot.additions.length > 0) ? snapshot.additions.map((item, i)=><div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-dashed"><p>{item.name}</p><p className="font-medium">{formatCurrency(item.amount)}</p></div>) : <p className="text-sm text-muted-foreground">- ไม่มี -</p>}
-                        <Separator className="my-4"/>
-                        <h4 className="font-semibold text-sm mb-2 text-destructive">รายการหัก</h4>
-                         {(snapshot.deductions && snapshot.deductions.length > 0) ? snapshot.deductions.map((item, i)=><div key={i} className="flex justify-between text-sm py-1 border-b last:border-0 border-dashed"><p>{item.name}</p><p className="font-medium text-destructive">{`-${formatCurrency(item.amount)}`}</p></div>) : <p className="text-sm text-muted-foreground">- ไม่มี -</p>}
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader><CardTitle className="text-lg">หมายเหตุจาก HR</CardTitle></CardHeader>
-                    <CardContent>
-                        <p className="text-sm text-muted-foreground whitespace-pre-wrap italic">{snapshot.calcNotes || '- ไม่มีหมายเหตุ -'}</p>
-                    </CardContent>
-                </Card>
-            </>
+        {!isEdit && snapshot.calcNotes && (
+            <Card className="border-muted bg-muted/10 italic">
+                <CardContent className="pt-4">
+                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">"{snapshot.calcNotes}"</p>
+                </CardContent>
+            </Card>
         )}
     </div>
   );

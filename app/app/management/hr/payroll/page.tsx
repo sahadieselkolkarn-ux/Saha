@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -68,6 +69,7 @@ export default function HRGeneratePayslipsPage() {
     
     const [editingPayslip, setEditingPayslip] = useState<EmployeeRowData | null>(null);
     const [drawerSnapshot, setDrawerSnapshot] = useState<PayslipSnapshot | null>(null);
+    const [otherPeriodSnapshot, setOtherPeriodSnapshot] = useState<PayslipSnapshot | null>(null);
 
     // Day selection states for adjustment
     const [isDaySelectOpen, setIsDaySelectOpen] = useState(false);
@@ -130,8 +132,6 @@ export default function HRGeneratePayslipsPage() {
                 await setDoc(batchDocRef, { ssoDecision: finalSsoDecision }, { merge: true });
             } else if (period === 2) {
                  if (finalSsoDecision) {
-                    // STRICT NUMERIC COMPARISON
-                    // Compare core values only to avoid false triggers from metadata (source, timestamp, etc.)
                     const hasChanged = 
                         Number(finalSsoDecision.employeePercent || 0) !== Number(hrSettings.sso?.employeePercent || 0) ||
                         Number(finalSsoDecision.employerPercent || 0) !== Number(hrSettings.sso?.employerPercent || 0) ||
@@ -142,7 +142,6 @@ export default function HRGeneratePayslipsPage() {
                         setIsSsoDecisionDialogOpen(true);
                     }
                  } else {
-                     // Auto-lock for Period 2 if P1 wasn't run
                      finalSsoDecision = { 
                         employeePercent: Number(hrSettings.sso?.employeePercent ?? 0),
                         employerPercent: Number(hrSettings.sso?.employerPercent ?? 0),
@@ -259,6 +258,17 @@ export default function HRGeneratePayslipsPage() {
         if (!hr?.payType || hr.payType === 'NOPAY' || hr.payType === 'MONTHLY_NOSCAN') return;
         if (!periodMetrics || !periodMetricsYtd) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ', description: 'ไม่สามารถคำนวณข้อมูลการทำงานของพนักงานได้'}); setEditingPayslip(null); return; }
         
+        // Fetch Other Period Data
+        const otherPeriodNo = period === 1 ? 2 : 1;
+        const otherBatchId = `${format(currentMonth, 'yyyy-MM')}-${otherPeriodNo}`;
+        const otherPayslipRef = doc(db, 'payrollBatches', otherBatchId, 'payslips', user.id);
+        const otherPayslipSnap = await getDoc(otherPayslipRef);
+        if (otherPayslipSnap.exists()) {
+            setOtherPeriodSnapshot(otherPayslipSnap.data().snapshot || null);
+        } else {
+            setOtherPeriodSnapshot(null);
+        }
+
         let basePay = 0;
         if (hr.payType === 'DAILY') {
             if (!hr.salaryDaily || hr.salaryDaily <= 0) { toast({variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: `กรุณาตั้งค่าแรงรายวันสำหรับ ${user.displayName} ก่อน`}); setEditingPayslip(null); return; }
@@ -444,6 +454,9 @@ export default function HRGeneratePayslipsPage() {
                         userName={editingPayslip.displayName} 
                         periodLabel={periodLabel} 
                         snapshot={drawerSnapshot} 
+                        otherPeriodSnapshot={otherPeriodSnapshot}
+                        currentPeriodNo={period}
+                        userProfile={editingPayslip}
                         mode="edit" 
                         payType={editingPayslip.hr?.payType} 
                         onChange={setDrawerSnapshot}
