@@ -917,10 +917,12 @@ function JobDetailsPageContent() {
             <DialogHeader><DialogTitle>เปลี่ยนพนักงานซ่อม</DialogTitle></DialogHeader>
             {isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (
                 <div className="py-4"><Label>พนักงานใหม่</Label>
-                    <Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}>
-                        <SelectTrigger><SelectValue placeholder="เลือกพนักงาน..." /></SelectTrigger>
-                        <SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.uid} value={w.uid}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบช่างคนอื่น</div>}</SelectContent>
-                    </Select>
+                    <span className="block mt-2">
+                        <Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}>
+                            <SelectTrigger><SelectValue placeholder="เลือกพนักงาน..." /></SelectTrigger>
+                            <SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.uid} value={w.uid}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบช่างคนอื่น</div>}</SelectContent>
+                        </Select>
+                    </span>
                 </div>
             )}
             <DialogFooter>
@@ -934,6 +936,21 @@ function JobDetailsPageContent() {
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>ยืนยันการอนุมัติ</AlertDialogTitle><AlertDialogDescription>ลูกค้าอนุมัติซ่อม ยืนยันเพื่อเปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"?</AlertDialogDescription></AlertDialogHeader>
               <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerApproval} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isPartsReadyConfirmOpen} onOpenChange={setIsPartsReadyConfirmOpen}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+                  <AlertDialogTitle>ยืนยันอะไหล่พร้อมซ่อม?</AlertDialogTitle>
+                  <AlertDialogDescription>เมื่อยืนยัน ระบบจะแจ้งสถานะงานกลับไปเป็น "กำลังดำเนินการซ่อม" เพื่อให้ช่างเริ่มทำงานต่อได้ค่ะ</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                  <AlertDialogCancel disabled={isApprovalActionLoading}>ยกเลิก</AlertDialogCancel>
+                  <AlertDialogAction onClick={handlePartsReady} disabled={isApprovalActionLoading}>
+                      {isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "ยืนยัน"}
+                  </AlertDialogAction>
+              </AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
 
