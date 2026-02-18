@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense, useState } from "react";
+import { useMemo, Suspense, useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { doc } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
@@ -85,7 +85,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
     return (
-        <div className="printable-document p-10 border bg-white shadow-sm flex flex-col min-h-[297mm] w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0">
+        <div className="printable-document p-[15mm] border bg-white shadow-sm flex flex-col min-h-[297mm] w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full print:p-[10mm] box-border">
             <div className="flex-1">
                 {/* Header Section */}
                 <div className="grid grid-cols-2 gap-8 mb-8">
@@ -198,6 +198,34 @@ function DocumentPageContent() {
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
+    const handleBack = () => {
+        if (!document) {
+            router.back();
+            return;
+        }
+        
+        // Go back based on doc type if we don't have history
+        switch (document.docType) {
+            case 'QUOTATION':
+                router.push('/app/office/documents/quotation');
+                break;
+            case 'DELIVERY_NOTE':
+                router.push('/app/office/documents/delivery-note');
+                break;
+            case 'TAX_INVOICE':
+                router.push('/app/office/documents/tax-invoice');
+                break;
+            case 'BILLING_NOTE':
+                router.push('/app/management/accounting/documents/billing-note');
+                break;
+            case 'RECEIPT':
+                router.push('/app/management/accounting/documents/receipt');
+                break;
+            default:
+                router.push('/app/jobs');
+        }
+    };
+
     const handlePrintRequest = () => {
         if (document?.docType === 'TAX_INVOICE') setIsPrintOptionsOpen(true);
         else window.print();
@@ -207,10 +235,10 @@ function DocumentPageContent() {
     if (error || !document) return <div className="p-12 text-center space-y-4"><AlertCircle className="mx-auto h-12 w-12 text-destructive"/><h2 className="text-xl font-bold">ไม่พบเอกสาร</h2><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button></div>;
 
     return (
-        <div className="min-h-screen bg-muted/20 py-8 print:p-0 print:bg-white">
-            <div className="max-w-[210mm] mx-auto space-y-6">
+        <div className="min-h-screen bg-muted/20 py-8 print:p-0 print:bg-white overflow-x-hidden">
+            <div className="max-w-[210mm] mx-auto space-y-6 print:m-0 print:max-w-none">
                 <div className="flex justify-between items-center bg-background p-4 rounded-lg border shadow-sm print:hidden">
-                    <Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+                    <Button variant="outline" onClick={handleBack}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
                     <div className="flex gap-2">
                         <Button onClick={handlePrintRequest}><Printer className="mr-2 h-4 w-4"/> สั่งพิมพ์ (Ctrl+P)</Button>
                     </div>
