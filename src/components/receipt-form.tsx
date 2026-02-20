@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -5,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -170,11 +171,16 @@ export function ReceiptForm() {
       // Create Receipt with PENDING_REVIEW status so it shows in Inbox
       const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile, undefined, { initialStatus: 'PENDING_REVIEW' });
 
+      // Update source document to link to this Receipt
       const sourceDocRef = doc(db, 'documents', data.sourceDocId);
-      await updateDoc(sourceDocRef, {
+      const batch = writeBatch(db);
+      batch.update(sourceDocRef, {
           receiptStatus: 'ISSUED_NOT_CONFIRMED',
+          receiptDocId: docId,
+          receiptDocNo: docNo,
           updatedAt: serverTimestamp()
       });
+      await batch.commit();
 
       toast({ title: "ออกใบเสร็จรับเงินสำเร็จ", description: `เลขที่ใบเสร็จ: ${docNo}` });
       router.push(`/app/management/accounting/inbox`);
@@ -288,7 +294,7 @@ export function ReceiptForm() {
                             <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
                             <SelectContent>
                                 <SelectItem value="CASH">เงินสด</SelectItem>
-                                <SelectItem value="TRANSFER">โอนเงิน</SelectItem>
+                                <SelectItem value="TRANSFER">เงินโอน</SelectItem>
                             </SelectContent>
                         </Select>
                         <FormMessage />

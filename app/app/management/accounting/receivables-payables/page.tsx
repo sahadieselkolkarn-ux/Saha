@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -23,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle, Info } from "lucide-react";
+import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle, Info, FileStack } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -103,7 +104,7 @@ function ReceivePaymentDialog({
       const batch = writeBatch(db);
 
       const obligationRef = doc(db, 'accountingObligations', obligation.id);
-      const newAmountPaid = obligation.amountPaid + data.amount;
+      const newAmountPaid = (obligation.amountPaid || 0) + data.amount;
       const newBalance = obligation.amountTotal - newAmountPaid;
       const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
       
@@ -382,7 +383,6 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
         const whtPrefix = settingsData.withholdingTaxPrefix || 'WHT';
         let currentCounters = counterSnap.exists() ? counterSnap.data() as any : { year };
 
-        // RESET LOGIC: If prefix changed, reset counter to 1
         const lastWhtPrefix = currentCounters.withholdingTaxPrefix;
         const lastWhtCount = currentCounters.withholdingTax || 0;
         let newWhtCount: number;
@@ -462,7 +462,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
         }));
 
         const obligationRef = doc(db, 'accountingObligations', obligation.id);
-        const newAmountPaid = obligation.amountPaid + data.amount;
+        const newAmountPaid = (obligation.amountPaid || 0) + data.amount;
         const newBalance = Math.max(0, obligation.amountTotal - newAmountPaid);
         const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
 
@@ -613,7 +613,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
           </form>
         </Form>
         <DialogFooter>
-          <Button variant="outline" onClose={onClose} disabled={isSubmitting}>ยกเลิก</Button>
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
           <Button 
             type="submit" 
             form="ap-payment-form" 
@@ -754,7 +754,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<FirestoreError | null>(null);
 
-    const [docStatuses, setDocStatuses] = useState<Record<string, string>>({});
+    const [docDetails, setDocDetails] = useState<Record<string, { receiptStatus?: string, billingNoteNo?: string }>>({});
 
     const [payingAR, setPayingAR] = useState<WithId<AccountingObligation> | null>(null);
     const [payingAP, setPayingAP] = useState<WithId<AccountingObligation> | null>(null);
@@ -803,9 +803,13 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
         const unsubscribes = arSourceDocIds.map(docId => {
             return onSnapshot(doc(db, 'documents', docId!), (docSnap) => {
                 if (docSnap.exists()) {
-                    setDocStatuses(prev => ({
+                    const data = docSnap.data();
+                    setDocDetails(prev => ({
                         ...prev,
-                        [docId!]: docSnap.data().receiptStatus || 'NONE'
+                        [docId!]: {
+                            receiptStatus: data.receiptStatus || 'NONE',
+                            billingNoteNo: data.billingNoteNo
+                        }
                     }));
                 }
             });
@@ -827,7 +831,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
     }, [obligations, searchTerm]);
 
     if (loading) {
-        return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
+        return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>;
     }
     if (error) {
         return <div className="text-center p-8 text-destructive"><AlertCircle className="mx-auto mb-2" />{error.message}</div>;
@@ -848,16 +852,23 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
           </TableHeader>
           <TableBody>
               {filteredObligations.length > 0 ? filteredObligations.map(ob => {
-                  const receiptStatus = docStatuses[ob.sourceDocId || ''];
-                  const isReceiptIssued = receiptStatus === 'ISSUED_NOT_CONFIRMED' || receiptStatus === 'CONFIRMED';
+                  const details = docDetails[ob.sourceDocId || ''];
+                  const isReceiptIssued = details?.receiptStatus === 'ISSUED_NOT_CONFIRMED' || details?.receiptStatus === 'CONFIRMED';
                   
                   return (
                     <TableRow key={ob.id}>
-                        <TableCell>{ob.dueDate ? safeFormat(parseISO(ob.dueDate), 'dd/MM/yy') : '-'}</TableCell>
-                        <TableCell>{type === 'AR' ? ob.sourceDocNo : (ob.invoiceNo || ob.sourceDocNo)}</TableCell>
-                        <TableCell>{type === 'AR' ? ob.customerNameSnapshot : (ob.vendorShortNameSnapshot || ob.vendorNameSnapshot)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(ob.amountTotal)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(ob.amountPaid)}</TableCell>
+                        <TableCell className="text-xs">{ob.dueDate ? safeFormat(parseISO(ob.dueDate), 'dd/MM/yy') : '-'}</TableCell>
+                        <TableCell>
+                            <div className="font-medium">{type === 'AR' ? ob.sourceDocNo : (ob.invoiceNo || ob.sourceDocNo)}</div>
+                            {details?.billingNoteNo && (
+                                <Badge variant="secondary" className="text-[9px] h-4 mt-1 bg-amber-50 text-amber-700 border-amber-200">
+                                    <FileStack className="h-2.5 w-2.5 mr-1" /> วางบิลแล้ว: {details.billingNoteNo}
+                                </Badge>
+                            )}
+                        </TableCell>
+                        <TableCell className="text-sm">{type === 'AR' ? ob.customerNameSnapshot : (ob.vendorShortNameSnapshot || ob.vendorNameSnapshot)}</TableCell>
+                        <TableCell className="text-right text-xs">{formatCurrency(ob.amountTotal)}</TableCell>
+                        <TableCell className="text-right text-xs text-green-600">{formatCurrency(ob.amountPaid)}</TableCell>
                         <TableCell className="text-right font-bold">{formatCurrency(ob.balance)}</TableCell>
                         <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
@@ -877,7 +888,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
                                                     </Button>
                                                 </span>
                                             </TooltipTrigger>
-                                            {isReceiptIssued && <TooltipContent>ออกใบเสร็จไปแล้ว ({receiptStatus})</TooltipContent>}
+                                            {isReceiptIssued && <TooltipContent>ออกใบเสร็จไปแล้ว ({details?.receiptStatus})</TooltipContent>}
                                         </Tooltip>
                                     </TooltipProvider>
                                 )}
@@ -952,9 +963,9 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
                 </TabsList>
                 <div className="flex w-full md:w-auto items-center gap-2">
                     {activeTab === 'creditors' && (
-                        <Button onClick={() => setIsAddingCreditor(true)}><PlusCircle/> เพิ่มเจ้าหนี้</Button>
+                        <Button onClick={() => setIsAddingCreditor(true)}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มเจ้าหนี้</Button>
                     )}
-                    <div className="w-full max-w-sm relative flex-1">
+                    <div className="w-full md:w-80 relative flex-1">
                         <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input placeholder="ค้นหาจากชื่อ, เลขที่เอกสาร..." className="pl-10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                     </div>

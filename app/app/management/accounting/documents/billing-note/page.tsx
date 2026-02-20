@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback, Fragment, Suspense } from 'react';
@@ -17,6 +18,7 @@ import {
   serverTimestamp,
   onSnapshot,
   deleteField,
+  writeBatch,
 } from 'firebase/firestore';
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { PageHeader } from '@/components/page-header';
@@ -223,7 +225,7 @@ function BillingNoteBatchTab() {
       });
       
       try {
-        const { docId } = await createDocument(db, 'BILLING_NOTE', {
+        const { docId, docNo } = await createDocument(db, 'BILLING_NOTE', {
           customerId: customer.id,
           docDate: format(new Date(), 'yyyy-MM-dd'),
           customerSnapshot: customer,
@@ -241,6 +243,18 @@ function BillingNoteBatchTab() {
           receiverName: customer.name,
           billingRunId: monthId
         }, profile);
+
+        // Update underlying invoices to link to this Billing Note
+        const batch = writeBatch(db);
+        groupInvoices.forEach(inv => {
+            batch.update(doc(db, 'documents', inv.id), {
+                billingNoteId: docId,
+                billingNoteNo: docNo,
+                updatedAt: serverTimestamp()
+            });
+        });
+        await batch.commit();
+
         return docId;
       } catch (e: any) {
         toast({ variant: 'destructive', title: `Failed to create note for ${groupKey}`, description: e.message });

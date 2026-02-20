@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
@@ -16,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ArrowLeft, Calculator } from "lucide-center";
+import { Loader2, Save, ArrowLeft, Calculator } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Document as DocumentType, AccountingAccount, AccountingObligation } from "@/lib/types";
@@ -121,37 +122,50 @@ function ConfirmReceiptPageContent() {
         }
         setReceipt(receiptData);
 
-        const invoiceIds = receiptData.referencesDocIds || [];
+        let invoiceIds = receiptData.referencesDocIds || [];
         if (invoiceIds.length === 0) {
             setInvoices([]);
             setObligations({});
             return;
         }
 
-        const invoicesQuery = query(collection(db, "documents"), where("__name__", "in", invoiceIds));
-        const obligationsQuery = query(collection(db, 'accountingObligations'), where('sourceDocId', 'in', invoiceIds));
-        const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
-        
-        const [invoicesSnap, obligationsSnap, accountsSnap] = await Promise.all([
-            getDocs(invoicesQuery),
-            getDocs(obligationsQuery),
-            getDocs(accountsQuery),
-        ]);
+        // --- NEW: If source is a Billing Note, get underlying invoices ---
+        const firstRefId = invoiceIds[0];
+        const sourceDocSnap = await getDoc(doc(db, 'documents', firstRefId));
+        if (sourceDocSnap.exists() && sourceDocSnap.data().docType === 'BILLING_NOTE') {
+            invoiceIds = sourceDocSnap.data().invoiceIds || [];
+        }
 
-        const fetchedInvoices = invoicesSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<DocumentType>);
-        const fetchedObligations = Object.fromEntries(obligationsSnap.docs.map(d => [d.data().sourceDocId, {id: d.id, ...d.data()} as WithId<AccountingObligation>]));
-        
-        setInvoices(fetchedInvoices);
-        setObligations(fetchedObligations);
+        if (invoiceIds.length === 0) {
+            setInvoices([]);
+            setObligations({});
+        } else {
+            const invoicesQuery = query(collection(db, "documents"), where("__name__", "in", invoiceIds));
+            const obligationsQuery = query(collection(db, 'accountingObligations'), where('sourceDocId', 'in', invoiceIds));
+            
+            const [invoicesSnap, obligationsSnap] = await Promise.all([
+                getDocs(invoicesQuery),
+                getDocs(obligationsQuery),
+            ]);
+
+            const fetchedInvoices = invoicesSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<DocumentType>);
+            const fetchedObligations = Object.fromEntries(obligationsSnap.docs.map(d => [d.data().sourceDocId, {id: d.id, ...d.data()} as WithId<AccountingObligation>]));
+            
+            setInvoices(fetchedInvoices);
+            setObligations(fetchedObligations);
+        }
+
+        const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
+        const accountsSnap = await getDocs(accountsQuery);
         setAccounts(accountsSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<AccountingAccount>));
         
         form.reset({
-            accountId: accountsSnap.docs[0]?.id || "",
-            paymentMethod: receiptData.paymentMethod as any || 'CASH',
+            accountId: receiptData.receivedAccountId || accountsSnap.docs[0]?.id || "",
+            paymentMethod: (receiptData.paymentMethod as any) || 'CASH',
             paymentDate: receiptData.paymentDate || format(new Date(), "yyyy-MM-dd"),
             netReceivedTotal: receiptData.grandTotal,
-            allocations: fetchedInvoices.map(inv => {
-                const ob = fetchedObligations[inv.id];
+            allocations: invoices.map(inv => {
+                const ob = obligations[inv.id];
                 const grossRemaining = ob?.balance ?? inv.paymentSummary?.balance ?? inv.grandTotal;
                 return {
                     invoiceId: inv.id,
@@ -188,7 +202,7 @@ function ConfirmReceiptPageContent() {
       const grossRemaining = alloc.grossRemaining;
       const amountToApply = Math.min(remainingToAllocate, grossRemaining);
       remainingToAllocate -= amountToApply;
-      return { ...alloc, netCashApplied: amountToApply, withholdingAmount: 0, withholdingPercent: 0 };
+      return { ...alloc, netCashApplied: amountToApply, withholdingAmount: 0, withholdingPercent: 0, grossApplied: amountToApply };
     });
 
     newAllocations.forEach(newAlloc => {
@@ -336,7 +350,7 @@ function ConfirmReceiptPageContent() {
                         const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
                         
                         transaction.update(doc(db, 'accountingObligations', ob.id), {
-                            amountPaid: ob.amountPaid + alloc.grossApplied,
+                            amountPaid: (ob.amountPaid || 0) + alloc.grossApplied,
                             balance: newBalance,
                             status: newStatus,
                             lastPaymentDate: data.paymentDate,
@@ -383,8 +397,8 @@ function ConfirmReceiptPageContent() {
         <Form {...form}>
             <form onSubmit={form.handleSubmit(handlePreSubmit)} className="space-y-6">
                 <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft/> กลับ</Button>
-                    <Button type="submit" disabled={isLoading}><Save/> ยืนยันข้อมูล</Button>
+                    <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+                    <Button type="submit" disabled={isLoading}><Save className="mr-2 h-4 w-4"/> ยืนยันข้อมูล</Button>
                 </div>
                 
                 <Card>
@@ -402,7 +416,7 @@ function ConfirmReceiptPageContent() {
                 <Card>
                     <CardHeader className="flex flex-row justify-between items-center">
                         <CardTitle className="text-base">2. จัดสรรยอดเงินตามบิล</CardTitle>
-                        <Button type="button" variant="secondary" onClick={handleAutoAllocate}><Calculator/> จัดสรรอัตโนมัติ</Button>
+                        <Button type="button" variant="secondary" onClick={handleAutoAllocate}><Calculator className="mr-2 h-4 w-4"/> จัดสรรอัตโนมัติ</Button>
                     </CardHeader>
                     <CardContent>
                         <Table>
@@ -410,19 +424,19 @@ function ConfirmReceiptPageContent() {
                             <TableBody>
                                 {fields.map((field, index) => (
                                     <TableRow key={field.id}>
-                                        <TableCell>{field.invoiceDocNo}</TableCell>
+                                        <TableCell className="font-medium">{field.invoiceDocNo}</TableCell>
                                         <TableCell className="text-right">{formatCurrency(field.grossRemaining)}</TableCell>
-                                        <TableCell><FormField control={form.control} name={`allocations.${index}.netCashApplied`} render={({ field }) => (<Input type="number" className="text-right" {...field} />)} /></TableCell>
-                                        <TableCell><FormField control={form.control} name={`allocations.${index}.withholdingPercent`} render={({ field }) => (<Input type="number" className="text-right" {...field} placeholder="เช่น 3"/>)} /></TableCell>
-                                        <TableCell><FormField control={form.control} name={`allocations.${index}.withholdingAmount`} render={({ field }) => (<Input type="number" className="text-right" {...field} />)} /></TableCell>
+                                        <TableCell><FormField control={form.control} name={`allocations.${index}.netCashApplied`} render={({ field }) => (<Input type="number" className="text-right h-8" {...field} />)} /></TableCell>
+                                        <TableCell><FormField control={form.control} name={`allocations.${index}.withholdingPercent`} render={({ field }) => (<Input type="number" className="text-right h-8" {...field} placeholder="เช่น 3"/>)} /></TableCell>
+                                        <TableCell><FormField control={form.control} name={`allocations.${index}.withholdingAmount`} render={({ field }) => (<Input type="number" className="text-right h-8" {...field} />)} /></TableCell>
                                         <TableCell className="text-right font-semibold">{formatCurrency(field.grossApplied)}</TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
                             <TableFooter>
                                 <TableRow>
-                                    <TableCell colSpan={4}>ยอดเงินคงเหลือที่ยังไม่ได้จัดสรร:</TableCell>
-                                    <TableCell colSpan={2} className={cn("text-right font-bold", Math.abs(totals.remainingToAllocate) > 0.01 ? 'text-destructive' : 'text-green-600')}>{formatCurrency(totals.remainingToAllocate)}</TableCell>
+                                    <TableCell colSpan={4} className="text-sm">ยอดเงินคงเหลือที่ยังไม่ได้จัดสรร:</TableCell>
+                                    <TableCell colSpan={2} className={cn("text-right font-bold text-lg", Math.abs(totals.remainingToAllocate) > 0.01 ? 'text-destructive' : 'text-green-600')}>{formatCurrency(totals.remainingToAllocate)}</TableCell>
                                 </TableRow>
                             </TableFooter>
                         </Table>
