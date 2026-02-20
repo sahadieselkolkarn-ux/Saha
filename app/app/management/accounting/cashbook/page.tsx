@@ -19,8 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths, addMonths } from "date-fns";
 
-import { useFirebase } from "@/firebase";
-import { useAuth } from "@/context/auth-context";
+import { useFirebase, useAuth } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
@@ -55,7 +54,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Loader2, PlusCircle, Search, CalendarIcon, 
   ArrowDownCircle, ArrowUpCircle, Trash2, 
-  ChevronLeft, ChevronRight, Filter, AlertCircle, FileText, Wallet
+  ChevronLeft, ChevronRight, Filter, AlertCircle, FileText, Wallet, Save
 } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
 import {
@@ -166,7 +165,7 @@ export default function CashbookPage() {
 
   const summary = useMemo(() => {
     const income = entries
-      .filter(e => e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT')
+      .filter(e => e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN')
       .reduce((sum, e) => sum + e.amount, 0);
     const expense = entries
       .filter(e => e.entryType === 'CASH_OUT')
