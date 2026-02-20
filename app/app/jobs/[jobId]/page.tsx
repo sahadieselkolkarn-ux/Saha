@@ -839,7 +839,7 @@ function JobDetailsPageContent() {
         </DialogContent>
     </Dialog>
 
-      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}>
+      <Dialog open={isReassignDialogOpen} onOpenChange={(open) => !open && setReassignDialogOpen(false)}>
         <DialogContent>
             <DialogHeader><DialogTitle>เปลี่ยนพนักงานซ่อม</DialogTitle></DialogHeader>
             {isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (
@@ -875,7 +875,7 @@ function JobDetailsPageContent() {
               <AlertDialogFooter>
                   <AlertDialogCancel disabled={isApprovalActionLoading}>ยกเลิก</AlertDialogCancel>
                   <AlertDialogAction onClick={handlePartsReady} disabled={isApprovalActionLoading}>
-                      {isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "ยืนยัน"}
+                      {isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "ยืนยัน"}
                   </AlertDialogAction>
               </AlertDialogFooter>
           </AlertDialogContent>
@@ -899,13 +899,5 @@ function JobDetailsPageContent() {
           </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-}
-
-export default function JobDetailsPage() {
-  return (
-    <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
-      <JobDetailsPageContent />
-    </Suspense>
   );
 }
