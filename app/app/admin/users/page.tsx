@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { collection, query, where, getDocs, writeBatch, limit, getCountFromServer } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";

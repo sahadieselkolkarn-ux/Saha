@@ -2,8 +2,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { collection, query, where, orderBy } from 'firebase/firestore';
-import { useFirebase } from '@/firebase/client-provider';
-import { useCollection } from '@/firebase/firestore/use-collection';
+import { useFirebase, useCollection } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
 import { safeFormat } from '@/lib/date-utils';
 

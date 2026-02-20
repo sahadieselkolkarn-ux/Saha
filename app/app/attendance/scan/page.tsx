@@ -4,9 +4,8 @@ import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { collection, serverTimestamp, writeBatch, doc, getDoc } from 'firebase/firestore';
 
-import { useFirebase } from '@/firebase/client-provider';
+import { useFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
-import { useDoc } from '@/firebase/firestore/use-doc';
 import { useToast } from '@/hooks/use-toast';
 import { format, differenceInSeconds } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';

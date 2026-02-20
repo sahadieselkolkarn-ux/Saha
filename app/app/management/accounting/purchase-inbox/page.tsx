@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useAuth } from "@/context/auth-context";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { collection, query, onSnapshot, orderBy, doc, writeBatch, serverTimestamp, getDoc, type FirestoreError, where, runTransaction } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -24,7 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Loader2, Search, MoreHorizontal, CheckCircle, XCircle, Eye } from "lucide-react";
-import { WithId } from "@/firebase/firestore/use-collection";
+import { WithId } from "@/firebase";
 import { PurchaseClaim, AccountingAccount, PurchaseDoc } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import Link from "next/link";

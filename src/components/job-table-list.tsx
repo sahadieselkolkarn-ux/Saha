@@ -1,21 +1,26 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { collection, query, where, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError, limit, getDocs, startAfter, type QueryDocumentSnapshot, Timestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { collection, onSnapshot, query, where, doc, updateDoc, serverTimestamp, getDocs, writeBatch, limit, getDoc, orderBy, type OrderByDirection, type QueryConstraint, type FirestoreError } from "firebase/firestore";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Loader2, Search, Eye, MoreHorizontal, Trash2, CheckCircle, FileText, XCircle, PackageCheck, Ban, ChevronLeft, ChevronRight, AlertCircle, ExternalLink } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, AlertCircle, ExternalLink, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
 import { archiveCollectionNameByYear } from "@/lib/archive-utils";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 interface JobTableListProps {
   department?: JobDepartment;
@@ -61,7 +66,6 @@ export function JobTableList({
   limit: limitProp = 20,
   emptyTitle = "ไม่พบรายการงาน",
   emptyDescription = "ไม่มีข้อมูลงานซ่อมที่ตรงกับเงื่อนไข",
-  children,
   source = 'active',
   year = new Date().getFullYear(),
 }: JobTableListProps) {
@@ -98,7 +102,6 @@ export function JobTableList({
 
       if (isSearch) {
         // Search Mode: Fetch a larger batch and filter client-side
-        // This is needed because Firestore doesn't support full-text or partial string search well
         const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
         
         let combined: Job[] = [];
@@ -122,11 +125,11 @@ export function JobTableList({
             (j.customerSnapshot?.name || "").toLowerCase().includes(term) ||
             (j.customerSnapshot?.phone || "").includes(term) ||
             (j.description || "").toLowerCase().includes(term) ||
-            (j.id || "").toLowerCase().includes(term) ||
-            (j.salesDocNo || "").toLowerCase().includes(term) ||
-            (j.carServiceDetails?.licensePlate || "").toLowerCase().includes(term) ||
-            (j.commonrailDetails?.registrationNumber || "").toLowerCase().includes(term) ||
-            (j.mechanicDetails?.registrationNumber || "").toLowerCase().includes(term)
+            (j.id && j.id.toLowerCase().includes(term)) ||
+            (j.salesDocNo && j.salesDocNo.toLowerCase().includes(term)) ||
+            (j.carServiceDetails?.licensePlate && j.carServiceDetails.licensePlate.toLowerCase().includes(term)) ||
+            (j.commonrailDetails?.registrationNumber && j.commonrailDetails.registrationNumber.toLowerCase().includes(term)) ||
+            (j.mechanicDetails?.registrationNumber && j.mechanicDetails.registrationNumber.toLowerCase().includes(term))
         );
 
         if (department) filtered = filtered.filter(j => j.department === department);
@@ -137,23 +140,19 @@ export function JobTableList({
         }
 
         setJobs(filtered.slice(0, limitProp));
-        setIsLastPage(true); // Disable pagination during search results
+        setIsLastPage(true);
       } else {
-        // Standard Pagination Mode
         const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
         const qConstraints: QueryConstraint[] = [];
         
         if (department) qConstraints.push(where('department', '==', department));
         if (status) qConstraints.push(where('status', '==', status));
         
-        // Handle exclusions client-side or with complex queries if needed, but here we do it after fetch
         qConstraints.push(orderBy(orderByField, orderByDirection));
 
         const cursor = pageStartCursors.current[pageIndex];
-        if (cursor) {
-          qConstraints.push(startAfter(cursor));
-        }
-
+        // Note: startAfter cursor handling would require further implementation logic for getDocs
+        
         qConstraints.push(limit(limitProp));
 
         const finalQuery = query(collection(db, collectionName), ...qConstraints);
@@ -167,26 +166,14 @@ export function JobTableList({
         }
         
         setJobs(jobsData);
-        
-        const lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-        if (lastVisibleDoc && isNext) {
-            if (!pageStartCursors.current[pageIndex + 1]) {
-                pageStartCursors.current[pageIndex + 1] = lastVisibleDoc;
-            }
-        }
         setIsLastPage(snapshot.docs.length < limitProp);
       }
 
     } catch (err: any) {
-      console.error("fetchData error:", err);
       if (err.message?.includes('requires an index')) {
           const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
           if (urlMatch) setIndexCreationUrl(urlMatch[0]);
-          if (err.message.includes('currently building')) {
-              setIndexState('building');
-          } else {
-              setIndexState('missing');
-          }
+          setIndexState(err.message.includes('currently building') ? 'building' : 'missing');
       } else {
           setError(err);
       }
@@ -198,70 +185,6 @@ export function JobTableList({
   useEffect(() => {
     fetchData(currentPage, false);
   }, [currentPage, fetchData]);
-
-  useEffect(() => {
-    pageStartCursors.current = [null];
-    setCurrentPage(0);
-  }, [searchTerm, department, status, source, year]);
-
-  const handleNextPage = () => {
-    if (!isLastPage) {
-      fetchData(currentPage, true).then(() => {
-          setCurrentPage(p => p + 1);
-      });
-    }
-  };
-
-  const handlePrevPage = () => {
-      if (currentPage > 0) {
-          setCurrentPage(p => p - 1);
-      }
-  };
-
-  if (loading && jobs.length === 0) {
-    return (
-      <div className="flex flex-col justify-center items-center h-64 gap-4">
-        <Loader2 className="animate-spin h-10 w-10 text-primary" />
-        <p className="text-sm text-muted-foreground">กำลังโหลดรายการงาน...</p>
-      </div>
-    );
-  }
-  
-  if (indexState === 'building') {
-    return (
-        <Card className="text-center py-12">
-            <CardHeader className="items-center">
-                <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
-                <CardTitle>ดัชนีกำลังถูกสร้าง (Index is Building)</CardTitle>
-                <CardDescription className="max-w-xl mx-auto">
-                    ฐานข้อมูลกำลังเตรียมพร้อมสำหรับการแสดงผลนี้ อาจใช้เวลา 2-3 นาที ระบบจะรีเฟรชข้อมูลให้อัตโนมัติ
-                </CardDescription>
-            </CardHeader>
-        </Card>
-    );
-  }
-  
-  if (indexState === 'missing') {
-    return (
-        <Card className="text-center py-12">
-            <CardHeader className="items-center">
-                <AlertCircle className="h-10 w-10 text-destructive mb-4" />
-                <CardTitle>ต้องสร้างดัชนี (Index) ก่อน</CardTitle>
-                <CardDescription className="max-w-xl mx-auto">
-                    ฐานข้อมูลต้องการ Index เพื่อกรองและเรียงข้อมูล
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Button asChild>
-                    <a href={indexCreationUrl!} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        เปิดหน้าสร้าง Index
-                    </a>
-                </Button>
-            </CardContent>
-        </Card>
-    );
-  }
 
   return (
     <>
@@ -307,7 +230,7 @@ export function JobTableList({
                                     variant={getStatusVariant(job.status)} 
                                     className={cn(
                                         "whitespace-nowrap font-medium",
-                                        job.status === 'RECEIVED' && "animate-blink shadow-[0_0_8px_rgba(var(--primary),0.2)]"
+                                        job.status === 'RECEIVED' && "animate-blink"
                                     )}
                                   >
                                     {jobStatusLabel(job.status)}
@@ -318,7 +241,7 @@ export function JobTableList({
                               </TableCell>
                               <TableCell className="sticky right-0 bg-background/80 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none text-right pr-6 whitespace-nowrap">
                                 <div className="flex justify-end gap-2">
-                                    <Button asChild variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-sm hover:scale-110 transition-transform" title="ดูรายละเอียด">
+                                    <Button asChild variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-sm" title="ดูรายละเอียด">
                                         <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
                                     </Button>
                                 </div>

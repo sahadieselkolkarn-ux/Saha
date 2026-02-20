@@ -1,10 +1,8 @@
-
 "use client";
 
 import { useParams } from "next/navigation";
 import { doc } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useFirebase, useDoc } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
 import { JobList } from "@/components/job-list";
 import { Loader2 } from "lucide-react";

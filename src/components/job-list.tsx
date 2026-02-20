@@ -2,73 +2,33 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  where, 
-  orderBy, 
-  doc, 
-  updateDoc, 
-  serverTimestamp, 
-  deleteDoc,
-  writeBatch
-} from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import Image from "next/image";
+import { collection, onSnapshot, query, where, doc, updateDoc, serverTimestamp, getDocs, writeBatch, limit, getDoc, orderBy } from "firebase/firestore";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardHeader, 
-  CardTitle 
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Loader2, 
-  Search, 
-  Eye, 
-  MoreHorizontal, 
-  Trash2, 
-  CheckCircle,
-  FileText
-} from "lucide-react";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Loader2, Search, Eye, UserCheck, MoreHorizontal, Trash2, CheckCircle, FileText, XCircle, PackageCheck, Ban } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Job, JobStatus, JobDepartment, UserProfile } from "@/lib/types";
+import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
-import type { Job, JobStatus, JobDepartment } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 interface JobListProps {
   department?: JobDepartment;
   status?: JobStatus | JobStatus[];
+  excludeStatus?: JobStatus | JobStatus[];
   assigneeUid?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -93,11 +53,12 @@ const getStatusVariant = (status: Job['status']) => {
     default:
       return 'outline';
   }
-};
+}
 
 export function JobList({ 
   department, 
   status,
+  excludeStatus,
   assigneeUid,
   emptyTitle = "ไม่พบรายการงาน",
   emptyDescription = "ขณะนี้ยังไม่มีงานที่ตรงกับเงื่อนไขการค้นหา",
@@ -105,15 +66,29 @@ export function JobList({
   searchTerm: externalSearchTerm
 }: JobListProps) {
   const { db } = useFirebase();
+  const { profile } = useAuth();
   const { toast } = useToast();
   const [internalSearchTerm, setInternalSearchTerm] = useState("");
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [availableWorkers, setAvailableWorkers] = useState<WithId<UserProfile>[]>([]);
+  const [isFetchingWorkers, setIsFetchingWorkers] = useState(false);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
+  const [isAssigning, setIsAssigning] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
-  const [jobToDelete, setJobToDelete] = useState<any>(null);
+  const [jobToDelete, setJobToDelete] = useState<Job | null>(null);
+  const [isActionLoading, setIsActionLoading] = useState(false);
 
   const activeSearchTerm = externalSearchTerm !== undefined ? externalSearchTerm : internalSearchTerm;
 
-  const jobsQuery = useMemo(() => {
-    if (!db) return null;
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const isOfficeOrAdminOrMgmt = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
+
+  useEffect(() => {
+    if (!db) return;
+    setLoading(true);
     let q = query(collection(db, "jobs"), orderBy("lastActivityAt", "desc"));
     
     if (department) {
@@ -124,18 +99,39 @@ export function JobList({
       q = query(q, where("assigneeUid", "==", assigneeUid));
     }
 
-    return q;
-  }, [db, department, assigneeUid]);
-
-  const { data: allJobs, isLoading, error } = useCollection<Job>(jobsQuery);
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        const jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+        setJobs(jobsData);
+        setLoading(false);
+      }, 
+      async (error: any) => {
+        if (error.code === 'permission-denied') {
+          const permissionError = new FirestorePermissionError({
+            path: 'jobs',
+            operation: 'list',
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        } else {
+          toast({ variant: "destructive", title: "Error loading jobs", description: error.message });
+        }
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [db, department, assigneeUid, toast]);
 
   const filteredJobs = useMemo(() => {
-    if (!allJobs) return [];
-    let result = allJobs;
+    let result = jobs;
 
     if (status) {
       const statusArray = Array.isArray(status) ? status : [status];
       result = result.filter(j => statusArray.includes(j.status));
+    }
+
+    if (excludeStatus) {
+      const excludeArray = Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
+      result = result.filter(j => !excludeArray.includes(j.status));
     }
 
     if (activeSearchTerm.trim()) {
@@ -149,39 +145,113 @@ export function JobList({
     }
 
     return result;
-  }, [allJobs, status, activeSearchTerm]);
+  }, [jobs, status, excludeStatus, activeSearchTerm]);
 
-  const handleDelete = async () => {
-    if (!db || !jobToDelete) return;
-    const docRef = doc(db, "jobs", jobToDelete.id);
-    deleteDoc(docRef).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: docRef.path,
-        operation: 'delete',
-      } satisfies SecurityRuleContext);
-      errorEmitter.emit('permission-error', permissionError);
-    });
-    setJobToDelete(null);
-    setIsDeleteAlertOpen(false);
-  };
-
-  const updateStatus = async (jobId: string, newStatus: JobStatus) => {
+  const handleOpenAssignDialog = async (job: Job) => {
     if (!db) return;
-    const docRef = doc(db, "jobs", jobId);
-    const updateData = { 
-      status: newStatus,
-      lastActivityAt: serverTimestamp()
-    };
+    setSelectedJobId(job.id);
+    setSelectedWorkerId(null);
+    setIsAssignDialogOpen(true);
+    setIsFetchingWorkers(true);
+    try {
+      const q = query(collection(db, "users"), where("department", "==", job.department), where("role", "==", "WORKER"), where("status", "==", "ACTIVE"));
+      const snapshot = await getDocs(q);
+      const workers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as WithId<UserProfile>));
+      setAvailableWorkers(workers);
+    } catch (error) {
+      toast({ variant: 'destructive', title: "Failed to fetch workers" });
+    } finally {
+      setIsFetchingWorkers(false);
+    }
+  };
+
+  const handleAssignJob = async () => {
+    if (!db || !profile || !selectedJobId || !selectedWorkerId) return;
+    const worker = availableWorkers.find(w => w.id === selectedWorkerId);
+    if (!worker) return;
     
-    updateDoc(docRef, updateData).catch(async (serverError) => {
+    setIsAssigning(true);
+    const jobRef = doc(db, "jobs", selectedJobId);
+    const activityRef = doc(collection(db, "jobs", selectedJobId, "activities"));
+    
+    const batch = writeBatch(db);
+    batch.update(jobRef, { 
+      assigneeUid: worker.id, 
+      assigneeName: worker.displayName, 
+      status: 'IN_PROGRESS', 
+      lastActivityAt: serverTimestamp() 
+    });
+    batch.set(activityRef, { 
+      text: `มอบหมายงานให้: ${worker.displayName}`, 
+      userName: profile.displayName, 
+      userId: profile.uid, 
+      createdAt: serverTimestamp() 
+    });
+    
+    batch.commit().then(() => {
+      toast({ title: "Assign Successful", description: `Job assigned to ${worker.displayName}` });
+      setIsAssignDialogOpen(false);
+    }).catch(async (error) => {
       const permissionError = new FirestorePermissionError({
-        path: docRef.path,
+        path: jobRef.path,
         operation: 'update',
-        requestResourceData: updateData,
-      } satisfies SecurityRuleContext);
+        requestResourceData: { assigneeUid: worker.id },
+      });
       errorEmitter.emit('permission-error', permissionError);
+    }).finally(() => {
+      setIsAssigning(false);
     });
   };
+
+  const updateJobStatus = async (jobId: string, newStatus: JobStatus, activityText: string) => {
+    if (!db || !profile) return;
+    setIsActionLoading(true);
+    const jobRef = doc(db, "jobs", jobId);
+    const activityRef = doc(collection(db, "jobs", jobId, "activities"));
+    
+    const batch = writeBatch(db);
+    batch.update(jobRef, { status: newStatus, lastActivityAt: serverTimestamp() });
+    batch.set(activityRef, { text: activityText, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    
+    batch.commit().then(() => {
+      toast({ title: "Status Updated", description: `Job status changed to ${jobStatusLabel(newStatus)}` });
+    }).catch(async (error) => {
+      const permissionError = new FirestorePermissionError({
+        path: jobRef.path,
+        operation: 'update',
+        requestResourceData: { status: newStatus },
+      });
+      errorEmitter.emit('permission-error', permissionError);
+    }).finally(() => {
+      setIsActionLoading(false);
+    });
+  };
+
+  const handleDeleteJob = async () => {
+    if (!db || !jobToDelete) return;
+    setIsActionLoading(true);
+    const jobRef = doc(db, "jobs", jobToDelete.id);
+    deleteDoc(jobRef).then(() => {
+      toast({ title: "Job Deleted", description: "The job has been permanently removed." });
+      setIsDeleteAlertOpen(false);
+    }).catch(async (error) => {
+      const permissionError = new FirestorePermissionError({
+        path: jobRef.path,
+        operation: 'delete',
+      });
+      errorEmitter.emit('permission-error', permissionError);
+    }).finally(() => {
+      setIsActionLoading(false);
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center p-12">
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -198,120 +268,180 @@ export function JobList({
           </div>
         )}
 
-        <div className="border rounded-md bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>วันที่รับงาน</TableHead>
-                <TableHead>เลขที่ใบงาน</TableHead>
-                <TableHead>ลูกค้า</TableHead>
-                {!department && <TableHead>แผนก</TableHead>}
-                <TableHead>สถานะ</TableHead>
-                <TableHead className="text-right">จัดการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center h-24">
-                    <Loader2 className="mx-auto animate-spin" />
-                  </TableCell>
-                </TableRow>
-              ) : error ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center h-24 text-destructive">
-                    เกิดข้อผิดพลาดในการโหลดข้อมูล
-                  </TableCell>
-                </TableRow>
-              ) : filteredJobs && filteredJobs.length > 0 ? (
-                filteredJobs.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell className="text-sm">
-                      {safeFormat(job.createdAt, 'dd/MM/yyyy')}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {job.id.substring(0, 8)}...
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{job.customerSnapshot.name}</div>
-                      <div className="text-xs text-muted-foreground">{job.customerSnapshot.phone}</div>
-                    </TableCell>
-                    {!department && <TableCell>{deptLabel(job.department)}</TableCell>}
-                    <TableCell>
-                      <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button asChild variant="ghost" size="icon" title="ดูรายละเอียด">
-                          <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>
-                        </Button>
-                        
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {actionPreset === 'waitingApprove' && (
-                              <DropdownMenuItem onClick={() => updateStatus(job.id, 'PENDING_PARTS')}>
-                                <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                                อนุมัติ (รออะไหล่)
-                              </DropdownMenuItem>
-                            )}
-                            {actionPreset === 'pendingPartsReady' && (
-                              <DropdownMenuItem onClick={() => updateStatus(job.id, 'IN_REPAIR_PROCESS')}>
-                                <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                                อะไหล่พร้อม (เริ่มซ่อม)
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem asChild>
-                              <Link href={`/app/jobs/${job.id}`}>
-                                <FileText className="mr-2 h-4 w-4" />
-                                ดูรายละเอียด
-                              </Link>
+        {filteredJobs.length === 0 ? (
+          <Card className="text-center py-12">
+            <CardHeader>
+              <CardTitle>{emptyTitle}</CardTitle>
+              <CardDescription>{emptyDescription}</CardDescription>
+            </CardHeader>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredJobs.map((job) => (
+              <Card key={job.id} className="flex flex-col h-full overflow-hidden">
+                <div className="relative h-48 bg-muted">
+                  {job.photos && job.photos.length > 0 ? (
+                    <Image
+                      src={job.photos[0]}
+                      alt={job.description}
+                      fill
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                      No Image
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2">
+                    <Badge variant={getStatusVariant(job.status)}>
+                      {jobStatusLabel(job.status)}
+                    </Badge>
+                  </div>
+                </div>
+                <CardHeader className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">{job.customerSnapshot.name}</CardTitle>
+                      <CardDescription className="text-sm">{job.customerSnapshot.phone}</CardDescription>
+                    </div>
+                    {isOfficeOrAdminOrMgmt && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/app/jobs/${job.id}`}>View Details</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {job.status === 'RECEIVED' && (
+                            <DropdownMenuItem onClick={() => handleOpenAssignDialog(job)}>
+                              Assign Technician
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => {
-                                setJobToDelete(job);
-                                setIsDeleteAlertOpen(true);
-                              }}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              ลบใบงาน
+                          )}
+                          {job.status === 'WAITING_APPROVE' && (
+                            <>
+                              <DropdownMenuItem onClick={() => updateJobStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติซ่อม')}>
+                                Customer Approved
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateJobStatus(job.id, 'CLOSED', 'ลูกค้าไม่อนุมัติ')}>
+                                Customer Declined
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {job.status === 'PENDING_PARTS' && (
+                            <DropdownMenuItem onClick={() => updateJobStatus(job.id, 'IN_REPAIR_PROCESS', 'อะไหล่พร้อมซ่อม')}>
+                              Parts Ready
                             </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    {emptyTitle}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            className="text-destructive"
+                            onClick={() => {
+                              setJobToDelete(job);
+                              setIsDeleteAlertOpen(true);
+                            }}
+                          >
+                            Delete Job
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 pt-0 flex-grow">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Description:</div>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {job.description}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mt-4">
+                      <span className="font-semibold">{deptLabel(job.department)}</span>
+                      <span>•</span>
+                      <span>Updated {safeFormat(job.lastActivityAt, 'dd/MM/yy HH:mm')}</span>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="p-4 pt-0">
+                  <Button asChild variant="secondary" className="w-full">
+                    <Link href={`/app/jobs/${job.id}`}>View Details</Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
+
+      <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Assign Technician</DialogTitle>
+            <DialogDescription>
+              Select a technician from the {selectedJobId ? jobs.find(j => j.id === selectedJobId)?.department : ''} department.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {isFetchingWorkers ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Select Technician</Label>
+                  <Select value={selectedWorkerId || ""} onValueChange={setSelectedWorkerId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a technician..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableWorkers.length > 0 ? (
+                        availableWorkers.map((worker) => (
+                          <SelectItem key={worker.id} value={worker.id}>
+                            {worker.displayName}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="p-4 text-center text-sm text-muted-foreground">
+                          No technicians available in this department.
+                        </div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAssignDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAssignJob} disabled={isAssigning || !selectedWorkerId}>
+              {isAssigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Assign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบใบงาน?</AlertDialogTitle>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              การลบใบงานจะไม่สามารถกู้คืนได้ คุณแน่ใจหรือไม่ที่จะลบใบงานของ {jobToDelete?.customerSnapshot?.name}?
+              This action cannot be undone. This will permanently delete the job record from the database.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
-              ยืนยันการลบ
+            <AlertDialogCancel disabled={isActionLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteJob} 
+              disabled={isActionLoading}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isActionLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
