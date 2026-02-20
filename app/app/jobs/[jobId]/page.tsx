@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from 'next/link';
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, orderBy, addDoc, writeBatch, where, getDocs, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, where, getDocs, getDoc, writeBatch, orderBy } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -56,7 +56,6 @@ const getStatusVariant = (status: Job['status']) => {
   }
 }
 
-// Helper for safe timestamp comparison
 const getSafeTime = (val: any): number => {
     if (!val) return 0;
     if (typeof val.toMillis === 'function') return val.toMillis();
@@ -74,7 +73,6 @@ function JobDetailsPageContent() {
   const { profile } = useAuth();
   const { toast } = useToast();
   
-  // Extract jobId safely
   const jobId = useMemo(() => {
     const id = params?.jobId;
     return (Array.isArray(id) ? id[0] : id) as string;
@@ -143,58 +141,43 @@ function JobDetailsPageContent() {
   const isStaff = profile?.role !== 'VIEWER';
   const isUserAdmin = profile?.role === 'ADMIN';
   const isManager = profile?.role === 'MANAGER';
+  const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
   const isService = (profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC') && isStaff;
   
-  // Can edit based on User's request: Admin, Office, Service (Non-Viewer)
-  const canEditDetails = isStaff && (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT' || isService);
-  
-  const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
+  const canEditDetails = isStaff && (isOfficeOrAdminOrMgmt || isService);
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
+  
+  // General UI view lock
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || job?.status === 'WAITING_CUSTOMER_PICKUP' || profile?.role === 'VIEWER';
-  const isOfficeOrAdmin = isOfficeOrAdminOrMgmt;
+  
+  // Special permission for photos and activities: Allow Office/Admin even in WAITING_CUSTOMER_PICKUP
+  const canManagePhotos = isStaff && (isOfficeOrAdminOrMgmt || isService) && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
 
   useEffect(() => {
     if (!db || !jobId) return;
-
     setLoadingDocs(true);
     const docsQuery = query(collection(db, "documents"), where("jobId", "==", jobId));
-
     const unsubscribeDocs = onSnapshot(docsQuery, (snapshot) => {
         const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType));
         const grouped: Partial<Record<DocType, DocumentType[]>> = {};
         const relevantDocTypes: DocType[] = ['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'];
-
         for (const docItem of allDocs) {
             if (relevantDocTypes.includes(docItem.docType)) {
-                if (!grouped[docItem.docType]) {
-                    grouped[docItem.docType] = [];
-                }
+                if (!grouped[docItem.docType]) grouped[docItem.docType] = [];
                 grouped[docItem.docType]!.push(docItem);
             }
         }
-
         for (const docType in grouped) {
-            grouped[docType as DocType]!.sort((a, b) => {
-                const dateA = new Date(a.docDate).getTime();
-                const dateB = new Date(b.docDate).getTime();
-                if (dateB !== dateA) return dateB - dateA;
-                
-                // Fixed: Use safe timestamp comparison to avoid toMillis error
-                return getSafeTime(b.createdAt) - getSafeTime(a.createdAt);
-            });
+            grouped[docType as DocType]!.sort((a, b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt));
         }
-        
         setRelatedDocuments(grouped);
         setLoadingDocs(false);
     }, (error) => {
         console.error("Error fetching related documents:", error);
-        toast({ variant: "destructive", title: "Could not load related documents." });
         setLoadingDocs(false);
     });
-
     return () => unsubscribeDocs();
-  }, [db, jobId, toast]);
-
+  }, [db, jobId]);
 
   useEffect(() => {
     if (!jobId || !db) return;
@@ -209,17 +192,15 @@ function JobDetailsPageContent() {
       } else {
         setNotFoundInPrimary(true);
       }
-    },
-    (error) => {
+    }, (error) => {
       toast({ variant: "destructive", title: "Error", description: "Failed to load job details."});
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [jobId, toast, db]);
+  }, [jobId, db, toast]);
 
   useEffect(() => {
     if (!notFoundInPrimary || !db || !jobId) return;
-
     setLoading(true);
     const searchArchives = async () => {
       const currentYear = new Date().getFullYear();
@@ -236,13 +217,10 @@ function JobDetailsPageContent() {
             setLoading(false);
             return;
           }
-        } catch (e) {
-          console.log(`Could not search archive ${archiveColName}`, e);
-        }
+        } catch (e) {}
       }
       setLoading(false);
     };
-
     searchArchives();
   }, [notFoundInPrimary, db, jobId]);
 
@@ -295,13 +273,9 @@ function JobDetailsPageContent() {
   };
 
   const handleOpenEditVehicleDialog = () => {
-    if (job?.department === 'CAR_SERVICE') {
-        setVehicleEditData(job.carServiceDetails || {});
-    } else if (job?.department === 'COMMONRAIL') {
-        setVehicleEditData(job.commonrailDetails || {});
-    } else if (job?.department === 'MECHANIC') {
-        setVehicleEditData(job.mechanicDetails || {});
-    }
+    if (job?.department === 'CAR_SERVICE') setVehicleEditData(job.carServiceDetails || {});
+    else if (job?.department === 'COMMONRAIL') setVehicleEditData(job.commonrailDetails || {});
+    else if (job?.department === 'MECHANIC') setVehicleEditData(job.mechanicDetails || {});
     setIsEditVehicleDialogOpen(true);
   };
 
@@ -333,7 +307,7 @@ function JobDetailsPageContent() {
         const jobDocRef = doc(db, "jobs", jobId);
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
-        batch.set(activityDocRef, { text: `เปลี่ยนสถานะเป็น "${jobStatusLabel('DONE')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
+        batch.set(activityDocRef, { text: `เปลี่ยนสถานะเป็น "${jobStatusLabel('DONE')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         await batch.commit();
         toast({ title: "Job Marked as Done" });
     } catch (error: any) {
@@ -351,9 +325,9 @@ function JobDetailsPageContent() {
         const jobDocRef = doc(db, "jobs", jobId);
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.update(jobDocRef, { status: 'WAITING_QUOTATION', lastActivityAt: serverTimestamp() });
-        batch.set(activityDocRef, { text: `แจ้งขอเสนอราคา`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
+        batch.set(activityDocRef, { text: `แจ้งขอเสนอราคา`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         await batch.commit();
-        toast({ title: "Quotation Requested", description: "Job status has been updated to WAITING_QUOTATION." });
+        toast({ title: "Quotation Requested" });
     } catch (error: any) {
         toast({ variant: "destructive", title: "Request Failed", description: error.message });
     } finally {
@@ -369,7 +343,7 @@ function JobDetailsPageContent() {
       const jobDocRef = doc(db, "jobs", jobId);
       const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
       batch.update(jobDocRef, { technicalReport: techReport, lastActivityAt: serverTimestamp() });
-      batch.set(activityDocRef, { text: `อัปเดตผลการตรวจ/งานที่ทำ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
+      batch.set(activityDocRef, { text: `อัปเดตผลการตรวจ/งานที่ทำ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
       await batch.commit();
       toast({ title: `Technical report updated` });
     } catch (error: any) {
@@ -382,12 +356,7 @@ function JobDetailsPageContent() {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      const totalPhotos = (job?.photos?.length || 0) + newPhotos.length + files.length;
-      if (totalPhotos > 4) {
-        toast({ variant: "destructive", title: "You can only have up to 4 photos in total." });
-        return;
-      }
-       files.forEach(file => {
+      files.forEach(file => {
           if (file.size > 5 * 1024 * 1024) {
               toast({ variant: "destructive", title: `File ${file.name} is too large.`, description: "Max size is 5MB." });
               return;
@@ -434,66 +403,33 @@ function JobDetailsPageContent() {
 
   const handleQuickPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !jobId || !db || !storage || !profile) return;
-    
     setIsAddingPhotos(true);
     const files = Array.from(e.target.files);
-    
     const currentPhotoCount = job?.photos?.length || 0;
-    if (currentPhotoCount + files.length > 4) {
-      toast({ variant: "destructive", title: "คุณสามารถอัปโหลดรูปภาพรวมกันได้ไม่เกิน 4 รูปค่ะ" });
+    if (currentPhotoCount + files.length > 8) {
+      toast({ variant: "destructive", title: "คุณสามารถอัปโหลดรูปภาพรวมกันได้ไม่เกิน 8 รูปค่ะ" });
       setIsAddingPhotos(false);
       e.target.value = '';
       return;
     }
-
-    const validFiles = files.filter(file => {
-        if (file.size > 5 * 1024 * 1024) {
-            toast({ variant: "destructive", title: `ไฟล์ ${file.name} ใหญ่เกินไป`, description: "ขนาดสูงสุดที่รองรับคือ 5MB ค่ะ" });
-            return false;
-        }
-        return true;
-    });
-
-    if (validFiles.length === 0) {
-        setIsAddingPhotos(false);
-        e.target.value = '';
-        return;
-    }
-
     try {
         const jobDocRef = job?.isArchived 
           ? doc(db, archiveCollectionNameByYear(new Date(job.closedDate!).getFullYear()), jobId)
           : doc(db, "jobs", jobId);
-        
         const activitiesColRef = collection(jobDocRef, "activities");
         const photoURLs: string[] = [];
-
-        for (const photo of validFiles) {
+        for (const photo of files) {
             const photoRef = ref(storage, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
             await uploadBytes(photoRef, photo);
-            const url = await getDownloadURL(photoRef);
-            photoURLs.push(url);
+            photoURLs.push(await getDownloadURL(photoRef));
         }
-
         const batch = writeBatch(db);
-        batch.set(doc(activitiesColRef), { 
-          text: `อัปโหลดรูปประกอบงานเพิ่ม ${validFiles.length} รูป`, 
-          userName: profile.displayName, 
-          userId: profile.uid, 
-          createdAt: serverTimestamp(), 
-          photos: photoURLs 
-        });
-        
-        batch.update(jobDocRef, { 
-          photos: arrayUnion(...photoURLs), 
-          lastActivityAt: serverTimestamp() 
-        });
-
+        batch.set(doc(activitiesColRef), { text: `อัปโหลดรูปประกอบงานเพิ่ม ${files.length} รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
+        batch.update(jobDocRef, { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() });
         await batch.commit();
-        toast({title: `อัปโหลดรูปภาพ ${validFiles.length} รูปสำเร็จแล้วค่ะ`});
+        toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
     } catch(error: any) {
-        console.error("Upload error:", error);
-        toast({variant: "destructive", title: "ไม่สามารถอัปโหลดรูปภาพได้", description: error.message});
+        toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message});
     } finally {
         setIsAddingPhotos(false);
         e.target.value = '';
@@ -505,13 +441,11 @@ function JobDetailsPageContent() {
     if (!transferDepartment || !job || !db || !profile) return;
     setIsTransferring(true);
     try {
-        const jobDocRef = doc(db, "jobs", job.id);
-        const activitiesColRef = collection(db, "jobs", job.id, "activities");
         const batch = writeBatch(db);
-        batch.update(jobDocRef, { department: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
-        batch.set(doc(activitiesColRef), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${transferDepartment} และคืนงานเข้าคิว. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
+        batch.update(doc(db, "jobs", job.id), { department: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
+        batch.set(doc(collection(db, "jobs", job.id, "activities")), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${transferDepartment}. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         await batch.commit();
-        toast({ title: 'โอนย้ายแผนกสำเร็จ', description: `งานถูกย้ายไปยังแผนก ${transferDepartment}`});
+        toast({ title: 'โอนย้ายแผนกสำเร็จ' });
         setIsTransferDialogOpen(false);
     } catch(error: any) {
         toast({ variant: "destructive", title: "การโอนย้ายล้มเหลว", description: error.message });
@@ -544,10 +478,8 @@ function JobDetailsPageContent() {
     setIsReassigning(true);
     try {
       const batch = writeBatch(db);
-      const jobDocRef = doc(db, "jobs", job.id);
-      const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
-      batch.update(jobDocRef, { assigneeUid: newWorker.uid, assigneeName: newWorker.displayName, lastActivityAt: serverTimestamp() });
-      batch.set(activityDocRef, { text: `เปลี่ยนพนักงานซ่อม จาก ${job.assigneeName || 'ยังไม่ได้มอบหมาย'} เป็น ${newWorker.displayName}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: [] });
+      batch.update(doc(db, "jobs", job.id), { assigneeUid: newWorker.uid, assigneeName: newWorker.displayName, lastActivityAt: serverTimestamp() });
+      batch.set(doc(collection(db, "jobs", job.id, "activities")), { text: `เปลี่ยนพนักงานซ่อมเป็น ${newWorker.displayName}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
       await batch.commit();
       toast({ title: "มอบหมายงานใหม่สำเร็จ" });
       setIsReassignDialogOpen(false);
@@ -580,14 +512,12 @@ function JobDetailsPageContent() {
     setIsApprovalActionLoading(true);
     try {
         const batch = writeBatch(db);
-        const jobDocRef = doc(db, "jobs", jobId);
-        const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         if (rejectionChoice === 'with_cost') {
-            batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
-            batch.set(activityDocRef, { text: `ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+            batch.update(doc(db, "jobs", jobId), { status: 'DONE', lastActivityAt: serverTimestamp() });
+            batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         } else {
-            batch.update(jobDocRef, { status: 'CLOSED', lastActivityAt: serverTimestamp() });
-            batch.set(activityDocRef, { text: `ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+            batch.update(doc(db, "jobs", jobId), { status: 'CLOSED', lastActivityAt: serverTimestamp() });
+            batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         }
         await batch.commit();
         toast({ title: "Job Rejected" });
@@ -601,12 +531,12 @@ function JobDetailsPageContent() {
   };
 
   const handlePartsReady = async () => {
-    if (!jobId || !db || !profile || !job) return;
+    if (!jobId || !db || !profile) return;
     setIsApprovalActionLoading(true);
     try {
         const batch = writeBatch(db);
         batch.update(doc(db, "jobs", jobId), { status: 'IN_REPAIR_PROCESS', lastActivityAt: serverTimestamp() });
-        batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "${jobStatusLabel('IN_REPAIR_PROCESS')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+        batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "กำลังดำเนินการซ่อม"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
         await batch.commit();
         toast({ title: "Parts Ready" });
     } catch (error: any) {
@@ -625,8 +555,6 @@ function JobDetailsPageContent() {
 
   if (loading) return <div className="flex justify-center items-center h-full"><Loader2 className="animate-spin h-8 w-8" /></div>;
   if (!job) return <PageHeader title="ไม่พบงาน" />;
-
-  const statusText = jobStatusLabel(job.status) || job.status;
 
   return (
     <>
@@ -678,23 +606,22 @@ function JobDetailsPageContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
-                {canEditDetails && (
+                {canManagePhotos && (
                     <div className="flex gap-2">
-                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
+                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 8}>
                             <label htmlFor="camera-photo-upload" className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                                 ถ่ายรูปเพิ่ม
                             </label>
                         </Button>
-                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly}>
+                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 8}>
                             <label htmlFor="library-photo-upload" className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
                                 เลือกรูปถ่าย
                             </label>
                         </Button>
-                        
-                        <input id="camera-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
-                        <input id="library-photo-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 4 || isViewOnly} />
+                        <input id="camera-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} />
+                        <input id="library-photo-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} />
                     </div>
                 )}
             </CardHeader>
@@ -724,27 +651,27 @@ function JobDetailsPageContent() {
           <Card>
               <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={isViewOnly} />
+                <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={!canManagePhotos} />
                 {(photoPreviews.length > 0) && (
                   <div className="grid grid-cols-4 gap-2">
                     {photoPreviews.map((src, i) => (
                       <div key={i} className="relative">
                         <Image src={src} alt="preview" width={100} height={100} className="rounded-md object-cover w-full aspect-square" />
-                        <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-5 w-5" onClick={() => removeNewPhoto(i)} disabled={isViewOnly}><X className="h-3 w-3" /></Button>
+                        <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-5 w-5" onClick={() => removeNewPhoto(i)}><X className="h-3 w-3" /></Button>
                       </div>
                     ))}
                   </div>
                 )}
                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || isViewOnly}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
-                    <Button asChild variant="outline" disabled={isViewOnly || isSubmittingNote || isAddingPhotos}>
+                    <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || !canManagePhotos}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
+                    <Button asChild variant="outline" disabled={!canManagePhotos || isSubmittingNote || isAddingPhotos}>
                         <label className="cursor-pointer flex items-center"><Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม
-                            <Input id="activity-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={isViewOnly || isSubmittingNote || isAddingPhotos} />
+                            <Input id="activity-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} />
                         </label>
                     </Button>
-                    {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline">{isRequestingQuotation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4"/>} แจ้งเสนอราคา</Button>}
+                    {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isViewOnly} variant="outline"><CheckCircle className="mr-2 h-4 w-4" /> จบงาน</Button>}
-                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canEditDetails && <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote || isViewOnly} variant="outline" className="border-primary text-primary hover:bg-primary/10"><Receipt className="mr-2 h-4 w-4" /> ออกบิล</Button>}
+                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canEditDetails && <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote} variant="outline" className="border-primary text-primary hover:bg-primary/10"><Receipt className="mr-2 h-4 w-4" /> ออกบิล</Button>}
                 </div>
               </CardContent>
             </Card>
@@ -782,7 +709,7 @@ function JobDetailsPageContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-base font-semibold">Status</CardTitle>
-              <Badge variant={getStatusVariant(job.status)}>{statusText}</Badge>
+              <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
             </CardHeader>
           </Card>
           <Card>
@@ -823,11 +750,11 @@ function JobDetailsPageContent() {
               <CardContent className="space-y-2">
                 {job.status === 'WAITING_APPROVE' && (
                   <>
-                    <Button onClick={() => setIsApproveConfirmOpen(true)} className="w-full" variant="outline" disabled={isViewOnly || isApprovalActionLoading}><Check className="mr-2 h-4 w-4 text-green-600"/> ลูกค้าอนุมัติ</Button>
-                    <Button onClick={() => setIsRejectChoiceOpen(true)} className="w-full" variant="destructive" disabled={isViewOnly || isApprovalActionLoading}><Ban className="mr-2 h-4 w-4"/> ลูกค้าไม่อนุมัติ</Button>
+                    <Button onClick={() => setIsApproveConfirmOpen(true)} className="w-full" variant="outline" disabled={isApprovalActionLoading}><Check className="mr-2 h-4 w-4 text-green-600"/> ลูกค้าอนุมัติ</Button>
+                    <Button onClick={() => setIsRejectChoiceOpen(true)} className="w-full" variant="destructive" disabled={isApprovalActionLoading}><Ban className="mr-2 h-4 w-4"/> ลูกค้าไม่อนุมัติ</Button>
                   </>
                 )}
-                {job.status === 'PENDING_PARTS' && <Button onClick={() => setIsPartsReadyConfirmOpen(true)} className="w-full" variant="outline" disabled={isViewOnly || isApprovalActionLoading}><PackageCheck className="mr-2 h-4 w-4"/> เตรียมอะไหล่เรียบร้อย</Button>}
+                {job.status === 'PENDING_PARTS' && <Button onClick={() => setIsPartsReadyConfirmOpen(true)} className="w-full" variant="outline" disabled={isApprovalActionLoading}><PackageCheck className="mr-2 h-4 w-4"/> เตรียมอะไหล่เรียบร้อย</Button>}
               </CardContent>
             </Card>
           )}
