@@ -511,16 +511,22 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                             control={form.control}
                             name="discountAmount"
                             render={({ field }) => (
-                                <Input
-                                type="number"
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                className="w-32 text-right bg-background"
-                                value={(field.value ?? 0) === 0 ? "" : field.value}
-                                onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
-                                onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-                                disabled={isCancelled}
-                                />
+                                <FormItem>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      step="any"
+                                      inputMode="decimal"
+                                      placeholder="0.00"
+                                      className="w-32 text-right bg-background"
+                                      {...field}
+                                      value={(field.value ?? 0) === 0 ? "" : field.value}
+                                      onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
+                                      onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                                      disabled={isCancelled}
+                                    />
+                                  </FormControl>
+                                </FormItem>
                             )}
                         />
                     </div>
