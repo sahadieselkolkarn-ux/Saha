@@ -84,6 +84,11 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         ? 'สำนักงานใหญ่' 
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
+    // Signature Label Logic based on User Request
+    const isQuotation = document.docType === 'QUOTATION';
+    const labelSender = isQuotation ? 'ผู้เสนอราคา' : 'ผู้ส่งสินค้า/บริการ';
+    const labelReceiver = isQuotation ? 'ลูกค้า' : 'ผู้รับสินค้า/บริการ';
+
     return (
         <div className="printable-document p-[10mm] border bg-white shadow-sm w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full print:p-[10mm] box-border flex flex-col">
             {/* Main Content Area */}
@@ -173,15 +178,15 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 </div>
             </div>
             
-            {/* Signature Section - Pushed to bottom by flex-1 above */}
-            <div className="grid grid-cols-2 gap-12 mt-8 text-center text-xs pb-4">
+            {/* Signature Section - Pushed to bottom by flex-1 or mt-auto */}
+            <div className="grid grid-cols-2 gap-12 mt-auto text-center text-xs pb-4">
                 <div className="space-y-8">
                     <p>.................................................</p>
-                    <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
+                    <p>({document.senderName || labelSender})</p>
                 </div>
                 <div className="space-y-8">
                     <p>.................................................</p>
-                    <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
+                    <p>({document.receiverName || labelReceiver})</p>
                 </div>
             </div>
         </div>
