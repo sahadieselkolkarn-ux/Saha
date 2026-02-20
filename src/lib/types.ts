@@ -499,21 +499,11 @@ export interface Document {
   // Suggested values for Accounting Inbox
   suggestedPaymentMethod?: 'CASH' | 'TRANSFER';
   suggestedAccountId?: string;
-
-  // WHT Certificate Specific (Section 50 Bis)
-  whtType?: string; // e.g. "ข้อ 5"
-  whtSection?: string; // e.g. "มาตรา 50 ทวิ"
-  payerSnapshot?: Partial<StoreSettings>;
-  payeeSnapshot?: Partial<Vendor | Customer>;
-  
-  incomeTypeCode?: 'ITEM1' | 'ITEM2' | 'ITEM3' | 'ITEM4' | 'ITEM5' | 'ITEM6';
-  paidMonth?: number;
-  paidYear?: number;
-  paidAmountGross?: number;
-  paidAmountNet?: number;
-  pndSequenceNo?: string;
-  senderName?: string;
-  receiverName?: string;
+  suggestedPayments?: {
+    method: 'CASH' | 'TRANSFER';
+    accountId: string;
+    amount: number;
+  }[];
 
   delivery?: {
     deliveredDate?: string; // YYYY-MM-DD

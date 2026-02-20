@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Badge } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Badge, Wallet } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -119,10 +119,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
 
-  const [submitPaymentTerms, setSubmitPaymentTerms] = useState<'CASH' | 'CREDIT'>('CASH');
-  const [submitAccountId, setSubmitAccountId] = useState('');
+  // Split payment states
+  const [suggestedPayments, setSuggestedPayments] = useState<{method: 'CASH' | 'TRANSFER', accountId: string, amount: number}[]>([{method: 'CASH', accountId: '', amount: 0}]);
   const [submitBillingRequired, setSubmitBillingRequired] = useState(false);
   const [submitDueDate, setSubmitDueDate] = useState('');
+  const [recordRemainingAsCredit, setRecordRemainingAsCredit] = useState(false);
 
   const [selectedLinkDoc, setSelectedLinkDoc] = useState<DocumentType | null>(null);
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
@@ -166,10 +167,11 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   });
 
   const selectedCustomerId = form.watch('customerId');
+  const grandTotal = form.watch('grandTotal');
   const customerDocRef = useMemo(() => db && selectedCustomerId ? doc(db, 'customers', selectedCustomerId) : null, [db, selectedCustomerId]);
   const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
 
-  const isLocked = isEditing && docToEdit?.status === 'PAID' && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
+  const isLocked = isEditing && (docToEdit?.status === 'PAID' || docToEdit?.status === 'PENDING_REVIEW') && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
 
   useEffect(() => {
     if (!db) return;
@@ -200,8 +202,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         billingRequired: docToEdit.billingRequired || false,
         dueDate: docToEdit.dueDate || null,
       });
-      setSubmitPaymentTerms(docToEdit.paymentTerms || 'CASH');
-      setSubmitAccountId(docToEdit.suggestedAccountId || '');
+      if (docToEdit.suggestedPayments) {
+          setSuggestedPayments(docToEdit.suggestedPayments);
+      } else {
+          setSuggestedPayments([{method: 'CASH', accountId: docToEdit.suggestedAccountId || '', amount: docToEdit.grandTotal}]);
+      }
+      setRecordRemainingAsCredit(docToEdit.paymentTerms === 'CREDIT');
       setSubmitBillingRequired(docToEdit.billingRequired || false);
       setSubmitDueDate(docToEdit.dueDate || '');
       if (docToEdit.referencesDocIds?.[0]) setReferencedQuotationId(docToEdit.referencesDocIds[0]);
@@ -210,6 +216,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       form.setValue('jobId', jobId || undefined);
       form.setValue('customerId', job.customerId);
       form.setValue('receiverName', job.customerSnapshot.name ?? '');
+      setSuggestedPayments([{method: 'CASH', accountId: '', amount: 0}]);
     }
     if (profile) form.setValue('senderName', profile.displayName ?? '');
   }, [job, docToEdit, profile, form, jobId]);
@@ -223,13 +230,16 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     const discount = watchedDiscount || 0;
     const net = subtotal - discount;
     const vatAmount = net * 0.07;
-    const grandTotal = net + vatAmount;
+    const total = net + vatAmount;
     form.setValue("subtotal", subtotal);
     form.setValue("net", net);
     form.setValue("vatAmount", vatAmount);
-    form.setValue("grandTotal", grandTotal);
+    form.setValue("grandTotal", total);
     form.setValue("isVat", true);
   }, [watchedItems, watchedDiscount, form]);
+
+  const currentSuggestedTotal = useMemo(() => suggestedPayments.reduce((sum, p) => sum + (p.amount || 0), 0), [suggestedPayments]);
+  const remainingAmount = useMemo(() => (grandTotal || 0) - currentSuggestedTotal, [grandTotal, currentSuggestedTotal]);
 
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
     const itemsFromDoc = (sourceDoc.items || []).map((item: any) => ({
@@ -289,7 +299,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     try {
         const payload = { 
           ...data, 
-          docDate: data.issueDate, // Map issueDate to docDate
+          docDate: data.issueDate, 
           customerSnapshot, 
           carSnapshot, 
           storeSnapshot: storeSettings, 
@@ -312,6 +322,12 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     if (submitForReview) {
         setPendingData(data);
         setIsReviewSubmission(true);
+        
+        // Prep suggested payments for the dialog
+        if (suggestedPayments.length === 1 && suggestedPayments[0].amount === 0) {
+            setSuggestedPayments([{method: 'CASH', accountId: accounts.find(a=>a.type==='CASH')?.id || '', amount: data.grandTotal}]);
+        }
+
         if (!isEditing && data.jobId) {
             const q = query(collection(db, "documents"), where("jobId", "==", data.jobId), where("docType", "==", "DELIVERY_NOTE"));
             const snap = await getDocs(q);
@@ -326,7 +342,21 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
   const handleFinalSubmit = async () => {
     if (!pendingData) return;
-    await executeSave({ ...pendingData, paymentTerms: submitPaymentTerms, suggestedAccountId: submitPaymentTerms === 'CASH' ? submitAccountId : undefined, suggestedPaymentMethod: 'CASH', billingRequired: submitPaymentTerms === 'CREDIT' ? submitBillingRequired : false, dueDate: submitPaymentTerms === 'CREDIT' ? submitDueDate : null }, true);
+    
+    const validPayments = suggestedPayments.filter(p => p.amount > 0 && p.accountId);
+    const totalPaid = validPayments.reduce((sum, p) => sum + p.amount, 0);
+    
+    const finalPayload: any = {
+        ...pendingData,
+        paymentTerms: recordRemainingAsCredit ? 'CREDIT' : 'CASH',
+        suggestedPayments: validPayments,
+        suggestedAccountId: validPayments[0]?.accountId || '',
+        suggestedPaymentMethod: validPayments[0]?.method || 'CASH',
+        billingRequired: recordRemainingAsCredit ? submitBillingRequired : false,
+        dueDate: recordRemainingAsCredit ? submitDueDate : null
+    };
+
+    await executeSave(finalPayload, true);
     setShowReviewConfirm(false);
   };
 
@@ -372,7 +402,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   return (
     <>
       <div className="flex flex-col gap-6">
-        {isLocked && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>ล็อก</AlertTitle><AlertDescription>ยืนยันรายรับแล้ว แก้ไขไม่ได้</AlertDescription></Alert>}
+        {isLocked && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>ล็อก</AlertTitle><AlertDescription>เอกสารถูกส่งตรวจสอบหรือจ่ายแล้ว แก้ไขไม่ได้</AlertDescription></Alert>}
         <Form {...form}>
           <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
             <div className="flex justify-between items-center">
@@ -385,7 +415,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             <Card><CardHeader><CardTitle className="text-base">1. ข้อมูลทั่วไป</CardTitle></CardHeader><CardContent className="space-y-4">{!isEditing && <FormField control={form.control} name="isBackfill" render={({ field }) => (<FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4"><FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isLocked} /></FormControl><FormLabel>บันทึกย้อนหลัง (Backfill)</FormLabel></FormItem>)} />}<div className="grid grid-cols-2 gap-4"><FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่เอกสาร</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />{form.watch('isBackfill') && <FormField control={form.control} name="manualDocNo" render={({ field }) => (<FormItem><FormLabel>เลขที่เอกสารเดิม</FormLabel><FormControl><Input placeholder="INV2024-0001" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />}</div></CardContent></Card>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card><CardHeader><CardTitle>2. ข้อมูลลูกค้า</CardTitle></CardHeader><CardContent><FormField name="customerId" render={({ field }) => (<FormItem className="flex flex-col"><FormLabel>ชื่อลูกค้า</FormLabel><Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}><PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full justify-between", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>{displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></FormControl></PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start"><div className="p-2 border-b"><Input autoFocus placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} /></div><ScrollArea className="h-fit max-h-60">{customers.filter(c=>c.name.includes(customerSearch)).map((c) => (<Button key={c.id} variant="ghost" onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 text-left"><div className="flex flex-col"><span>{c.name}</span><span className="text-[10px] text-muted-foreground">{c.phone}</span></div></Button>))}</ScrollArea></PopoverContent></Popover></FormItem>)} />{displayCustomer && <div className="mt-2 text-sm text-muted-foreground p-3 bg-muted/50 rounded-md"><p className="font-medium text-foreground">{displayCustomer.taxName || displayCustomer.name}</p><p className="whitespace-pre-wrap">{displayCustomer.taxAddress}</p><p>โทร: {displayCustomer.phone}</p><p>เลขผู้เสียภาษี: {displayCustomer.taxId}</p></div>}</CardContent></Card>
-              <Card className="bg-muted/10 border-dashed flex flex-col items-center justify-center text-center p-6"><AlertCircle className="h-12 w-12 text-muted-foreground/40 mb-2" /><p className="text-sm text-muted-foreground">ระบุเงื่อนไขการชำระเงิน<br/>ในขั้นตอนการส่งตรวจสอบ</p></Card>
+              <Card className="bg-muted/10 border-dashed flex flex-col items-center justify-center text-center p-6"><AlertCircle className="h-12 w-12 text-muted-foreground/40 mb-2" /><p className="text-sm text-muted-foreground">ระบุเงื่อนไขการแยกจ่ายหรือเครดิต<br/>ในขั้นตอนการส่งตรวจสอบ</p></Card>
             </div>
             <Card><CardHeader className="flex flex-row items-center gap-4 py-3"><CardTitle className="text-base whitespace-nowrap">3. รายการสินค้า/บริการ</CardTitle><div className="flex gap-2"><Popover open={isQtSearchOpen} onOpenChange={setIsQtSearchOpen}><PopoverTrigger asChild><Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('QUOTATION')} disabled={isLocked}><FileSearch className="mr-2 h-3 w-3" /> ใบเสนอราคา</Button></PopoverTrigger><PopoverContent className="w-80 p-0" align="start"><div className="p-2 border-b"><Input placeholder="ค้นหา..." value={qtSearchQuery} onChange={e=>setQtSearchQuery(e.target.value)} /></div><ScrollArea className="h-60">{isSearchingQt ? <Loader2 className="animate-spin m-4" /> : getFilteredDocs(allQuotations, qtSearchQuery).map(q => (<Button key={q.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b text-left" onClick={() => handleFetchFromDoc(q)}><div className="flex flex-col"><span className="font-semibold">{q.docNo}</span><span className="text-[10px]">{q.customerSnapshot?.name}</span></div></Button>))}</ScrollArea></PopoverContent></Popover><Popover open={isBillSearchOpen} onOpenChange={setIsBillSearchOpen}><PopoverTrigger asChild><Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('BILLS')} disabled={isLocked}><FileStack className="mr-2 h-3 w-3" /> บิลขาย</Button></PopoverTrigger><PopoverContent className="w-80 p-0" align="start"><Tabs value={billSearchType} onValueChange={(v: any) => setBillSearchType(v)}><TabsList className="w-full rounded-none"><TabsTrigger value="DELIVERY_NOTE" className="flex-1 text-[10px]">ใบส่งของ</TabsTrigger><TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับ</TabsTrigger></TabsList><div className="p-2 border-b"><Input placeholder="ค้นหา..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} /></div><ScrollArea className="h-60">{isSearchingBills ? <Loader2 className="animate-spin m-4" /> : getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (<Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b text-left" onClick={() => handleFetchFromDoc(d)}><div className="flex flex-col"><span className="font-semibold">{d.docNo}</span><span className="text-[10px]">{d.customerSnapshot?.name}</span></div></Button>))}</ScrollArea></Tabs></PopoverContent></Popover></div></CardHeader>
               <CardContent><Table><TableHeader><TableRow><TableHead className="w-12 text-center">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="text-right">ยอดรวม</TableHead><TableHead/></TableRow></TableHeader><TableBody>{fields.map((field, index) => (<TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} disabled={isLocked}/>)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`)); }} disabled={isLocked} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`)); }} disabled={isLocked} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table><Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button></CardContent></Card>
@@ -393,7 +423,131 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </form>
         </Form>
       </div>
-      <Dialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}><DialogContent><DialogHeader><DialogTitle>ระบุเงื่อนไขการชำระเงิน</DialogTitle></DialogHeader><div className="space-y-6 py-4"><div className="space-y-3"><Label>เงื่อนไข</Label><RadioGroup value={submitPaymentTerms} onValueChange={(v: any) => setSubmitPaymentTerms(v)} className="flex gap-6"><div className="flex items-center space-x-2"><RadioGroupItem value="CASH" id="s-cash" /><Label htmlFor="s-cash">เงินสด</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="CREDIT" id="s-credit" /><Label htmlFor="s-credit">เครดิต</Label></div></RadioGroup></div>{submitPaymentTerms === 'CASH' ? (<div className="space-y-3 p-4 border rounded-lg bg-muted/30"><Label>เข้าบัญชี</Label><Select value={submitAccountId} onValueChange={setSubmitAccountId}><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select></div>) : (<div className="space-y-4 p-4 border rounded-lg bg-muted/30"><div className="flex items-center space-x-2"><Checkbox id="s-billing" checked={submitBillingRequired} onCheckedChange={(v: any) => setSubmitBillingRequired(v)} /><Label htmlFor="s-billing">ต้องวางบิลรวม</Label></div><div className="space-y-2"><Label>วันครบกำหนด</Label><Input type="date" value={submitDueDate} onChange={e => setSubmitDueDate(e.target.value)} /></div></div>)}</div><DialogFooter><Button variant="outline" onClick={() => setShowReviewConfirm(false)}>ยกเลิก</Button><Button onClick={handleFinalSubmit} disabled={isSubmitting || (submitPaymentTerms === 'CASH' && !submitAccountId)}>{isSubmitting ? <Loader2 className="animate-spin" /> : <Send className="mr-2" />}ยืนยันส่งตรวจสอบ</Button></DialogFooter></DialogContent></Dialog>
+
+      {/* REFINED REVIEW DIALOG */}
+      <Dialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>ระบุเงื่อนไขการรับเงิน (สำหรับการตรวจสอบ)</DialogTitle>
+            <DialogDescription>แยกประเภทเงินเข้าบัญชี หรือระบุยอดติดเครดิตให้ชัดเจน</DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-6">
+            <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 flex justify-between items-center">
+                <span className="font-semibold text-primary">ยอดรวมบิลทั้งสิ้น:</span>
+                <span className="text-2xl font-black text-primary">฿{formatCurrency(grandTotal)}</span>
+            </div>
+
+            <div className="space-y-4">
+                <Label className="flex items-center gap-2"><Wallet className="h-4 w-4" /> บันทึกการรับเงิน (Cash/Transfer)</Label>
+                <div className="border rounded-md overflow-hidden">
+                    <Table>
+                        <TableHeader className="bg-muted/50">
+                            <TableRow>
+                                <TableHead className="w-32">ช่องทาง</TableHead>
+                                <TableHead>เข้าบัญชี</TableHead>
+                                <TableHead className="w-32">จำนวนเงิน</TableHead>
+                                <TableHead className="w-10"></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {suggestedPayments.map((p, i) => (
+                                <TableRow key={i}>
+                                    <TableCell className="p-2">
+                                        <Select value={p.method} onValueChange={(v: any) => {
+                                            const newPayments = [...suggestedPayments];
+                                            newPayments[i].method = v;
+                                            setSuggestedPayments(newPayments);
+                                        }}>
+                                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="CASH">เงินสด</SelectItem>
+                                                <SelectItem value="TRANSFER">เงินโอน</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </TableCell>
+                                    <TableCell className="p-2">
+                                        <Select value={p.accountId} onValueChange={(v) => {
+                                            const newPayments = [...suggestedPayments];
+                                            newPayments[i].accountId = v;
+                                            setSuggestedPayments(newPayments);
+                                        }}>
+                                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="เลือก..."/></SelectTrigger>
+                                            <SelectContent>
+                                                {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </TableCell>
+                                    <TableCell className="p-2">
+                                        <Input 
+                                            type="number" 
+                                            className="h-8 text-right text-xs" 
+                                            value={p.amount || ''} 
+                                            onChange={(e) => {
+                                                const newPayments = [...suggestedPayments];
+                                                newPayments[i].amount = parseFloat(e.target.value) || 0;
+                                                setSuggestedPayments(newPayments);
+                                            }}
+                                        />
+                                    </TableCell>
+                                    <TableCell className="p-2">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => setSuggestedPayments(prev => prev.filter((_, idx) => idx !== i))}>
+                                            <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+                <Button variant="outline" size="sm" className="w-full h-8 border-dashed" onClick={() => setSuggestedPayments([...suggestedPayments, {method: 'CASH', accountId: '', amount: 0}])}>
+                    <PlusCircle className="mr-2 h-3 w-3" /> เพิ่มช่องทางชำระเงิน
+                </Button>
+            </div>
+
+            <div className="space-y-4 pt-4 border-t">
+                <div className={cn("flex justify-between items-center p-3 rounded-md border", remainingAmount > 0.01 ? "bg-amber-50 border-amber-200" : "bg-green-50 border-green-200")}>
+                    <span className="text-sm font-bold">ยอดเงินส่วนต่าง (คงเหลือ):</span>
+                    <span className={cn("text-lg font-black", remainingAmount > 0.01 ? "text-amber-600" : "text-green-600")}>฿{formatCurrency(remainingAmount)}</span>
+                </div>
+
+                {remainingAmount > 0.01 && (
+                    <div className="space-y-4 animate-in fade-in">
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id="r-credit" checked={recordRemainingAsCredit} onCheckedChange={(v: any) => setRecordRemainingAsCredit(v)} />
+                            <Label htmlFor="r-credit" className="font-bold text-amber-700">บันทึกยอดคงเหลือเป็นลูกหนี้ (Credit / AR)</Label>
+                        </div>
+                        
+                        {recordRemainingAsCredit && (
+                            <div className="grid grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/20">
+                                <div className="space-y-2">
+                                    <Label className="text-xs">วันครบกำหนด</Label>
+                                    <Input type="date" value={submitDueDate} onChange={e => setSubmitDueDate(e.target.value)} />
+                                </div>
+                                <div className="flex items-center space-x-2 pt-6">
+                                    <Checkbox id="r-billing" checked={submitBillingRequired} onCheckedChange={(v: any) => setSubmitBillingRequired(v)} />
+                                    <Label htmlFor="r-billing" className="text-xs">ต้องวางบิลรวม</Label>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+          </div>
+
+          <DialogFooter className="bg-muted/30 p-6 -mx-6 -mb-6 border-t">
+            <Button variant="outline" onClick={() => setShowReviewConfirm(false)}>ยกเลิก</Button>
+            <Button 
+                onClick={handleFinalSubmit} 
+                disabled={isSubmitting || (remainingAmount > 0.01 && !recordRemainingAsCredit) || (suggestedPayments.some(p => p.amount > 0 && !p.accountId))}
+            >
+                {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <Send className="mr-2" />}
+                ยืนยันและส่งให้บัญชี
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={showDnCancelDialog} onOpenChange={setShowDnCancelDialog}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>พบใบส่งของเดิม</AlertDialogTitle><AlertDialogDescription>ยกเลิกใบเดิมเพื่อใช้ใบกำกับภาษีนี้แทน?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); setShowReviewConfirm(true); }}>ไม่ยกเลิก</Button><AlertDialogAction onClick={handleConfirmCancelAndSave} className="bg-destructive">ยกเลิกใบเดิมและไปต่อ</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
       <AlertDialog open={showLinkConfirm} onOpenChange={setShowLinkConfirm}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>เชื่อมโยงเอกสารเดิม</AlertDialogTitle><AlertDialogDescription>ต้องการเชื่อมบิล {selectedLinkDoc?.docNo} เข้ากับงานนี้?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setSelectedLinkDoc(null)}>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={handleConfirmLinkDoc} disabled={isSubmitting}>ใช่, เชื่อมโยง</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </>

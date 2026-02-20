@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw, Save } from "lucide-react";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw, Save, Wallet } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
@@ -38,6 +38,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+import { Separator } from "@/components/ui/separator";
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -62,9 +63,9 @@ export default function AccountingInboxPage() {
   const [closingJobId, setClosingJobId] = useState<string | null>(null);
   const [failedClosingJobId, setFailedClosingJobId] = useState<string | null>(null);
 
-  const [selectedAccountId, setSelectedAccountId] = useState("");
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'CASH' | 'TRANSFER'>('CASH');
+  // Suggested values from office
   const [selectedPaymentDate, setSelectedPaymentDate] = useState("");
+  const [suggestedPayments, setSuggestedPayments] = useState<{method: 'CASH' | 'TRANSFER', accountId: string, amount: number}[]>([]);
   
   const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
 
@@ -73,7 +74,6 @@ export default function AccountingInboxPage() {
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
   }, [profile]);
 
-  // Use primary status 'PENDING_REVIEW' as the source of truth for the Inbox
   const docsQuery = useMemo(() => {
     if (!db || !hasPermission) return null;
     return query(
@@ -138,58 +138,28 @@ export default function AccountingInboxPage() {
     return () => { unsubDocs(); unsubAccounts(); };
   }, [hasPermission, docsQuery, accountsQuery]);
   
-  const getInitialAccountId = (doc: DocumentType, availableAccounts: AccountingAccount[]) => {
-    if (availableAccounts.length === 0) return "";
-    if (doc.receivedAccountId && availableAccounts.some(a => a.id === doc.receivedAccountId)) {
-        return doc.receivedAccountId;
-    }
-    if (doc.suggestedAccountId && availableAccounts.some(a => a.id === doc.suggestedAccountId)) {
-        return doc.suggestedAccountId;
-    }
-    const cashAccount = availableAccounts.find(a => a.type === 'CASH');
-    if (cashAccount) return cashAccount.id;
-    return availableAccounts[0].id;
-  };
-
   const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
     setConfirmError(null);
     setConfirmingDoc(doc);
-    const initialId = getInitialAccountId(doc, accounts);
-    setSelectedAccountId(initialId);
-    setSelectedPaymentMethod((doc.paymentMethod || doc.suggestedPaymentMethod || 'CASH') as any);
     setSelectedPaymentDate(doc.paymentDate || doc.docDate || format(new Date(), "yyyy-MM-dd"));
+    
+    if (doc.suggestedPayments && doc.suggestedPayments.length > 0) {
+        setSuggestedPayments(doc.suggestedPayments);
+    } else {
+        // Fallback to legacy single account
+        const initialId = doc.receivedAccountId || doc.suggestedAccountId || accounts.find(a=>a.type==='CASH')?.id || accounts[0]?.id || "";
+        setSuggestedPayments([{
+            method: (doc.paymentMethod || doc.suggestedPaymentMethod || 'CASH') as any,
+            accountId: initialId,
+            amount: doc.grandTotal
+        }]);
+    }
   };
 
-  const handleUpdateDocumentInfo = async () => {
-    if (!db || !confirmingDoc) return;
-    setIsSubmitting(true);
-    const docRef = doc(db, 'documents', confirmingDoc.id);
-    const updateData = {
-      paymentMethod: selectedPaymentMethod,
-      receivedAccountId: selectedAccountId,
-      paymentDate: selectedPaymentDate,
-      updatedAt: serverTimestamp()
-    };
-
-    updateDoc(docRef, updateData)
-      .then(() => {
-        toast({ title: "บันทึกข้อมูลเบื้องต้นสำเร็จ" });
-      })
-      .catch(async (error: any) => {
-        if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({
-            path: docRef.path,
-            operation: 'update',
-            requestResourceData: updateData,
-          } satisfies SecurityRuleContext);
-          errorEmitter.emit('permission-error', permissionError);
-        } else {
-          toast({ variant: 'destructive', title: "ไม่สามารถบันทึกได้", description: error.message });
-        }
-      })
-      .finally(() => {
-        setIsSubmitting(false);
-      });
+  const handleUpdatePaymentLine = (index: number, field: string, value: any) => {
+      const newPayments = [...suggestedPayments];
+      (newPayments[index] as any)[field] = value;
+      setSuggestedPayments(newPayments);
   };
 
   const filteredDocs = useMemo(() => {
@@ -243,15 +213,15 @@ export default function AccountingInboxPage() {
   };
 
   const handleConfirmCashPayment = async () => {
-    if (!db || !profile || !confirmingDoc || !selectedAccountId) return;
+    if (!db || !profile || !confirmingDoc) return;
     
     setConfirmError(null);
     setIsSubmitting(true);
     
-    const entryId = `SALE_${confirmingDoc.id}`;
-    const arId = `AR_${confirmingDoc.id}`;
     const jobId = confirmingDoc.jobId;
-    const closedDate = selectedPaymentDate;
+    const totalSuggested = suggestedPayments.reduce((sum, p) => sum + p.amount, 0);
+    const remaining = Math.max(0, confirmingDoc.grandTotal - totalSuggested);
+    const isPartialCredit = remaining > 0.01;
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -261,60 +231,74 @@ export default function AccountingInboxPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data();
         
-        if (docData.arStatus === 'PAID' || docData.status === 'PAID' || docData.accountingEntryId) {
+        if (docData.status === 'PAID' || docData.accountingEntryId) {
           throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
         }
 
-        const entryRef = doc(db, 'accountingEntries', entryId);
+        const arId = `AR_${confirmingDoc.id}`;
         const arRef = doc(db, 'accountingObligations', arId);
         const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
 
-        transaction.set(entryRef, {
-          id: entryId,
-          entryType: 'CASH_IN', 
-          entryDate: closedDate, 
-          amount: confirmingDoc.grandTotal, 
-          accountId: selectedAccountId,
-          paymentMethod: selectedPaymentMethod, 
-          description: `รับเงิน${selectedPaymentMethod === 'CASH' ? 'สด' : 'โอน'}จาก ${customerName} (เอกสาร: ${confirmingDoc.docNo})`,
-          sourceDocId: confirmingDoc.id, 
-          sourceDocNo: confirmingDoc.docNo, 
-          sourceDocType: confirmingDoc.docType,
-          customerNameSnapshot: customerName, 
-          jobId: jobId || null,
-          createdAt: serverTimestamp(),
+        // 1. Create Entries for each suggested payment
+        suggestedPayments.forEach((p, index) => {
+            if (p.amount <= 0 || !p.accountId) return;
+            const entryId = `SALE_${confirmingDoc.id}_${index}`;
+            const entryRef = doc(db, 'accountingEntries', entryId);
+            const accountName = accounts.find(a=>a.id===p.accountId)?.name || 'N/A';
+
+            transaction.set(entryRef, {
+                id: entryId,
+                entryType: 'CASH_IN', 
+                entryDate: selectedPaymentDate, 
+                amount: p.amount, 
+                accountId: p.accountId,
+                paymentMethod: p.method, 
+                description: `รับเงิน${p.method === 'CASH' ? 'สด' : 'โอน'} (${accountName}) จาก ${customerName} (บิล: ${confirmingDoc.docNo})`,
+                sourceDocId: confirmingDoc.id, 
+                sourceDocNo: confirmingDoc.docNo, 
+                sourceDocType: confirmingDoc.docType,
+                customerNameSnapshot: customerName, 
+                jobId: jobId || null,
+                createdAt: serverTimestamp(),
+            });
         });
 
+        // 2. Create AR Obligation
+        const finalStatus = isPartialCredit ? 'PARTIAL' : 'PAID';
         transaction.set(arRef, {
           id: arId,
           type: 'AR', 
-          status: 'PAID', 
+          status: finalStatus, 
           sourceDocType: confirmingDoc.docType, 
           sourceDocId: confirmingDoc.id, 
           sourceDocNo: confirmingDoc.docNo,
           amountTotal: confirmingDoc.grandTotal, 
-          amountPaid: confirmingDoc.grandTotal, 
-          balance: 0,
+          amountPaid: totalSuggested, 
+          balance: remaining,
           createdAt: serverTimestamp(), 
           updatedAt: serverTimestamp(), 
-          paidOffDate: closedDate,
+          paidOffDate: finalStatus === 'PAID' ? selectedPaymentDate : null,
+          lastPaymentDate: selectedPaymentDate,
           customerNameSnapshot: customerName,
           jobId: jobId || null,
+          dueDate: confirmingDoc.dueDate || null,
         });
 
+        // 3. Update Document
         transaction.update(docRef, { 
-            arStatus: 'PAID',
-            status: 'PAID',
+            status: finalStatus,
+            arStatus: finalStatus,
             paymentSummary: {
-                paidTotal: confirmingDoc.grandTotal,
-                balance: 0,
-                paymentStatus: 'PAID'
+                paidTotal: totalSuggested,
+                balance: remaining,
+                paymentStatus: finalStatus
             },
-            accountingEntryId: entryId,
+            accountingEntryId: `SALE_${confirmingDoc.id}_0`, // Point to first entry as primary
             arObligationId: arId,
-            receivedAccountId: selectedAccountId,
-            paymentMethod: selectedPaymentMethod,
-            paymentDate: closedDate,
+            receivedAccountId: suggestedPayments[0]?.accountId || null,
+            paymentMethod: suggestedPayments[0]?.method || null,
+            paymentDate: selectedPaymentDate,
+            suggestedPayments: suggestedPayments,
             updatedAt: serverTimestamp()
         });
       });
@@ -322,7 +306,7 @@ export default function AccountingInboxPage() {
       toast({ title: "ลงบัญชีรายรับสำเร็จ" });
       
       if (jobId) {
-        callCloseJobFunction(jobId, 'PAID');
+        callCloseJobFunction(jobId, isPartialCredit ? 'UNPAID' : 'PAID');
       }
       
       setConfirmingDoc(null);
@@ -356,7 +340,7 @@ export default function AccountingInboxPage() {
             if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
             const docData = docSnap.data();
             
-            if (docData.arStatus === 'UNPAID' || docData.status === 'UNPAID' || docData.arObligationId) {
+            if (docData.status === 'UNPAID' || docData.arObligationId) {
                 throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
             }
 
@@ -483,7 +467,7 @@ export default function AccountingInboxPage() {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <TabsList>
-            <TabsTrigger value="receive">รอรับเงิน (Cash)</TabsTrigger>
+            <TabsTrigger value="receive">รอตรวจสอบ (Cash/Mixed)</TabsTrigger>
             <TabsTrigger value="ar">รอตั้งลูกหนี้ (Credit)</TabsTrigger>
             <TabsTrigger value="receipts">รอยืนยันใบเสร็จ</TabsTrigger>
           </TabsList>
@@ -534,7 +518,7 @@ export default function AccountingInboxPage() {
                                   <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600 font-bold">
-                                  <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันรับเงิน
+                                  <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันตรวจสอบ
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
                                   <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
@@ -644,11 +628,11 @@ export default function AccountingInboxPage() {
       </Tabs>
 
       <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && !isSubmitting && setConfirmingDoc(null)}>
-        <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()} className="sm:max-w-lg">
+        <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()} className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>ยืนยันการรับเงินสด/โอน</DialogTitle>
+            <DialogTitle>ยืนยันตรวจสอบรายการขาย</DialogTitle>
             <DialogDescription className="text-destructive font-bold">
-                ตรวจสอบและแก้ไขข้อมูลการรับเงินให้ถูกต้องก่อนลงบัญชีจริง
+                ตรวจสอบความถูกต้องของช่องทางการรับเงินและบัญชี
             </DialogDescription>
           </DialogHeader>
           
@@ -661,66 +645,96 @@ export default function AccountingInboxPage() {
           )}
 
           <div className="py-4 space-y-6">
-              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center relative">
-                <p className="text-sm text-muted-foreground">ยอดเงินรวมสุทธิ</p>
-                <p className="text-3xl font-bold text-primary">{formatCurrency(confirmingDoc?.grandTotal ?? 0)} บาท</p>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="absolute top-2 right-2 h-8 px-2 text-[10px] text-muted-foreground hover:text-primary"
-                  onClick={handleUpdateDocumentInfo}
-                  disabled={isSubmitting}
-                >
-                  <Save className="mr-1 h-3 w-3" /> บันทึกค่านี้ไว้ (Draft)
-                </Button>
+              <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center">
+                <p className="text-sm text-muted-foreground">ยอดเงินรวมบิล</p>
+                <p className="text-3xl font-black text-primary">฿{formatCurrency(confirmingDoc?.grandTotal ?? 0)}</p>
               </div>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label className="flex items-center gap-2"><Calendar className="h-3 w-3"/> วันที่เงินเข้าจริง</Label>
-                        <Input type="date" value={selectedPaymentDate} onChange={(e) => setSelectedPaymentDate(e.target.value)} disabled={isSubmitting} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>ช่องทางที่รับ</Label>
-                        <Select value={selectedPaymentMethod} onValueChange={(v: any) => setSelectedPaymentMethod(v)} disabled={isSubmitting}>
-                            <SelectTrigger><SelectValue/></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="CASH">เงินสด</SelectItem>
-                                <SelectItem value="TRANSFER">เงินโอน</SelectItem>
-                            </SelectContent>
-                        </Select>
+                <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-2"><Calendar className="h-4 w-4"/> วันที่ลงบัญชี</Label>
+                    <Input type="date" className="w-40" value={selectedPaymentDate} onChange={(e) => setSelectedPaymentDate(e.target.value)} disabled={isSubmitting} />
+                </div>
+
+                <div className="space-y-3">
+                    <Label className="flex items-center gap-2"><Wallet className="h-4 w-4"/> รายการรับเงิน (ตามที่ออฟฟิศระบุ)</Label>
+                    <div className="border rounded-md">
+                        <Table>
+                            <TableHeader className="bg-muted/50">
+                                <TableRow>
+                                    <TableHead>ช่องทาง</TableHead>
+                                    <TableHead>บัญชี</TableHead>
+                                    <TableHead className="text-right">จำนวนเงิน</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {suggestedPayments.map((p, index) => (
+                                    <TableRow key={index}>
+                                        <TableCell className="p-2">
+                                            <Select value={p.method} onValueChange={(v: any) => handleUpdatePaymentLine(index, 'method', v)} disabled={isSubmitting}>
+                                                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="CASH">เงินสด</SelectItem>
+                                                    <SelectItem value="TRANSFER">โอนเงิน</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </TableCell>
+                                        <TableCell className="p-2">
+                                            <Select value={p.accountId} onValueChange={(v) => handleUpdatePaymentLine(index, 'accountId', v)} disabled={isSubmitting}>
+                                                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="เลือก..." /></SelectTrigger>
+                                                <SelectContent>
+                                                    {accounts.map(acc => (
+                                                        <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </TableCell>
+                                        <TableCell className="p-2 text-right">
+                                            <Input 
+                                                type="number" 
+                                                className="h-8 text-right font-bold text-xs" 
+                                                value={p.amount} 
+                                                onChange={(e) => handleUpdatePaymentLine(index, 'amount', parseFloat(e.target.value) || 0)} 
+                                                disabled={isSubmitting} 
+                                            />
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
                     </div>
                 </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="account">เข้าบัญชีที่รับเงิน</Label>
-                    <Select value={selectedAccountId} onValueChange={setSelectedAccountId} disabled={isSubmitting}>
-                        <SelectTrigger><SelectValue placeholder="เลือกบัญชีที่ถูกต้อง..."/></SelectTrigger>
-                        <SelectContent>
-                            {accounts.map(acc => (
-                                <SelectItem key={acc.id} value={acc.id}>
-                                    {acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <p className="text-[10px] text-muted-foreground italic">* หากมีการแก้ไข ระบบจะบันทึกค่าใหม่ลงในบิลให้อัตโนมัติเมื่อกดยืนยัน</p>
-                </div>
+                {confirmingDoc?.paymentTerms === 'CREDIT' || (confirmingDoc?.grandTotal || 0) > suggestedPayments.reduce((s, p) => s + p.amount, 0) + 0.01 ? (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-bold text-amber-800">ยอดคงเหลือบันทึกเป็นลูกหนี้ (Credit):</span>
+                            <span className="text-xl font-black text-amber-600">฿{formatCurrency(Math.max(0, (confirmingDoc?.grandTotal || 0) - suggestedPayments.reduce((s, p) => s + p.amount, 0)))}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-amber-700">
+                            <Info className="h-3 w-3" /> ยอดนี้จะถูกนำไปตั้งเป็นยอดค้างชำระในระบบลูกหนี้
+                        </div>
+                    </div>
+                ) : (
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="font-bold">รายการนี้ชำระครบถ้วน (Cash Sale)</span>
+                    </div>
+                )}
               </div>
           </div>
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 bg-muted/20 p-6 -mx-6 -mb-6 border-t">
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || !selectedAccountId || !selectedPaymentDate || accounts.length === 0} className="bg-green-600 hover:bg-green-700 text-white min-w-[180px]">
+            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || suggestedPayments.some(p => p.amount > 0 && !p.accountId)} className="bg-green-600 hover:bg-green-700 text-white min-w-[200px]">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 animate-spin h-4 w-4" />
-                    กำลังลงบัญชี...
+                    กำลังบันทึก...
                   </>
                 ) : (
                   <>
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    ยืนยันและลงบัญชี
+                    ยืนยันตรวจสอบและลงบัญชี
                   </>
                 )}
             </Button>
