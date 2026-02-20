@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
@@ -17,10 +17,23 @@ function FullscreenSpinner() {
 }
 
 function ShellInner({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false);
   const { user, loading, profile } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
+
+  useEffect(() => {
+    setMounted(true);
+    
+    if ('serviceWorker' in navigator) {
+      if (process.env.NODE_ENV === "production") {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js');
+        });
+      }
+    }
+  }, []);
 
   const isPublicRoute =
     pathname === "/" ||
@@ -30,43 +43,14 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     pathname === "/healthz";
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      if (process.env.NODE_ENV !== "production") {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (const registration of registrations) {
-            registration.unregister();
-            console.log('Development mode: SW unregistered to prevent caching issues.');
-          }
-        });
-        return;
-      }
-
-      // In production, register the service worker
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').then(registration => {
-          console.log('SW registered: ', registration);
-          // Check for updates on load to fetch the latest version
-          registration.update();
-        }).catch(registrationError => {
-          console.log('SW registration failed: ', registrationError);
-        });
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    // Don't run auth logic while loading
-    if (loading) return;
+    if (!mounted || loading) return;
 
     if (!user) {
-      // If not logged in and trying to access a protected route
       if (!isPublicRoute) {
         router.replace("/login");
       }
       return;
     }
-
-    // If logged in but on a public route (except /pending), redirect to home
     if (isPublicRoute && pathname !== "/pending") {
         if (profile?.status === "ACTIVE") {
             router.replace("/app");
@@ -75,8 +59,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         }
         return;
     }
-
-    // For protected routes, if profile is missing or not active, go to /pending
     if (!isPublicRoute) {
         if (!profile || (profile.status && profile.status !== "ACTIVE")) {
             if (pathname !== "/pending") {
@@ -84,27 +66,18 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             }
         }
     }
-  }, [loading, user, profile, router, pathname, isPublicRoute]);
+  }, [mounted, loading, user, profile, router, pathname, isPublicRoute]);
 
-  // Public pages render directly without the app shell.
   if (isPublicRoute) {
     return <>{children}</>;
   }
   
-  // For protected routes, show a spinner while we determine auth/profile state.
-  // We allow /pending to render through the spinner check if we have a user
-  if (loading || !user || (!profile && pathname !== "/pending")) {
+  if (!mounted || loading || !user || (!profile && pathname !== "/pending")) {
     return <FullscreenSpinner />;
   }
   
-  // Special case: if we have a user but no profile doc yet, allow /pending to show the fallback card
   if (!profile && pathname === "/pending") {
       return <div className="p-4">{children}</div>;
-  }
-
-  // If status is not active, redirect to pending (already handled by useEffect, but for safety)
-  if (profile && profile.status !== "ACTIVE" && pathname !== "/pending") {
-      return <FullscreenSpinner />;
   }
   
   const isPrintMode = searchParams.get("print") === "1";
@@ -117,7 +90,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Render the full app shell for authenticated, active users.
   return (
     <>
       <FixStuckUI />
