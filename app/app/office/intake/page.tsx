@@ -6,8 +6,7 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, doc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase/client-provider";
-import { useAuth } from "@/context/auth-context";
+import { useFirebase, useAuth } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -16,7 +15,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -294,7 +293,7 @@ export default function IntakePage() {
                                       setIsCustomerPopoverOpen(false);
                                       setCustomerSearch('');
                                     }}
-                                    className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none"
+                                    className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
                                   >
                                     <div className="flex flex-col items-start">
                                       <p className="font-medium">{customer.name}</p>
@@ -345,10 +344,34 @@ export default function IntakePage() {
                     <CardHeader><CardTitle className="text-base">รายละเอียดรถยนต์</CardTitle></CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยี่ห้อรถ</FormLabel><FormControl><Input placeholder="เช่น Toyota, Isuzu" {...field} disabled={isViewer} /></FormControl><FormMessage /></FormItem>)} />
-                          <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (<FormItem><FormLabel>รุ่นรถ</FormLabel><FormControl><Input placeholder="เช่น Revo, D-Max" {...field} disabled={isViewer} /></FormControl><FormMessage /></FormItem>)} />
+                          <FormField name="carServiceDetails.brand" control={form.control} render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>ยี่ห้อรถ</FormLabel>
+                              <FormControl>
+                                <Input placeholder="เช่น Toyota, Isuzu" {...field} disabled={isViewer} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
+                          <FormField name="carServiceDetails.model" control={form.control} render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>รุ่นรถ</FormLabel>
+                              <FormControl>
+                                <Input placeholder="เช่น Revo, D-Max" {...field} disabled={isViewer} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )} />
                         </div>
-                        <FormField name="carServiceDetails.licensePlate" control={form.control} render={({ field }) => (<FormItem><FormLabel>ทะเบียนรถ</FormLabel><FormControl><Input placeholder="เช่น 1กข 1234" {...field} disabled={isViewer} /></FormControl><FormMessage /></FormItem>)} />
+                        <FormField name="carServiceDetails.licensePlate" control={form.control} render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>ทะเบียนรถ</FormLabel>
+                            <FormControl>
+                              <Input placeholder="เช่น 1กข 1234" {...field} disabled={isViewer} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
                     </CardContent>
                 </Card>
               )}
@@ -361,18 +384,42 @@ export default function IntakePage() {
                           <FormField 
                             name={selectedDepartment === 'COMMONRAIL' ? "commonrailDetails.brand" : "mechanicDetails.brand"} 
                             control={form.control} 
-                            render={({ field }) => (<FormItem><FormLabel>ยี่ห้อ</FormLabel><FormControl><Input placeholder="เช่น Denso, Bosch" {...field} disabled={isViewer} /></FormControl><FormMessage /></FormItem>)} 
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>ยี่ห้อ</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="เช่น Denso, Bosch" {...field} disabled={isViewer} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} 
                           />
                           <FormField 
                             name={selectedDepartment === 'COMMONRAIL' ? "commonrailDetails.registrationNumber" : "mechanicDetails.registrationNumber"} 
                             control={form.control} 
-                            render={({ field }) => (<FormItem><FormLabel>เลขทะเบียนชิ้นส่วน</FormLabel><FormControl><Input placeholder="Registration Number" {...field} disabled={isViewer} /></FormControl><FormMessage /></FormItem>)} 
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>เลขทะเบียนชิ้นส่วน</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Registration Number" {...field} disabled={isViewer} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )} 
                           />
                         </div>
                         <FormField 
                           name={selectedDepartment === 'COMMONRAIL' ? "commonrailDetails.partNumber" : "mechanicDetails.partNumber"} 
                           control={form.control} 
-                          render={({ field }) => (<FormItem><FormLabel>เลขอะไหล่ (Part Number)</FormLabel><FormControl><Input placeholder="ระบุหมายเลขอะไหล่..." {...field} disabled={isViewer} /></FormControl><FormMessage /></FormItem>)} 
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>เลขอะไหล่ (Part Number)</FormLabel>
+                              <FormControl>
+                                <Input placeholder="ระบุหมายเลขอะไหล่..." {...field} disabled={isViewer} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )} 
                         />
                     </CardContent>
                 </Card>

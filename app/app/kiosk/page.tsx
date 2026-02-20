@@ -2,16 +2,15 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { useFirebase } from '@/firebase/client-provider';
+import { useFirebase, useAuth } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { generateKioskToken } from '@/firebase/kiosk';
-import { useAuth } from '@/context/auth-context';
 
 import { PageHeader } from "@/components/page-header";
 import { QrDisplay } from "@/components/qr-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { Loader2, RefreshCw, AlertTriangle } from "lucide-center";
 import { cn } from "@/lib/utils";
 
 export default function KioskPage() {
