@@ -1,19 +1,21 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { 
   collection, 
+  onSnapshot, 
   query, 
   where, 
   orderBy, 
   doc, 
   updateDoc, 
   serverTimestamp, 
-  deleteDoc
+  deleteDoc,
+  writeBatch
 } from "firebase/firestore";
-import { useFirebase, useCollection } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Card, 

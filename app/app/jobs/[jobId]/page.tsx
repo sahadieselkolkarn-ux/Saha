@@ -639,11 +639,13 @@ function JobDetailsPageContent() {
     });
   };
 
-  useEffect(() => {
-    return () => {
-      photoPreviews.forEach(url => URL.revokeObjectURL(url));
-    };
-  }, [photoPreviews]);
+  if (loading || !job) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -988,5 +990,13 @@ function JobDetailsPageContent() {
           </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+export default function JobDetailsPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+      <JobDetailsPageContent />
+    </Suspense>
   );
 }
