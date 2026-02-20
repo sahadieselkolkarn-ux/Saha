@@ -96,43 +96,57 @@ export function JobTableList({
     try {
       const isSearch = !!searchTerm.trim();
 
-      if (isSearch && source === 'archive') {
-        const year1 = year;
-        const year2 = year - 1;
+      if (isSearch) {
+        // Search Mode: Fetch a larger batch and filter client-side
+        // This is needed because Firestore doesn't support full-text or partial string search well
+        const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
         
-        const fetchYear = async (y: number) => {
-            const colName = archiveCollectionNameByYear(y);
-            const q = query(collection(db, colName), orderBy(orderByField, orderByDirection), limit(200));
+        let combined: Job[] = [];
+        if (source === 'archive') {
+            const fetchYear = async (y: number) => {
+                const colName = archiveCollectionNameByYear(y);
+                const q = query(collection(db, colName), orderBy(orderByField, orderByDirection), limit(300));
+                const snap = await getDocs(q);
+                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+            };
+            const [jobs1, jobs2] = await Promise.all([fetchYear(year), fetchYear(year - 1)]);
+            combined = [...jobs1, ...jobs2];
+        } else {
+            const q = query(collection(db, 'jobs'), orderBy(orderByField, orderByDirection), limit(300));
             const snap = await getDocs(q);
-            return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
-        };
-
-        const [jobs1, jobs2] = await Promise.all([fetchYear(year1), fetchYear(year2)]);
-        let combined = [...jobs1, ...jobs2];
+            combined = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
+        }
         
-        const term = searchTerm.toLowerCase();
-        combined = combined.filter(j => 
+        const term = searchTerm.toLowerCase().trim();
+        let filtered = combined.filter(j => 
             (j.customerSnapshot?.name || "").toLowerCase().includes(term) ||
             (j.customerSnapshot?.phone || "").includes(term) ||
             (j.description || "").toLowerCase().includes(term) ||
             (j.id || "").toLowerCase().includes(term) ||
-            (j.salesDocNo || "").toLowerCase().includes(term)
+            (j.salesDocNo || "").toLowerCase().includes(term) ||
+            (j.carServiceDetails?.licensePlate || "").toLowerCase().includes(term) ||
+            (j.commonrailDetails?.registrationNumber || "").toLowerCase().includes(term) ||
+            (j.mechanicDetails?.registrationNumber || "").toLowerCase().includes(term)
         );
 
-        combined.sort((a, b) => {
-            const valA = (a[orderByField as keyof Job] as any)?.toMillis?.() || 0;
-            const valB = (b[orderByField as keyof Job] as any)?.toMillis?.() || 0;
-            return orderByDirection === 'desc' ? valB - valA : valA - valB;
-        });
+        if (department) filtered = filtered.filter(j => j.department === department);
+        if (status) filtered = filtered.filter(j => j.status === status);
+        if (memoizedExcludeStatusString) {
+            const ex = memoizedExcludeStatusString.split(',');
+            filtered = filtered.filter(j => !ex.includes(j.status));
+        }
 
-        setJobs(combined.slice(0, limitProp));
-        setIsLastPage(true);
+        setJobs(filtered.slice(0, limitProp));
+        setIsLastPage(true); // Disable pagination during search results
       } else {
+        // Standard Pagination Mode
         const collectionName = source === 'archive' ? archiveCollectionNameByYear(year) : 'jobs';
         const qConstraints: QueryConstraint[] = [];
         
         if (department) qConstraints.push(where('department', '==', department));
         if (status) qConstraints.push(where('status', '==', status));
+        
+        // Handle exclusions client-side or with complex queries if needed, but here we do it after fetch
         qConstraints.push(orderBy(orderByField, orderByDirection));
 
         const cursor = pageStartCursors.current[pageIndex];
@@ -164,6 +178,7 @@ export function JobTableList({
       }
 
     } catch (err: any) {
+      console.error("fetchData error:", err);
       if (err.message?.includes('requires an index')) {
           const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
           if (urlMatch) setIndexCreationUrl(urlMatch[0]);
