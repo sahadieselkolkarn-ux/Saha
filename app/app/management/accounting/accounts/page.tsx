@@ -224,8 +224,8 @@ export default function ManagementAccountingAccountsPage() {
                 <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น พนักงานตำแหน่งช่างไม่สามารถเข้าถึงได้ค่ะ</CardDescription>
             </CardHeader>
             <CardContent>
-                <Button asChild variant="outline" onClick={() => router.back()}>
-                    ย้อนกลับ
+                <Button asChild variant="outline">
+                    <Link href="/app/jobs">ย้อนกลับ</Link>
                 </Button>
             </CardContent>
         </Card>

@@ -861,6 +861,7 @@ function CashbookPageContent() {
                     <TableCell className="font-medium">
                       {entry.description}
                       {entry.entryType === 'RECEIPT' && <Badge variant="outline" className="ml-2 text-[10px] bg-blue-50 text-blue-700 border-blue-200">ชำระบิล</Badge>}
+                      {(entry as any).transferRefId && <Badge variant="outline" className="ml-2 text-[10px] bg-green-50 text-green-700 border-green-200">โอนเงิน</Badge>}
                     </TableCell>
                     <TableCell className="text-sm">{entry.vendorShortNameSnapshot || entry.customerNameSnapshot || '-'}</TableCell>
                     <TableCell className="text-right text-green-600 font-semibold">
