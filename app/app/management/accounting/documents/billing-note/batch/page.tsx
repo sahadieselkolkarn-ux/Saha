@@ -3,8 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
-import { useFirebase } from '@/firebase/client-provider';
-import { useDoc } from '@/firebase/firestore/use-doc';
+import { useFirebase, useDoc } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import {
   collection,

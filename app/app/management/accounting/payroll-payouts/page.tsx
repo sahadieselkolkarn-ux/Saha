@@ -14,7 +14,7 @@ import {
   onSnapshot,
   serverTimestamp,
 } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { addMonths, subMonths, format } from "date-fns";
