@@ -4,8 +4,7 @@ import { useMemo, Suspense, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { doc } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useFirebase, useDoc } from "@/firebase";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -174,7 +173,7 @@ function PurchaseViewPageContent() {
     );
 }
 
-export default function PurchaseDocPageWrapper() {
+export default function PurchaseViewPageWrapper() {
   return (
     <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>}>
       <PurchaseViewPageContent />

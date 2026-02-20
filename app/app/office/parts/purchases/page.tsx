@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { collection, onSnapshot, query, orderBy, where, limit, deleteDoc, doc } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";

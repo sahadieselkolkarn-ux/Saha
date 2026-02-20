@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, Fragment } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import {
   format as dfFormat,

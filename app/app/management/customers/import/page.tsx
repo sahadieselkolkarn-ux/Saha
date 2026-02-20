@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { collection, writeBatch, serverTimestamp, doc } from "firebase/firestore";
 

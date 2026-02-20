@@ -7,7 +7,7 @@ import * as z from "zod";
 import { format, set } from "date-fns";
 import { Timestamp, doc, setDoc, serverTimestamp } from "firebase/firestore";
 
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import type { UserProfile, AttendanceAdjustment } from "@/lib/types";
