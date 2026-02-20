@@ -208,7 +208,6 @@ export function DocumentList({
         const cId = docToAction.customerId || docToAction.customerSnapshot?.id;
         if (cId) {
           const runRef = doc(db, 'billingRuns', monthId);
-          // We use try-catch because the billingRun might not exist or the field might not exist
           try {
             await updateDoc(runRef, {
               [`createdBillingNotes.${cId}`]: deleteField()
@@ -234,6 +233,23 @@ export function DocumentList({
     if (!db || !docToAction) return;
     setIsActionLoading(true);
     try {
+      // 1. If it's a Billing Note, clean up the billing run record first
+      if (docToAction.docType === 'BILLING_NOTE') {
+        const monthId = docToAction.docDate.substring(0, 7); // YYYY-MM
+        const cId = docToAction.customerId || docToAction.customerSnapshot?.id;
+        if (cId) {
+          const runRef = doc(db, 'billingRuns', monthId);
+          try {
+            await updateDoc(runRef, {
+              [`createdBillingNotes.${cId}`]: deleteField()
+            });
+          } catch (e) {
+            console.log("No billing run record found to clean up.");
+          }
+        }
+      }
+
+      // 2. Delete the document
       await deleteDoc(doc(db, 'documents', docToAction.id));
       toast({ title: "ลบเอกสารสำเร็จ" });
     } catch (err: any) {
@@ -348,7 +364,7 @@ export function DocumentList({
 
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle><AlertDialogDescription>คุณต้องการลบเอกสารนี้อย่างถาวรใช่หรือไม่?</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle><AlertDialogDescription>คุณต้องการลบเอกสารนี้อย่างถาวรใช่หรือไม่? การลบใบวางบิลจะทำให้สถานะในหน้า Batch สรุปรายเดือนถูกรีเซ็ตด้วยค่ะ</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} disabled={isActionLoading}>{isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการลบ'}</AlertDialogAction>
