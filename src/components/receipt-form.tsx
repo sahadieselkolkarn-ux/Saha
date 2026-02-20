@@ -168,7 +168,8 @@ export function ReceiptForm() {
         receivedAccountId: data.accountId,
       };
 
-      const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile);
+      // Create Receipt with PENDING_REVIEW status so it shows in Inbox
+      const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile, undefined, { initialStatus: 'PENDING_REVIEW' });
 
       const sourceDocRef = doc(db, 'documents', data.sourceDocId);
       await updateDoc(sourceDocRef, {
@@ -177,8 +178,7 @@ export function ReceiptForm() {
       });
 
       toast({ title: "ออกใบเสร็จรับเงินสำเร็จ", description: `เลขที่ใบเสร็จ: ${docNo}` });
-      
-      router.push(`/app/management/accounting/documents/receipt/${docId}/confirm`);
+      router.push(`/app/management/accounting/inbox`);
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถออกใบเสร็จได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" });
     }

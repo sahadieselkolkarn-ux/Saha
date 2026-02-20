@@ -51,7 +51,7 @@ export default function AccountingInboxPage() {
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"receive" | "ar">("receive");
+  const [activeTab, setActiveTab] = useState<"receive" | "ar" | "receipts">("receive");
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
 
   const [confirmingDoc, setConfirmingDoc] = useState<WithId<DocumentType> | null>(null);
@@ -73,11 +73,12 @@ export default function AccountingInboxPage() {
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
   }, [profile]);
 
+  // Use primary status 'PENDING_REVIEW' as the source of truth for the Inbox
   const docsQuery = useMemo(() => {
     if (!db || !hasPermission) return null;
     return query(
       collection(db, "documents"), 
-      where("arStatus", "==", "PENDING"),
+      where("status", "==", "PENDING_REVIEW"),
       limit(200)
     );
   }, [db, hasPermission]);
@@ -198,6 +199,9 @@ export default function AccountingInboxPage() {
       }
       if (activeTab === 'ar') {
         return (doc.docType === 'DELIVERY_NOTE' || doc.docType === 'TAX_INVOICE') && doc.paymentTerms === 'CREDIT';
+      }
+      if (activeTab === 'receipts') {
+        return doc.docType === 'RECEIPT';
       }
       return false;
     });
@@ -481,6 +485,7 @@ export default function AccountingInboxPage() {
           <TabsList>
             <TabsTrigger value="receive">รอรับเงิน (Cash)</TabsTrigger>
             <TabsTrigger value="ar">รอตั้งลูกหนี้ (Credit)</TabsTrigger>
+            <TabsTrigger value="receipts">รอยืนยันใบเสร็จ</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -504,7 +509,7 @@ export default function AccountingInboxPage() {
                   {loading ? (
                     <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   ) : filteredDocs.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตรวจสอบ</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic">ไม่มีรายการรอตรวจสอบ (Cash)</TableCell></TableRow>
                   ) : filteredDocs.map(doc => (
                     <TableRow key={doc.id}>
                       <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
@@ -559,7 +564,7 @@ export default function AccountingInboxPage() {
                   {loading ? (
                     <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   ) : filteredDocs.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center h-24">ไม่มีรายการรอตั้งลูกหนี้</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic">ไม่มีรายการรอตั้งลูกหนี้ (Credit)</TableCell></TableRow>
                   ) : filteredDocs.map(doc => (
                     <TableRow key={doc.id}>
                       <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
@@ -593,6 +598,41 @@ export default function AccountingInboxPage() {
                             </DropdownMenu>
                           )}
                         </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TabsContent>
+            <TabsContent value="receipts" className="mt-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>วันที่</TableHead>
+                    <TableHead>ลูกค้า</TableHead>
+                    <TableHead>เลขที่ใบเสร็จ</TableHead>
+                    <TableHead>ยอดเงิน</TableHead>
+                    <TableHead className="text-right">จัดการ</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                  ) : filteredDocs.length === 0 ? (
+                    <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic">ไม่มีใบเสร็จที่รอยืนยันเงินเข้า</TableCell></TableRow>
+                  ) : filteredDocs.map(doc => (
+                    <TableRow key={doc.id}>
+                      <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
+                      <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{doc.docNo}</div>
+                        <div className="text-xs text-muted-foreground">อ้างอิง: {doc.referencesDocIds?.[0] || '-'}</div>
+                      </TableCell>
+                      <TableCell className="font-bold text-green-600">{formatCurrency(doc.grandTotal)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => router.push(`/app/management/accounting/documents/receipt/${doc.id}/confirm`)}>
+                          <CheckCircle className="mr-2 h-4 w-4 text-green-600"/> ยืนยันรับเงิน
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
