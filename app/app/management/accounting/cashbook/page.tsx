@@ -19,7 +19,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths, addMonths } from "date-fns";
 
-import { useFirebase, useAuth } from "@/firebase";
+import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
@@ -265,7 +266,7 @@ export default function CashbookPage() {
             <CardTitle className="text-sm font-medium text-red-700 uppercase tracking-wider">รายจ่ายรวม</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-black text-red-600">฿{formatCurrency(summary.expense)}</div>
+            <div className="text-2xl font-black text-green-600">฿{formatCurrency(summary.expense)}</div>
           </CardContent>
         </Card>
         <Card className="bg-primary/10 border-primary/20">
