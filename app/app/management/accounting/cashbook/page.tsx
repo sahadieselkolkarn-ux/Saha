@@ -1,58 +1,469 @@
 "use client";
 
-import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { format, startOfMonth, endOfMonth, parseISO, isBefore, isAfter, subMonths, addMonths } from "date-fns";
-import { collection, query, where, orderBy, addDoc, serverTimestamp, getDocs, onSnapshot, doc, writeBatch, runTransaction, increment, updateDoc, deleteDoc } from "firebase/firestore";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  onSnapshot, 
+  addDoc, 
+  doc, 
+  deleteDoc, 
+  serverTimestamp, 
+  Timestamp,
+  limit
+} from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths, addMonths } from "date-fns";
 
-import { useFirebase, useCollection, useDoc } from "@/firebase";
+import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { ACCOUNTING_CATEGORIES } from "@/lib/constants";
-import type { AccountingAccount, AccountingEntry, Vendor, StoreSettings, Document as DocumentType } from "@/lib/types";
+import type { AccountingAccount, AccountingEntry } from "@/lib/types";
+import type { WithId } from "@/firebase/firestore/use-collection";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger 
+} from "@/components/ui/dialog";
+import { 
+  Form, 
+  FormControl, 
+  FormField, 
+  FormItem, 
+  FormLabel, 
+  FormMessage, 
+  FormDescription 
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Switch } from "@/components/ui/switch";
-import { Loader2, PlusCircle, Search, CalendarIcon, ChevronsUpDown, AlertCircle, FileText, Printer, CheckCircle2, MoreHorizontal, Edit, Trash2, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Loader2, PlusCircle, Search, CalendarIcon, 
+  ArrowDownCircle, ArrowUpCircle, Trash2, 
+  ChevronLeft, ChevronRight, Filter, AlertCircle, FileText, Wallet
+} from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
-import { Separator } from "@/components/ui/separator";
-import Link from "next/link";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { WithId } from "@/firebase/index";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
-// Existing code for EntryFormDialog and other sub-components...
-// The logic for Cashbook remains mostly the same, just fixing the import path for Tabs
+const entrySchema = z.object({
+  entryType: z.enum(["CASH_IN", "CASH_OUT"]),
+  entryDate: z.string().min(1, "กรุณาเลือกวันที่"),
+  amount: z.coerce.number().min(0.01, "ยอดเงินต้องมากกว่า 0"),
+  accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
+  categoryMain: z.string().min(1, "กรุณาเลือกหมวดหมู่หลัก"),
+  categorySub: z.string().min(1, "กรุณาเลือกหมวดหมู่ย่อย"),
+  description: z.string().min(1, "กรุณาระบุรายละเอียด"),
+  paymentMethod: z.enum(["CASH", "TRANSFER", "CREDIT"]),
+});
 
-export default function ManagementAccountingCashbookPage() {
-    // ... logic for cashbook ...
-    return (
-        <div className="space-y-6">
-            <PageHeader title="รับ-จ่ายเงิน" description="บันทึกและตรวจสอบรายการความเคลื่อนไหวทางการเงินทั้งหมด" />
-            <Alert variant="secondary" className="bg-amber-50 border-amber-200">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>กำลังปรับปรุงระบบโมดูลเงินสด</AlertTitle>
-                <AlertDescription>
-                    กรุณาใช้หน้า Inbox เพื่อตรวจสอบบิลขาย และหน้า Purchase Inbox เพื่อตรวจสอบรายการซื้อเพื่อให้ข้อมูลบัญชีตรงกันที่สุดค่ะ
-                </AlertDescription>
-            </Alert>
-            {/* The rest of the cashbook content would be here, corrected to use @/components/ui/tabs if tabs are used */}
-        </div>
+type EntryFormData = z.infer<typeof entrySchema>;
+
+const formatCurrency = (value: number) => {
+  return (value ?? 0).toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
+
+export default function CashbookPage() {
+  const { db } = useFirebase();
+  const { profile, loading: authLoading } = useAuth();
+  const { toast } = useToast();
+
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [entries, setEntries] = useState<WithId<AccountingEntry>[]>([]);
+  const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("ALL");
+  const [isAdding, setIsAdding] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<WithId<AccountingEntry> | null>(null);
+
+  const form = useForm<EntryFormData>({
+    resolver: zodResolver(entrySchema),
+    defaultValues: {
+      entryType: "CASH_IN",
+      entryDate: format(new Date(), "yyyy-MM-dd"),
+      amount: 0,
+      paymentMethod: "CASH",
+      description: "",
+    },
+  });
+
+  const watchedType = form.watch("entryType");
+  const watchedMainCat = form.watch("categoryMain");
+
+  // Filter Categories based on Type
+  const mainCategories = useMemo(() => {
+    return watchedType === "CASH_IN" 
+      ? Object.keys(ACCOUNTING_CATEGORIES.INCOME) 
+      : Object.keys(ACCOUNTING_CATEGORIES.EXPENSE);
+  }, [watchedType]);
+
+  const subCategories = useMemo(() => {
+    if (!watchedMainCat) return [];
+    const source = watchedType === "CASH_IN" ? ACCOUNTING_CATEGORIES.INCOME : ACCOUNTING_CATEGORIES.EXPENSE;
+    return (source as any)[watchedMainCat] || [];
+  }, [watchedType, watchedMainCat]);
+
+  // Permissions Check
+  const hasPermission = useMemo(() => {
+    if (!profile) return false;
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT';
+  }, [profile]);
+
+  useEffect(() => {
+    if (!db || !hasPermission) return;
+
+    const start = startOfMonth(currentMonth);
+    const end = endOfMonth(currentMonth);
+
+    setLoading(true);
+    const q = query(
+      collection(db, "accountingEntries"),
+      where("entryDate", ">=", format(start, "yyyy-MM-dd")),
+      where("entryDate", "<=", format(end, "yyyy-MM-dd")),
+      orderBy("entryDate", "desc"),
+      orderBy("createdAt", "desc")
     );
+
+    const unsubEntries = onSnapshot(q, (snap) => {
+      setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingEntry>)));
+      setLoading(false);
+    });
+
+    const unsubAccounts = onSnapshot(query(collection(db, "accountingAccounts"), where("isActive", "==", true)), (snap) => {
+      setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
+    });
+
+    return () => { unsubEntries(); unsubAccounts(); };
+  }, [db, currentMonth, hasPermission]);
+
+  const summary = useMemo(() => {
+    const income = entries
+      .filter(e => e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT')
+      .reduce((sum, e) => sum + e.amount, 0);
+    const expense = entries
+      .filter(e => e.entryType === 'CASH_OUT')
+      .reduce((sum, e) => sum + e.amount, 0);
+    return { income, expense, net: income - expense };
+  }, [entries]);
+
+  const filteredEntries = useMemo(() => {
+    let result = entries;
+    if (activeTab === "IN") result = result.filter(e => e.entryType === 'CASH_IN' || e.entryType === 'RECEIPT');
+    if (activeTab === "OUT") result = result.filter(e => e.entryType === 'CASH_OUT');
+
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      result = result.filter(e => 
+        e.description?.toLowerCase().includes(q) || 
+        e.sourceDocNo?.toLowerCase().includes(q) ||
+        e.categoryMain?.toLowerCase().includes(q) ||
+        e.categorySub?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [entries, activeTab, searchTerm]);
+
+  const onSubmit = async (values: EntryFormData) => {
+    if (!db || !profile) return;
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, "accountingEntries"), sanitizeForFirestore({
+        ...values,
+        createdAt: serverTimestamp(),
+        createdByUid: profile.uid,
+        createdByName: profile.displayName,
+      }));
+      toast({ title: "บันทึกรายการสำเร็จ" });
+      setIsAdding(false);
+      form.reset({
+        ...form.getValues(),
+        amount: 0,
+        description: "",
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "บันทึกไม่สำเร็จ", description: e.message });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!db || !entryToDelete) return;
+    try {
+      await deleteDoc(doc(db, "accountingEntries", entryToDelete.id));
+      toast({ title: "ลบรายการสำเร็จ" });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "ลบไม่สำเร็จ", description: e.message });
+    } finally {
+      setEntryToDelete(null);
+    }
+  };
+
+  if (authLoading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8" /></div>;
+
+  if (!hasPermission) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
+        <AlertCircle className="h-12 w-12 text-destructive/50" />
+        <p className="text-lg">หน้านี้เฉพาะฝ่ายบริหารและบัญชีเท่านั้นค่ะ</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="รับ-จ่ายเงิน (Cashbook)" description="บันทึกและตรวจสอบรายการความเคลื่อนไหวทางการเงินทั้งหมด">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft /></Button>
+          <span className="font-bold text-lg w-32 text-center">{format(currentMonth, "MMMM yyyy")}</span>
+          <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight /></Button>
+          <Button onClick={() => setIsAdding(true)} className="ml-4 shadow-lg bg-primary hover:bg-primary/90">
+            <PlusCircle className="mr-2 h-4 w-4" /> เพิ่มรายการใหม่
+          </Button>
+        </div>
+      </PageHeader>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-green-50 border-green-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-green-700 uppercase tracking-wider">รายรับรวม</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-black text-green-600">฿{formatCurrency(summary.income)}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-red-50 border-red-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-red-700 uppercase tracking-wider">รายจ่ายรวม</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-black text-red-600">฿{formatCurrency(summary.expense)}</div>
+          </CardContent>
+        </Card>
+        <Card className="bg-primary/10 border-primary/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-primary uppercase tracking-wider">ยอดสุทธิ (Net)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={cn("text-2xl font-black", summary.net >= 0 ? "text-primary" : "text-destructive")}>
+              ฿{formatCurrency(summary.net)}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between gap-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+              <TabsList>
+                <TabsTrigger value="ALL">ทั้งหมด</TabsTrigger>
+                <TabsTrigger value="IN">รายรับ</TabsTrigger>
+                <TabsTrigger value="OUT">รายจ่าย</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="ค้นหารายการ..." 
+                className="pl-10" 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="border rounded-md overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="w-24">วันที่</TableHead>
+                  <TableHead>รายการ / หมวดหมู่</TableHead>
+                  <TableHead>บัญชี</TableHead>
+                  <TableHead className="text-right">รายรับ (+)</TableHead>
+                  <TableHead className="text-right">รายจ่าย (-)</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={6} className="h-24 text-center"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+                ) : filteredEntries.length > 0 ? (
+                  filteredEntries.map(entry => (
+                    <TableRow key={entry.id} className="hover:bg-muted/30">
+                      <TableCell className="text-xs text-muted-foreground">{safeFormat(parseISO(entry.entryDate), "dd/MM/yy")}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-sm">{entry.description}</p>
+                          {entry.sourceDocId && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="outline" className="h-4 px-1 text-[8px] border-primary/30 text-primary">AUTO</Badge>
+                                </TooltipTrigger>
+                                <TooltipContent><p>รายการสร้างอัตโนมัติจาก {entry.sourceDocNo}</p></TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground uppercase">{entry.categoryMain} › {entry.categorySub}</p>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Wallet className="h-3 w-3 text-muted-foreground" />
+                          {accounts.find(a => a.id === entry.accountId)?.name || "-"}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-green-600">
+                        {(entry.entryType === 'CASH_IN' || entry.entryType === 'RECEIPT') ? `+${formatCurrency(entry.amount)}` : ""}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-red-600">
+                        {entry.entryType === 'CASH_OUT' ? `-${formatCurrency(entry.amount)}` : ""}
+                      </TableCell>
+                      <TableCell>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => setEntryToDelete(entry)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground italic">ไม่พบรายการในช่วงเวลานี้</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Add Entry Dialog */}
+      <Dialog open={isAdding} onOpenChange={setIsAdding}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>บันทึกรายการบัญชีใหม่</DialogTitle>
+            <DialogDescription>บันทึกรายรับหรือรายจ่ายเบ็ดเตล็ดเข้าสมุดเงินสด</DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="entryType" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ประเภท</FormLabel>
+                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("categoryMain", ""); form.setValue("categorySub", ""); }} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="CASH_IN">รายรับ (+)</SelectItem>
+                        <SelectItem value="CASH_OUT">รายจ่าย (-)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="entryDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>)} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="categoryMain" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>หมวดหมู่หลัก</FormLabel>
+                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("categorySub", ""); }} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
+                      <SelectContent>{mainCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="categorySub" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>หมวดหมู่ย่อย</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={!watchedMainCat}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
+                      <SelectContent>{subCategories.map((c: string) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={form.control} name="accountId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>เข้า/ออกจากบัญชี</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
+                      <SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="amount" render={({ field }) => (<FormItem><FormLabel>จำนวนเงิน (บาท)</FormLabel><FormControl><Input type="number" step="0.01" className="font-bold text-lg" {...field} /></FormControl></FormItem>)} />
+              </div>
+
+              <FormField control={form.control} name="description" render={({ field }) => (<FormItem><FormLabel>คำอธิบายรายการ</FormLabel><FormControl><Input placeholder="ระบุรายละเอียด เช่น ค่าอะไหล่เบิกเงินสด, รับเงินค่าซ่อม..." {...field} /></FormControl></FormItem>)} />
+
+              <DialogFooter className="pt-4">
+                <Button variant="outline" type="button" onClick={() => setIsAdding(false)}>ยกเลิก</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Save className="mr-2 h-4 w-4" /> บันทึกรายการ
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm */}
+      <AlertDialog open={!!entryToDelete} onOpenChange={(o) => !o && setEntryToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบรายการ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบรายการ "{entryToDelete?.description}" ใช่หรือไม่? หากรายการนี้ถูกสร้างโดยอัตโนมัติ การลบอาจทำให้ยอดเงินไม่ตรงกับเอกสารต้นทาง
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">ยืนยันการลบ</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
 }
+
+// Minimal Tooltip Mock if needed
+function TooltipProvider({children}: {children: any}) { return <>{children}</> }
+function Tooltip({children}: {children: any}) { return <>{children}</> }
+function TooltipTrigger({children, asChild}: {children: any, asChild?: boolean}) { return <>{children}</> }
+function TooltipContent({children}: {children: any}) { return null }
