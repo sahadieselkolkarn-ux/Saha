@@ -12,7 +12,8 @@ import {
   deleteDoc, 
   serverTimestamp, 
   Timestamp,
-  limit
+  limit,
+  type FirestoreError
 } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -55,7 +56,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Loader2, PlusCircle, Search, CalendarIcon, 
   ArrowDownCircle, ArrowUpCircle, Trash2, 
-  ChevronLeft, ChevronRight, Filter, AlertCircle, FileText, Wallet, Save
+  ChevronLeft, ChevronRight, Filter, AlertCircle, FileText, Wallet, Save, ExternalLink
 } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
 import {
@@ -68,6 +69,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const entrySchema = z.object({
   entryType: z.enum(["CASH_IN", "CASH_OUT"]),
@@ -103,6 +105,7 @@ export default function CashbookPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<WithId<AccountingEntry> | null>(null);
+  const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
 
   const form = useForm<EntryFormData>({
     resolver: zodResolver(entrySchema),
@@ -144,6 +147,8 @@ export default function CashbookPage() {
     const end = endOfMonth(currentMonth);
 
     setLoading(true);
+    setIndexErrorUrl(null);
+
     const q = query(
       collection(db, "accountingEntries"),
       where("entryDate", ">=", format(start, "yyyy-MM-dd")),
@@ -154,6 +159,13 @@ export default function CashbookPage() {
 
     const unsubEntries = onSnapshot(q, (snap) => {
       setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingEntry>)));
+      setLoading(false);
+    }, (err: FirestoreError) => {
+      console.error("Firestore Error:", err);
+      if (err.message?.includes("requires an index")) {
+        const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) setIndexErrorUrl(urlMatch[0]);
+      }
       setLoading(false);
     });
 
@@ -250,6 +262,22 @@ export default function CashbookPage() {
           </Button>
         </div>
       </PageHeader>
+
+      {indexErrorUrl && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>ต้องสร้างดัชนี (Index) สำหรับคิวรีนี้</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2">
+            <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงรายการในสมุดเงินสด กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
+            <Button asChild variant="outline" size="sm" className="w-fit">
+              <a href={indexErrorUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                กดเพื่อสร้าง Index (Firebase Console)
+              </a>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -427,8 +455,8 @@ export default function CashbookPage() {
               <DialogFooter className="pt-4">
                 <Button variant="outline" type="button" onClick={() => setIsAdding(false)}>ยกเลิก</Button>
                 <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  <Save className="mr-2 h-4 w-4" /> บันทึกรายการ
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  บันทึกรายการ
                 </Button>
               </DialogFooter>
             </form>
