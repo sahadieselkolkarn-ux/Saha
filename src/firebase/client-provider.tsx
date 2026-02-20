@@ -1,49 +1,27 @@
 'use client';
 
-import React, { useMemo, type ReactNode, createContext, useContext } from 'react';
+import React, { useMemo, type ReactNode } from 'react';
 import { initializeFirebase } from '@/firebase/init';
-import type { Firestore } from 'firebase/firestore';
-import type { FirebaseStorage } from 'firebase/storage';
-import type { Auth } from 'firebase/auth';
-import type { FirebaseApp } from 'firebase/app';
+import { FirebaseProvider } from './provider';
 import { FirebaseErrorListener } from '@/components/firebase-error-listener';
-
-interface FirebaseServices {
-  db: Firestore | null;
-  storage: FirebaseStorage | null;
-  auth: Auth | null;
-  firebaseApp: FirebaseApp | null;
-}
-
-const FirebaseContext = createContext<FirebaseServices>({ 
-  db: null, 
-  storage: null, 
-  auth: null,
-  firebaseApp: null
-});
 
 export function FirebaseClientProvider({ children }: { children: ReactNode }) {
   const services = useMemo(() => {
     return initializeFirebase();
   }, []);
 
+  if (!services.firebaseApp || !services.firestore || !services.auth) {
+    return null;
+  }
+
   return (
-    <FirebaseContext.Provider value={{ 
-      db: services.firestore, 
-      storage: services.storage, 
-      auth: services.auth,
-      firebaseApp: services.firebaseApp
-    }}>
+    <FirebaseProvider 
+      firebaseApp={services.firebaseApp} 
+      firestore={services.firestore} 
+      auth={services.auth}
+    >
       <FirebaseErrorListener />
       {children}
-    </FirebaseContext.Provider>
+    </FirebaseProvider>
   );
-}
-
-export const useFirebase = () => {
-    const context = useContext(FirebaseContext);
-    if (!context) {
-        throw new Error('useFirebase must be used within a FirebaseClientProvider');
-    }
-    return context;
 }
