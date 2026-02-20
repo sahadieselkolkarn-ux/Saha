@@ -16,5 +16,5 @@ export {
   useCollection,
   useDoc,
   useUser,
-  WithId,
+  type WithId,
 };

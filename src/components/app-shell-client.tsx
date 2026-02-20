@@ -17,15 +17,12 @@ function FullscreenSpinner() {
 }
 
 function ShellInner({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false);
   const { user, loading, profile } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
   useEffect(() => {
-    setMounted(true);
-    
     if ('serviceWorker' in navigator) {
       if (process.env.NODE_ENV === "production") {
         window.addEventListener('load', () => {
@@ -43,7 +40,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     pathname === "/healthz";
 
   useEffect(() => {
-    if (!mounted || loading) return;
+    if (loading) return;
 
     if (!user) {
       if (!isPublicRoute) {
@@ -66,13 +63,13 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             }
         }
     }
-  }, [mounted, loading, user, profile, router, pathname, isPublicRoute]);
+  }, [loading, user, profile, router, pathname, isPublicRoute]);
 
   if (isPublicRoute) {
     return <>{children}</>;
   }
   
-  if (!mounted || loading || !user || (!profile && pathname !== "/pending")) {
+  if (loading || !user || (!profile && pathname !== "/pending")) {
     return <FullscreenSpinner />;
   }
   
@@ -107,6 +104,16 @@ function ShellInner({ children }: { children: React.ReactNode }) {
 }
 
 export function AppShellClient({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <Suspense fallback={<FullscreenSpinner />}>
       <ShellInner>{children}</ShellInner>

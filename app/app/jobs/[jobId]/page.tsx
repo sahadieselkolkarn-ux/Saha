@@ -645,9 +645,6 @@ function JobDetailsPageContent() {
     };
   }, [photoPreviews]);
 
-  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>;
-  if (!job) return <PageHeader title="ไม่พบงาน" />;
-
   return (
     <>
       <Button variant="outline" size="sm" className="mb-4" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> ย้อนกลับ</Button>
@@ -954,7 +951,7 @@ function JobDetailsPageContent() {
       <AlertDialog open={isApproveConfirmOpen} onOpenChange={setIsApproveConfirmOpen}>
           <AlertDialogContent>
               <AlertDialogHeader><AlertDialogTitle>ยืนยันการอนุมัติ</AlertDialogTitle><AlertDialogDescription>ลูกค้าอนุมัติซ่อม ยืนยันเพื่อเปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"?</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerApproval} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
+              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerApproval} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
       </AlertDialog>
 
@@ -992,12 +989,4 @@ function JobDetailsPageContent() {
       </AlertDialog>
     </>
   );
-}
-
-export default function JobDetailsPage() {
-    return (
-        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
-            <JobDetailsPageContent />
-        </Suspense>
-    );
 }
