@@ -137,7 +137,7 @@ export default function CashbookPage() {
   // Permissions Check
   const hasPermission = useMemo(() => {
     if (!profile) return false;
-    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT';
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
   }, [profile]);
 
   useEffect(() => {
@@ -145,35 +145,46 @@ export default function CashbookPage() {
 
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
+    const startStr = format(start, "yyyy-MM-dd");
+    const endStr = format(end, "yyyy-MM-dd");
 
     setLoading(true);
     setIndexErrorUrl(null);
 
-    const q = query(
+    // Snapshot listener for entries
+    const entriesQuery = query(
       collection(db, "accountingEntries"),
-      where("entryDate", ">=", format(start, "yyyy-MM-dd")),
-      where("entryDate", "<=", format(end, "yyyy-MM-dd")),
+      where("entryDate", ">=", startStr),
+      where("entryDate", "<=", endStr),
       orderBy("entryDate", "desc"),
       orderBy("createdAt", "desc")
     );
 
-    const unsubEntries = onSnapshot(q, (snap) => {
-      setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingEntry>)));
-      setLoading(false);
-    }, (err: FirestoreError) => {
-      console.error("Firestore Error:", err);
-      if (err.message?.includes("requires an index")) {
-        const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-        if (urlMatch) setIndexErrorUrl(urlMatch[0]);
+    const unsubEntries = onSnapshot(entriesQuery, {
+      next: (snap) => {
+        setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingEntry>)));
+        setLoading(false);
+      },
+      error: (err: FirestoreError) => {
+        console.error("Firestore Error in Cashbook:", err);
+        if (err.message?.includes("requires an index")) {
+          const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+          if (urlMatch) setIndexErrorUrl(urlMatch[0]);
+        }
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    const unsubAccounts = onSnapshot(query(collection(db, "accountingAccounts"), where("isActive", "==", true)), (snap) => {
+    // Snapshot listener for active accounts
+    const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
+    const unsubAccounts = onSnapshot(accountsQuery, (snap) => {
       setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>)));
     });
 
-    return () => { unsubEntries(); unsubAccounts(); };
+    return () => { 
+      unsubEntries(); 
+      unsubAccounts(); 
+    };
   }, [db, currentMonth, hasPermission]);
 
   const summary = useMemo(() => {
