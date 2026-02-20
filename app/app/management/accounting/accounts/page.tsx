@@ -17,7 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, BookOpen, ShieldAlert, ArrowRightLeft, Save } from "lucide-react";
+import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, BookOpen, ShieldAlert, ArrowRightLeft, Save, AlertCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,7 +45,7 @@ type TransferFormData = z.infer<typeof transferSchema>;
 
 export default function ManagementAccountingAccountsPage() {
   const { db } = useFirebase();
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { toast } = useToast();
 
   const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
@@ -75,7 +75,7 @@ export default function ManagementAccountingAccountsPage() {
 
   useEffect(() => {
     if (!db || !hasPermission) {
-      if (!hasPermission) setLoading(false);
+      if (!hasPermission && !authLoading) setLoading(false);
       return;
     }
     setLoading(true);
@@ -96,7 +96,7 @@ export default function ManagementAccountingAccountsPage() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [db, toast, hasPermission]);
+  }, [db, toast, hasPermission, authLoading]);
 
   const filteredAccounts = useMemo(() => {
     if (!searchTerm.trim()) return accounts;
@@ -206,29 +206,15 @@ export default function ManagementAccountingAccountsPage() {
     }
   };
 
-  if (!profile) {
-    return (
-         <div className="flex justify-center items-center h-64">
-            <Loader2 className="mx-auto animate-spin" />
-         </div>
-    )
+  if (authLoading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
   }
 
   if (!hasPermission) {
     return (
-      <div className="w-full flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <ShieldAlert className="h-16 w-16 text-destructive" />
-        <Card className="max-w-md text-center">
-            <CardHeader>
-                <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
-                <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น พนักงานตำแหน่งช่างไม่สามารถเข้าถึงได้ค่ะ</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Button asChild variant="outline">
-                    <Link href="/app/jobs">ย้อนกลับ</Link>
-                </Button>
-            </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
+        <AlertCircle className="h-12 w-12 text-destructive/50" />
+        <p className="text-lg">ไม่มีสิทธิ์เข้าถึง</p>
       </div>
     );
   }

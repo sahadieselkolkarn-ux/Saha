@@ -23,7 +23,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Loader2, Search, MoreHorizontal, CheckCircle, XCircle, Eye } from "lucide-react";
+import { Loader2, Search, MoreHorizontal, CheckCircle, XCircle, Eye, AlertCircle } from "lucide-react";
 import { WithId } from "@/firebase";
 import { PurchaseClaim, AccountingAccount, PurchaseDoc } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
@@ -143,7 +143,7 @@ function RejectClaimDialog({ claim, onClose, onConfirm }: { claim: WithId<Purcha
 }
 
 function PurchaseInboxPageContent() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { db } = useFirebase();
   const { toast } = useToast();
   
@@ -156,11 +156,15 @@ function PurchaseInboxPageContent() {
   const [approvingClaim, setApprovingClaim] = useState<WithId<PurchaseClaim> | null>(null);
   const [rejectingClaim, setRejectingClaim] = useState<WithId<PurchaseClaim> | null>(null);
 
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
+  const hasPermission = useMemo(() => {
+    if (!profile) return false;
+    // สิทธิ์ให้ admin และ manager แผนกบริหาร
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT';
+  }, [profile]);
 
   useEffect(() => {
     if (!db || !hasPermission) {
-      setLoading(false);
+      if (!hasPermission && !authLoading) setLoading(false);
       return;
     }
     const claimsQuery = query(collection(db, "purchaseClaims"), orderBy("updatedAt", "desc"));
@@ -182,7 +186,7 @@ function PurchaseInboxPageContent() {
     );
 
     return () => { unsubClaims(); unsubAccounts(); };
-  }, [db, toast, hasPermission]);
+  }, [db, toast, hasPermission, authLoading]);
   
   const filteredClaims = useMemo(() => {
     let filtered = claims.filter(c => c.status === activeTab);
@@ -343,7 +347,16 @@ function PurchaseInboxPageContent() {
     }
   };
 
-  if (!hasPermission) return <Card className="py-12 text-center"><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle></Card>;
+  if (authLoading) {
+    return <div className="flex justify-center p-8"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+  }
+
+  if (!hasPermission) return (
+    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
+      <AlertCircle className="h-12 w-12 text-destructive/50" />
+      <p className="text-lg">ไม่มีสิทธิ์เข้าถึง</p>
+    </div>
+  );
 
   return (
     <>

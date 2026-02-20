@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, useEffect, Suspense } from "react";
-import { useAuth, useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
+import { useFirebase } from "@/firebase";
 import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
@@ -41,7 +42,7 @@ import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/e
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function AccountingInboxPageContent() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const { db, app: firebaseApp } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
@@ -66,12 +67,13 @@ function AccountingInboxPageContent() {
 
   const hasPermission = useMemo(() => {
     if (!profile) return false;
+    // สิทธิ์ให้ admin และ manager แผนกบริหาร รวมถึงออฟฟิศที่ต้องตรวจบิล
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
   }, [profile]);
 
   useEffect(() => {
     if (!db || !hasPermission) {
-      if (!hasPermission) setLoading(false);
+      if (!hasPermission && !authLoading) setLoading(false);
       return;
     }
 
@@ -125,7 +127,7 @@ function AccountingInboxPageContent() {
     );
 
     return () => { unsubDocs(); unsubAccounts(); };
-  }, [db, hasPermission]);
+  }, [db, hasPermission, authLoading]);
 
   const filteredDocs = useMemo(() => {
     const filteredByTab = documents.filter(doc => {
@@ -354,7 +356,18 @@ function AccountingInboxPageContent() {
     }
   };
 
-  if (!hasPermission) return <div className="p-8 text-center">ไม่มีสิทธิ์เข้าถึง</div>;
+  if (authLoading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+  }
+
+  if (!hasPermission) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-4">
+        <AlertCircle className="h-12 w-12 text-destructive/50" />
+        <p className="text-lg">ไม่มีสิทธิ์เข้าถึง</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -524,8 +537,8 @@ function AccountingInboxPageContent() {
       </Tabs>
 
       <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && !isSubmitting && setConfirmingDoc(null)}>
-        <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()} className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()} className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-0">
             <DialogTitle>ยืนยันตรวจสอบรายการขาย</DialogTitle>
             <DialogDescription className="text-destructive font-bold">
                 ตรวจสอบความถูกต้องของช่องทางการรับเงินและบัญชี
@@ -533,14 +546,16 @@ function AccountingInboxPageContent() {
           </DialogHeader>
           
           {confirmError && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>บันทึกไม่สำเร็จ</AlertTitle>
-              <AlertDescription className="text-xs">{confirmError}</AlertDescription>
-            </Alert>
+            <div className="px-6 py-2">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>บันทึกไม่สำเร็จ</AlertTitle>
+                <AlertDescription className="text-xs">{confirmError}</AlertDescription>
+              </Alert>
+            </div>
           )}
 
-          <div className="py-4 space-y-6">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 text-center">
                 <p className="text-sm text-muted-foreground">ยอดเงินรวมบิล</p>
                 <p className="text-3xl font-black text-primary">฿{formatCurrency(confirmingDoc?.grandTotal ?? 0)}</p>
@@ -571,7 +586,7 @@ function AccountingInboxPageContent() {
                                                 <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="CASH">เงินสด</SelectItem>
-                                                    <SelectItem value="TRANSFER">โอนเงิน</SelectItem>
+                                                    <SelectItem value="TRANSFER">เงินโอน</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </TableCell>

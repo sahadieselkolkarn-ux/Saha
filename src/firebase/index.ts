@@ -18,7 +18,7 @@ export {
   useFirebase,
   useFirestore,
   useFirebaseApp,
-  useFirebaseAuth as useAuth,
+  useFirebaseAuth,
   useCollection,
   useDoc,
   useUser,
