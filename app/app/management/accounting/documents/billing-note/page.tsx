@@ -45,7 +45,9 @@ import {
   RotateCcw,
   History,
   LayoutGrid,
-  Eye
+  Eye,
+  MoreHorizontal,
+  PlusCircle
 } from 'lucide-react';
 import type { Customer, Document, BillingRun, StoreSettings } from '@/lib/types';
 import type { WithId } from '@/firebase/firestore/use-collection';
@@ -367,29 +369,62 @@ function BillingNoteBatchTab() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setEditingCustomerData(data)} disabled={!!data.createdNoteIds}><Edit className="mr-2 h-3 w-3"/> แก้ไข</Button>
-                        {!data.createdNoteIds ? (
-                            <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => createBillingNotesForCustomer(data)} disabled={(data.includedInvoices.length + Object.keys(data.separateGroups).length) === 0}>สร้างใบวางบิล</Button>
-                        ) : (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button size="sm" variant="secondary">ดูเอกสาร <ChevronDown className="ml-2 h-4 w-4"/></Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    {data.createdNoteIds.main && <DropdownMenuItem onClick={() => handlePreview(data.createdNoteIds!.main!)}><Eye className="mr-2 h-4 w-4"/> พรีวิว (ใบหลัก)</DropdownMenuItem>}
-                                    {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={id} onClick={() => handlePreview(id)}><Eye className="mr-2 h-4 w-4"/> พรีวิว ({key})</DropdownMenuItem>)}
-                                    {data.createdNoteIds.main && <DropdownMenuItem onClick={() => handlePrint(data.createdNoteIds!.main!)}><Printer className="mr-2 h-4 w-4"/> พิมพ์ PDF (ใบหลัก)</DropdownMenuItem>}
-                                    {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={`p-${id}`} onClick={() => handlePrint(id)}><Printer className="mr-2 h-4 w-4"/> พิมพ์ PDF ({key})</DropdownMenuItem>)}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleResetStatus(data.customer.id)} disabled={isResetting === data.customer.id}>
-                                        {isResetting === data.customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4"/>}
-                                        ล้างสถานะการสร้าง (Reset)
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        )}
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {!data.createdNoteIds ? (
+                            <>
+                              <DropdownMenuItem onClick={() => setEditingCustomerData(data)}>
+                                <Edit className="mr-2 h-4 w-4" /> แก้ไขการรวบรวม
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => createBillingNotesForCustomer(data)}
+                                disabled={(data.includedInvoices.length + Object.keys(data.separateGroups).length) === 0}
+                                className="text-primary focus:text-primary font-bold"
+                              >
+                                <PlusCircle className="mr-2 h-4 w-4" /> สร้างใบวางบิล
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
+                            <>
+                              {data.createdNoteIds.main && (
+                                <DropdownMenuItem onClick={() => handlePreview(data.createdNoteIds!.main!)}>
+                                  <Eye className="mr-2 h-4 w-4" /> พรีวิว (ใบหลัก)
+                                </DropdownMenuItem>
+                              )}
+                              {Object.entries(data.createdNoteIds.separate).map(([key, id]) => (
+                                <DropdownMenuItem key={id} onClick={() => handlePreview(id)}>
+                                  <Eye className="mr-2 h-4 w-4" /> พรีวิว ({key})
+                                </DropdownMenuItem>
+                              ))}
+                              <DropdownMenuSeparator />
+                              {data.createdNoteIds.main && (
+                                <DropdownMenuItem onClick={() => handlePrint(data.createdNoteIds!.main!)}>
+                                  <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF (ใบหลัก)
+                                </DropdownMenuItem>
+                              )}
+                              {Object.entries(data.createdNoteIds.separate).map(([key, id]) => (
+                                <DropdownMenuItem key={`p-${id}`} onClick={() => handlePrint(id)}>
+                                  <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF ({key})
+                                </DropdownMenuItem>
+                              ))}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive" 
+                                onClick={() => handleResetStatus(data.customer.id)} 
+                                disabled={isResetting === data.customer.id}
+                              >
+                                {isResetting === data.customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4"/>}
+                                ล้างสถานะการสร้าง (Reset)
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
                 ))
