@@ -110,19 +110,18 @@
   }
 
   .printable-document {
-    padding: 8mm !important;
+    padding: 10mm 15mm !important;
     border: none !important;
     width: 210mm !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
+    height: 282mm !important; /* Safety height to fit standard A4 with some margin */
     background: #fff !important;
     box-shadow: none !important;
     margin: 0 !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
     page-break-after: always;
-    display: block !important;
   }
 
   .printable-document * {
