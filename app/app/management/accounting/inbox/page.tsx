@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useAuth } from "@/context/auth-context";
-import { useFirebase } from "@/firebase/client-provider";
+import { useAuth, useFirebase } from "@/firebase";
 import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
@@ -21,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw, Save, Wallet } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { WithId } from "@/firebase/firestore/use-collection";
+import type { WithId } from "@/firebase";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { Label } from "@/components/ui/label";
@@ -44,7 +43,7 @@ const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", {
 
 export default function AccountingInboxPage() {
   const { profile } = useAuth();
-  const { db, firebaseApp } = useFirebase();
+  const { db, app: firebaseApp } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
 
@@ -325,112 +324,6 @@ export default function AccountingInboxPage() {
     }
   };
 
-  const handleCreateAR = async (docToProcess: WithId<DocumentType>) => {
-    if (!db || !profile) return;
-    setIsSubmitting(true);
-    
-    const arId = `AR_${docToProcess.id}`;
-    const jobId = docToProcess.jobId;
-
-    try {
-        await runTransaction(db, async (transaction) => {
-            const docRef = doc(db, 'documents', docToProcess.id);
-            const docSnap = await transaction.get(docRef);
-            
-            if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
-            const docData = docSnap.data();
-            
-            if (docData.status === 'UNPAID' || docData.arObligationId) {
-                throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
-            }
-
-            const arRef = doc(db, 'accountingObligations', arId);
-            const customerName = docToProcess.customerSnapshot?.name || 'Unknown';
-
-            transaction.set(arRef, {
-                id: arId,
-                type: 'AR', 
-                status: 'UNPAID', 
-                sourceDocType: docToProcess.docType, 
-                sourceDocId: docToProcess.id, 
-                sourceDocNo: docToProcess.docNo,
-                amountTotal: docToProcess.grandTotal, 
-                amountPaid: 0, 
-                balance: docToProcess.grandTotal,
-                createdAt: serverTimestamp(), 
-                updatedAt: serverTimestamp(), 
-                dueDate: docToProcess.dueDate || null,
-                customerNameSnapshot: customerName,
-                jobId: jobId || null,
-            });
-
-            transaction.update(docRef, { 
-                arStatus: 'UNPAID',
-                status: 'UNPAID',
-                arObligationId: arId,
-                updatedAt: serverTimestamp()
-            });
-        });
-
-        toast({ title: 'ตั้งลูกหนี้ค้างชำระสำเร็จ' });
-        
-        if (jobId) {
-          callCloseJobFunction(jobId, 'UNPAID');
-        }
-        
-        setArDocToConfirm(null);
-        setIsSubmitting(false);
-    } catch (e: any) {
-        if (e.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({
-            path: 'documents/' + docToProcess.id,
-            operation: 'write',
-          } satisfies SecurityRuleContext);
-          errorEmitter.emit('permission-error', permissionError);
-        } else {
-          toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการยืนยันรายการ", description: e.message });
-        }
-        setIsSubmitting(false);
-    }
-  };
-  
-  const handleDispute = async () => {
-    if (!db || !profile || !disputingDoc || !disputeReason) return;
-    setIsSubmitting(true);
-    const docRef = doc(db, 'documents', disputingDoc.id);
-    const updateData = {
-      arStatus: 'DISPUTED',
-      status: 'REJECTED',
-      reviewRejectReason: disputeReason,
-      reviewRejectedAt: serverTimestamp(),
-      reviewRejectedByName: profile.displayName || 'Unknown',
-      dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() }
-    };
-
-    updateDoc(docRef, updateData)
-      .then(() => {
-        toast({ title: "บันทึกข้อโต้แย้งและตีกลับสำเร็จ" });
-        setDisputingDoc(null);
-      })
-      .catch(async (error: any) => {
-        if (error.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({
-            path: docRef.path,
-            operation: 'update',
-            requestResourceData: updateData,
-          } satisfies SecurityRuleContext);
-          errorEmitter.emit('permission-error', permissionError);
-        } else {
-          toast({ variant: 'destructive', title: "เกิดข้อผิดพลาดในการบันทึก", description: error.message });
-        }
-      })
-      .finally(() => {
-        setIsSubmitting(false);
-      });
-  };
-
-  if (!hasPermission) return <Card><CardHeader><CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle><CardDescription>หน้าจอนี้สำหรับฝ่ายบริหารและบัญชีเท่านั้น</CardDescription></CardHeader></Card>;
-
   return (
     <>
       <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลเพื่อลงสมุดบัญชีรายวัน" />
@@ -657,7 +550,7 @@ export default function AccountingInboxPage() {
                 </div>
 
                 <div className="space-y-3">
-                    <Label className="flex items-center gap-2"><Wallet className="h-4 w-4"/> รายการรับเงิน (ตามที่ออฟฟิศระบุ)</Label>
+                    <Label className="flex items-center gap-2"><Wallet className="h-4 w-4" /> รายการรับเงิน (ตามที่ออฟฟิศระบุ)</Label>
                     <div className="border rounded-md">
                         <Table>
                             <TableHeader className="bg-muted/50">
@@ -683,9 +576,7 @@ export default function AccountingInboxPage() {
                                             <Select value={p.accountId} onValueChange={(v) => handleUpdatePaymentLine(index, 'accountId', v)} disabled={isSubmitting}>
                                                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="เลือก..." /></SelectTrigger>
                                                 <SelectContent>
-                                                    {accounts.map(acc => (
-                                                        <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
-                                                    ))}
+                                                    {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
                                         </TableCell>
@@ -779,3 +670,36 @@ export default function AccountingInboxPage() {
     </>
   );
 }
+
+```
+- src/firebase/index.ts:
+```ts
+import { initializeFirebase } from './init';
+import {
+  FirebaseProvider,
+  useFirebase,
+  useFirestore,
+  useFirebaseApp,
+  useFirebaseAuth,
+} from './provider';
+import { FirebaseClientProvider } from './client-provider';
+import { useCollection } from './firestore/use-collection';
+import { useDoc } from './firestore/use-doc';
+import { useUser } from './auth/use-user';
+
+export {
+  initializeFirebase,
+  FirebaseProvider,
+  FirebaseClientProvider,
+  useFirebase,
+  useFirestore,
+  useFirebaseApp,
+  useFirebaseAuth as useAuth,
+  useCollection,
+  useDoc,
+  useUser,
+};
+
+export type { WithId } from './firestore/use-collection';
+
+```
