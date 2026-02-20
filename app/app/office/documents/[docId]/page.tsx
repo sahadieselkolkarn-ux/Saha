@@ -85,10 +85,10 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
     return (
-        <div className="printable-document p-[15mm] border bg-white shadow-sm flex flex-col min-h-[297mm] w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full print:p-[10mm] box-border">
+        <div className="printable-document p-[10mm] border bg-white shadow-sm flex flex-col w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full print:p-[10mm] box-border">
             <div className="flex-1">
                 {/* Header Section */}
-                <div className="grid grid-cols-2 gap-8 mb-8">
+                <div className="grid grid-cols-2 gap-8 mb-6">
                     <div className="space-y-1">
                         <h2 className="text-base font-bold">
                             {(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}
@@ -112,7 +112,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 </div>
 
                 {/* Customer & Vehicle Section */}
-                <div className="grid grid-cols-2 gap-8 mb-8 p-4 border rounded-md">
+                <div className="grid grid-cols-2 gap-8 mb-6 p-4 border rounded-md">
                     <div className="space-y-1">
                         <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
                         <p className="text-sm">
@@ -133,7 +133,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 </div>
 
                 {/* Items Table */}
-                <Table className="mb-8 border-t border-b">
+                <Table className="mb-6 border-t border-b">
                     <TableHeader className="bg-muted/20">
                         <TableRow className="hover:bg-transparent">
                             <TableHead className="w-12 text-center text-black font-bold h-8">#</TableHead>
@@ -173,12 +173,12 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
             </div>
             
             {/* Signature Section */}
-            <div className="grid grid-cols-2 gap-12 mt-16 text-center text-xs">
-                <div className="space-y-12">
+            <div className="grid grid-cols-2 gap-12 mt-8 text-center text-xs">
+                <div className="space-y-10">
                     <p>.................................................</p>
                     <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
                 </div>
-                <div className="space-y-12">
+                <div className="space-y-10">
                     <p>.................................................</p>
                     <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
                 </div>
@@ -204,7 +204,6 @@ function DocumentPageContent() {
             return;
         }
         
-        // Go back based on doc type if we don't have history
         switch (document.docType) {
             case 'QUOTATION':
                 router.push('/app/office/documents/quotation');

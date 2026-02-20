@@ -80,6 +80,11 @@
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
   .print-hidden, .print\:hidden, aside, header, nav, button {
     display: none !important;
   }
@@ -90,25 +95,34 @@
     margin: 0 !important;
     padding: 0 !important;
     width: 210mm !important;
-    height: 297mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
   /* Reset main container spacing when printing */
-  main, .sm\:pl-64 {
+  main, .sm\:pl-64, .flex-1 {
     padding-left: 0 !important;
+    padding-top: 0 !important;
     margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
   }
 
   .printable-document {
     padding: 10mm !important;
     border: none !important;
     width: 210mm !important;
-    min-height: 297mm !important;
+    height: 297mm !important;
+    max-height: 297mm !important;
     background: #fff !important;
     box-shadow: none !important;
     margin: 0 !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
+    page-break-after: always;
+    display: flex !important;
+    flex-direction: column !important;
   }
 
   .printable-document * {
@@ -123,48 +137,24 @@
     background: transparent !important;
   }
   
-  @page {
-    size: A4;
-    margin: 0;
-  }
-  
   .printable-document .text-muted-foreground {
     color: #555 !important;
   }
   
-  .printable-document .mb-8 { margin-bottom: 1rem !important; }
-  .printable-document .mt-16 { margin-top: 2rem !important; }
-  .printable-document .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.1rem !important; }
-  .printable-document .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.2rem !important; }
-  .printable-document .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem !important; }
-  .printable-document .gap-6 { gap: 1rem !important; }
-  .printable-document .gap-8 { gap: 1.5rem !important; }
-  
-  .printable-document .print\:bg-white { background-color: #fff !important; }
-  .printable-document .print\:shadow-none { box-shadow: none !important; }
-  .printable-document .print\:border-none { border: none !important; }
-  
   .printable-document table {
       width: 100% !important;
       border-collapse: collapse !important;
-      margin-top: 1rem !important;
-      margin-bottom: 1rem !important;
   }
   .printable-document thead {
       display: table-header-group !important;
-      background-color: #f2f2f2 !important;
   }
-  .printable-document tr, .printable-document img {
+  .printable-document tr {
       break-inside: avoid !important;
   }
   .printable-document th,
   .printable-document td {
     padding: 4px 6px !important;
-    vertical-align: top !important;
+    vertical-align: middle !important;
     border: 1px solid #ddd !important;
-  }
-  .printable-document .separator {
-      margin: 0.5rem 0 !important;
-      border-color: #ccc !important;
   }
 }
