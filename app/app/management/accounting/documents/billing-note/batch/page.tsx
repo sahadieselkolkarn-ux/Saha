@@ -16,6 +16,7 @@ import {
   updateDoc,
   serverTimestamp,
   onSnapshot,
+  deleteField,
 } from 'firebase/firestore';
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { PageHeader } from '@/components/page-header';
@@ -26,6 +27,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +40,9 @@ import {
   Edit,
   FileText,
   Printer,
-  ChevronDown
+  ChevronDown,
+  RotateCcw,
+  AlertCircle
 } from 'lucide-react';
 import type { Customer, Document, BillingRun, StoreSettings } from '@/lib/types';
 import type { WithId } from '@/firebase/firestore/use-collection';
@@ -71,6 +75,7 @@ export default function BatchBillingNotePage() {
   const [billingRun, setBillingRun] = useState<WithId<BillingRun> | null>(null);
   
   const [isBulkCreating, setIsBulkCreating] = useState(false);
+  const [isResetting, setIsResetting] = useState<string | null>(null);
   
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
   const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
@@ -300,6 +305,22 @@ export default function BatchBillingNotePage() {
     setIsBulkCreating(false);
   };
 
+  const handleResetStatus = async (customerId: string) => {
+    if (!db || !billingRunRef || !profile) return;
+    setIsResetting(customerId);
+    try {
+        await updateDoc(billingRunRef, {
+            [`createdBillingNotes.${customerId}`]: deleteField(),
+            updatedAt: serverTimestamp()
+        });
+        toast({ title: "รีเซ็ตสถานะสำเร็จ", description: "ตอนนี้คุณสามารถกดสร้างใบวางบิลให้ลูกค้ารายนี้ได้ใหม่แล้วค่ะ" });
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "รีเซ็ตล้มเหลว", description: e.message });
+    } finally {
+        setIsResetting(null);
+    }
+  };
+
   const summary = useMemo(() => {
     const totalCustomers = customerData.length;
     const totalInvoices = customerData.reduce((sum, d) => sum + d.includedInvoices.length + d.deferredInvoices.length + Object.values(d.separateGroups).flat().length, 0);
@@ -373,6 +394,16 @@ export default function BatchBillingNotePage() {
                                     {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={id} onClick={() => handlePreview(id)}><FileText className="mr-2 h-4 w-4"/> พรีวิว ({key})</DropdownMenuItem>)}
                                     {data.createdNoteIds.main && <DropdownMenuItem onClick={() => handlePrint(data.createdNoteIds!.main!)}><Printer className="mr-2 h-4 w-4"/> พิมพ์ PDF (ใบหลัก)</DropdownMenuItem>}
                                     {Object.entries(data.createdNoteIds.separate).map(([key, id]) => <DropdownMenuItem key={`p-${id}`} onClick={() => handlePrint(id)}><Printer className="mr-2 h-4 w-4"/> พิมพ์ PDF ({key})</DropdownMenuItem>)}
+                                    
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem 
+                                        className="text-destructive focus:text-destructive"
+                                        onClick={() => handleResetStatus(data.customer.id)}
+                                        disabled={isResetting === data.customer.id}
+                                    >
+                                        {isResetting === data.customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4"/>}
+                                        ล้างสถานะการสร้าง (Reset)
+                                    </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         )}
