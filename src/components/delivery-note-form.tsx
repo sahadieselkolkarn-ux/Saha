@@ -6,6 +6,7 @@ import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, writeBatch, limit, getDoc, deleteField, setDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase/client-provider";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -22,6 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,7 +45,6 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 
 import { createDocument } from "@/firebase/documents";
 import { archiveAndCloseJob } from "@/firebase/jobs-archive";
@@ -120,7 +121,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<DeliveryNoteFormData | null>(null);
 
-  // Expanded submission states for split payments
+  // Suggested submission states
   const [suggestedPayments, setSuggestedPayments] = useState<{method: 'CASH' | 'TRANSFER', accountId: string, amount: number}[]>([{method: 'CASH', accountId: '', amount: 0}]);
   const [submitBillingRequired, setSubmitBillingRequired] = useState(false);
   const [submitDueDate, setSubmitDueDate] = useState('');
@@ -204,7 +205,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         customerId: docToEdit.customerId || docToEdit.customerSnapshot?.id || "",
         issueDate: docToEdit.docDate,
         items: docToEdit.items.map(item => ({...item})),
-        notes: docToEdit.notes || '',
+        notes: docToEdit.notes ?? '',
         senderName: (profile?.displayName || docToEdit.senderName) || '',
         receiverName: (docToEdit.customerSnapshot?.name || docToEdit.receiverName) || '',
         discountAmount: docToEdit.discountAmount || 0,
@@ -331,12 +332,9 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
     if (submitForReview) { 
         setPendingFormData(data); 
         setIsReviewSubmission(true); 
-        
-        // Prep suggested payments for the dialog
         if (suggestedPayments.length === 1 && suggestedPayments[0].amount === 0) {
             setSuggestedPayments([{method: 'CASH', accountId: accounts.find(a=>a.type==='CASH')?.id || '', amount: data.grandTotal}]);
         }
-        
         setShowReviewConfirm(true); 
         return; 
     }
@@ -345,12 +343,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
 
   const handleFinalSubmit = async () => {
     if (!pendingFormData) return;
-    
     const validPayments = suggestedPayments.filter(p => p.amount > 0 && p.accountId);
-    const totalPaid = validPayments.reduce((sum, p) => sum + p.amount, 0);
-    const isFullCredit = totalPaid === 0 && recordRemainingAsCredit;
-    const isMixed = totalPaid > 0 && recordRemainingAsCredit;
-    
     const finalPayload: any = {
         ...pendingFormData,
         paymentTerms: recordRemainingAsCredit ? 'CREDIT' : 'CASH',
@@ -360,7 +353,6 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         billingRequired: recordRemainingAsCredit ? submitBillingRequired : false,
         dueDate: recordRemainingAsCredit ? submitDueDate : null
     };
-
     await executeSave(finalPayload, true);
     setShowReviewConfirm(false);
   };
@@ -469,15 +461,14 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         </Form>
       </div>
 
-      {/* REFINED REVIEW DIALOG */}
       <Dialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-2xl max-h-[95vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-0">
             <DialogTitle>ระบุเงื่อนไขการรับเงิน (สำหรับการตรวจสอบ)</DialogTitle>
             <DialogDescription>แยกประเภทเงินเข้าบัญชี หรือระบุยอดติดเครดิตให้ชัดเจน</DialogDescription>
           </DialogHeader>
           
-          <div className="py-4 space-y-6">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
             <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 flex justify-between items-center">
                 <span className="font-semibold text-primary">ยอดรวมบิลทั้งสิ้น:</span>
                 <span className="text-2xl font-black text-primary">฿{formatCurrency(grandTotal)}</span>
@@ -580,7 +571,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             </div>
           </div>
 
-          <DialogFooter className="bg-muted/30 p-6 -mx-6 -mb-6 border-t">
+          <DialogFooter className="bg-muted/30 p-6 border-t">
             <Button variant="outline" onClick={() => setShowReviewConfirm(false)}>ยกเลิก</Button>
             <Button 
                 onClick={handleFinalSubmit} 

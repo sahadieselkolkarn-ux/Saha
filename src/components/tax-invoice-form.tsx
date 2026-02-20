@@ -15,15 +15,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Badge, Wallet } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -322,12 +320,9 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     if (submitForReview) {
         setPendingData(data);
         setIsReviewSubmission(true);
-        
-        // Prep suggested payments for the dialog
         if (suggestedPayments.length === 1 && suggestedPayments[0].amount === 0) {
             setSuggestedPayments([{method: 'CASH', accountId: accounts.find(a=>a.type==='CASH')?.id || '', amount: data.grandTotal}]);
         }
-
         if (!isEditing && data.jobId) {
             const q = query(collection(db, "documents"), where("jobId", "==", data.jobId), where("docType", "==", "DELIVERY_NOTE"));
             const snap = await getDocs(q);
@@ -342,10 +337,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
   const handleFinalSubmit = async () => {
     if (!pendingData) return;
-    
     const validPayments = suggestedPayments.filter(p => p.amount > 0 && p.accountId);
-    const totalPaid = validPayments.reduce((sum, p) => sum + p.amount, 0);
-    
     const finalPayload: any = {
         ...pendingData,
         paymentTerms: recordRemainingAsCredit ? 'CREDIT' : 'CASH',
@@ -355,7 +347,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         billingRequired: recordRemainingAsCredit ? submitBillingRequired : false,
         dueDate: recordRemainingAsCredit ? submitDueDate : null
     };
-
     await executeSave(finalPayload, true);
     setShowReviewConfirm(false);
   };
@@ -419,20 +410,19 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             </div>
             <Card><CardHeader className="flex flex-row items-center gap-4 py-3"><CardTitle className="text-base whitespace-nowrap">3. รายการสินค้า/บริการ</CardTitle><div className="flex gap-2"><Popover open={isQtSearchOpen} onOpenChange={setIsQtSearchOpen}><PopoverTrigger asChild><Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('QUOTATION')} disabled={isLocked}><FileSearch className="mr-2 h-3 w-3" /> ใบเสนอราคา</Button></PopoverTrigger><PopoverContent className="w-80 p-0" align="start"><div className="p-2 border-b"><Input placeholder="ค้นหา..." value={qtSearchQuery} onChange={e=>setQtSearchQuery(e.target.value)} /></div><ScrollArea className="h-60">{isSearchingQt ? <Loader2 className="animate-spin m-4" /> : getFilteredDocs(allQuotations, qtSearchQuery).map(q => (<Button key={q.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b text-left" onClick={() => handleFetchFromDoc(q)}><div className="flex flex-col"><span className="font-semibold">{q.docNo}</span><span className="text-[10px]">{q.customerSnapshot?.name}</span></div></Button>))}</ScrollArea></PopoverContent></Popover><Popover open={isBillSearchOpen} onOpenChange={setIsBillSearchOpen}><PopoverTrigger asChild><Button type="button" variant="outline" size="sm" className="h-8" onClick={() => loadAllDocs('BILLS')} disabled={isLocked}><FileStack className="mr-2 h-3 w-3" /> บิลขาย</Button></PopoverTrigger><PopoverContent className="w-80 p-0" align="start"><Tabs value={billSearchType} onValueChange={(v: any) => setBillSearchType(v)}><TabsList className="w-full rounded-none"><TabsTrigger value="DELIVERY_NOTE" className="flex-1 text-[10px]">ใบส่งของ</TabsTrigger><TabsTrigger value="TAX_INVOICE" className="flex-1 text-[10px]">ใบกำกับ</TabsTrigger></TabsList><div className="p-2 border-b"><Input placeholder="ค้นหา..." value={billSearchQuery} onChange={e => setBillSearchQuery(e.target.value)} /></div><ScrollArea className="h-60">{isSearchingBills ? <Loader2 className="animate-spin m-4" /> : getFilteredDocs(allBills, billSearchQuery, billSearchType).map(d => (<Button key={d.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b text-left" onClick={() => handleFetchFromDoc(d)}><div className="flex flex-col"><span className="font-semibold">{d.docNo}</span><span className="text-[10px]">{d.customerSnapshot?.name}</span></div></Button>))}</ScrollArea></Tabs></PopoverContent></Popover></div></CardHeader>
               <CardContent><Table><TableHeader><TableRow><TableHead className="w-12 text-center">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="text-right">ยอดรวม</TableHead><TableHead/></TableRow></TableHeader><TableBody>{fields.map((field, index) => (<TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} value={field.value ?? ''} disabled={isLocked}/>)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`)); }} disabled={isLocked} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => { const v = e.target.value === '' ? 0 : Number(e.target.value); field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`)); }} disabled={isLocked} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isLocked}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>))}</TableBody></Table><Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button></CardContent></Card>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><Card><CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader><CardContent className="space-y-4"><FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormControl><Textarea placeholder="รายละเอียด..." rows={4} disabled={isLocked}/></FormControl></FormItem>)} /><div className="grid grid-cols-2 gap-4"><FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจลงนาม</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} /><FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} /></div></CardContent></Card><div className="space-y-4 p-6 border rounded-lg bg-muted/30"><div className="flex justify-between items-center text-sm"><span>รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div><div className="flex justify-between items-center text-sm"><span>ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => ( <Input type="number" step="any" className="w-32 text-right bg-background" {...field} value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))} disabled={isLocked} /> )}/></div><div className="flex justify-between items-center font-medium"><span>ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div><div className="flex justify-between items-center text-sm"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>{formatCurrency(form.watch('vatAmount'))}</span></div><Separator/><div className="flex justify-between items-center text-lg font-bold text-primary"><span >ยอดรวมสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div></div></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><Card><CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader><CardContent className="space-y-4"><FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormControl><Textarea placeholder="รายละเอียด..." rows={4} {...field} disabled={isLocked}/></FormControl></FormItem>)} /><div className="grid grid-cols-2 gap-4"><FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้มีอำนาจลงนาม</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} /><FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับบริการ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} /></div></CardContent></Card><div className="space-y-4 p-6 border rounded-lg bg-muted/30"><div className="flex justify-between items-center text-sm"><span>รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div><div className="flex justify-between items-center text-sm"><span>ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => ( <Input type="number" step="any" className="w-32 text-right bg-background" {...field} value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))} disabled={isLocked} /> )}/></div><div className="flex justify-between items-center font-medium"><span>ยอดหลังหักส่วนลด</span><span>{formatCurrency(form.watch('net'))}</span></div><div className="flex justify-between items-center text-sm"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>{formatCurrency(form.watch('vatAmount'))}</span></div><Separator/><div className="flex justify-between items-center text-lg font-bold text-primary"><span >ยอดรวมสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div></div></div>
           </form>
         </Form>
       </div>
 
-      {/* REFINED REVIEW DIALOG */}
       <Dialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-2xl max-h-[95vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-0">
             <DialogTitle>ระบุเงื่อนไขการรับเงิน (สำหรับการตรวจสอบ)</DialogTitle>
             <DialogDescription>แยกประเภทเงินเข้าบัญชี หรือระบุยอดติดเครดิตให้ชัดเจน</DialogDescription>
           </DialogHeader>
           
-          <div className="py-4 space-y-6">
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
             <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 flex justify-between items-center">
                 <span className="font-semibold text-primary">ยอดรวมบิลทั้งสิ้น:</span>
                 <span className="text-2xl font-black text-primary">฿{formatCurrency(grandTotal)}</span>
@@ -535,7 +525,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
             </div>
           </div>
 
-          <DialogFooter className="bg-muted/30 p-6 -mx-6 -mb-6 border-t">
+          <DialogFooter className="bg-muted/30 p-6 border-t">
             <Button variant="outline" onClick={() => setShowReviewConfirm(false)}>ยกเลิก</Button>
             <Button 
                 onClick={handleFinalSubmit} 
