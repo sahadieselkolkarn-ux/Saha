@@ -6,9 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
@@ -264,7 +263,7 @@ export function ReceiptForm() {
                             <strong>นโยบายบริษัท:</strong>
                             <ul className="list-disc pl-4 mt-1">
                                 <li>ใบกำกับภาษีที่ระบุว่า "ต้องวางบิล" จะไม่ปรากฏที่นี่ กรุณาใช้ระบบ "ใบวางบิล" เพื่อรวบรวมก่อน</li>
-                                <li>การออกใบเสร็จจะลดภาระหนี้ของบิลอ้างอิงทันทีเมื่อฝ่ายบัญชีกดยืนยันรับเงิน</li>
+                                <li>การออกใบเสร็จจะลดภาระหนี้ของบิลอ้างอิงทันทีเมื่อฝ่ายบัญชีและยืนยันรับเงิน</li>
                             </ul>
                         </div>
                     </div>
