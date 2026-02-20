@@ -15,6 +15,7 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
+  onSnapshot,
 } from 'firebase/firestore';
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { PageHeader } from '@/components/page-header';
@@ -72,37 +73,43 @@ export default function BatchBillingNotePage() {
   const [isBulkCreating, setIsBulkCreating] = useState(false);
   
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
-  const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
+  const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
   
   const monthId = format(currentMonth, 'yyyy-MM');
   const billingRunRef = useMemo(() => (db ? doc(db, "billingRuns", monthId) : null), [db, monthId]);
 
-  const fetchData = useCallback(async () => {
+  // Real-time listener for the billing run summary
+  useEffect(() => {
     if (!db || !billingRunRef) return;
+    
+    return onSnapshot(billingRunRef, (snap) => {
+      if (snap.exists()) {
+        setBillingRun({ id: snap.id, ...snap.data() } as WithId<BillingRun>);
+      } else {
+        setBillingRun(null);
+      }
+    });
+  }, [db, billingRunRef]);
+
+  const fetchData = useCallback(async () => {
+    if (!db) return;
     setIsLoading(true);
 
     try {
       const startDate = startOfMonth(currentMonth);
       const endDate = endOfMonth(currentMonth);
 
-      // 1. Query documents specifically for the selected month
+      // Query documents specifically for the selected month
       const invoicesQuery = query(
         collection(db, 'documents'),
         where('docDate', '>=', format(startDate, 'yyyy-MM-dd')),
         where('docDate', '<=', format(endDate, 'yyyy-MM-dd'))
       );
       
-      const [invoicesSnap, billingRunSnap] = await Promise.all([
-          getDocs(invoicesQuery),
-          getDoc(billingRunRef)
-      ]);
-      
-      const currentBillingRun = billingRunSnap.exists() ? { id: billingRunSnap.id, ...billingRunSnap.data() } as WithId<BillingRun> : null;
-      setBillingRun(currentBillingRun);
-
+      const invoicesSnap = await getDocs(invoicesQuery);
       const allDocs = invoicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Document));
       
-      // 2. Strict filtering based on business rules
+      // Strict filtering based on business rules
       const unpaidInvoices = allDocs.filter(doc => 
         (doc.docType === 'TAX_INVOICE' || doc.docType === 'DELIVERY_NOTE') &&
         doc.paymentTerms === 'CREDIT' &&
@@ -123,16 +130,17 @@ export default function BatchBillingNotePage() {
         groupedByCustomer[customerId].invoices.push(inv);
       });
 
+      // Map grouped customers to final data using current state of billingRun
       const finalData = Object.values(groupedByCustomer).map(({ customer, invoices }) => {
         const includedInvoices: Document[] = [];
         const deferredInvoices: Document[] = [];
         const separateGroups: Record<string, Document[]> = {};
 
         invoices.forEach(inv => {
-          if (currentBillingRun?.deferredInvoices?.[inv.id]) {
+          if (billingRun?.deferredInvoices?.[inv.id]) {
             deferredInvoices.push(inv);
-          } else if (currentBillingRun?.separateInvoiceGroups?.[inv.id]) {
-            const groupKey = currentBillingRun.separateInvoiceGroups[inv.id];
+          } else if (billingRun?.separateInvoiceGroups?.[inv.id]) {
+            const groupKey = billingRun.separateInvoiceGroups[inv.id];
             if (!separateGroups[groupKey]) separateGroups[groupKey] = [];
             separateGroups[groupKey].push(inv);
           } else {
@@ -146,7 +154,7 @@ export default function BatchBillingNotePage() {
           deferredInvoices,
           separateGroups,
           totalIncludedAmount: includedInvoices.reduce((sum, inv) => sum + inv.grandTotal, 0),
-          createdNoteIds: currentBillingRun?.createdBillingNotes?.[customer.id],
+          createdNoteIds: billingRun?.createdBillingNotes?.[customer.id],
         };
       });
 
@@ -156,7 +164,7 @@ export default function BatchBillingNotePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentMonth, db, toast, billingRunRef]);
+  }, [currentMonth, db, toast, billingRun]);
 
   useEffect(() => {
     fetchData();
@@ -165,11 +173,10 @@ export default function BatchBillingNotePage() {
   const handleSaveOverrides = async (customerId: string, deferred: Record<string, boolean>, separate: Record<string, string>) => {
     if (!profile || !billingRunRef) return;
     
-    // Perform a localized update to avoid race conditions
+    // Clean up: if an invoice is deferred, it can't be separate, and vice-versa.
     const newDeferred = { ...billingRun?.deferredInvoices, ...deferred };
     const newSeparate = { ...billingRun?.separateInvoiceGroups, ...separate };
 
-    // Clean up: if an invoice is deferred, it can't be separate, and vice-versa.
     Object.keys(deferred).forEach(id => delete newSeparate[id]);
     Object.keys(separate).forEach(id => delete newDeferred[id]);
     
@@ -183,7 +190,6 @@ export default function BatchBillingNotePage() {
     }, { merge: true });
 
     toast({ title: 'บันทึกการตั้งค่าแล้ว' });
-    await fetchData();
   };
   
   const createBillingNotesForCustomer = async (targetCustomerData: GroupedCustomerData) => {
@@ -231,7 +237,8 @@ export default function BatchBillingNotePage() {
           grandTotal: totalAmount,
           notes: groupKey === 'MAIN' ? '' : `เอกสารกลุ่ม: ${groupKey}`,
           senderName: profile.displayName,
-          receiverName: customer.name
+          receiverName: customer.name,
+          billingRunId: monthId // Track which run generated this note
         }, profile);
         return docId;
       } catch (e: any) {
@@ -251,7 +258,7 @@ export default function BatchBillingNotePage() {
     }
     
     if (!hasError && (createdIds.main || Object.keys(createdIds.separate).length > 0)) {
-      // 3. Nested field update to prevent overwriting other customers
+      // Nested field update to prevent overwriting other customers
       if (!freshSnap.exists()) {
           await setDoc(billingRunRef, {
               monthId,
@@ -291,7 +298,6 @@ export default function BatchBillingNotePage() {
         description: `สร้างใหม่ ${successCount} รายการ, ข้ามรายที่ทำไปแล้ว ${skippedCount} รายการ` 
     });
     setIsBulkCreating(false);
-    await fetchData();
   };
 
   const summary = useMemo(() => {
@@ -356,7 +362,7 @@ export default function BatchBillingNotePage() {
                       <TableCell className="text-right">
                         <Button variant="outline" size="sm" className="mr-2" onClick={() => setEditingCustomerData(data)} disabled={!!data.createdNoteIds}><Edit className="mr-2 h-3 w-3"/> แก้ไข</Button>
                         {!data.createdNoteIds ? (
-                            <Button size="sm" onClick={() => createBillingNotesForCustomer(data).then(() => fetchData())} disabled={(data.includedInvoices.length + Object.keys(data.separateGroups).length) === 0}>สร้างใบวางบิล</Button>
+                            <Button size="sm" onClick={() => createBillingNotesForCustomer(data)} disabled={(data.includedInvoices.length + Object.keys(data.separateGroups).length) === 0}>สร้างใบวางบิล</Button>
                         ) : (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>

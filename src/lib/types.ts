@@ -476,6 +476,7 @@ export interface Document {
   billingRequired?: boolean;
   arStatus?: 'PENDING' | 'UNPAID' | 'PARTIAL' | 'PAID' | 'DISPUTED';
   receiptStatus?: 'ISSUED_NOT_CONFIRMED' | 'CONFIRMED';
+  billingRunId?: string; // Links a BILLING_NOTE to its generation batch
   dispute?: {
     isDisputed: boolean;
     reason?: string;
