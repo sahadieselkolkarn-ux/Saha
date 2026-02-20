@@ -8,7 +8,7 @@ import * as z from "zod";
 import { doc, collection, onSnapshot, query, where, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useDoc } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
@@ -50,8 +50,6 @@ const creditNoteFormSchema = z.object({
   grandTotal: z.coerce.number(),
 });
 
-type CreditNoteFormData = z.infer<typeof creditNoteFormSchema>;
-
 const formatCurrency = (value: number | null | undefined) => {
   return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
@@ -72,7 +70,7 @@ export function CreditNoteForm() {
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
 
-  const form = useForm<CreditNoteFormData>({
+  const form = useForm<z.infer<typeof creditNoteFormSchema>>({
     resolver: zodResolver(creditNoteFormSchema),
     defaultValues: {
       docDate: new Date().toISOString().split("T")[0],
@@ -147,7 +145,7 @@ export function CreditNoteForm() {
     form.setValue("grandTotal", grandTotal);
   }, [watchedItems, watchedDiscount, watchedWithTax, form]);
 
-  const onSubmit = async (data: CreditNoteFormData) => {
+  const onSubmit = async (data: z.infer<typeof creditNoteFormSchema>) => {
     const customerObj = customers.find(c => c.id === data.customerId);
     const invoiceObj = invoices.find(inv => inv.id === data.taxInvoiceId);
     

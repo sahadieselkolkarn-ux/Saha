@@ -2,9 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { collection, query, orderBy, updateDoc, doc, serverTimestamp, where, deleteDoc, getDocs, addDoc, Timestamp } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
-import { useCollection } from "@/firebase/firestore/use-collection";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useFirebase, useCollection, useDoc } from "@/firebase";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -268,7 +266,7 @@ export default function ManagementHRLeavesPage() {
         } catch (e: any) {
             console.error("Failed to fetch summary extras:", e);
             if (e.message?.includes('requires an index')) {
-                const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
+                const urlMatch = e.message.match(/https?:\/\/[^\s]+/);
                 if (urlMatch) setIndexCreationUrl(urlMatch[0]);
             }
         } finally {

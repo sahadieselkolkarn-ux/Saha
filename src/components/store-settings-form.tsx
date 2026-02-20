@@ -6,9 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, setDoc } from "firebase/firestore";
 
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import type { StoreSettings } from "@/lib/types";
 

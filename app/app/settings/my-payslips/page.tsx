@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { collection, getDocs, getDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { useFirebase, useDoc } from "@/firebase/client-provider";
+import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
