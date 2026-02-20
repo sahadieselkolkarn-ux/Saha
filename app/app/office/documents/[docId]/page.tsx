@@ -35,7 +35,7 @@ function VehicleInfo({ doc }: { doc: Document }) {
 
     return (
         <div className="space-y-1 text-sm border-l-2 border-muted pl-4">
-            <h4 className="font-bold text-primary mb-2 uppercase tracking-wider text-[10px]">รายละเอียดรถ / ชิ้นส่วน</h4>
+            <h4 className="font-bold text-primary mb-1 uppercase tracking-wider text-[10px]">รายละเอียดรถ / ชิ้นส่วน</h4>
             {s.brand && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ยี่ห้อ:</span><span className="font-medium text-right">{s.brand}</span></div>}
             {s.model && <div className="flex justify-between gap-4"><span className="text-muted-foreground">รุ่นรถ:</span><span className="font-medium text-right">{s.model}</span></div>}
             {s.licensePlate && <div className="flex justify-between gap-4"><span className="text-muted-foreground">ทะเบียน:</span><span className="font-medium text-right">{s.licensePlate}</span></div>}
@@ -85,100 +85,98 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
     return (
-        <div className="printable-document p-[10mm] border bg-white shadow-sm flex flex-col w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full print:p-[10mm] box-border">
-            <div className="flex-1">
-                {/* Header Section */}
-                <div className="grid grid-cols-2 gap-8 mb-6">
-                    <div className="space-y-1">
-                        <h2 className="text-base font-bold">
-                            {(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}
-                            {storeBranchLabel && <span className="font-bold"> ({storeBranchLabel})</span>}
-                        </h2>
-                        <p className="text-[11px] whitespace-pre-wrap leading-relaxed">
-                            {document.storeSnapshot.taxAddress}
-                        </p>
-                        <p className="text-[11px]">
-                            โทร {document.storeSnapshot.phone}
-                            {!isDeliveryNote && document.storeSnapshot.taxId && (
-                                <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.storeSnapshot.taxId}</span>
-                            )}
-                        </p>
-                    </div>
-                    <div className="text-right space-y-1">
-                        <h1 className="text-xl font-bold text-primary">{finalDocTitle}</h1>
-                        <p className="text-sm font-bold">เลขที่: {document.docNo}</p>
-                        <p className="text-sm">วันที่: {safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</p>
-                    </div>
+        <div className="printable-document p-[8mm] border bg-white shadow-sm w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full print:p-[8mm] box-border">
+            {/* Header Section */}
+            <div className="grid grid-cols-2 gap-8 mb-4">
+                <div className="space-y-1">
+                    <h2 className="text-base font-bold">
+                        {(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}
+                        {storeBranchLabel && <span className="font-bold"> ({storeBranchLabel})</span>}
+                    </h2>
+                    <p className="text-[11px] whitespace-pre-wrap leading-relaxed">
+                        {document.storeSnapshot.taxAddress}
+                    </p>
+                    <p className="text-[11px]">
+                        โทร {document.storeSnapshot.phone}
+                        {!isDeliveryNote && document.storeSnapshot.taxId && (
+                            <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.storeSnapshot.taxId}</span>
+                        )}
+                    </p>
                 </div>
-
-                {/* Customer & Vehicle Section */}
-                <div className="grid grid-cols-2 gap-8 mb-6 p-4 border rounded-md">
-                    <div className="space-y-1">
-                        <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
-                        <p className="text-sm">
-                            <span className="font-bold">{displayCustomerName}</span>
-                            {branchLabel && <span className="font-bold"> ({branchLabel})</span>}
-                        </p>
-                        <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
-                            {displayCustomerAddress}
-                        </p>
-                        <p className="text-[11px]">
-                            โทร {displayCustomerPhone}
-                            {isTaxDoc && document.customerSnapshot.taxId && (
-                                <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.customerSnapshot.taxId}</span>
-                            )}
-                        </p>
-                    </div>
-                    <VehicleInfo doc={document} />
+                <div className="text-right space-y-1">
+                    <h1 className="text-xl font-bold text-primary">{finalDocTitle}</h1>
+                    <p className="text-sm font-bold">เลขที่: {document.docNo}</p>
+                    <p className="text-sm">วันที่: {safeFormat(new Date(document.docDate), 'dd/MM/yyyy')}</p>
                 </div>
+            </div>
 
-                {/* Items Table */}
-                <Table className="mb-6 border-t border-b">
-                    <TableHeader className="bg-muted/20">
-                        <TableRow className="hover:bg-transparent">
-                            <TableHead className="w-12 text-center text-black font-bold h-8">#</TableHead>
-                            <TableHead className="text-black font-bold h-8">รายการ</TableHead>
-                            <TableHead className="w-20 text-right text-black font-bold h-8">จำนวน</TableHead>
-                            <TableHead className="w-32 text-right text-black font-bold h-8">ราคา/หน่วย</TableHead>
-                            <TableHead className="w-32 text-right text-black font-bold h-8">รวมเงิน</TableHead>
+            {/* Customer & Vehicle Section */}
+            <div className="grid grid-cols-2 gap-8 mb-4 p-3 border rounded-md">
+                <div className="space-y-1">
+                    <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
+                    <p className="text-sm">
+                        <span className="font-bold">{displayCustomerName}</span>
+                        {branchLabel && <span className="font-bold"> ({branchLabel})</span>}
+                    </p>
+                    <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
+                        {displayCustomerAddress}
+                    </p>
+                    <p className="text-[11px]">
+                        โทร {displayCustomerPhone}
+                        {isTaxDoc && document.customerSnapshot.taxId && (
+                            <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.customerSnapshot.taxId}</span>
+                        )}
+                    </p>
+                </div>
+                <VehicleInfo doc={document} />
+            </div>
+
+            {/* Items Table */}
+            <Table className="mb-4 border-t border-b">
+                <TableHeader className="bg-muted/20">
+                    <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-12 text-center text-black font-bold h-8">#</TableHead>
+                        <TableHead className="text-black font-bold h-8">รายการ</TableHead>
+                        <TableHead className="w-20 text-right text-black font-bold h-8">จำนวน</TableHead>
+                        <TableHead className="w-32 text-right text-black font-bold h-8">ราคา/หน่วย</TableHead>
+                        <TableHead className="w-32 text-right text-black font-bold h-8">รวมเงิน</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {document.items.map((item, index) => (
+                        <TableRow key={index} className="border-b hover:bg-transparent">
+                            <TableCell className="text-center py-1.5 h-8">{index + 1}</TableCell>
+                            <TableCell className="py-1.5 h-8">{item.description}</TableCell>
+                            <TableCell className="text-right py-1.5 h-8">{item.quantity}</TableCell>
+                            <TableCell className="text-right py-1.5 h-8">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right py-1.5 h-8">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                         </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {document.items.map((item, index) => (
-                            <TableRow key={index} className="border-b hover:bg-transparent">
-                                <TableCell className="text-center py-2 h-8">{index + 1}</TableCell>
-                                <TableCell className="py-2 h-8">{item.description}</TableCell>
-                                <TableCell className="text-right py-2 h-8">{item.quantity}</TableCell>
-                                <TableCell className="text-right py-2 h-8">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                <TableCell className="text-right py-2 h-8">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
+                    ))}
+                </TableBody>
+            </Table>
 
-                {/* Summary Section */}
-                <div className="grid grid-cols-2 gap-8">
-                    <div className="text-left text-[11px]">
-                        {document.notes && <p className="whitespace-pre-wrap"><span className="font-bold">หมายเหตุ:</span> {document.notes}</p>}
-                    </div>
-                    <div className="space-y-1">
-                        <div className="flex justify-between text-sm"><span>รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between text-sm"><span>ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between font-bold text-sm"><span>ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        {document.withTax && <div className="flex justify-between text-sm"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
-                        <Separator className="my-2" />
-                        <div className="flex justify-between text-base font-bold text-primary uppercase"><span>ยอดสุทธิรวม</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                    </div>
+            {/* Summary Section */}
+            <div className="grid grid-cols-2 gap-8">
+                <div className="text-left text-[11px]">
+                    {document.notes && <p className="whitespace-pre-wrap"><span className="font-bold">หมายเหตุ:</span> {document.notes}</p>}
+                </div>
+                <div className="space-y-1">
+                    <div className="flex justify-between text-sm"><span>รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between text-sm"><span>ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between font-bold text-sm"><span>ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                    {document.withTax && <div className="flex justify-between text-sm"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                    <Separator className="my-1" />
+                    <div className="flex justify-between text-base font-bold text-primary uppercase"><span>ยอดสุทธิรวม</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
                 </div>
             </div>
             
             {/* Signature Section */}
-            <div className="grid grid-cols-2 gap-12 mt-8 text-center text-xs">
-                <div className="space-y-10">
+            <div className="grid grid-cols-2 gap-12 mt-6 text-center text-xs">
+                <div className="space-y-8">
                     <p>.................................................</p>
                     <p>({document.senderName || 'ผู้ส่งสินค้า/บริการ'})</p>
                 </div>
-                <div className="space-y-10">
+                <div className="space-y-8">
                     <p>.................................................</p>
                     <p>({document.receiverName || 'ผู้รับสินค้า/บริการ'})</p>
                 </div>
