@@ -176,7 +176,7 @@ export function DocumentList({
         updatedAt: serverTimestamp()
       });
 
-      // 2. Revert the Job state
+      // 2. Revert the Job state if linked
       if (docToAction.jobId) {
         const jobRef = doc(db, 'jobs', docToAction.jobId);
         const jobSnap = await getDoc(jobRef);
@@ -202,7 +202,24 @@ export function DocumentList({
         }
       }
 
-      toast({ title: "ยกเลิกเอกสารและย้อนสถานะใบงานสำเร็จ" });
+      // 3. Reset Billing Run link if this is a Billing Note
+      if (docToAction.docType === 'BILLING_NOTE') {
+        const monthId = docToAction.docDate.substring(0, 7); // YYYY-MM
+        const cId = docToAction.customerId || docToAction.customerSnapshot?.id;
+        if (cId) {
+          const runRef = doc(db, 'billingRuns', monthId);
+          // We use try-catch because the billingRun might not exist or the field might not exist
+          try {
+            await updateDoc(runRef, {
+              [`createdBillingNotes.${cId}`]: deleteField()
+            });
+          } catch (e) {
+            console.log("No billing run record found to clean up.");
+          }
+        }
+      }
+
+      toast({ title: "ยกเลิกเอกสารเรียบร้อย" });
     } catch (err: any) {
       console.error("Cancellation failed:", err);
       toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: err.message });
