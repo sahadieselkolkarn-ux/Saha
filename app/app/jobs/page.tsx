@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { collection, onSnapshot, query, type FirestoreError } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase, useAuth } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,8 +18,8 @@ import { safeFormat } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 
 // Helper for safe timestamp comparison
 const getSafeTime = (val: any): number => {
