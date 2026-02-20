@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, Suspense } from "react";
@@ -34,21 +35,22 @@ function RouterInner() {
           router.replace(`/app/office/documents/tax-invoice/${document.id}${baseParams}`);
           break;
         case 'BILLING_NOTE':
-          router.replace(`/app/management/accounting/documents/billing-note${baseParams}`);
+          // Redirect to the universal viewer for billing notes
+          router.replace(`/app/office/documents/${document.id}${baseParams}`);
           break;
         case 'RECEIPT':
-          // If not confirmed, go to confirmation UI. If confirmed, go to list (or viewer if added later)
+          // If not confirmed, go to confirmation UI. If confirmed, go to viewer
           if (document.receiptStatus !== 'CONFIRMED') {
             router.replace(`/app/management/accounting/documents/receipt/${document.id}/confirm${baseParams}`);
           } else {
-            router.replace(`/app/management/accounting/documents/receipt${baseParams}`);
+            router.replace(`/app/office/documents/${document.id}${baseParams}`);
           }
           break;
         case 'WITHHOLDING_TAX':
-          router.replace(`/app/management/accounting/documents/withholding-tax${baseParams}`);
+          router.replace(`/app/office/documents/${document.id}${baseParams}`);
           break;
         case 'CREDIT_NOTE':
-          router.replace(`/app/management/accounting/documents/credit-note${baseParams}`);
+          router.replace(`/app/office/documents/${document.id}${baseParams}`);
           break;
         default:
           // Keep showing the type error if unknown
@@ -76,18 +78,6 @@ function RouterInner() {
         </Button>
       </div>
     );
-  }
-
-  if (document && !['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'BILLING_NOTE', 'RECEIPT', 'WITHHOLDING_TAX', 'CREDIT_NOTE'].includes(document.docType)) {
-      return (
-        <div className="flex h-[60vh] flex-col items-center justify-center gap-4 text-center">
-            <AlertCircle className="h-12 w-12 text-amber-500" />
-            <PageHeader title="ประเภทเอกสารไม่รองรับ" description={`ไม่รู้จักประเภทเอกสาร: ${document.docType}`} />
-            <Button variant="outline" onClick={() => router.back()}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> ย้อนกลับ
-            </Button>
-        </div>
-      )
   }
 
   return (
