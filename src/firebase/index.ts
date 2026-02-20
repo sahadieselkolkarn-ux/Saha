@@ -7,7 +7,7 @@ import {
   useFirebaseAuth,
 } from './provider';
 import { FirebaseClientProvider } from './client-provider';
-import { useCollection } from './firestore/use-collection';
+import { useCollection, type WithId } from './firestore/use-collection';
 import { useDoc } from './firestore/use-doc';
 import { useUser } from './auth/use-user';
 
@@ -23,3 +23,5 @@ export {
   useDoc,
   useUser,
 };
+
+export type { WithId };

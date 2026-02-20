@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useAuth, useFirebase } from "@/firebase";
 import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -37,18 +37,17 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
-import { Separator } from "@/components/ui/separator";
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function AccountingInboxPage() {
+function AccountingInboxPageContent() {
   const { profile } = useAuth();
   const { db, app: firebaseApp } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
 
   const [documents, setDocuments] = useState<WithId<DocumentType>[]>([]);
-  const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
+  const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"receive" | "ar" | "receipts">("receive");
@@ -60,12 +59,9 @@ export default function AccountingInboxPage() {
   const [disputeReason, setDisputeReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [closingJobId, setClosingJobId] = useState<string | null>(null);
-  const [failedClosingJobId, setFailedClosingJobId] = useState<string | null>(null);
 
-  // Suggested values from office
   const [selectedPaymentDate, setSelectedPaymentDate] = useState("");
   const [suggestedPayments, setSuggestedPayments] = useState<{method: 'CASH' | 'TRANSFER', accountId: string, amount: number}[]>([]);
-  
   const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
 
   const hasPermission = useMemo(() => {
@@ -73,28 +69,17 @@ export default function AccountingInboxPage() {
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
   }, [profile]);
 
-  const docsQuery = useMemo(() => {
-    if (!db || !hasPermission) return null;
-    return query(
+  useEffect(() => {
+    if (!db || !hasPermission) {
+      if (!hasPermission) setLoading(false);
+      return;
+    }
+
+    const docsQuery = query(
       collection(db, "documents"), 
       where("status", "==", "PENDING_REVIEW"),
       limit(200)
     );
-  }, [db, hasPermission]);
-
-  const accountsQuery = useMemo(() => {
-    if (!db || !hasPermission) return null;
-    return query(
-      collection(db, "accountingAccounts"), 
-      where("isActive", "==", true)
-    );
-  }, [db, hasPermission]);
-
-  useEffect(() => {
-    if (!hasPermission || !docsQuery || !accountsQuery) {
-      if (!hasPermission) setLoading(false);
-      return;
-    }
 
     const unsubDocs = onSnapshot(docsQuery, 
       (snap) => { 
@@ -117,6 +102,11 @@ export default function AccountingInboxPage() {
       }
     );
 
+    const accountsQuery = query(
+      collection(db, "accountingAccounts"), 
+      where("isActive", "==", true)
+    );
+
     const unsubAccounts = onSnapshot(accountsQuery, 
       (snap) => {
           const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<AccountingAccount>));
@@ -135,31 +125,7 @@ export default function AccountingInboxPage() {
     );
 
     return () => { unsubDocs(); unsubAccounts(); };
-  }, [hasPermission, docsQuery, accountsQuery]);
-  
-  const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
-    setConfirmError(null);
-    setConfirmingDoc(doc);
-    setSelectedPaymentDate(doc.paymentDate || doc.docDate || format(new Date(), "yyyy-MM-dd"));
-    
-    if (doc.suggestedPayments && doc.suggestedPayments.length > 0) {
-        setSuggestedPayments(doc.suggestedPayments);
-    } else {
-        // Fallback to legacy single account
-        const initialId = doc.receivedAccountId || doc.suggestedAccountId || accounts.find(a=>a.type==='CASH')?.id || accounts[0]?.id || "";
-        setSuggestedPayments([{
-            method: (doc.paymentMethod || doc.suggestedPaymentMethod || 'CASH') as any,
-            accountId: initialId,
-            amount: doc.grandTotal
-        }]);
-    }
-  };
-
-  const handleUpdatePaymentLine = (index: number, field: string, value: any) => {
-      const newPayments = [...suggestedPayments];
-      (newPayments[index] as any)[field] = value;
-      setSuggestedPayments(newPayments);
-  };
+  }, [db, hasPermission]);
 
   const filteredDocs = useMemo(() => {
     const filteredByTab = documents.filter(doc => {
@@ -185,38 +151,51 @@ export default function AccountingInboxPage() {
 
   const callCloseJobFunction = async (jobId: string, paymentStatus: 'PAID' | 'UNPAID' = 'UNPAID') => {
     if (!firebaseApp) return;
-    
     const functions = getFunctions(firebaseApp, 'us-central1');
     const closeJob = httpsCallable(functions, "closeJobAfterAccounting");
-    
     setClosingJobId(jobId);
-    setFailedClosingJobId(null);
-    
     try {
       const result: any = await closeJob({ jobId, paymentStatus });
       if (result.data?.ok) {
         toast({ title: "ปิดงานสำเร็จ", description: "ใบงานถูกย้ายเข้าประวัติเรียบร้อยแล้ว" });
-      } else {
-        throw new Error(result.data?.error || result.data?.message || "Unknown error");
       }
     } catch (e: any) {
-      setFailedClosingJobId(jobId);
       toast({ 
         variant: "destructive", 
-        title: "บันทึกบัญชีแล้ว แต่ย้ายเข้าประวัติไม่สำเร็จ", 
-        description: "กรุณาลองกด 'ลองปิดงานอีกครั้ง' หรือแจ้งแอดมิน" 
+        title: "ย้ายเข้าประวัติไม่สำเร็จ", 
+        description: "กรุณาแจ้งแอดมินเพื่อตรวจสอบข้อมูล" 
       });
     } finally {
       setClosingJobId(null);
     }
   };
 
+  const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
+    setConfirmError(null);
+    setConfirmingDoc(doc);
+    setSelectedPaymentDate(doc.paymentDate || doc.docDate || format(new Date(), "yyyy-MM-dd"));
+    if (doc.suggestedPayments && doc.suggestedPayments.length > 0) {
+        setSuggestedPayments(doc.suggestedPayments);
+    } else {
+        const initialId = doc.receivedAccountId || doc.suggestedAccountId || accounts.find(a=>a.type==='CASH')?.id || accounts[0]?.id || "";
+        setSuggestedPayments([{
+            method: (doc.paymentMethod || doc.suggestedPaymentMethod || 'CASH') as 'CASH' | 'TRANSFER',
+            accountId: initialId,
+            amount: doc.grandTotal
+        }]);
+    }
+  };
+
+  const handleUpdatePaymentLine = (index: number, field: string, value: any) => {
+      const newPayments = [...suggestedPayments];
+      (newPayments[index] as any)[field] = value;
+      setSuggestedPayments(newPayments);
+  };
+
   const handleConfirmCashPayment = async () => {
     if (!db || !profile || !confirmingDoc) return;
-    
     setConfirmError(null);
     setIsSubmitting(true);
-    
     const jobId = confirmingDoc.jobId;
     const totalSuggested = suggestedPayments.reduce((sum, p) => sum + p.amount, 0);
     const remaining = Math.max(0, confirmingDoc.grandTotal - totalSuggested);
@@ -226,25 +205,19 @@ export default function AccountingInboxPage() {
       await runTransaction(db, async (transaction) => {
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
-        
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
-        const docData = docSnap.data();
-        
-        if (docData.status === 'PAID' || docData.accountingEntryId) {
+        if (docSnap.data().status === 'PAID' || docSnap.data().accountingEntryId) {
           throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
         }
-
         const arId = `AR_${confirmingDoc.id}`;
         const arRef = doc(db, 'accountingObligations', arId);
         const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
 
-        // 1. Create Entries for each suggested payment
         suggestedPayments.forEach((p, index) => {
             if (p.amount <= 0 || !p.accountId) return;
             const entryId = `SALE_${confirmingDoc.id}_${index}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
             const accountName = accounts.find(a=>a.id===p.accountId)?.name || 'N/A';
-
             transaction.set(entryRef, {
                 id: entryId,
                 entryType: 'CASH_IN', 
@@ -262,7 +235,6 @@ export default function AccountingInboxPage() {
             });
         });
 
-        // 2. Create AR Obligation
         const finalStatus = isPartialCredit ? 'PARTIAL' : 'PAID';
         transaction.set(arRef, {
           id: arId,
@@ -283,7 +255,6 @@ export default function AccountingInboxPage() {
           dueDate: confirmingDoc.dueDate || null,
         });
 
-        // 3. Update Document
         transaction.update(docRef, { 
             status: finalStatus,
             arStatus: finalStatus,
@@ -292,7 +263,7 @@ export default function AccountingInboxPage() {
                 balance: remaining,
                 paymentStatus: finalStatus
             },
-            accountingEntryId: `SALE_${confirmingDoc.id}_0`, // Point to first entry as primary
+            accountingEntryId: `SALE_${confirmingDoc.id}_0`,
             arObligationId: arId,
             receivedAccountId: suggestedPayments[0]?.accountId || null,
             paymentMethod: suggestedPayments[0]?.method || null,
@@ -301,62 +272,94 @@ export default function AccountingInboxPage() {
             updatedAt: serverTimestamp()
         });
       });
-
       toast({ title: "ลงบัญชีรายรับสำเร็จ" });
-      
-      if (jobId) {
-        callCloseJobFunction(jobId, isPartialCredit ? 'UNPAID' : 'PAID');
-      }
-      
+      if (jobId) callCloseJobFunction(jobId, isPartialCredit ? 'UNPAID' : 'PAID');
       setConfirmingDoc(null);
-      setIsSubmitting(false);
     } catch(e: any) {
       if (e.code === 'permission-denied') {
-        const permissionError = new FirestorePermissionError({
-          path: 'documents/' + confirmingDoc.id,
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: 'documents/' + (confirmingDoc?.id || 'unknown'),
           operation: 'write',
-        } satisfies SecurityRuleContext);
-        errorEmitter.emit('permission-error', permissionError);
+        }));
       } else {
-        setConfirmError(`บันทึกไม่สำเร็จ: ${e.message || e.toString()}`);
+        setConfirmError(e.message || "Unknown error");
       }
+    } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleCreateAR = async (docObj: WithId<DocumentType>) => {
+    if (!db || !profile) return;
+    setIsSubmitting(true);
+    const arId = `AR_${docObj.id}`;
+    const arRef = doc(db, 'accountingObligations', arId);
+    const docRef = doc(db, 'documents', docObj.id);
+    const customerName = docObj.customerSnapshot?.name || 'Unknown';
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        transaction.set(arRef, {
+          id: arId,
+          type: 'AR', 
+          status: 'UNPAID', 
+          sourceDocType: docObj.docType, 
+          sourceDocId: docObj.id, 
+          sourceDocNo: docObj.docNo,
+          amountTotal: docObj.grandTotal, 
+          amountPaid: 0, 
+          balance: docObj.grandTotal,
+          createdAt: serverTimestamp(), 
+          updatedAt: serverTimestamp(), 
+          customerNameSnapshot: customerName,
+          jobId: docObj.jobId || null,
+          dueDate: docObj.dueDate || null,
+        });
+        transaction.update(docRef, {
+          status: 'UNPAID',
+          arStatus: 'UNPAID',
+          paymentSummary: { paidTotal: 0, balance: docObj.grandTotal, paymentStatus: 'UNPAID' },
+          arObligationId: arId,
+          updatedAt: serverTimestamp()
+        });
+      });
+      toast({ title: "ตั้งยอดลูกหนี้สำเร็จ" });
+      if (docObj.jobId) callCloseJobFunction(docObj.jobId, 'UNPAID');
+      setArDocToConfirm(null);
+    } catch(e: any) {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write' }));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDispute = async () => {
+    if (!db || !disputingDoc || !disputeReason.trim()) return;
+    setIsSubmitting(true);
+    const docRef = doc(db, 'documents', disputingDoc.id);
+    const updateData = {
+      status: 'REJECTED',
+      dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() },
+      updatedAt: serverTimestamp()
+    };
+    try {
+      await updateDoc(docRef, updateData);
+      toast({ title: "ส่งเอกสารกลับเพื่อแก้ไขแล้ว" });
+      setDisputingDoc(null);
+      setDisputeReason("");
+    } catch(e: any) {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'update', requestResourceData: updateData }));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!hasPermission) return <div className="p-8 text-center">ไม่มีสิทธิ์เข้าถึง</div>;
+
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลเพื่อลงสมุดบัญชีรายวัน" />
       
-      {failedClosingJobId && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>พบรายการปิดงานไม่สำเร็จ</AlertTitle>
-          <AlertDescription className="flex items-center justify-between">
-            <span>ระบบบันทึกบัญชีแล้ว แต่ไม่สามารถย้ายงาน (ID: {failedClosingJobId.substring(0,8)}...) เข้าประวัติได้</span>
-            <Button size="sm" variant="outline" onClick={() => callCloseJobFunction(failedClosingJobId)} disabled={!!closingJobId}>
-              {closingJobId === failedClosingJobId ? <Loader2 className="animate-spin h-3 w-3 mr-1"/> : <RefreshCw className="h-3 w-3 mr-1"/>}
-              ลองปิดงานอีกครั้ง
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {indexCreationUrl && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
-          <AlertDescription className="flex flex-col gap-2">
-            <span>ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับข้อมูล กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
-            <Button asChild variant="outline" size="sm" className="w-fit">
-              <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index
-              </a>
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <TabsList>
@@ -584,7 +587,7 @@ export default function AccountingInboxPage() {
                                             <Input 
                                                 type="number" 
                                                 className="h-8 text-right font-bold text-xs" 
-                                                value={p.amount} 
+                                                value={p.amount || ''} 
                                                 onChange={(e) => handleUpdatePaymentLine(index, 'amount', parseFloat(e.target.value) || 0)} 
                                                 disabled={isSubmitting} 
                                             />
@@ -614,7 +617,7 @@ export default function AccountingInboxPage() {
                 )}
               </div>
           </div>
-          <DialogFooter className="gap-2 bg-muted/20 p-6 -mx-6 -mb-6 border-t">
+          <DialogFooter className="gap-2 bg-muted/20 p-6 border-t">
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
             <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || suggestedPayments.some(p => p.amount > 0 && !p.accountId)} className="bg-green-600 hover:bg-green-700 text-white min-w-[200px]">
                 {isSubmitting ? (
@@ -633,24 +636,6 @@ export default function AccountingInboxPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!arDocToConfirm} onOpenChange={(open) => !open && setArDocToConfirm(null)}>
-          <AlertDialogContent>
-              <AlertDialogHeader>
-                  <AlertDialogTitle>ยืนยันรายการขายเครดิต?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                      ต้องการยืนยันรายการลูกหนี้ค้างชำระสำหรับเอกสารเลขที่ {arDocToConfirm?.docNo} หรือไม่?
-                  </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                  <AlertDialogCancel disabled={isSubmitting}>ยกเลิก</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => arDocToConfirm && handleCreateAR(arDocToConfirm)} disabled={isSubmitting} className="min-w-[150px]">
-                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <HandCoins className="mr-2 h-4 w-4" />}
-                      {isSubmitting ? "กำลังบันทึก..." : "ยืนยันและตั้งหนี้"}
-                  </AlertDialogAction>
-              </AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
-
       <Dialog open={!!disputingDoc} onOpenChange={(open) => !open && setDisputingDoc(null)}>
         <DialogContent>
           <DialogHeader>
@@ -667,39 +652,29 @@ export default function AccountingInboxPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+
+      <AlertDialog open={!!arDocToConfirm} onOpenChange={(open) => !open && setArDocToConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันตั้งยอดลูกหนี้</AlertDialogTitle>
+            <AlertDialogDescription>
+              ยืนยันการตั้งยอดค้างชำระ (AR) จำนวน {formatCurrency(arDocToConfirm?.grandTotal || 0)} บาท สำหรับลูกค้า {arDocToConfirm?.customerSnapshot?.name}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={() => arDocToConfirm && handleCreateAR(arDocToConfirm)}>ตกลง</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
-```
-- src/firebase/index.ts:
-```ts
-import { initializeFirebase } from './init';
-import {
-  FirebaseProvider,
-  useFirebase,
-  useFirestore,
-  useFirebaseApp,
-  useFirebaseAuth,
-} from './provider';
-import { FirebaseClientProvider } from './client-provider';
-import { useCollection } from './firestore/use-collection';
-import { useDoc } from './firestore/use-doc';
-import { useUser } from './auth/use-user';
-
-export {
-  initializeFirebase,
-  FirebaseProvider,
-  FirebaseClientProvider,
-  useFirebase,
-  useFirestore,
-  useFirebaseApp,
-  useFirebaseAuth as useAuth,
-  useCollection,
-  useDoc,
-  useUser,
-};
-
-export type { WithId } from './firestore/use-collection';
-
-```
+export default function AccountingInboxPage() {
+    return (
+        <Suspense fallback={<div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>}>
+            <AccountingInboxPageContent />
+        </Suspense>
+    );
+}
