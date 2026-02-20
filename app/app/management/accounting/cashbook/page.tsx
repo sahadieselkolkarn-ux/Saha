@@ -19,7 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths, addMonths } from "date-fns";
 
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
@@ -325,14 +325,7 @@ export default function CashbookPage() {
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-sm">{entry.description}</p>
                           {entry.sourceDocId && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Badge variant="outline" className="h-4 px-1 text-[8px] border-primary/30 text-primary">AUTO</Badge>
-                                </TooltipTrigger>
-                                <TooltipContent><p>รายการสร้างอัตโนมัติจาก {entry.sourceDocNo}</p></TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Badge variant="outline" className="h-4 px-1 text-[8px] border-primary/30 text-primary">AUTO</Badge>
                           )}
                         </div>
                         <p className="text-[10px] text-muted-foreground uppercase">{entry.categoryMain} › {entry.categorySub}</p>
@@ -461,9 +454,3 @@ export default function CashbookPage() {
     </div>
   );
 }
-
-// Minimal Tooltip Mock if needed
-function TooltipProvider({children}: {children: any}) { return <>{children}</> }
-function Tooltip({children}: {children: any}) { return <>{children}</> }
-function TooltipTrigger({children, asChild}: {children: any, asChild?: boolean}) { return <>{children}</> }
-function TooltipContent({children}: {children: any}) { return null }
