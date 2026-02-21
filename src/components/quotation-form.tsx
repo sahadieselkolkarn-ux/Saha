@@ -34,22 +34,22 @@ const lineItemSchema = z.object({
   description: z.string().min(1, "ต้องกรอกรายละเอียดรายการ"),
   quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
   unitPrice: z.coerce.number().min(0, "ราคาต่อหน่วยห้ามติดลบ"),
-  total: z.coerce.number(),
+  total: z.coerce.number().default(0),
 });
 
 const quotationFormSchema = z.object({
   jobId: z.string().optional(),
-  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
-  issueDate: z.string().min(1, "กรุณาเลือกวันที่"),
-  expiryDate: z.string().min(1, "กรุณาเลือกวันที่"),
-  items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
-  subtotal: z.coerce.number(),
-  discountAmount: z.coerce.number().min(0).optional(),
-  net: z.coerce.number(),
+  customerId: z.string().min(1, "กรุณาเลือกลูกค้าจากรายการ"),
+  issueDate: z.string().min(1, "กรุณาเลือกวันที่ออกเอกสาร"),
+  expiryDate: z.string().min(1, "กรุณาเลือกวันที่ยืนราคา"),
+  items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการในตาราง"),
+  subtotal: z.coerce.number().default(0),
+  discountAmount: z.coerce.number().min(0, "ส่วนลดห้ามติดลบ").optional().default(0),
+  net: z.coerce.number().default(0),
   isVat: z.boolean().default(true),
-  vatAmount: z.coerce.number(),
-  grandTotal: z.coerce.number(),
-  notes: z.string().optional(),
+  vatAmount: z.coerce.number().default(0),
+  grandTotal: z.coerce.number().min(0.01, "ยอดรวมสุทธิไม่ถูกต้อง").default(0),
+  notes: z.string().optional().default(""),
 });
 
 type QuotationFormData = z.infer<typeof quotationFormSchema>;
@@ -114,45 +114,49 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoadingCustomers(false);
     }, (error) => {
-      toast({ variant: "destructive", title: "ไม่สามารถโหลดข้อมูลลูกค้าได้" });
+      console.error("Error loading customers:", error);
       setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
-  }, [db, toast]);
+  }, [db]);
 
+  // Handle initial data loading from Job or Document
   useEffect(() => {
     const dataToLoad = docToEdit || job;
-    if (dataToLoad) {
-        // Find existing customer ID or fallback to snapshot ID
-        let customerId = (dataToLoad as any).customerId || (dataToLoad as any).customerSnapshot?.id || "";
+    if (!dataToLoad) return;
 
-        // If ID missing but we have name/phone, try to match in loaded customers
-        if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone && customers.length > 0) {
-          const foundCustomer = customers.find(c => c.name === dataToLoad.customerSnapshot?.name && c.phone === dataToLoad.customerSnapshot?.phone);
-          if (foundCustomer) {
-            customerId = foundCustomer.id;
-          }
-        }
-        
-        const items = 'items' in dataToLoad && dataToLoad.items && dataToLoad.items.length > 0
-            ? dataToLoad.items.map(item => ({ ...item }))
-            : [{ description: (dataToLoad as any).description || (dataToLoad as any).technicalReport || '', quantity: 1, unitPrice: 0, total: 0 }];
-
-        form.reset({
-            jobId: 'jobId' in dataToLoad ? dataToLoad.jobId || undefined : jobId || undefined,
-            customerId: customerId,
-            issueDate: 'docDate' in dataToLoad ? dataToLoad.docDate : new Date().toISOString().split("T")[0],
-            expiryDate: 'expiryDate' in dataToLoad && (dataToLoad as any).expiryDate ? (dataToLoad as any).expiryDate : new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
-            items: items,
-            notes: 'notes' in dataToLoad ? dataToLoad.notes : '',
-            isVat: 'withTax' in dataToLoad ? dataToLoad.withTax : true,
-            discountAmount: 'discountAmount' in dataToLoad ? dataToLoad.discountAmount : 0,
-            subtotal: 'subtotal' in dataToLoad ? dataToLoad.subtotal : 0,
-            net: 'net' in dataToLoad ? dataToLoad.net : 0,
-            vatAmount: 'vatAmount' in dataToLoad ? dataToLoad.vatAmount : 0,
-            grandTotal: 'grandTotal' in dataToLoad ? dataToLoad.grandTotal : 0,
-        });
+    // Try to find matching customer ID
+    let customerId = (dataToLoad as any).customerId || (dataToLoad as any).customerSnapshot?.id || "";
+    
+    // If we only have snapshot but no ID matching current customer list, we use snapshot ID if available
+    if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone && customers.length > 0) {
+      const found = customers.find(c => c.name === dataToLoad.customerSnapshot?.name && c.phone === dataToLoad.customerSnapshot?.phone);
+      if (found) customerId = found.id;
     }
+
+    const items = 'items' in dataToLoad && dataToLoad.items && dataToLoad.items.length > 0
+        ? dataToLoad.items.map(item => ({ 
+            description: item.description || "", 
+            quantity: Number(item.quantity) || 0, 
+            unitPrice: Number(item.unitPrice) || 0, 
+            total: Number(item.total) || 0 
+          }))
+        : [{ description: (dataToLoad as any).description || (dataToLoad as any).technicalReport || '', quantity: 1, unitPrice: 0, total: 0 }];
+
+    form.reset({
+        jobId: 'jobId' in dataToLoad ? dataToLoad.jobId || undefined : jobId || undefined,
+        customerId: customerId,
+        issueDate: 'docDate' in dataToLoad ? dataToLoad.docDate : new Date().toISOString().split("T")[0],
+        expiryDate: 'expiryDate' in dataToLoad && (dataToLoad as any).expiryDate ? (dataToLoad as any).expiryDate : new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split("T")[0],
+        items: items,
+        notes: 'notes' in dataToLoad ? dataToLoad.notes : '',
+        isVat: 'withTax' in dataToLoad ? dataToLoad.withTax : true,
+        discountAmount: 'discountAmount' in dataToLoad ? Number(dataToLoad.discountAmount) || 0 : 0,
+        subtotal: 'subtotal' in dataToLoad ? Number(dataToLoad.subtotal) || 0 : 0,
+        net: 'net' in dataToLoad ? Number(dataToLoad.net) || 0 : 0,
+        vatAmount: 'vatAmount' in dataToLoad ? Number(dataToLoad.vatAmount) || 0 : 0,
+        grandTotal: 'grandTotal' in dataToLoad ? Number(dataToLoad.grandTotal) || 0 : 0,
+    });
   }, [job, docToEdit, customers, jobId, form]);
 
   const applyTemplate = (template: QuotationTemplate) => {
@@ -212,9 +216,9 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const watchedIsVat = useWatch({ control: form.control, name: "isVat" });
 
   useEffect(() => {
-    const subtotal = watchedItems.reduce((sum, item) => sum + (item.total || 0), 0);
-    const discount = watchedDiscount || 0;
-    const net = subtotal - discount;
+    const subtotal = watchedItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+    const discount = Number(watchedDiscount) || 0;
+    const net = Math.max(0, subtotal - discount);
     const vatAmount = watchedIsVat ? net * 0.07 : 0;
     const grandTotal = net + vatAmount;
 
@@ -227,7 +231,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const onSubmit = async (data: QuotationFormData) => {
     if (isCancelled) return;
 
-    // Use selected customer from local state or snapshot for immediate data
     const customerSnapshot = customers.find(c => c.id === data.customerId) || docToEdit?.customerSnapshot || job?.customerSnapshot;
     
     if (!db || !customerSnapshot || !profile) {
@@ -305,11 +308,11 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit, (err) => {
-        console.error("Quotation Form Errors:", err);
+        console.error("Quotation Form Validation Errors:", JSON.stringify(err, null, 2));
         toast({
           variant: "destructive",
           title: "ข้อมูลไม่ครบถ้วน",
-          description: "กรุณาตรวจสอบข้อมูลที่กรอกให้ครบถ้วนทุกช่องที่จำเป็นค่ะ"
+          description: "กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วนในช่องที่มีเครื่องหมายกำกับสีแดงค่ะ"
         });
       })} className="space-y-6">
         {isCancelled && (
@@ -498,7 +501,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
              <Card>
                 <CardHeader><CardTitle className="text-base">หมายเหตุ</CardTitle></CardHeader>
                 <CardContent>
-                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} placeholder="เงื่อนไขการชำระเงิน, ระยะเวลารับประกัน หรือข้อมูลอื่นๆ" rows={5} disabled={isCancelled} />)} />
+                    <FormField control={form.control} name="notes" render={({ field }) => (<Textarea {...field} value={field.value || ""} placeholder="เงื่อนไขการชำระเงิน, ระยะเวลารับประกัน หรือข้อมูลอื่นๆ" rows={5} disabled={isCancelled} />)} />
                 </CardContent>
             </Card>
             <div className="space-y-4">
