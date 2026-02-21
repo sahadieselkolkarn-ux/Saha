@@ -117,7 +117,6 @@ export default function OfficeCashDrawerPage() {
   useEffect(() => {
     if (!db) return;
 
-    // Active session listener
     const activeQ = query(
       collection(db, "cashDrawerSessions"), 
       where("status", "==", "OPEN"),
@@ -132,7 +131,6 @@ export default function OfficeCashDrawerPage() {
       setLoading(false);
     });
 
-    // History listener
     const historyQ = query(
       collection(db, "cashDrawerSessions"),
       orderBy("openedAt", "desc"),
@@ -151,7 +149,6 @@ export default function OfficeCashDrawerPage() {
     return () => { unsubActive(); unsubHistory(); };
   }, [db]);
 
-  // Fetch transactions for active session
   useEffect(() => {
     if (!db || !activeSession) {
       setTransactions([]);
@@ -421,7 +418,6 @@ export default function OfficeCashDrawerPage() {
         </CardContent>
       </Card>
 
-      {/* Dialogs */}
       <Dialog open={isOpening} onOpenChange={setIsOpening}>
         <DialogContent>
           <DialogHeader><DialogTitle>เปิดรอบการทำงาน</DialogTitle></DialogHeader>

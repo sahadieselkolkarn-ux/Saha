@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -18,7 +19,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, MoreHorizontal, PlusCircle, Upload, Search, Edit, Eye, Trash2, ChevronsUpDown } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Search, Edit, Eye, Trash2, ChevronsUpDown } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,8 +31,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { Customer } from "@/lib/types";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/context/auth-context";
 import { ACQUISITION_SOURCES } from "@/lib/constants";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,6 +38,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+import { cn } from "@/lib/utils";
 
 const customerSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อลูกค้า"),
@@ -60,46 +60,14 @@ const customerSchema = z.object({
   path: ["taxBranchNo"],
 });
 
-const CustomerCard = ({ customer, onEdit, onDelete, isManagerOrAdmin, isAdmin }: { customer: Customer, onEdit: (customer: Customer) => void, onDelete: (customerId: string) => void, isManagerOrAdmin: boolean, isAdmin: boolean }) => (
-    <Card>
-        <CardHeader>
-            <div className="flex justify-between items-start">
-                <CardTitle className="text-lg">{customer.name}</CardTitle>
-                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onEdit(customer)}><Eye className="mr-2 h-4 w-4"/>ดู</DropdownMenuItem>
-                        {isManagerOrAdmin && <DropdownMenuItem onClick={() => onEdit(customer)}><Edit className="mr-2 h-4 w-4"/>แก้ไข</DropdownMenuItem>}
-                        {isAdmin && <DropdownMenuItem onClick={() => onDelete(customer.id)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>ลบ</DropdownMenuItem>}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-            <CardDescription>{customer.phone}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm pt-0">
-             <div className="flex justify-between items-center border-t pt-2">
-                <span className="text-muted-foreground">ใช้ใบกำกับภาษี</span>
-                <span className="font-medium">{customer.useTax ? "ใช่" : "ไม่"}</span>
-            </div>
-             {customer.detail && (
-                <div className="border-t pt-2">
-                    <p className="text-muted-foreground">รายละเอียด:</p>
-                    <p className="whitespace-pre-wrap">{customer.detail}</p>
-                </div>
-            )}
-        </CardContent>
-    </Card>
-);
-
-function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm: string, isManagerOrAdmin: boolean, isAdmin: boolean }) {
+export default function ManagementCustomersPage() {
   const { db } = useFirebase();
   const { toast } = useToast();
+  const { profile } = useAuth();
+  
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -108,6 +76,9 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
 
   const [currentPage, setCurrentPage] = useState(0);
   const PAGE_SIZE = 20;
+
+  const isManagerOrAdmin = profile?.role === 'MANAGER' || profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT';
+  const isAdmin = profile?.role === 'ADMIN';
 
   const form = useForm<z.infer<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
@@ -284,125 +255,98 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
   }
 
   return (
-    <>
-      <Card className="hidden sm:block">
+    <div className="space-y-6">
+      <PageHeader title="รายชื่อลูกค้า" description="จัดการข้อมูลลูกค้าและรายละเอียดการออกบิล">
+        <div className="flex items-center gap-2">
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="ค้นหาชื่อ/เบอร์โทร..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Button asChild>
+            <Link href="/app/office/customers/new">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              เพิ่มลูกค้า
+            </Link>
+          </Button>
+        </div>
+      </PageHeader>
+
+      <Card>
         <CardContent className="pt-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>ชื่อ</TableHead>
-                <TableHead>เบอร์โทร</TableHead>
-                <TableHead>รายละเอียด</TableHead>
-                <TableHead className="text-right">จัดการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedCustomers.length > 0 ? (
-                paginatedCustomers.map(customer => (
-                    <TableRow key={customer.id}>
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>{customer.phone}</TableCell>
-                    <TableCell className="max-w-sm truncate">{customer.detail || '-'}</TableCell>
-                    <TableCell className="text-right">
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openEditDialog(customer)}><Eye className="mr-2 h-4 w-4"/>ดู</DropdownMenuItem>
-                                {isManagerOrAdmin && <DropdownMenuItem onClick={() => openEditDialog(customer)}><Edit className="mr-2 h-4 w-4"/>แก้ไข</DropdownMenuItem>}
-                                {isAdmin && <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4"/>ลบ</DropdownMenuItem>}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </TableCell>
-                    </TableRow>
-                ))
-              ) : (
+          <div className="border rounded-md">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                        {searchTerm ? "ไม่พบข้อมูลที่ตรงกับการค้นหา" : "ยังไม่มีข้อมูลลูกค้า"}
-                    </TableCell>
+                  <TableHead>ชื่อลูกค้า</TableHead>
+                  <TableHead>เบอร์โทรศัพท์</TableHead>
+                  <TableHead>ใช้ใบกำกับภาษี</TableHead>
+                  <TableHead>รายละเอียด</TableHead>
+                  <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {paginatedCustomers.length > 0 ? (
+                  paginatedCustomers.map(customer => (
+                    <TableRow key={customer.id}>
+                      <TableCell className="font-medium">{customer.name}</TableCell>
+                      <TableCell>{customer.phone}</TableCell>
+                      <TableCell>
+                        {customer.useTax ? <Badge>ใช่</Badge> : <Badge variant="outline">ไม่</Badge>}
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate text-muted-foreground text-xs">
+                        {customer.detail || "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEditDialog(customer)}>
+                              <Eye className="mr-2 h-4 w-4" /> ดู/แก้ไข
+                            </DropdownMenuItem>
+                            {isAdmin && (
+                              <DropdownMenuItem onClick={() => handleDeleteRequest(customer.id)} className="text-destructive">
+                                <Trash2 className="mr-2 h-4 w-4" /> ลบ
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                      ไม่พบข้อมูลลูกค้า
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
         {totalPages > 1 && (
-          <CardFooter>
-            <div className="flex w-full justify-between items-center">
-                <span className="text-sm text-muted-foreground">
-                    หน้า {currentPage + 1} จาก {totalPages}
-                </span>
-                <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => p - 1)}
-                        disabled={currentPage === 0}
-                    >
-                        ก่อนหน้า
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => p + 1)}
-                        disabled={currentPage >= totalPages - 1}
-                    >
-                        ถัดไป
-                    </Button>
-                </div>
+          <CardFooter className="justify-between">
+            <p className="text-xs text-muted-foreground">หน้า {currentPage + 1} จาก {totalPages}</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p - 1)} disabled={currentPage === 0}>ก่อนหน้า</Button>
+              <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => p + 1)} disabled={currentPage >= totalPages - 1}>ถัดไป</Button>
             </div>
           </CardFooter>
         )}
       </Card>
 
-      <div className="grid gap-4 sm:hidden">
-        {paginatedCustomers.length > 0 ? (
-          paginatedCustomers.map(customer => (
-            <CustomerCard key={customer.id} customer={customer} onEdit={openEditDialog} onDelete={handleDeleteRequest} isManagerOrAdmin={isManagerOrAdmin} isAdmin={isAdmin} />
-          ))
-        ) : (
-          <Card className="text-center py-12">
-            <CardHeader>
-                <CardTitle>{searchTerm ? "ไม่พบผลลัพธ์" : "ยังไม่มีข้อมูลลูกค้า"}</CardTitle>
-                <CardDescription>{searchTerm ? "กรุณาลองค้นหาด้วยคำอื่น" : "เริ่มต้นด้วยการเพิ่มลูกค้าใหม่เข้าระบบ"}</CardDescription>
-            </CardHeader>
-        </Card>
-        )}
-         {totalPages > 1 && (
-             <div className="flex w-full justify-between items-center mt-4">
-                <span className="text-sm text-muted-foreground">
-                    หน้า {currentPage + 1} จาก {totalPages}
-                </span>
-                <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => p - 1)}
-                        disabled={currentPage === 0}
-                    >
-                        ก่อนหน้า
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCurrentPage(p => p + 1)}
-                        disabled={currentPage >= totalPages - 1}
-                    >
-                        ถัดไป
-                    </Button>
-                </div>
-            </div>
-        )}
-      </div>
-
       <Dialog open={isDialogOpen} onOpenChange={(open) => !isSubmitting && setIsDialogOpen(open)}>
-        <DialogContent 
-            className="sm:max-w-[600px] grid grid-rows-[auto_1fr_auto] max-h-[90vh] p-0 overflow-hidden"
-            onInteractOutside={(e) => { if (isSubmitting) e.preventDefault(); }}
-            onEscapeKeyDown={(e) => { if (isSubmitting) e.preventDefault(); }}
-        >
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] p-0 flex flex-col overflow-hidden">
           <DialogHeader className="p-6 pb-2">
-            <DialogTitle>แก้ไขข้อมูลลูกค้า</DialogTitle>
-            <DialogDescription>อัปเดตข้อมูลลูกค้าและรายละเอียดภาษี</DialogDescription>
+            <DialogTitle>ข้อมูลลูกค้า</DialogTitle>
+            <DialogDescription>ดูและแก้ไขรายละเอียดข้อมูลลูกค้า</DialogDescription>
           </DialogHeader>
           
           <div className="overflow-y-auto px-6">
@@ -415,32 +359,6 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                     <FormItem><FormLabel>เบอร์โทรศัพท์</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 
-                <FormField
-                    control={form.control}
-                    name="acquisitionSource"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>แหล่งที่มาลูกค้า (Marketing Source)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || "NONE"}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="เลือกช่องทาง..." />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                <SelectItem value="NONE">-- ไม่ระบุ --</SelectItem>
-                                <SelectItem value="REFERRAL">ลูกค้าแนะนำ</SelectItem>
-                                <SelectItem value="GOOGLE">Google</SelectItem>
-                                <SelectItem value="FACEBOOK">Facebook</SelectItem>
-                                <SelectItem value="TIKTOK">Tiktok</SelectItem>
-                                <SelectItem value="YOUTUBE">Youtube</SelectItem>
-                                <SelectItem value="OTHER">อื่นๆ</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        </FormItem>
-                    )}
-                />
-
                 <FormField name="detail" control={form.control} render={({ field }) => (
                     <FormItem><FormLabel>รายละเอียดเพิ่มเติม</FormLabel><FormControl><Textarea {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
@@ -456,70 +374,31 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
                 )} />
 
                 {useTax && (
-                    <div className="space-y-4 p-4 border rounded-md bg-muted/50 border-primary/20 mb-4 animate-in fade-in slide-in-from-top-1">
-                        <h4 className="text-sm font-bold text-primary uppercase tracking-wider border-b pb-2">รายละเอียดสำหรับการออกใบกำกับภาษี</h4>
-                        
+                    <div className="space-y-4 p-4 border rounded-md bg-muted/50 border-primary/20 mb-4">
+                        <h4 className="text-sm font-bold text-primary uppercase tracking-wider border-b pb-2">ข้อมูลภาษี</h4>
                         <FormField name="taxName" control={form.control} render={({ field }) => (
-                            <FormItem><FormLabel>ชื่อในใบกำกับภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ชื่อบริษัท หรือ ชื่อ-นามสกุล" /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>ชื่อในใบกำกับภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                         )} />
-                        
                         <FormField name="taxAddress" control={form.control} render={({ field }) => (
-                            <FormItem><FormLabel>ที่อยู่ในใบกำกับภาษี</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} placeholder="ระบุเลขที่บ้าน ถนน แขวง/ตำบล เขต/อำเภอ..." /></FormControl><FormMessage /></FormItem>
+                            <FormItem><FormLabel>ที่อยู่ในใบกำกับภาษี</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                         )} />
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                             <FormField name="taxId" control={form.control} render={({ field }) => (
-                                <FormItem><FormLabel>เลขประจำตัวผู้เสียภาษี (Tax ID)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="เลข 13 หลัก" /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>เลขประจำตัวผู้เสียภาษี</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                             )} />
                             <FormField name="taxPhone" control={form.control} render={({ field }) => (
-                                <FormItem><FormLabel>เบอร์โทรศัพท์ (สำหรับบิล)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ระบุเบอร์โทร" /></FormControl><FormMessage /></FormItem>
+                                <FormItem><FormLabel>เบอร์โทรศัพท์ (บิล)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} /></FormControl><FormMessage /></FormItem>
                             )} />
                         </div>
-
-                        <FormField
-                            control={form.control}
-                            name="taxBranchType"
-                            render={({ field }) => (
-                                <FormItem className="space-y-3">
-                                <FormLabel>สถานะสถานประกอบการ</FormLabel>
-                                <FormControl>
-                                    <RadioGroup
-                                    onValueChange={field.onChange}
-                                    defaultValue={field.value}
-                                    className="flex flex-col space-y-1"
-                                    >
-                                    <FormItem className="flex items-center space-x-3 space-y-0">
-                                        <FormControl><RadioGroupItem value="HEAD_OFFICE" /></FormControl>
-                                        <Label className="font-normal cursor-pointer">สำนักงานใหญ่</Label>
-                                    </FormItem>
-                                    <FormItem className="flex items-center space-x-3 space-y-0">
-                                        <FormControl><RadioGroupItem value="BRANCH" /></FormControl>
-                                        <Label className="font-normal cursor-pointer">สาขา</Label>
-                                    </FormItem>
-                                    </RadioGroup>
-                                </FormControl>
-                                </FormItem>
-                            )}
-                        />
-
-                        {taxBranchType === 'BRANCH' && (
-                            <FormField name="taxBranchNo" control={form.control} render={({ field }) => (
-                                <FormItem className="animate-in fade-in slide-in-from-left-1">
-                                    <FormLabel>รหัสสาขา (5 หลัก)</FormLabel>
-                                    <FormControl><Input {...field} value={field.value ?? ''} placeholder="เช่น 00001" maxLength={5} /></FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )} />
-                        )}
                     </div>
                 )}
                 </form>
             </Form>
           </div>
 
-          <DialogFooter className="border-t p-6">
-            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button type="submit" form="edit-customer-form" disabled={isSubmitting}>
+          <DialogFooter className="p-6 border-t">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
+            <Button type="submit" form="edit-customer-form" disabled={isSubmitting || !isManagerOrAdmin}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} บันทึกการเปลี่ยนแปลง
             </Button>
           </DialogFooter>
@@ -530,16 +409,14 @@ function AllCustomersTab({ searchTerm, isManagerOrAdmin, isAdmin }: { searchTerm
         <AlertDialogContent>
             <AlertDialogHeader>
                 <AlertDialogTitle>ยืนยันการลบข้อมูล?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    คุณกำลังจะลบข้อมูลลูกค้ารายนี้ออกจากระบบอย่างถาวร การกระทำนี้ไม่สามารถย้อนกลับได้
-                </AlertDialogDescription>
+                <AlertDialogDescription>การกระทำนี้ไม่สามารถย้อนกลับได้</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
                 <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90">ลบข้อมูล</AlertDialogAction>
+                <AlertDialogAction onClick={confirmDelete} className="bg-destructive">ลบข้อมูล</AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }
