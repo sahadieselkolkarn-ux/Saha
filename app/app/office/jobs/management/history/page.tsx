@@ -29,7 +29,7 @@ export default function OfficeJobManagementHistoryPage() {
         source="archive"
         year={currentYear}
         limit={20}
-        orderByField="closedDate"
+        orderByField="lastActivityAt" // Changed from closedDate to be more resilient
         orderByDirection="desc"
         emptyTitle="ไม่พบประวัติงานซ่อม"
         emptyDescription="ยังไม่มีรายการงานที่ถูกปิดในระบบ หรือไม่พบข้อมูลที่ตรงกับการค้นหา"
