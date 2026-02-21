@@ -19,6 +19,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, MoreHorizontal, PlusCircle, Search, Edit, Eye, Trash2, ChevronsUpDown } from "lucide-react";
 import {
   AlertDialog,
@@ -39,6 +40,8 @@ import { Label } from "@/components/ui/label";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 import { cn } from "@/lib/utils";
+
+export const dynamic = 'force-dynamic';
 
 const customerSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อลูกค้า"),
