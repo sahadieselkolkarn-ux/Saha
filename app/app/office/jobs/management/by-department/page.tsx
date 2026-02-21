@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useMemo } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { JobList } from "@/components/job-list";
@@ -9,6 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
+import type { JobStatus } from "@/lib/types";
+
+// Stable constant to prevent infinite loops in children
+const EXCLUDE_CLOSED: JobStatus[] = ["CLOSED"];
 
 function ByDepartmentContent() {
   const searchParams = useSearchParams();
@@ -48,40 +52,48 @@ function ByDepartmentContent() {
         <Card>
             <CardContent className="p-0">
                 <TabsContent value="car-service" className="mt-0">
-                    <JobList 
-                        searchTerm={searchTerm}
-                        department="CAR_SERVICE" 
-                        excludeStatus={["CLOSED"]}
-                        emptyTitle="ไม่มีงานในแผนกซ่อมหน้าร้าน"
-                        emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
-                    />
+                    {activeTab === 'car-service' && (
+                        <JobList 
+                            searchTerm={searchTerm}
+                            department="CAR_SERVICE" 
+                            excludeStatus={EXCLUDE_CLOSED}
+                            emptyTitle="ไม่มีงานในแผนกซ่อมหน้าร้าน"
+                            emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
+                        />
+                    )}
                 </TabsContent>
                 <TabsContent value="commonrail" className="mt-0">
-                    <JobList 
-                        searchTerm={searchTerm}
-                        department="COMMONRAIL" 
-                        excludeStatus={["CLOSED"]}
-                        emptyTitle="ไม่มีงานในแผนกคอมมอนเรล"
-                        emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
-                    />
+                    {activeTab === 'commonrail' && (
+                        <JobList 
+                            searchTerm={searchTerm}
+                            department="COMMONRAIL" 
+                            excludeStatus={EXCLUDE_CLOSED}
+                            emptyTitle="ไม่มีงานในแผนกคอมมอนเรล"
+                            emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
+                        />
+                    )}
                 </TabsContent>
                 <TabsContent value="mechanic" className="mt-0">
-                    <JobList 
-                        searchTerm={searchTerm}
-                        department="MECHANIC" 
-                        excludeStatus={["CLOSED"]}
-                        emptyTitle="ไม่มีงานในแผนกแมคคานิค"
-                        emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
-                    />
+                    {activeTab === 'mechanic' && (
+                        <JobList 
+                            searchTerm={searchTerm}
+                            department="MECHANIC" 
+                            excludeStatus={EXCLUDE_CLOSED}
+                            emptyTitle="ไม่มีงานในแผนกแมคคานิค"
+                            emptyDescription="ยังไม่มีการเปิดงานสำหรับแผนกนี้"
+                        />
+                    )}
                 </TabsContent>
                 <TabsContent value="outsource" className="mt-0">
-                    <JobList 
-                        searchTerm={searchTerm}
-                        department="OUTSOURCE" 
-                        excludeStatus={["CLOSED"]}
-                        emptyTitle="ไม่มีงานที่ส่งออกร้านนอก"
-                        emptyDescription="ยังไม่มีการส่งต่องานสำหรับแผนกนี้"
-                    />
+                    {activeTab === 'outsource' && (
+                        <JobList 
+                            searchTerm={searchTerm}
+                            department="OUTSOURCE" 
+                            excludeStatus={EXCLUDE_CLOSED}
+                            emptyTitle="ไม่มีงานที่ส่งออกร้านนอก"
+                            emptyDescription="ยังไม่มีการส่งต่องานสำหรับแผนกนี้"
+                        />
+                    )}
                 </TabsContent>
             </CardContent>
         </Card>

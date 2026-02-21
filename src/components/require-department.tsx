@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { Loader2 } from "lucide-react";
@@ -14,6 +15,9 @@ export function RequireDepartment({
 }) {
   const router = useRouter();
   const { user, profile, loading } = useAuth();
+
+  // Stable allow check to prevent excessive hook cycles
+  const allowKey = useMemo(() => allow.join(','), [allow]);
 
   useEffect(() => {
     if (loading) return;
@@ -41,7 +45,7 @@ export function RequireDepartment({
       router.replace("/app");
       return;
     }
-  }, [user, profile, loading, router, allow]);
+  }, [user, profile, loading, router, allowKey]);
 
   if (loading || !profile) {
     return (

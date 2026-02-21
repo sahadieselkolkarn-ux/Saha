@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -27,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowRight, Loader2, PlusCircle, Search, FileImage, LayoutGrid, Table as TableIcon, Eye, AlertCircle, ExternalLink } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
+import { JOB_STATUSES } from "@/lib/constants";
 import { safeFormat } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -45,9 +47,6 @@ interface JobTableListProps {
   source?: 'active' | 'archive';
   year?: number;
 }
-
-const isClosedStatus = (status?: Job['status']) => 
-    ["CLOSED", "DONE", "COMPLETED"].includes(String(status || "").toUpperCase());
 
 const getStatusVariant = (status: Job['status']) => {
   switch (status) {
@@ -85,10 +84,23 @@ export function JobTableList({
   const pageStartCursors = useRef<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
-  const memoizedExcludeStatusArray = useMemo(() => {
-    if (!excludeStatus) return [];
-    return Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
-  }, [excludeStatus]);
+  // Memoize filter logic to avoid infinite loops from array literals
+  const filterConfig = useMemo(() => {
+    const excludeArray = excludeStatus ? (Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus]) : [];
+    
+    // Complement set for allowed statuses
+    let finalInStatus: JobStatus[] = [];
+    if (status) {
+        finalInStatus = [status];
+    } else if (excludeArray.length > 0) {
+        finalInStatus = (JOB_STATUSES as unknown as JobStatus[]).filter(s => !excludeArray.includes(s));
+    }
+
+    return { 
+        inStatus: finalInStatus,
+        key: JSON.stringify(finalInStatus)
+    };
+  }, [status, excludeStatus]);
 
   const fetchData = useCallback(async (pageIndex: number) => {
     if (!db) return;
@@ -103,10 +115,10 @@ export function JobTableList({
       
       const qConstraints: QueryConstraint[] = [];
       if (department) qConstraints.push(where('department', '==', department));
-      if (status) qConstraints.push(where('status', '==', status));
       
-      if (!isSearch && memoizedExcludeStatusArray.length > 0) {
-        qConstraints.push(where('status', 'not-in', memoizedExcludeStatusArray));
+      // Use 'in' filter which is generally more stable than 'not-in' for ordered queries
+      if (filterConfig.inStatus.length > 0) {
+        qConstraints.push(where('status', 'in', filterConfig.inStatus));
       }
       
       qConstraints.push(orderBy(orderByField, orderByDirection));
@@ -154,13 +166,13 @@ export function JobTableList({
     } finally {
       setLoading(false);
     }
-  }, [db, source, year, department, status, orderByField, orderByDirection, limitProp, memoizedExcludeStatusArray, searchTerm]);
+  }, [db, source, year, department, orderByField, orderByDirection, limitProp, filterConfig.key, searchTerm]);
 
   useEffect(() => {
     setCurrentPage(0);
     pageStartCursors.current = [null];
     fetchData(0);
-  }, [searchTerm, status, department, memoizedExcludeStatusArray, fetchData]);
+  }, [searchTerm, department, filterConfig.key, fetchData]);
 
   const handleNextPage = () => {
     if (!isLastPage) {

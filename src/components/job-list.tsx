@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useRouter } from "next/navigation";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
+import { JOB_STATUSES } from "@/lib/constants";
 import { safeFormat } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
@@ -110,15 +111,22 @@ export function JobList({
 
   const [billingJob, setBillingJob] = useState<Job | null>(null);
 
-  const memoizedStatusArray = useMemo(() => {
-    if (!status) return [];
-    return Array.isArray(status) ? status : [status];
-  }, [status]);
+  // Memoize status configurations using stringified keys to prevent infinite loops from array literals
+  const statusConfig = useMemo(() => {
+    const statusArray = status ? (Array.isArray(status) ? status : [status]) : [];
+    const excludeArray = excludeStatus ? (Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus]) : [];
+    
+    // If we have exclude, calculate the inverse set from JOB_STATUSES to avoid 'not-in' query which is limited
+    let finalInStatus: JobStatus[] = statusArray;
+    if (statusArray.length === 0 && excludeArray.length > 0) {
+        finalInStatus = (JOB_STATUSES as unknown as JobStatus[]).filter(s => !excludeArray.includes(s));
+    }
 
-  const memoizedExcludeStatusArray = useMemo(() => {
-    if (!excludeStatus) return [];
-    return Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
-  }, [excludeStatus]);
+    return { 
+        inStatus: finalInStatus,
+        key: JSON.stringify(finalInStatus)
+    };
+  }, [status, excludeStatus]);
 
   const isOfficeOrAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
 
@@ -136,10 +144,9 @@ export function JobList({
       if (department) qConstraints.push(where('department', '==', department));
       if (assigneeUid) qConstraints.push(where('assigneeUid', '==', assigneeUid));
       
-      if (memoizedStatusArray.length > 0) {
-        qConstraints.push(where('status', 'in', memoizedStatusArray));
-      } else if (!isSearch && memoizedExcludeStatusArray.length > 0) {
-        qConstraints.push(where('status', 'not-in', memoizedExcludeStatusArray));
+      // Use 'in' operator instead of 'not-in' for better performance and easier indexing
+      if (statusConfig.inStatus.length > 0) {
+        qConstraints.push(where('status', 'in', statusConfig.inStatus));
       }
       
       qConstraints.push(orderBy('lastActivityAt', 'desc'));
@@ -187,13 +194,13 @@ export function JobList({
     } finally {
       setLoading(false);
     }
-  }, [db, department, assigneeUid, memoizedStatusArray, memoizedExcludeStatusArray, searchTerm]);
+  }, [db, department, assigneeUid, statusConfig.key, searchTerm]);
 
   useEffect(() => {
     setCurrentPage(0);
     pageStartCursors.current = [null];
     fetchData(0);
-  }, [searchTerm, status, department, memoizedExcludeStatusArray, fetchData]);
+  }, [searchTerm, department, statusConfig.key, fetchData]);
 
   const handleNextPage = () => {
     if (!isLastPage) {
@@ -295,7 +302,7 @@ export function JobList({
                 <Button 
                   disabled={!isOfficeOrAdmin}
                   asChild={isOfficeOrAdmin}
-                  className="w-full h-9 bg-primary hover:bg-primary/90 text-white font-bold" 
+                  className={cn("w-full h-9 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
                   variant="default"
                 >
                   {isOfficeOrAdmin ? (
@@ -304,7 +311,7 @@ export function JobList({
                       สร้างใบเสนอราคา
                     </Link>
                   ) : (
-                    <span className="flex items-center opacity-50">
+                    <span className="flex items-center">
                       <FileText className="mr-2 h-4 w-4" />
                       สร้างใบเสนอราคา
                     </span>
@@ -313,7 +320,7 @@ export function JobList({
               )}
               {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
                 <Button 
-                  className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" 
+                  className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
                   variant="outline"
                   disabled={!isOfficeOrAdmin}
                   onClick={() => setBillingJob(job)}
