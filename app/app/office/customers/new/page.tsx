@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, where, limit } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -33,15 +33,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { ACQUISITION_SOURCES } from "@/lib/constants";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const dynamic = 'force-dynamic';
 
 const customerSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อลูกค้า"),
-  phone: z.string().min(1, "กรุณากรอกเบอร์โทรศัพท์"),
+  phone: z.string().min(9, "กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (อย่างน้อย 9 หลัก)"),
   detail: z.string().optional().default(""),
   useTax: z.boolean().default(false),
   taxName: z.string().optional(),
@@ -67,6 +77,8 @@ export default function OfficeCustomersNewPage() {
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [duplicateCustomer, setDuplicateCustomer] = useState<{ id: string, name: string, phone: string } | null>(null);
+  const [showDuplicateAlert, setShowDuplicateAlert] = useState(false);
 
   const form = useForm<z.infer<typeof customerSchema>>({
     resolver: zodResolver(customerSchema),
@@ -94,9 +106,21 @@ export default function OfficeCustomersNewPage() {
     setIsSubmitting(true);
     
     try {
+      // Check for duplicate phone number
+      const q = query(collection(db, "customers"), where("phone", "==", values.phone.trim()), limit(1));
+      const querySnap = await getDocs(q);
+      
+      if (!querySnap.empty) {
+        const existing = querySnap.docs[0].data();
+        setDuplicateCustomer({ id: querySnap.docs[0].id, name: existing.name, phone: existing.phone });
+        setShowDuplicateAlert(true);
+        setIsSubmitting(false);
+        return;
+      }
+
       const addData = { 
-        name: values.name,
-        phone: values.phone,
+        name: values.name.trim(),
+        phone: values.phone.trim(),
         detail: values.detail || "",
         useTax: values.useTax,
         taxName: values.useTax ? values.taxName : "",
@@ -120,8 +144,13 @@ export default function OfficeCustomersNewPage() {
         title: "เกิดข้อผิดพลาด", 
         description: error.message 
       });
-    } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleGoToEdit = () => {
+    if (duplicateCustomer) {
+      router.push(`/app/management/customers?editPhone=${duplicateCustomer.phone}`);
     }
   };
 
@@ -137,7 +166,7 @@ export default function OfficeCustomersNewPage() {
                         <FormItem><FormLabel>ชื่อลูกค้า</FormLabel><FormControl><Input {...field} placeholder="เช่น คุณสมชาย รักบริการ" /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField name="phone" control={form.control} render={({ field }) => (
-                        <FormItem><FormLabel>เบอร์โทรศัพท์</FormLabel><FormControl><Input {...field} placeholder="เช่น 0812345678" /></FormControl><FormMessage /></FormItem>
+                        <FormItem><FormLabel>เบอร์โทรศัพท์ (จำเป็น)</FormLabel><FormControl><Input {...field} placeholder="เช่น 0812345678" /></FormControl><FormMessage /></FormItem>
                     )} />
                     
                     <Card className="bg-primary/5 border-primary/20 shadow-none">
@@ -264,7 +293,7 @@ export default function OfficeCustomersNewPage() {
                     <div className="flex gap-4">
                         <Button type="submit" disabled={isSubmitting} className="flex-1 sm:flex-none">
                             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} 
-                            เพิ่มลูกค้า
+                            บันทึกข้อมูลลูกค้า
                         </Button>
                         <Button type="button" variant="outline" asChild className="flex-1 sm:flex-none">
                             <Link href="/app/management/customers">ยกเลิก</Link>
@@ -274,6 +303,33 @@ export default function OfficeCustomersNewPage() {
                 </Form>
             </CardContent>
         </Card>
+
+        {/* Duplicate Phone Check Alert */}
+        <AlertDialog open={showDuplicateAlert} onOpenChange={setShowDuplicateAlert}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-amber-500" />
+                        พบข้อมูลซ้ำในระบบ
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="space-y-3">
+                        <p>เบอร์โทรศัพท์ <span className="font-bold">{duplicateCustomer?.phone}</span> ถูกใช้งานแล้วโดยลูกค้า:</p>
+                        <div className="p-3 bg-muted rounded-md font-bold text-center border">
+                            {duplicateCustomer?.name}
+                        </div>
+                        <p className="font-semibold text-primary">ระบบมีข้อมูลอยู่แล้ว ต้องการแก้ไขข้อมูลลูกค้าท่านนี้หรือไม่?</p>
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => { setShowDuplicateAlert(false); setDuplicateCustomer(null); }}>
+                        ไม่ต้องการ (ยกเลิก)
+                    </AlertDialogCancel>
+                    <AlertDialogAction onClick={handleGoToEdit}>
+                        ใช่ ต้องการแก้ไขข้อมูล
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
     </>
   );
 }

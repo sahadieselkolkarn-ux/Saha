@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -9,6 +9,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -63,14 +64,15 @@ const customerSchema = z.object({
   path: ["taxBranchNo"],
 });
 
-export default function ManagementCustomersPage() {
+function CustomersContent() {
   const { db } = useFirebase();
   const { toast } = useToast();
   const { profile } = useAuth();
+  const searchParams = useSearchParams();
   
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("phone") || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -109,6 +111,16 @@ export default function ManagementCustomersPage() {
       const customersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
       setCustomers(customersData);
       setLoading(false);
+      
+      // Auto-open edit dialog if editPhone is present in URL
+      const editPhone = searchParams.get("editPhone");
+      if (editPhone && customersData.length > 0) {
+        const target = customersData.find(c => c.phone === editPhone);
+        if (target) {
+          setEditingCustomer(target);
+          setIsDialogOpen(true);
+        }
+      }
     },
     async (error: any) => {
       if (error.code === 'permission-denied') {
@@ -123,7 +135,7 @@ export default function ManagementCustomersPage() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [db, toast]);
+  }, [db, toast, searchParams]);
   
   const filteredCustomers = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -421,5 +433,13 @@ export default function ManagementCustomersPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+export default function ManagementCustomersPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>}>
+      <CustomersContent />
+    </Suspense>
   );
 }
