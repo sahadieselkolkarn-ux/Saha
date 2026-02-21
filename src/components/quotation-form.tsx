@@ -122,13 +122,12 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
 
   useEffect(() => {
     const dataToLoad = docToEdit || job;
-    if (dataToLoad && customers.length > 0) {
-        let customerId = 
-            (dataToLoad as any).customerId || 
-            (dataToLoad as any).customerSnapshot?.id || 
-            "";
+    if (dataToLoad) {
+        // Find existing customer ID or fallback to snapshot ID
+        let customerId = (dataToLoad as any).customerId || (dataToLoad as any).customerSnapshot?.id || "";
 
-        if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone) {
+        // If ID missing but we have name/phone, try to match in loaded customers
+        if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone && customers.length > 0) {
           const foundCustomer = customers.find(c => c.name === dataToLoad.customerSnapshot?.name && c.phone === dataToLoad.customerSnapshot?.phone);
           if (foundCustomer) {
             customerId = foundCustomer.id;
@@ -228,17 +227,18 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const onSubmit = async (data: QuotationFormData) => {
     if (isCancelled) return;
 
-    // Use selected customer from local state for immediate data
-    const selectedCustomer = customers.find(c => c.id === data.customerId);
-    if (!db || !selectedCustomer || !storeSettings || !profile) {
-      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกข้อมูลลูกค้าและตรวจสอบข้อมูลร้านค้า" });
+    // Use selected customer from local state or snapshot for immediate data
+    const customerSnapshot = customers.find(c => c.id === data.customerId) || docToEdit?.customerSnapshot || job?.customerSnapshot;
+    
+    if (!db || !customerSnapshot || !profile) {
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกข้อมูลลูกค้าและตรวจสอบการเข้าสู่ระบบ" });
       return;
     }
 
-    const customerSnapshot = { 
-      ...selectedCustomer, 
-      id: data.customerId 
-    };
+    if (!storeSettings) {
+      toast({ variant: "destructive", title: "ยังไม่ได้ตั้งค่าข้อมูลร้าน", description: "กรุณาตั้งค่าข้อมูลร้านในเมนูตั้งค่าก่อนออกเอกสารค่ะ" });
+      return;
+    }
 
     const carSnapshot = (job || docToEdit?.jobId) ? { 
       licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate,
@@ -253,7 +253,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         customerId: data.customerId,
         docDate: data.issueDate,
         jobId: data.jobId,
-        customerSnapshot: customerSnapshot,
+        customerSnapshot: { ...customerSnapshot, id: data.customerId },
         carSnapshot: carSnapshot,
         storeSnapshot: { ...storeSettings },
         items: data.items,
@@ -304,7 +304,14 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit, (err) => console.log("Validation Errors:", err))} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit, (err) => {
+        console.error("Quotation Form Errors:", err);
+        toast({
+          variant: "destructive",
+          title: "ข้อมูลไม่ครบถ้วน",
+          description: "กรุณาตรวจสอบข้อมูลที่กรอกให้ครบถ้วนทุกช่องที่จำเป็นค่ะ"
+        });
+      })} className="space-y-6">
         {isCancelled && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
