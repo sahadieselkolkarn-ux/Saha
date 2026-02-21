@@ -19,7 +19,7 @@ import {
   type FirestoreError
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase/client-provider";
+import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -58,6 +58,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { CashDrawerSession, CashDrawerTransaction } from "@/lib/types";
+
+export const dynamic = 'force-dynamic';
 
 const transactionSchema = z.object({
   type: z.enum(["IN", "OUT"]),

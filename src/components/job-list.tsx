@@ -16,7 +16,8 @@ import {
   type QueryConstraint, 
   type FirestoreError 
 } from "firebase/firestore";
-import { useFirebase, useAuth } from "@/firebase";
+import { useFirebase } from "@/firebase";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

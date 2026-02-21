@@ -3,13 +3,14 @@
 import { useMemo, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { doc } from "firebase/firestore";
-import { useFirebase } from "@/firebase/client-provider";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useFirebase, useDoc } from "@/firebase";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, ArrowLeft, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Document as DocumentType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
+
+export const dynamic = 'force-dynamic';
 
 export default function WhtPrintPage() {
     const { docId } = useParams();

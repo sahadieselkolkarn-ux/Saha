@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { useFirebase, useAuth } from '@/firebase';
+import { useFirebase } from '@/firebase';
+import { useAuth } from '@/context/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { generateKioskToken } from '@/firebase/kiosk';
 
@@ -12,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+export const dynamic = 'force-dynamic';
 
 export default function KioskPage() {
   const { db } = useFirebase();
