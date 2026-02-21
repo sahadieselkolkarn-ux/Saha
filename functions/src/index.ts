@@ -6,7 +6,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 initializeApp();
 const db = getFirestore();
 
-// --- 1. ฟังก์ชันปิดจ๊อบ ---
+// --- 1. ฟังก์ชันปิดจ๊อบ (Close Job after Payment) ---
 export const closeJobAfterAccounting = onCall(
   { region: "us-central1", cors: true }, 
   async (request) => {
@@ -27,6 +27,7 @@ export const closeJobAfterAccounting = onCall(
       
       const archiveRef = db.collection(`jobsArchive_${year}`).doc(jobId);
 
+      // Move main job data
       await archiveRef.set(
         {
           ...jobData,
@@ -41,15 +42,29 @@ export const closeJobAfterAccounting = onCall(
         { merge: true }
       );
 
-      await jobRef.delete();
+      // Move activities subcollection
+      const activitiesSnap = await jobRef.collection("activities").get();
+      if (!activitiesSnap.empty) {
+        const batch = db.batch();
+        activitiesSnap.docs.forEach(doc => {
+          const newActRef = archiveRef.collection("activities").doc(doc.id);
+          batch.set(newActRef, doc.data());
+        });
+        await batch.commit();
+      }
+
+      // Delete original job
+      await db.recursiveDelete(jobRef);
+      
       return { ok: true, jobId };
     } catch (error: any) {
+      console.error("Error in closeJobAfterAccounting:", error);
       throw new HttpsError("internal", error?.message || "Unknown error");
     }
   }
 );
 
-// --- 2. ฟังก์ชัน Migration ---
+// --- 2. ฟังก์ชัน Migration (Fixing stuck CLOSED jobs) ---
 export const migrateClosedJobsToArchive2026 = onCall(
   { region: "us-central1", cors: true },
   async (request) => {
@@ -59,6 +74,7 @@ export const migrateClosedJobsToArchive2026 = onCall(
     const userData = userSnap.data();
     const isAdmin =
       userData?.role === "ADMIN" || userData?.role === "MANAGER" || userData?.department === "MANAGEMENT";
+    
     if (!isAdmin) throw new HttpsError("permission-denied", "เฉพาะผู้ดูแลระบบเท่านั้นที่ทำรายการนี้ได้ค่ะ");
 
     const limitCount = Math.min(request.data?.limit || 40, 40);
@@ -77,10 +93,17 @@ export const migrateClosedJobsToArchive2026 = onCall(
         const jobId = jobDoc.id;
         const jobData = jobDoc.data();
         
-        // Determine the archive year and closed date
-        const jobDate = jobData.closedDate || jobData.updatedAt?.toDate?.()?.toISOString().split('T')[0] || defaultClosedDate;
-        const archiveYear = jobDate.startsWith('2026') ? 2026 : currentYear;
+        // Determine the archive year and closed date robustly
+        let jobDate = jobData.closedDate || defaultClosedDate;
+        if (!jobData.closedDate && jobData.updatedAt) {
+            try {
+                jobDate = jobData.updatedAt.toDate().toISOString().split('T')[0];
+            } catch (e) {
+                jobDate = defaultClosedDate;
+            }
+        }
         
+        const archiveYear = jobDate.startsWith('2026') ? 2026 : currentYear;
         const archiveRef = db.collection(`jobsArchive_${archiveYear}`).doc(jobId);
         const archiveSnap = await archiveRef.get();
 
@@ -98,8 +121,13 @@ export const migrateClosedJobsToArchive2026 = onCall(
           });
 
           const activitiesSnap = await jobDoc.ref.collection("activities").get();
-          for (const actDoc of activitiesSnap.docs) {
-            await archiveRef.collection("activities").doc(actDoc.id).set(actDoc.data());
+          if (!activitiesSnap.empty) {
+            const batch = db.batch();
+            activitiesSnap.docs.forEach(actDoc => {
+              const newActRef = archiveRef.collection("activities").doc(actDoc.id);
+              batch.set(newActRef, actDoc.data());
+            });
+            await batch.commit();
           }
 
           migrated++;
@@ -107,8 +135,10 @@ export const migrateClosedJobsToArchive2026 = onCall(
           skipped++;
         }
 
+        // Use recursive delete to clean up original job and its subcollections
         await db.recursiveDelete(jobDoc.ref);
       } catch (e: any) {
+        console.error(`Migration error for job ${jobDoc.id}:`, e);
         errors.push({ jobId: jobDoc.id, message: e?.message || "Unknown error" });
       }
     }

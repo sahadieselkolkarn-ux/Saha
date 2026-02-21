@@ -35,7 +35,7 @@ export default function AdminUsersPage() {
 
   const handleMigrate = async () => {
     if (!firebaseApp) {
-      toast({ variant: 'destructive', title: "System error", description: "Firebase App not initialized" });
+      toast({ variant: 'destructive', title: "ระบบยังไม่พร้อม", description: "กรุณารอสักครู่ให้ระบบเชื่อมต่อสำเร็จก่อนกดนะคะ" });
       return;
     }
     
@@ -46,11 +46,11 @@ export default function AdminUsersPage() {
       const functions = getFunctions(firebaseApp, 'us-central1');
       const migrate = httpsCallable(functions, "migrateClosedJobsToArchive2026");
       
-      console.info("Starting migration call to us-central1...");
+      console.info("Starting migration call to Cloud Functions...");
       const result = await migrate({ limit: 40 });
       const data = result.data as any;
       
-      // Normalize results to ensure types are correct
+      // Normalize results to ensure types are correct for UI
       const totalFound = Number(data.totalFound || 0);
       const migrated = Number(data.migrated || 0);
       const skipped = Number(data.skipped || 0);
@@ -62,26 +62,26 @@ export default function AdminUsersPage() {
       if (migrated > 0) {
         toast({ 
           title: "ย้ายข้อมูลสำเร็จ", 
-          description: `ย้ายงาน CLOSED ไปประวัติแล้ว ${migrated} รายการ` 
+          description: `ย้ายงาน CLOSED ไปประวัติแล้ว ${migrated} รายการค่ะ` 
         });
       } else if (totalFound === 0) {
         toast({ 
-          title: "ไม่พบรายการ", 
-          description: "ไม่พบใบงานสถานะ CLOSED ที่ค้างอยู่ในระบบหลัก" 
+          title: "ไม่พบรายการค้าง", 
+          description: "ไม่พบใบงานที่ปิดงานแล้วหลงเหลือในระบบหลักค่ะ ทุกอย่างปกติดี" 
         });
       } else if (errors.length > 0) {
         toast({ 
           variant: "destructive",
-          title: "พบข้อผิดพลาด", 
-          description: `ย้ายไม่สำเร็จ ${errors.length} รายการ กรุณาตรวจสอบรายละเอียด` 
+          title: "พบข้อผิดพลาดบางส่วน", 
+          description: `ย้ายไม่สำเร็จ ${errors.length} รายการ กรุณาตรวจสอบรายละเอียดด้านล่างค่ะ` 
         });
       }
     } catch (e: any) {
-      console.error("Migration error detail:", e);
+      console.error("Migration fatal error:", e);
       toast({ 
         variant: 'destructive', 
         title: "การเชื่อมต่อล้มเหลว", 
-        description: `[${e.code || 'error'}]: ${e.message || "เกิดข้อผิดพลาดในการเรียก Cloud Function"}` 
+        description: `[${e.code || 'error'}]: ${e.message || "เกิดข้อผิดพลาดในการเรียกใช้ฟังก์ชันย้ายข้อมูล"}` 
       });
     } finally {
       setIsMigrating(false);
