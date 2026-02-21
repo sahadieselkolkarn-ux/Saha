@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Job } from "@/lib/types";
@@ -18,9 +19,10 @@ const DetailRow: React.FC<DetailRowProps> = ({ label, value }) => {
 };
 
 export function JobVehicleDetails({ job }: { job: Job }) {
-  const hasCarDetails = job.department === 'CAR_SERVICE';
-  const hasCommonrailDetails = job.department === 'COMMONRAIL';
-  const hasMechanicDetails = job.department === 'MECHANIC';
+  // Show details if they exist, regardless of the current department
+  const hasCarDetails = !!(job.carServiceDetails?.brand || job.carServiceDetails?.licensePlate);
+  const hasCommonrailDetails = !!(job.commonrailDetails?.brand || job.commonrailDetails?.partNumber);
+  const hasMechanicDetails = !!(job.mechanicDetails?.brand || job.mechanicDetails?.partNumber);
 
   return (
     <div className="space-y-1">
@@ -44,6 +46,9 @@ export function JobVehicleDetails({ job }: { job: Job }) {
           <DetailRow label="เลขอะไหล่" value={job.mechanicDetails?.partNumber} />
           <DetailRow label="เลขทะเบียน" value={job.mechanicDetails?.registrationNumber} />
         </>
+      )}
+      {!hasCarDetails && !hasCommonrailDetails && !hasMechanicDetails && (
+        <p className="text-xs text-muted-foreground italic">ไม่มีข้อมูลรายละเอียดรถ/ชิ้นส่วน</p>
       )}
     </div>
   );

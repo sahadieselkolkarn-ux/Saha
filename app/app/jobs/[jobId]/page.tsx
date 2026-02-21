@@ -40,6 +40,7 @@ import {
 import { JobVehicleDetails } from "@/components/job-details/job-vehicle-details";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+import { cn } from "@/lib/utils";
 
 const getStatusVariant = (status: Job['status']) => {
   switch (status) {
@@ -144,16 +145,17 @@ function JobDetailsPageContent() {
   const isUserAdmin = profile?.role === 'ADMIN';
   const isManager = profile?.role === 'MANAGER';
   const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
-  const isService = (profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC' || profile?.department === 'OUTSOURCE') && isStaff;
   
-  const canEditDetails = isStaff && (isOfficeOrAdminOrMgmt || isService);
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   
   // General UI view lock
-  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || job?.status === 'WAITING_CUSTOMER_PICKUP' || profile?.role === 'VIEWER';
+  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
   
-  // Special permission for photos and activities: Allow Office/Admin even in WAITING_CUSTOMER_PICKUP
-  const canManagePhotos = isStaff && (isOfficeOrAdminOrMgmt || isService) && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
+  // Everyone (Staff) can add activities and manage photos as per user request
+  const canUpdateActivity = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
+  
+  // Everyone (Staff) can edit details as per user request
+  const canEditDetails = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
 
   useEffect(() => {
     if (!db || !jobId) return;
@@ -291,9 +293,10 @@ function JobDetailsPageContent() {
   };
 
   const handleOpenEditVehicleDialog = () => {
-    if (job?.department === 'CAR_SERVICE') setVehicleEditData(job.carServiceDetails || {});
-    else if (job?.department === 'COMMONRAIL') setVehicleEditData(job.commonrailDetails || {});
-    else if (job?.department === 'MECHANIC') setVehicleEditData(job.mechanicDetails || {});
+    if (!job) return;
+    // Load based on existing data or department
+    const data = job.carServiceDetails || job.commonrailDetails || job.mechanicDetails || {};
+    setVehicleEditData(data);
     setIsEditVehicleDialogOpen(true);
   };
 
@@ -302,7 +305,11 @@ function JobDetailsPageContent() {
     setIsUpdatingVehicle(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
-    const fieldName = job.department === 'CAR_SERVICE' ? 'carServiceDetails' : job.department === 'COMMONRAIL' ? 'commonrailDetails' : 'mechanicDetails';
+    
+    // Detect which field to update based on what already exists or current dept
+    let fieldName = 'carServiceDetails';
+    if (job.commonrailDetails || job.department === 'COMMONRAIL') fieldName = 'commonrailDetails';
+    else if (job.mechanicDetails || job.department === 'MECHANIC') fieldName = 'mechanicDetails';
     
     const batch = writeBatch(db);
     batch.update(jobDocRef, { [fieldName]: vehicleEditData, lastActivityAt: serverTimestamp() });
@@ -371,30 +378,6 @@ function JobDetailsPageContent() {
     });
   };
 
-  const handleSaveTechReport = async () => {
-    if (!jobId || !db || !profile) return;
-    setIsSavingTechReport(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
-    
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, { technicalReport: techReport, lastActivityAt: serverTimestamp() });
-    batch.set(activityDocRef, { text: `อัปเดตสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
-    batch.commit().then(() => {
-      toast({ title: `Notebook updated` });
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: { technicalReport: techReport },
-      });
-      errorEmitter.emit('permission-error', permissionError);
-    }).finally(() => {
-      setIsSavingTechReport(false);
-    });
-  };
-  
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
@@ -436,7 +419,7 @@ function JobDetailsPageContent() {
           setNewPhotos([]);
           photoPreviews.forEach(url => URL.revokeObjectURL(url));
           setPhotoPreviews([]);
-          toast({title: "Activity added successfully"});
+          toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
         }).catch(async (serverError) => {
           const permissionError = new FirestorePermissionError({
             path: jobDocRef.path,
@@ -448,7 +431,7 @@ function JobDetailsPageContent() {
     } catch (error: any) {
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
-        setIsSubmitting(false);
+        setIsSubmittingNote(false);
     }
   };
 
@@ -740,7 +723,7 @@ function JobDetailsPageContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
-                {canManagePhotos && (
+                {canUpdateActivity && (
                     <div className="flex gap-2">
                         <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 8}>
                             <label htmlFor="camera-photo-upload" className="cursor-pointer flex items-center">
@@ -775,7 +758,7 @@ function JobDetailsPageContent() {
           <Card>
               <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={!canManagePhotos} />
+                <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={!canUpdateActivity} />
                 {(photoPreviews.length > 0) && (
                   <div className="grid grid-cols-4 gap-2">
                     {photoPreviews.map((src, i) => (
@@ -787,8 +770,8 @@ function JobDetailsPageContent() {
                   </div>
                 )}
                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || !canManagePhotos}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
-                    <Button asChild variant="outline" disabled={!canManagePhotos || isSubmittingNote || isAddingPhotos}>
+                    <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || !canUpdateActivity}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
+                    <Button asChild variant="outline" disabled={!canUpdateActivity || isSubmittingNote || isAddingPhotos}>
                         <label className="cursor-pointer flex items-center"><Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม
                             <Input id="activity-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} />
                         </label>
@@ -979,7 +962,7 @@ function JobDetailsPageContent() {
         <DialogContent>
             <DialogHeader><DialogTitle>แก้ไขรายละเอียดรถ/ชิ้นส่วน</DialogTitle></DialogHeader>
             <div className="grid gap-4 py-4">
-                {job.department === 'CAR_SERVICE' ? (
+                {(job.carServiceDetails || job.department === 'CAR_SERVICE') ? (
                     <>
                         <div className="grid gap-2"><Label>ยี่ห้อรถ</Label><Input value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} /></div>
                         <div className="grid gap-2"><Label>รุ่นรถ</Label><Input value={vehicleEditData.model || ""} onChange={e => setVehicleEditData({...vehicleEditData, model: e.target.value})} /></div>
