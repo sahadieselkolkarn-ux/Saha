@@ -25,11 +25,11 @@ import { vendorTypeLabel } from "@/lib/ui-labels";
 import type { Vendor } from "@/lib/types";
 
 const vendorSchema = z.object({
-  shortName: z.string().min(1, "กรุณากรอกชื่อย่อ").max(10, "ชื่อย่อต้องไม่เกิน 10 ตัวอักษร"),
+  shortName: z.string().min(1, "กรุณากรอกชื่อย่อ").max(15, "ชื่อย่อต้องไม่เกิน 15 ตัวอักษร"),
   companyName: z.string().min(1, "กรุณากรอกชื่อร้าน/บริษัท"),
   vendorType: z.enum(VENDOR_TYPES),
   address: z.string().optional(),
-  phone: z.string().optional(),
+  phone: z.string().min(9, "กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (อย่างน้อย 9 หลัก)"),
   contactName: z.string().optional(),
   contactPhone: z.string().optional(),
   email: z.string().email({ message: "อีเมลไม่ถูกต้อง" }).optional().or(z.literal('')),
@@ -116,20 +116,34 @@ function EditVendorPageContent() {
     }
 
     try {
-      const q = query(
+      // Check for unique shortName (excluding this vendor)
+      const qShort = query(
         collection(db, "vendors"),
         where("shortName", "==", values.shortName.toUpperCase()),
         where(documentId(), "!=", vendorId)
       );
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
+      const snapShort = await getDocs(qShort);
+      if (!snapShort.empty) {
         form.setError("shortName", { type: "manual", message: "ชื่อย่อนี้ถูกใช้ไปแล้ว" });
+        return;
+      }
+
+      // Check for duplicate phone (excluding this vendor)
+      const qPhone = query(
+        collection(db, "vendors"),
+        where("phone", "==", values.phone.trim()),
+        where(documentId(), "!=", vendorId)
+      );
+      const snapPhone = await getDocs(qPhone);
+      if (!snapPhone.empty) {
+        form.setError("phone", { type: "manual", message: "เบอร์โทรศัพท์นี้ถูกใช้งานโดยร้านค้าอื่นแล้ว" });
         return;
       }
       
       const dataToUpdate = {
         ...values,
         shortName: values.shortName.toUpperCase(),
+        phone: values.phone.trim(),
         updatedAt: serverTimestamp(),
       };
 
@@ -153,7 +167,7 @@ function EditVendorPageContent() {
     <>
       <PageHeader title={canEdit ? "แก้ไขข้อมูลร้านค้า" : "ดูข้อมูลร้านค้า"} description={`ร้านค้า: ${vendor.companyName}`} />
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-4xl">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-4xl mx-auto pb-10">
            <Card>
             <CardHeader>
               <CardTitle>ข้อมูลหลัก</CardTitle>
@@ -202,13 +216,17 @@ function EditVendorPageContent() {
               <CardTitle>ข้อมูลการติดต่อและที่อยู่</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <FormField control={form.control} name="phone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-bold text-primary">เบอร์โทรศัพท์ร้าน (จำเป็น)</FormLabel>
+                  <FormControl><Input {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="address" render={({ field }) => (
                 <FormItem><FormLabel>ที่อยู่</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
               )} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField control={form.control} name="phone" render={({ field }) => (
-                  <FormItem><FormLabel>เบอร์โทรศัพท์ร้าน</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
-                )} />
                 <FormField control={form.control} name="email" render={({ field }) => (
                   <FormItem><FormLabel>อีเมล</FormLabel><FormControl><Input type="email" {...field} value={field.value ?? ''} disabled={!canEdit} /></FormControl><FormMessage /></FormItem>
                 )} />
