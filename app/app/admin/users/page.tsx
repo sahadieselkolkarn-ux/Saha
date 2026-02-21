@@ -17,7 +17,7 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 export default function AdminUsersPage() {
-  const { db, firebaseApp } = useFirebase();
+  const { db, app: firebaseApp } = useFirebase(); // Corrected destructuring from 'app' to 'firebaseApp'
   const { profile } = useAuth();
   const { toast } = useToast();
   
@@ -35,7 +35,11 @@ export default function AdminUsersPage() {
 
   const handleMigrate = async () => {
     if (!firebaseApp) {
-      toast({ variant: 'destructive', title: "ระบบยังไม่พร้อม", description: "กรุณารอสักครู่ให้ระบบเชื่อมต่อสำเร็จก่อนกดนะคะ" });
+      toast({ 
+        variant: 'destructive', 
+        title: "ระบบยังไม่พร้อม", 
+        description: "ไม่พบการเชื่อมต่อกับ Firebase App กรุณารีเฟรชหน้าจอแล้วลองใหม่อีกครั้งค่ะ" 
+      });
       return;
     }
     
@@ -43,10 +47,11 @@ export default function AdminUsersPage() {
     setMigrationResult(null);
     
     try {
+      console.info("Preparing migration call...");
       const functions = getFunctions(firebaseApp, 'us-central1');
       const migrate = httpsCallable(functions, "migrateClosedJobsToArchive2026");
       
-      console.info("Starting migration call to Cloud Functions...");
+      console.info("Executing migrateClosedJobsToArchive2026...");
       const result = await migrate({ limit: 40 });
       const data = result.data as any;
       
@@ -62,26 +67,26 @@ export default function AdminUsersPage() {
       if (migrated > 0) {
         toast({ 
           title: "ย้ายข้อมูลสำเร็จ", 
-          description: `ย้ายงาน CLOSED ไปประวัติแล้ว ${migrated} รายการค่ะ` 
+          description: `ย้ายงานที่ปิดแล้วไปประวัติเรียบร้อย ${migrated} รายการค่ะ` 
         });
       } else if (totalFound === 0) {
         toast({ 
-          title: "ไม่พบรายการค้าง", 
-          description: "ไม่พบใบงานที่ปิดงานแล้วหลงเหลือในระบบหลักค่ะ ทุกอย่างปกติดี" 
+          title: "ไม่พบงานรอการย้าย", 
+          description: "ในระบบหลักไม่มีงานสถานะ CLOSED หลงเหลืออยู่แล้วค่ะ" 
         });
       } else if (errors.length > 0) {
         toast({ 
           variant: "destructive",
-          title: "พบข้อผิดพลาดบางส่วน", 
-          description: `ย้ายไม่สำเร็จ ${errors.length} รายการ กรุณาตรวจสอบรายละเอียดด้านล่างค่ะ` 
+          title: "พบปัญหาบางส่วน", 
+          description: `ย้ายสำเร็จ ${migrated} รายการ และผิดพลาด ${errors.length} รายการ` 
         });
       }
     } catch (e: any) {
-      console.error("Migration fatal error:", e);
+      console.error("Migration error detail:", e);
       toast({ 
         variant: 'destructive', 
-        title: "การเชื่อมต่อล้มเหลว", 
-        description: `[${e.code || 'error'}]: ${e.message || "เกิดข้อผิดพลาดในการเรียกใช้ฟังก์ชันย้ายข้อมูล"}` 
+        title: "การเรียกใช้ฟังก์ชันล้มเหลว", 
+        description: `Error [${e.code || 'unknown'}]: ${e.message || "เกิดข้อผิดพลาดในการเชื่อมต่อกับ Server"}` 
       });
     } finally {
       setIsMigrating(false);
@@ -99,7 +104,7 @@ export default function AdminUsersPage() {
       if (e.code === 'permission-denied') {
         const permissionError = new FirestorePermissionError({
           path: 'kioskTokens',
-          operation: 'get',
+          operation: 'list',
         } satisfies SecurityRuleContext);
         errorEmitter.emit('permission-error', permissionError);
       }
@@ -167,25 +172,25 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="User Management & Maintenance" description="Manage users and system data integrity." />
+      <PageHeader title="การดูแลรักษาระบบ (System Maintenance)" description="เครื่องมือสำหรับผู้ดูแลระบบเพื่อจัดการข้อมูลและประสิทธิภาพของระบบ" />
       
       {isAdmin && (
         <Card className="border-amber-200 bg-amber-50/30">
           <CardHeader>
             <div className="flex items-center gap-2 text-amber-700">
               <Database className="h-5 w-5" />
-              <CardTitle className="text-lg">System Maintenance (Migration)</CardTitle>
+              <CardTitle className="text-lg">ย้ายงานที่ปิดแล้วเข้าประวัติ (Migration)</CardTitle>
             </div>
             <CardDescription>
-              ย้ายข้อมูลใบงานที่สถานะ "ปิดงาน" (CLOSED) ที่ยังค้างอยู่ในระบบหลัก ไปยังระบบจัดเก็บประวัติ (Archive 2026)
+              ระบบจะค้นหางานที่มีสถานะ "ปิดงาน" (CLOSED) ที่ยังตกค้างอยู่ในฐานข้อมูลหลัก และย้ายไปยังระบบจัดเก็บประวัติ (Archive) เพื่อเพิ่มความเร็วในการทำงานของแอปค่ะ
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Alert variant="default" className="bg-white border-amber-200">
               <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <AlertTitle>คำแนะนำ</AlertTitle>
+              <AlertTitle>ข้อควรรู้</AlertTitle>
               <AlertDescription className="text-xs text-muted-foreground">
-                การย้ายข้อมูลจะทำทีละไม่เกิน 40 รายการเพื่อความเสถียร หากมีงานค้างจำนวนมาก กรุณากดปุ่มซ้ำจนกว่าจะขึ้นว่าไม่พบงานรอการย้าย
+                การย้ายจะทำเป็นรอบ รอบละ 40 รายการ หากมีงานค้างจำนวนมาก คุณอาจต้องกดปุ่มนี้หลายครั้งจนกว่าจะขึ้นว่า "ไม่พบงานรอการย้าย" ค่ะ
               </AlertDescription>
             </Alert>
 
@@ -199,19 +204,19 @@ export default function AdminUsersPage() {
                   migrationResult.migrated > 0 ? "text-green-700" : "text-muted-foreground"
                 )}>
                   <CheckCircle2 className="h-4 w-4" />
-                  สรุปผลการย้ายประวัติ (Batch Summary)
+                  สรุปผลการทำงานล่าสุด
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                   <div>พบงานในระบบ: <span className="font-bold">{migrationResult.totalFound}</span></div>
                   <div className="text-green-600 font-bold">ย้ายสำเร็จ: {migrationResult.migrated}</div>
-                  <div className="text-amber-600">ข้าม/มีอยู่แล้ว: {migrationResult.skipped}</div>
+                  <div className="text-amber-600">ข้าม/มีในประวัติแล้ว: {migrationResult.skipped}</div>
                 </div>
                 {migrationResult.errors && migrationResult.errors.length > 0 && (
                   <div className="text-destructive text-[10px] mt-2 border-t pt-2 space-y-1">
                     <p className="font-bold flex items-center gap-1"><XCircle className="h-3 w-3"/> พบข้อผิดพลาด {migrationResult.errors.length} รายการ:</p>
                     <ScrollArea className="h-24">
                         {migrationResult.errors.slice(0, 10).map((err: any, i: number) => (
-                        <p key={i}>- Job {err.jobId}: {err.message}</p>
+                        <p key={i}>- จ๊อบ {err.jobId}: {err.message}</p>
                         ))}
                     </ScrollArea>
                   </div>
@@ -222,10 +227,19 @@ export default function AdminUsersPage() {
             <Button 
               onClick={handleMigrate} 
               disabled={isMigrating}
-              className="w-full sm:w-auto min-w-[200px]"
+              className="w-full sm:w-auto min-w-[220px] shadow-sm"
             >
-              {isMigrating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              เริ่มการย้ายข้อมูลประวัติ (Migration)
+              {isMigrating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  กำลังย้ายข้อมูล...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  เริ่มการย้ายข้อมูล (Migration)
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -236,20 +250,20 @@ export default function AdminUsersPage() {
             <CardHeader>
                 <CardTitle className="text-destructive flex items-center gap-2">
                     <Trash2 className="h-5 w-5" />
-                    การจัดการฐานข้อมูล (Database Maintenance)
+                    การล้างข้อมูลส่วนเกิน (Database Cleanup)
                 </CardTitle>
                 <CardDescription>
-                    ลบข้อมูลส่วนเกินเพื่อเพิ่มประสิทธิภาพระบบ
+                    ลบข้อมูลชั่วคราวที่หมดอายุเพื่อเพิ่มพื้นที่ว่างและลดค่าใช้จ่ายฐานข้อมูล
                 </CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="space-y-1">
-                        <p className="text-sm font-bold">ล้างข้อมูล Token ลงเวลาที่ไม่ได้ใช้</p>
-                        <p className="text-xs text-muted-foreground">ลบ Token สแกนเวลาที่ค้างอยู่ในระบบ (ที่ไม่ได้ถูกใช้งานหรือหมดอายุแล้ว) เพื่อลดขนาดฐานข้อมูล</p>
+                        <p className="text-sm font-bold">ล้างประวัติ QR Token ลงเวลา</p>
+                        <p className="text-xs text-muted-foreground">ลบโค้ดสแกนเวลาที่ไม่ได้ถูกใช้หรือหมดอายุแล้วออกจากระบบ</p>
                         <div className="flex items-center gap-2 mt-2">
                             <p className="text-xs font-bold text-destructive">
-                                จำนวน Token ที่ค้างในระบบปัจจุบัน: {isLoadingCount ? <Loader2 className="h-3 w-3 animate-spin inline ml-1"/> : (unusedTokenCount !== null ? `${unusedTokenCount.toLocaleString()} รายการ` : "-")}
+                                รายการค้างในระบบ: {isLoadingCount ? <Loader2 className="h-3 w-3 animate-spin inline ml-1"/> : (unusedTokenCount !== null ? `${unusedTokenCount.toLocaleString()} รายการ` : "-")}
                             </p>
                             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={fetchUnusedTokenCount} disabled={isLoadingCount}>
                                 <RefreshCw className={cn("h-3 w-3", isLoadingCount && "animate-spin")} />
@@ -263,7 +277,7 @@ export default function AdminUsersPage() {
                         disabled={isCleaningUp || unusedTokenCount === 0}
                     >
                         {isCleaningUp ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Trash2 className="mr-2 h-4 w-4"/>}
-                        {isCleaningUp ? "กำลังล้างข้อมูล..." : "ล้างข้อมูล Token"}
+                        {isCleaningUp ? "กำลังดำเนินการ..." : "ล้างข้อมูลส่วนเกิน"}
                     </Button>
                 </div>
             </CardContent>
