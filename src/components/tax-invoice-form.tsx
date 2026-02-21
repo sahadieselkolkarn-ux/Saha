@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Badge, Wallet } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
@@ -22,6 +22,11 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,16 +45,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { createDocument } from "@/firebase/documents";
 import { archiveAndCloseJob } from "@/firebase/jobs-archive";
 import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
-import { deptLabel } from "@/lib/ui-labels";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "กรุณากรอกรายละเอียดรายการ"),
@@ -193,7 +193,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         isVat: true,
         discountAmount: docToEdit.discountAmount || 0,
         senderName: profile?.displayName || docToEdit.senderName,
-        receiverName: docToEdit.customerSnapshot.name || docToEdit.receiverName,
+        receiverName: docToEdit.customerSnapshot?.name || docToEdit.receiverName || '',
         isBackfill: false,
         paymentTerms: docToEdit.paymentTerms || 'CASH',
         suggestedAccountId: docToEdit.suggestedAccountId || '',
@@ -217,7 +217,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       setSuggestedPayments([{method: 'CASH', accountId: '', amount: 0}]);
     }
     if (profile) form.setValue('senderName', profile.displayName ?? '');
-  }, [job, docToEdit, profile, form, jobId]);
+  }, [job, docToEdit, profile, form, jobId, customers]);
 
   const { fields, append, remove, replace } = useFieldArray({ control: form.control, name: "items" });
   const watchedItems = useWatch({ control: form.control, name: "items" });
