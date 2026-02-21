@@ -69,7 +69,7 @@ function EditVendorPageContent() {
   
   const canEditPermission = useMemo(() => {
     if (!profile || profile.role === 'VIEWER') return false;
-    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE';
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
   }, [profile]);
 
   const canEdit = canEditPermission && !isViewMode;

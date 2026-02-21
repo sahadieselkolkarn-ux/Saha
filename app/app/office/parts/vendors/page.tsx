@@ -37,12 +37,12 @@ function VendorsPageContent() {
 
   const hasPermission = useMemo(() => {
     if (!profile) return false;
-    return profile.role === 'ADMIN' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
   }, [profile]);
   
   const canEdit = useMemo(() => {
     if (!profile || profile.role === 'VIEWER') return false;
-    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE';
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
   }, [profile]);
 
   const isAdmin = useMemo(() => profile?.role === 'ADMIN', [profile]);
