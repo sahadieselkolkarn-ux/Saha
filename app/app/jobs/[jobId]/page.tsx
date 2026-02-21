@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
 import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile } from "@/lib/types";
+import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile, Vendor } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
@@ -146,7 +146,7 @@ function JobDetailsPageContent() {
   const isUserAdmin = profile?.role === 'ADMIN';
   const isManager = profile?.role === 'MANAGER';
   const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
-  const isService = (profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC') && isStaff;
+  const isService = (profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC' || profile?.department === 'OUTSOURCE') && isStaff;
   
   const canEditDetails = isStaff && (isOfficeOrAdminOrMgmt || isService);
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
@@ -525,12 +525,19 @@ function JobDetailsPageContent() {
     setReassignWorkerId(null);
     setIsFetchingWorkers(true);
     try {
-      const q = query(collection(db, "users"), where("department", "==", job.department), where("role", "==", "WORKER"), where("status", "==", "ACTIVE"));
-      const snapshot = await getDocs(q);
-      const workers = snapshot.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id } as WithId<UserProfile>));
-      setDepartmentWorkers(workers.filter(w => w.id !== job.assigneeUid));
+      if (job.department === 'OUTSOURCE') {
+        const q = query(collection(db, "vendors"), where("vendorType", "==", "CONTRACTOR"), where("isActive", "==", true));
+        const snapshot = await getDocs(q);
+        const fetched = snapshot.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id } as WithId<Vendor>));
+        setDepartmentWorkers(fetched.map(v => ({ id: v.id, displayName: v.companyName } as any)));
+      } else {
+        const q = query(collection(db, "users"), where("department", "==", job.department), where("role", "==", "WORKER"), where("status", "==", "ACTIVE"));
+        const snapshot = await getDocs(q);
+        const workers = snapshot.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id } as WithId<UserProfile>));
+        setDepartmentWorkers(workers.filter(w => w.id !== job.assigneeUid));
+      }
     } catch (error) {
-      toast({ variant: 'destructive', title: "Failed to fetch workers" });
+      toast({ variant: 'destructive', title: "Failed to fetch options" });
     } finally {
       setIsFetchingWorkers(false);
     }
@@ -544,17 +551,34 @@ function JobDetailsPageContent() {
     const jobDocRef = doc(db, "jobs", job.id);
     
     const batch = writeBatch(db);
-    batch.update(jobDocRef, { assigneeUid: newWorker.id, assigneeName: newWorker.displayName, lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(db, "jobs", job.id, "activities")), { text: `เปลี่ยนพนักงานซ่อมเป็น ${newWorker.displayName}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    const updateData: any = { 
+      assigneeUid: newWorker.id, 
+      assigneeName: newWorker.displayName, 
+      lastActivityAt: serverTimestamp() 
+    };
+    
+    if (job.department === 'OUTSOURCE' && job.status === 'RECEIVED') {
+      updateData.status = 'IN_PROGRESS';
+    }
+
+    batch.update(jobDocRef, updateData);
+    
+    const actionText = job.department === 'OUTSOURCE' ? `มอบหมายงานนอกให้: ${newWorker.displayName}` : `มอบหมายงานให้: ${newWorker.displayName}`;
+    batch.set(doc(collection(db, "jobs", job.id, "activities")), { 
+      text: actionText, 
+      userName: profile.displayName, 
+      userId: profile.uid, 
+      createdAt: serverTimestamp() 
+    });
     
     batch.commit().then(() => {
-      toast({ title: "มอบหมายงานใหม่สำเร็จ" });
+      toast({ title: "ดำเนินการสำเร็จ" });
       setIsReassignDialogOpen(false);
     }).catch(async (serverError) => {
       const permissionError = new FirestorePermissionError({
         path: jobDocRef.path,
         operation: 'update',
-        requestResourceData: { assigneeUid: newWorker.id },
+        requestResourceData: updateData,
       });
       errorEmitter.emit('permission-error', permissionError);
     }).finally(() => {
@@ -662,8 +686,8 @@ function JobDetailsPageContent() {
                 <h4 className="font-semibold text-base">ลูกค้า</h4>
                 <p>{job.customerSnapshot.name} (<a href={`tel:${job.customerSnapshot.phone}`} className="text-primary hover:underline font-medium inline-flex items-center gap-1"><Phone className="h-3 w-3" />{job.customerSnapshot.phone}</a>)</p>
               </div>
-              <div><h4 className="font-semibold text-base">แผนก</h4><p>{job.department}</p></div>
-              {job.assigneeName && <div><h4 className="font-semibold text-base">ผู้รับผิดชอบ</h4><p>{job.assigneeName}</p></div>}
+              <div><h4 className="font-semibold text-base">แผนก</h4><p>{deptLabel(job.department)}</p></div>
+              {job.assigneeName && <div><h4 className="font-semibold text-base">{job.department === 'OUTSOURCE' ? 'ร้านที่รับทำ' : 'ผู้รับผิดชอบ'}</h4><p>{job.assigneeName}</p></div>}
               <div>
                 <div className="flex items-center gap-4">
                     <h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4>
@@ -680,7 +704,12 @@ function JobDetailsPageContent() {
               </div>
                <div className="flex gap-2 pt-4 border-t">
                   {canEditDetails && <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>เปลี่ยนแปลงแผนก</Button>}
-                  {canEditDetails && job.assigneeUid && <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}><UserCheck className="mr-2 h-4 w-4" /> เปลี่ยนพนักงานซ่อม</Button>}
+                  {canEditDetails && (
+                      <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}>
+                          <UserCheck className="mr-2 h-4 w-4" /> 
+                          {job.assigneeUid ? (job.department === 'OUTSOURCE' ? 'เปลี่ยนผู้รับเหมา' : 'เปลี่ยนพนักงานซ่อม') : (job.department === 'OUTSOURCE' ? 'มอบหมายงานนอก' : 'มอบหมายพนักงาน')}
+                      </Button>
+                  )}
               </div>
             </CardContent>
           </Card>
@@ -940,13 +969,15 @@ function JobDetailsPageContent() {
 
       <Dialog open={isReassignDialogOpen} onOpenChange={(open) => !open && setIsReassignDialogOpen(false)}>
         <DialogContent>
-            <DialogHeader><DialogTitle>เปลี่ยนพนักงานซ่อม</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>{job.department === 'OUTSOURCE' ? 'มอบหมายงานนอก (Select Contractor)' : 'มอบหมายพนักงาน (Assign Worker)'}</DialogTitle>
+            </DialogHeader>
             {isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (
-                <div className="py-4"><Label>พนักงานใหม่</Label>
+                <div className="py-4"><Label>{job.department === 'OUTSOURCE' ? 'เลือกร้านผู้รับเหมา' : 'พนักงาน'}</Label>
                     <span className="block mt-2">
                         <Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}>
-                            <SelectTrigger><SelectValue placeholder="เลือกพนักงาน..." /></SelectTrigger>
-                            <SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.id} value={w.id}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบช่างคนอื่น</div>}</SelectContent>
+                            <SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger>
+                            <SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.id} value={w.id}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบรายการให้เลือก</div>}</SelectContent>
                         </Select>
                     </span>
                 </div>
