@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { Loader2 } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 export default function AppHomePage() {
   const { profile, loading } = useAuth();
   const router = useRouter();
@@ -14,24 +16,26 @@ export default function AppHomePage() {
     if (loading) return;
 
     if (!profile) {
-      // This case should be handled by the main layout, but as a fallback
       router.replace('/login');
       return;
     }
 
-    const { role, department } = profile;
+    const role = profile.role;
+    const department = profile.department;
 
+    // 1. Management & Admins go to Dashboard
     if (role === 'ADMIN' || department === 'MANAGEMENT' || role === 'MANAGER') {
       router.replace('/app/management/dashboard');
       return;
     }
 
+    // 2. Special role: Officer in Car Service (Kiosk/Central Tablet)
     if (role === 'OFFICER' && department === 'CAR_SERVICE') {
       router.replace('/app/kiosk');
       return;
     }
 
-    // Redirect based on department for other roles
+    // 3. Regular Department Routing
     switch (department) {
       case 'OFFICE':
         router.replace('/app/office/intake');
@@ -49,15 +53,20 @@ export default function AppHomePage() {
         router.replace('/app/outsource/tracking/pending');
         break;
       default:
-        // Fallback for workers without a specific landing page or if department is not set
+        // Fallback for roles without specific landing pages
         router.replace('/app/jobs');
         break;
     }
   }, [profile, loading, router]);
 
   return (
-    <div className="flex h-full w-full items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin" />
+    <div className="flex h-[80vh] w-full items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground font-medium animate-pulse">
+          กำลังเตรียมหน้าจอส่วนตัวของคุณ...
+        </p>
+      </div>
     </div>
   );
 }

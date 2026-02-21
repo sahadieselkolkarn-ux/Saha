@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -32,7 +33,8 @@ import {
   AlertCircle, 
   ExternalLink,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
@@ -132,7 +134,7 @@ export function JobList({
         if (cursor) {
           qConstraints.push(startAfter(cursor));
         }
-        qConstraints.push(limit(10));
+        qConstraints.push(limit(12));
       }
 
       const q = query(collection(db, "jobs"), ...qConstraints);
@@ -149,7 +151,7 @@ export function JobList({
         );
         setIsLastPage(true);
       } else {
-        setIsLastPage(snapshot.docs.length < 10);
+        setIsLastPage(snapshot.docs.length < 12);
         if (snapshot.docs.length > 0) {
           pageStartCursors.current[pageIndex + 1] = snapshot.docs[snapshot.docs.length - 1];
         }
@@ -230,56 +232,71 @@ export function JobList({
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {jobs.map((job) => (
-        <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
-          <div className="relative aspect-video bg-muted">
-            {job.photos && job.photos.length > 0 ? (
-              <Image
-                src={job.photos[0]}
-                alt={job.description}
-                fill
-                className="object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                <FileImage className="h-10 w-10 opacity-20" />
-              </div>
-            )}
-            <Badge 
-              variant={getStatusVariant(job.status)}
-              className="absolute top-2 right-2"
-            >
-              {jobStatusLabel(job.status)}
-            </Badge>
-          </div>
-          <CardHeader className="p-4 space-y-1">
-            <CardTitle className="text-base line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-            <CardDescription className="text-xs">
-              {deptLabel(job.department)} • {safeFormat(job.lastActivityAt, "dd/MM/yy HH:mm")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 flex-grow">
-            <p className="text-sm line-clamp-2 text-muted-foreground">
-              {job.description}
-            </p>
-          </CardContent>
-          <CardFooter className="px-4 pb-4 pt-0">
-            <Button asChild className="w-full" variant="secondary">
-              <Link href={`/app/jobs/${job.id}`}>
-                ดูรายละเอียด
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </CardFooter>
-        </Card>
-      ))}
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {jobs.map((job) => (
+          <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
+            <div className="relative aspect-video bg-muted">
+              {job.photos && job.photos.length > 0 ? (
+                <Image
+                  src={job.photos[0]}
+                  alt={job.description}
+                  fill
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-muted-foreground">
+                  <FileImage className="h-10 w-10 opacity-20" />
+                </div>
+              )}
+              <Badge 
+                variant={getStatusVariant(job.status)}
+                className="absolute top-2 right-2 shadow-sm border-white/20"
+              >
+                {jobStatusLabel(job.status)}
+              </Badge>
+            </div>
+            <CardHeader className="p-4 space-y-1">
+              <CardTitle className="text-base line-clamp-1">{job.customerSnapshot.name}</CardTitle>
+              <CardDescription className="text-[10px]">
+                {deptLabel(job.department)} • {safeFormat(job.lastActivityAt, "dd/MM/yy HH:mm")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 flex-grow">
+              <p className="text-sm line-clamp-2 text-muted-foreground">
+                {job.description}
+              </p>
+            </CardContent>
+            <CardFooter className="px-4 pb-4 pt-0 flex flex-col gap-2">
+              <Button asChild className="w-full h-9" variant="secondary">
+                <Link href={`/app/jobs/${job.id}`}>
+                  ดูรายละเอียด
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+              {job.status === 'WAITING_QUOTATION' && (
+                <Button asChild className="w-full h-9 bg-primary hover:bg-primary/90 text-white font-bold" variant="default">
+                  <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    สร้างใบเสนอราคา
+                  </Link>
+                </Button>
+              )}
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+      
       {!searchTerm && (
-        <div className="col-span-full flex justify-between items-center mt-4">
-          <span className="text-sm text-muted-foreground">หน้า {currentPage + 1}</span>
+        <div className="flex justify-between items-center bg-muted/30 p-4 rounded-lg border">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">หน้า {currentPage + 1}</span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handlePrevPage} disabled={currentPage === 0}>ก่อนหน้า</Button>
-            <Button variant="outline" size="sm" onClick={handleNextPage} disabled={isLastPage}>ถัดไป</Button>
+            <Button variant="outline" size="sm" onClick={handlePrevPage} disabled={currentPage === 0}>
+              <ChevronLeft className="h-4 w-4 mr-1" /> ก่อนหน้า
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleNextPage} disabled={isLastPage}>
+              ถัดไป <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
           </div>
         </div>
       )}

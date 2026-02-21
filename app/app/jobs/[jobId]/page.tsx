@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
@@ -761,6 +762,13 @@ function JobDetailsPageContent() {
                         </label>
                     </Button>
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
+                    {job.status === 'WAITING_QUOTATION' && canEditDetails && (
+                      <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                        <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
+                          <FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา
+                        </Link>
+                      </Button>
+                    )}
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isViewOnly} variant="outline"><CheckCircle className="mr-2 h-4 w-4" /> จบงาน</Button>}
                     {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canEditDetails && <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote} variant="outline" className="border-primary text-primary hover:bg-primary/10"><Receipt className="mr-2 h-4 w-4" /> ออกบิล</Button>}
                 </div>
