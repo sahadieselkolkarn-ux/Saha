@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, Suspense } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from 'next/link';
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, where, getDocs, getDoc, writeBatch, orderBy } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, where, getDocs, getDoc, writeBatch, orderBy, deleteField } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -794,15 +794,35 @@ function JobDetailsPageContent() {
                         </label>
                     </Button>
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
-                    {job.status === 'WAITING_QUOTATION' && canEditDetails && (
-                      <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
-                        <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                          <FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา
-                        </Link>
+                    {job.status === 'WAITING_QUOTATION' && (
+                      <Button 
+                        asChild={isOfficeOrAdminOrMgmt} 
+                        variant="outline" 
+                        className="border-primary text-primary hover:bg-primary/10"
+                        disabled={!isOfficeOrAdminOrMgmt}
+                      >
+                        {isOfficeOrAdminOrMgmt ? (
+                          <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
+                            <FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา
+                          </Link>
+                        ) : (
+                          <span className="flex items-center opacity-50">
+                            <FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา
+                          </span>
+                        )}
                       </Button>
                     )}
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isViewOnly} variant="outline"><CheckCircle className="mr-2 h-4 w-4" /> จบงาน</Button>}
-                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canEditDetails && <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote} variant="outline" className="border-primary text-primary hover:bg-primary/10"><Receipt className="mr-2 h-4 w-4" /> ออกบิล</Button>}
+                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
+                      <Button 
+                        onClick={() => setBillingJob(job)} 
+                        disabled={isSubmittingNote || !isOfficeOrAdminOrMgmt} 
+                        variant="outline" 
+                        className={cn("border-primary text-primary hover:bg-primary/10", !isOfficeOrAdminOrMgmt && "opacity-50")}
+                      >
+                        <Receipt className="mr-2 h-4 w-4" /> ออกบิล
+                      </Button>
+                    )}
                 </div>
               </CardContent>
             </Card>

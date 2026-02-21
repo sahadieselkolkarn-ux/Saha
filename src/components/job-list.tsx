@@ -291,18 +291,31 @@ export function JobList({
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-              {job.status === 'WAITING_QUOTATION' && isOfficeOrAdmin && (
-                <Button asChild className="w-full h-9 bg-primary hover:bg-primary/90 text-white font-bold" variant="default">
-                  <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                    <FileText className="mr-2 h-4 w-4" />
-                    สร้างใบเสนอราคา
-                  </Link>
+              {job.status === 'WAITING_QUOTATION' && (
+                <Button 
+                  disabled={!isOfficeOrAdmin}
+                  asChild={isOfficeOrAdmin}
+                  className="w-full h-9 bg-primary hover:bg-primary/90 text-white font-bold" 
+                  variant="default"
+                >
+                  {isOfficeOrAdmin ? (
+                    <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      สร้างใบเสนอราคา
+                    </Link>
+                  ) : (
+                    <span className="flex items-center opacity-50">
+                      <FileText className="mr-2 h-4 w-4" />
+                      สร้างใบเสนอราคา
+                    </span>
+                  )}
                 </Button>
               )}
-              {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && isOfficeOrAdmin && (
+              {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
                 <Button 
                   className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" 
                   variant="outline"
+                  disabled={!isOfficeOrAdmin}
                   onClick={() => setBillingJob(job)}
                 >
                   <Receipt className="mr-2 h-4 w-4" />
