@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { QrDisplay } from "@/components/qr-display";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, RefreshCw, AlertTriangle } from "lucide-center";
+import { Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function KioskPage() {
