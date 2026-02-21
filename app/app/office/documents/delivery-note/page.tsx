@@ -22,6 +22,11 @@ export default function OfficeDeliveryNotePage() {
             สร้างใบส่งของใหม่
           </Link>
         </Button>
+        <Button asChild variant="outline">
+          <Link href="/app/office/jobs/management/done">
+            สร้างจากงานซ่อม
+          </Link>
+        </Button>
       </div>
 
       <DocumentList
