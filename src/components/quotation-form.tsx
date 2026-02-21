@@ -71,19 +71,16 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   
-  // Template states
   const [isTemplatePopoverOpen, setIsTemplatePopoverOpen] = useState(false);
   const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
-  // Firestore Refs
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
   const templatesQuery = useMemo(() => (db ? query(collection(db, "quotationTemplates"), orderBy("updatedAt", "desc")) : null), [db]);
 
-  // Firestore Data
   const { data: job, isLoading: isLoadingJob } = useDoc<Job>(jobDocRef);
   const { data: docToEdit, isLoading: isLoadingDocToEdit } = useDoc<DocumentType>(docToEditRef);
   const { data: storeSettings, isLoading: isLoadingStore } = useDoc<StoreSettings>(storeSettingsRef);
@@ -107,13 +104,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   });
 
   const selectedCustomerId = form.watch('customerId');
-  
-  const customerDocRef = useMemo(() => {
-    if (!db || !selectedCustomerId) return null;
-    return doc(db, 'customers', selectedCustomerId);
-  }, [db, selectedCustomerId]);
-  const { data: customer, isLoading: isLoadingCustomer } = useDoc<Customer>(customerDocRef);
-
   const isCancelled = docToEdit?.status === 'CANCELLED';
 
   useEffect(() => {
@@ -132,11 +122,10 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
 
   useEffect(() => {
     const dataToLoad = docToEdit || job;
-    if (dataToLoad) {
+    if (dataToLoad && customers.length > 0) {
         let customerId = 
             (dataToLoad as any).customerId || 
             (dataToLoad as any).customerSnapshot?.id || 
-            (dataToLoad as any).customerSnapshot?.customerId ||
             "";
 
         if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone) {
@@ -146,9 +135,9 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
           }
         }
         
-        const items = 'items' in dataToLoad && dataToLoad.items.length > 0
+        const items = 'items' in dataToLoad && dataToLoad.items && dataToLoad.items.length > 0
             ? dataToLoad.items.map(item => ({ ...item }))
-            : [{ description: 'description' in dataToLoad ? (dataToLoad as any).description : '', quantity: 1, unitPrice: 0, total: 0 }];
+            : [{ description: (dataToLoad as any).description || (dataToLoad as any).technicalReport || '', quantity: 1, unitPrice: 0, total: 0 }];
 
         form.reset({
             jobId: 'jobId' in dataToLoad ? dataToLoad.jobId || undefined : jobId || undefined,
@@ -165,7 +154,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             grandTotal: 'grandTotal' in dataToLoad ? dataToLoad.grandTotal : 0,
         });
     }
-  }, [job, docToEdit, form, jobId, customers]);
+  }, [job, docToEdit, customers, jobId, form]);
 
   const applyTemplate = (template: QuotationTemplate) => {
     form.setValue("items", template.items.map(i => ({ ...i })), { shouldValidate: true });
@@ -239,13 +228,17 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const onSubmit = async (data: QuotationFormData) => {
     if (isCancelled) return;
 
-    let customerSnapshot = customer ?? docToEdit?.customerSnapshot ?? job?.customerSnapshot;
-    if (!db || !customerSnapshot || !storeSettings || !profile) {
-      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณากรอกข้อมูลลูกค้าและร้านค้าให้ครบถ้วน" });
+    // Use selected customer from local state for immediate data
+    const selectedCustomer = customers.find(c => c.id === data.customerId);
+    if (!db || !selectedCustomer || !storeSettings || !profile) {
+      toast({ variant: "destructive", title: "ข้อมูลไม่ครบถ้วน", description: "กรุณาเลือกข้อมูลลูกค้าและตรวจสอบข้อมูลร้านค้า" });
       return;
     }
 
-    customerSnapshot = { ...customerSnapshot, id: data.customerId };
+    const customerSnapshot = { 
+      ...selectedCustomer, 
+      id: data.customerId 
+    };
 
     const carSnapshot = (job || docToEdit?.jobId) ? { 
       licensePlate: job?.carServiceDetails?.licensePlate || docToEdit?.carSnapshot?.licensePlate,
@@ -295,22 +288,23 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             router.push(`/app/office/documents/quotation/${docId}`);
         }
     } catch (error: any) {
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง" });
+        console.error("Save Quotation Error:", error);
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message || "ไม่สามารถบันทึกข้อมูลได้" });
     }
   };
   
-  const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers || isLoadingCustomer;
+  const isLoading = isLoadingStore || isLoadingJob || isLoadingDocToEdit || isLoadingCustomers;
   const isFormLoading = form.formState.isSubmitting || isLoading;
-  const displayCustomer = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
+  const currentCustomer = customers.find(c => c.id === selectedCustomerId) || docToEdit?.customerSnapshot || job?.customerSnapshot;
   const isCustomerSelectionDisabled = !!jobId || (isEditing && !!docToEdit?.customerId) || isCancelled;
 
   if (isLoading && !jobId && !editDocId) {
-    return <Skeleton className="h-96" />;
+    return <div className="p-8 space-y-4"><Skeleton className="h-20 w-full" /><Skeleton className="h-64 w-full" /></div>;
   }
   
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit, (err) => console.log("Validation Errors:", err))} className="space-y-6">
         {isCancelled && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
@@ -347,7 +341,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                             <PopoverTrigger asChild>
                             <FormControl>
                                 <Button variant="outline" role="combobox" className={cn("w-full max-w-sm justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
-                                <span className="truncate">{displayCustomer ? `${displayCustomer.name} (${displayCustomer.phone})` : "เลือกลูกค้า..."}</span>
+                                <span className="truncate">{currentCustomer ? `${currentCustomer.name} (${currentCustomer.phone})` : "เลือกลูกค้า..."}</span>
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </FormControl>
@@ -359,7 +353,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                 <ScrollArea className="h-fit max-h-60">
                                     {filteredCustomers.length > 0 ? (
                                         filteredCustomers.map((c) => (
-                                            <Button variant="ghost" key={c.id} onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left">
+                                            <Button key={c.id} variant="ghost" onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left">
                                                 <div className="flex flex-col items-start"><p className="font-medium">{c.name}</p><p className="text-xs text-muted-foreground">{c.phone}</p></div>
                                             </Button>
                                         ))
@@ -371,12 +365,12 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                         </FormItem>
                     )}
                 />
-                 {displayCustomer && (
+                 {currentCustomer && (
                     <div className="mt-3 p-3 bg-muted/50 rounded-md text-sm text-muted-foreground">
-                        <p className="font-medium text-foreground">{displayCustomer.taxName || displayCustomer.name}</p>
-                        <p className="whitespace-pre-wrap">{displayCustomer.taxAddress || displayCustomer.detail || 'ไม่มีที่อยู่'}</p>
-                        <p>โทร: {displayCustomer.phone}</p>
-                        {displayCustomer.taxId && <p>เลขประจำตัวผู้เสียภาษี: {displayCustomer.taxId}</p>}
+                        <p className="font-medium text-foreground">{currentCustomer.taxName || currentCustomer.name}</p>
+                        <p className="whitespace-pre-wrap">{currentCustomer.taxAddress || currentCustomer.detail || 'ไม่มีที่อยู่'}</p>
+                        <p>โทร: {currentCustomer.phone}</p>
+                        {currentCustomer.taxId && <p>เลขประจำตัวผู้เสียภาษี: {currentCustomer.taxId}</p>}
                     </div>
                  )}
                  {(job || docToEdit?.jobId) && (
@@ -449,7 +443,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                             placeholder="0"
                                             className="text-right"
                                             value={(field.value ?? 0) === 0 ? "" : field.value}
-                                            onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
                                             onChange={(e) => {
                                             const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
                                             field.onChange(newQuantity);
@@ -472,7 +465,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                             placeholder="0.00"
                                             className="text-right"
                                             value={(field.value ?? 0) === 0 ? "" : field.value}
-                                            onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
                                             onChange={(e) => {
                                             const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
                                             field.onChange(newPrice);
@@ -521,7 +513,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                       className="w-32 text-right bg-background"
                                       {...field}
                                       value={(field.value ?? 0) === 0 ? "" : field.value}
-                                      onFocus={(e) => { if (e.currentTarget.value === "0") e.currentTarget.value = ""; }}
                                       onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
                                       disabled={isCancelled}
                                     />

@@ -90,7 +90,6 @@ export async function createDocument(
 
   // 2. Auto-Generated Number with Prefix Isolation
   const docSettingsSnap = await getDoc(doc(db, 'settings', 'documents'));
-  if (!docSettingsSnap.exists()) throw new Error("กรุณาตั้งค่ารูปแบบเลขที่เอกสารก่อนค่ะ");
   
   const prefixes: Record<DocType, keyof DocumentSettings> = {
     QUOTATION: 'quotationPrefix',
@@ -101,22 +100,39 @@ export async function createDocument(
     CREDIT_NOTE: 'creditNotePrefix',
     WITHHOLDING_TAX: 'withholdingTaxPrefix',
   };
-  const prefix = (docSettingsSnap.data()[prefixes[docType]] || docType.substring(0, 2)).toUpperCase();
+
+  const defaultPrefixMap: Record<DocType, string> = {
+    QUOTATION: 'QT',
+    DELIVERY_NOTE: 'DN',
+    TAX_INVOICE: 'INV',
+    RECEIPT: 'RE',
+    BILLING_NOTE: 'BN',
+    CREDIT_NOTE: 'CN',
+    WITHHOLDING_TAX: 'WHT',
+  };
+
+  const prefix = (docSettingsSnap.exists() 
+    ? (docSettingsSnap.data()[prefixes[docType]] || defaultPrefixMap[docType]) 
+    : defaultPrefixMap[docType]).toUpperCase();
 
   // Baseline check: Find highest number actually existing in DB for THIS specific prefix and year
   const prefixSearch = `${prefix}${year}-`;
-  const highestQ = query(
-    collection(db, "documents"),
-    where("docType", "==", docType),
-    where("docNo", ">=", prefixSearch),
-    where("docNo", "<=", prefixSearch + "\uf8ff"),
-    orderBy("docNo", "desc"),
-    limit(1)
-  );
-  const highestSnap = await getDocs(highestQ);
   let collectionMax = 0;
-  if (!highestSnap.empty) {
-    collectionMax = extractSequence(highestSnap.docs[0].data().docNo);
+  try {
+    const highestQ = query(
+      collection(db, "documents"),
+      where("docType", "==", docType),
+      where("docNo", ">=", prefixSearch),
+      where("docNo", "<=", prefixSearch + "\uf8ff"),
+      orderBy("docNo", "desc"),
+      limit(1)
+    );
+    const highestSnap = await getDocs(highestQ);
+    if (!highestSnap.empty) {
+      collectionMax = extractSequence(highestSnap.docs[0].data().docNo);
+    }
+  } catch (e) {
+    console.warn("Baseline check failed (likely missing index), using counter only", e);
   }
 
   const result = await runTransaction(db, async (transaction) => {
@@ -124,17 +140,11 @@ export async function createDocument(
     const counterSnap = await transaction.get(counterRef);
     let counters = counterSnap.exists() ? counterSnap.data() : { year };
 
-    // Prefix Change Detection:
-    // We use a specific key for each Prefix to ensure they never share a counter.
     const countKey = `${docType}_${prefix}_count`;
     let lastCount = counters[countKey] || 0;
     
-    // IMPORTANT: Start at 1 if this prefix is new or if collection search returned 0
     let nextCount = Math.max(lastCount, collectionMax) + 1;
     let finalDocNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
-
-    // Note: Collision check loop with getDocs is removed inside transaction as it is not supported.
-    // Instead, we rely on the prefix-isolated count key and the baseline check.
 
     const docData = sanitizeForFirestore({
       ...data,
@@ -155,7 +165,7 @@ export async function createDocument(
 
     if (data.jobId) {
       transaction.update(doc(db, 'jobs', data.jobId), {
-        status: newJobStatus || 'WAITING_CUSTOMER_PICKUP',
+        status: newJobStatus || 'WAITING_APPROVE',
         salesDocId: docId,
         salesDocNo: finalDocNo,
         salesDocType: docType,
