@@ -133,11 +133,12 @@ function JobDetailsPageContent() {
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
     if (job?.isArchived) {
-      const year = new Date(job.closedDate!).getFullYear();
+      const dateStr = job.closedDate || job.archivedAtDate || new Date().toISOString().split('T')[0];
+      const year = parseInt(dateStr.split('-')[0]) || new Date().getFullYear();
       return query(collection(db, archiveCollectionNameByYear(year), jobId, "activities"), orderBy("createdAt", "desc"));
     }
     return query(collection(db, "jobs", jobId, "activities"), orderBy("createdAt", "desc"));
-  }, [db, jobId, job?.isArchived, job?.closedDate]);
+  }, [db, jobId, job?.isArchived, job?.closedDate, job?.archivedAtDate]);
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
@@ -149,13 +150,16 @@ function JobDetailsPageContent() {
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
-  const canUpdateActivity = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
+  
+  // Everyone (Staff) can update activity, regardless of job state
+  const canUpdateActivity = isStaff;
   const canEditDetails = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
 
   const getJobRef = () => {
     if (!db || !job) return null;
     if (job.isArchived) {
-      const year = new Date(job.closedDate!).getFullYear();
+      const dateStr = job.closedDate || job.archivedAtDate || new Date().toISOString().split('T')[0];
+      const year = parseInt(dateStr.split('-')[0]) || new Date().getFullYear();
       return doc(db, archiveCollectionNameByYear(year), jobId);
     }
     return doc(db, "jobs", jobId);
@@ -330,7 +334,18 @@ function JobDetailsPageContent() {
 
   const handleAddActivity = async () => {
     const jobDocRef = getJobRef();
-    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile || !job || !jobDocRef) return;
+    
+    // Check missing input
+    if (!newNote.trim() && newPhotos.length === 0) {
+        toast({ variant: "destructive", title: "กรุณากรอกข้อความ", description: "กรุณาพิมพ์บันทึกหรือแนบรูปภาพก่อนกดอัปเดตค่ะ" });
+        return;
+    }
+
+    if (!db || !storage || !profile || !job || !jobDocRef) {
+        toast({ variant: "destructive", title: "ไม่สามารถอัปเดตได้", description: "ข้อมูลระบบหรือใบงานยังไม่พร้อม กรุณาลองใหม่อีกครั้งค่ะ" });
+        return;
+    }
+
     setIsSubmittingNote(true);
     try {
         const activitiesColRef = collection(jobDocRef, "activities");
@@ -350,7 +365,7 @@ function JobDetailsPageContent() {
         setNewPhotos([]);
         photoPreviews.forEach(url => URL.revokeObjectURL(url));
         setPhotoPreviews([]);
-        toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
+        toast({title: "อัปเดตกองกิจกรรมสำเร็จแล้วค่ะ"});
     } catch (error: any) {
         if (error.code === 'permission-denied') {
           errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -358,7 +373,7 @@ function JobDetailsPageContent() {
             operation: 'create',
           }));
         } else {
-          toast({variant: "destructive", title: "Failed to add activity", description: error.message});
+          toast({variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message});
         }
     } finally {
         setIsSubmittingNote(false);
