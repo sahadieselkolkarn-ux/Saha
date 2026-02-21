@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile, Vendor } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -121,9 +121,7 @@ function JobDetailsPageContent() {
   const [descriptionToEdit, setDescriptionToEdit] = useState("");
   const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
 
-  const [isEditOfficeNoteDialogOpen, setIsEditOfficeNoteDialogOpen] = useState(false);
-  const [officeNoteToEdit, setOfficeNoteToEdit] = useState("");
-  const [isUpdatingOfficeNote, setIsUpdatingOfficeNote] = useState(false);
+  const [isEditNotebookDialogOpen, setIsEditNotebookDialogOpen] = useState(false);
 
   const [isEditVehicleDialogOpen, setIsEditVehicleDialogOpen] = useState(false);
   const [vehicleEditData, setVehicleEditData] = useState<any>({});
@@ -258,33 +256,37 @@ function JobDetailsPageContent() {
     });
   };
 
-  const handleOpenEditOfficeNoteDialog = () => {
-    setOfficeNoteToEdit(job?.officeNote || "");
-    setIsEditOfficeNoteDialogOpen(true);
+  const handleOpenEditNotebookDialog = () => {
+    setTechReport(job?.technicalReport || job?.officeNote || "");
+    setIsEditNotebookDialogOpen(true);
   }
 
-  const handleUpdateOfficeNote = async () => {
+  const handleUpdateNotebook = async () => {
     if (!db || !job || !profile) return;
-    setIsUpdatingOfficeNote(true);
+    setIsSavingTechReport(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
     
     const batch = writeBatch(db);
-    batch.update(jobDocRef, { officeNote: officeNoteToEdit, lastActivityAt: serverTimestamp() });
-    batch.set(activityDocRef, { text: `แก้ไขบันทึกข้อความ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.update(jobDocRef, { 
+      technicalReport: techReport, 
+      officeNote: deleteField(), // Clear old field to keep only technicalReport as unified notebook
+      lastActivityAt: serverTimestamp() 
+    });
+    batch.set(activityDocRef, { text: `อัปเดตสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
-      toast({ title: "อัปเดตบันทึกข้อความสำเร็จ" });
-      setIsEditOfficeNoteDialogOpen(false);
+      toast({ title: "บันทึกสมุดบันทึกสำเร็จ" });
+      setIsEditNotebookDialogOpen(false);
     }).catch(async (serverError) => {
       const permissionError = new FirestorePermissionError({
         path: jobDocRef.path,
         operation: 'update',
-        requestResourceData: { officeNote: officeNoteToEdit },
+        requestResourceData: { technicalReport: techReport },
       });
       errorEmitter.emit('permission-error', permissionError);
     }).finally(() => {
-      setIsUpdatingOfficeNote(false);
+      setIsSavingTechReport(false);
     });
   };
 
@@ -377,10 +379,10 @@ function JobDetailsPageContent() {
     
     const batch = writeBatch(db);
     batch.update(jobDocRef, { technicalReport: techReport, lastActivityAt: serverTimestamp() });
-    batch.set(activityDocRef, { text: `อัปเดตผลการตรวจ/งานที่ทำ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(activityDocRef, { text: `อัปเดตสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
-      toast({ title: `Technical report updated` });
+      toast({ title: `Notebook updated` });
     }).catch(async (serverError) => {
       const permissionError = new FirestorePermissionError({
         path: jobDocRef.path,
@@ -446,7 +448,7 @@ function JobDetailsPageContent() {
     } catch (error: any) {
         toast({variant: "destructive", title: "Failed to add activity", description: error.message});
     } finally {
-        setIsSubmittingNote(false);
+        setIsSubmitting(false);
     }
   };
 
@@ -714,15 +716,26 @@ function JobDetailsPageContent() {
             </CardContent>
           </Card>
           
-          {(job.department === 'COMMONRAIL' || job.department === 'MECHANIC') && (
-            <Card>
-              <CardHeader><CardTitle>{job.department === 'COMMONRAIL' ? 'ผลตรวจ / ค่าที่วัด' : 'ผลตรวจ / งานที่ทำ'}</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <Textarea placeholder="บันทึกรายละเอียดทางเทคนิค..." value={techReport} onChange={(e) => setTechReport(e.target.value)} rows={6} disabled={isViewOnly} />
-                <Button onClick={handleSaveTechReport} disabled={isSavingTechReport || isViewOnly}>{isSavingTechReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Save Report</Button>
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                  สมุดบันทึก (Notebook)
+                </CardTitle>
+                {canEditDetails && (
+                  <Button onClick={handleOpenEditNotebookDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}>
+                    <Edit className="h-3 w-3 mr-1"/> แก้ไข
+                  </Button>
+                )}
+            </CardHeader>
+            <CardContent>
+                <div className="min-h-[100px] p-4 bg-muted/30 rounded-md border border-dashed">
+                  <p className="whitespace-pre-wrap text-sm">
+                    {job.technicalReport || job.officeNote || 'ยังไม่มีบันทึก'}
+                  </p>
+                </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
@@ -758,16 +771,6 @@ function JobDetailsPageContent() {
                 ) : <p className="text-muted-foreground text-sm">ยังไม่มีรูปตอนรับงาน</p>}
             </CardContent>
           </Card>
-
-          {canEditDetails && (
-            <Card>
-              <CardHeader className="flex items-center gap-4">
-                  <CardTitle>บันทึกข้อความ</CardTitle>
-                   <Button onClick={handleOpenEditOfficeNoteDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>
-              </CardHeader>
-              <CardContent><p className="whitespace-pre-wrap text-sm">{job.officeNote || 'ยังไม่มีบันทึก'}</p></CardContent>
-            </Card>
-          )}
           
           <Card>
               <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
@@ -931,13 +934,23 @@ function JobDetailsPageContent() {
         </DialogContent>
     </Dialog>
 
-    <Dialog open={isEditOfficeNoteDialogOpen} onOpenChange={setIsEditOfficeNoteDialogOpen}>
-        <DialogContent>
-            <DialogHeader><DialogTitle>แก้ไขบันทึกข้อความ</DialogTitle></DialogHeader>
-            <div className="py-4"><Textarea value={officeNoteToEdit} onChange={(e) => setOfficeNoteToEdit(e.target.value)} rows={8} /></div>
+    <Dialog open={isEditNotebookDialogOpen} onOpenChange={setIsEditNotebookDialogOpen}>
+        <DialogContent className="sm:max-w-xl">
+            <DialogHeader><DialogTitle>แก้ไขสมุดบันทึก</DialogTitle></DialogHeader>
+            <div className="py-4">
+              <Textarea 
+                placeholder="บันทึกรายละเอียดงาน ผลตรวจ หรือบันทึกข้อความที่นี่..." 
+                value={techReport} 
+                onChange={(e) => setTechReport(e.target.value)} 
+                rows={12} 
+              />
+            </div>
             <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEditOfficeNoteDialogOpen(false)} disabled={isUpdatingOfficeNote}>ยกเลิก</Button>
-                <Button onClick={handleUpdateOfficeNote} disabled={isUpdatingOfficeNote}>{isUpdatingOfficeNote && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}บันทึก</Button>
+                <Button variant="outline" onClick={() => setIsEditNotebookDialogOpen(false)} disabled={isSavingTechReport}>ยกเลิก</Button>
+                <Button onClick={handleUpdateNotebook} disabled={isSavingTechReport}>
+                  {isSavingTechReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  บันทึกข้อมูล
+                </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
