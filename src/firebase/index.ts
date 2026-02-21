@@ -5,6 +5,7 @@ import {
   useFirestore,
   useFirebaseApp,
   useFirebaseAuth,
+  useFirebaseStorage,
 } from './provider';
 import { FirebaseClientProvider } from './client-provider';
 import { useCollection, type WithId } from './firestore/use-collection';
@@ -19,6 +20,7 @@ export {
   useFirestore,
   useFirebaseApp,
   useFirebaseAuth,
+  useFirebaseStorage,
   useCollection,
   useDoc,
   useUser,

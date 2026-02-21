@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
@@ -151,7 +150,6 @@ function JobDetailsPageContent() {
   
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
   
-  // Everyone (Staff) can update activity, regardless of job state
   const canUpdateActivity = isStaff;
   const canEditDetails = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
 
@@ -222,7 +220,7 @@ function JobDetailsPageContent() {
           const archiveDocRef = doc(db, archiveColName, jobId);
           const docSnap = await getDoc(archiveDocRef);
           if (docSnap.exists()) {
-            const jobData = { id: docSnap.id, ...docSnap.data() } as Job;
+            const jobData = { id: docSnap.id, ...docSnap.data(), isArchived: true } as Job;
             setJob(jobData);
             setTechReport(jobData.technicalReport || "");
             setLoading(false);
@@ -263,11 +261,6 @@ function JobDetailsPageContent() {
       setIsUpdatingDescription(false);
     });
   };
-
-  const handleOpenEditNotebookDialog = () => {
-    setTechReport(job?.technicalReport || job?.officeNote || "");
-    setIsEditNotebookDialogOpen(true);
-  }
 
   const handleUpdateNotebook = async () => {
     const jobDocRef = getJobRef();
@@ -335,26 +328,29 @@ function JobDetailsPageContent() {
   const handleAddActivity = async () => {
     const jobDocRef = getJobRef();
     
-    // Check missing input
     if (!newNote.trim() && newPhotos.length === 0) {
         toast({ variant: "destructive", title: "กรุณากรอกข้อความ", description: "กรุณาพิมพ์บันทึกหรือแนบรูปภาพก่อนกดอัปเดตค่ะ" });
         return;
     }
 
-    if (!db || !storage || !profile || !job || !jobDocRef) {
-        toast({ variant: "destructive", title: "ไม่สามารถอัปเดตได้", description: "ข้อมูลระบบหรือใบงานยังไม่พร้อม กรุณาลองใหม่อีกครั้งค่ะ" });
+    if (!db || !profile || !job || !jobDocRef) {
+        toast({ variant: "destructive", title: "ไม่สามารถอัปเดตได้", description: "ข้อมูลใบงานไม่พร้อม กรุณาลองใหม่อีกครั้งค่ะ" });
         return;
     }
 
     setIsSubmittingNote(true);
     try {
-        const activitiesColRef = collection(jobDocRef, "activities");
         const photoURLs: string[] = [];
-        for (const photo of newPhotos) {
-            const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
-            await uploadBytes(photoRef, photo);
-            photoURLs.push(await getDownloadURL(photoRef));
+        if (newPhotos.length > 0) {
+            if (!storage) throw new Error("ไม่สามารถเชื่อมต่อระบบเก็บไฟล์ได้");
+            for (const photo of newPhotos) {
+                const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
+                await uploadBytes(photoRef, photo);
+                photoURLs.push(await getDownloadURL(photoRef));
+            }
         }
+
+        const activitiesColRef = collection(jobDocRef, "activities");
         const batch = writeBatch(db);
         const newActData = { text: newNote.trim(), userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs };
         batch.set(doc(activitiesColRef), newActData);
@@ -365,7 +361,7 @@ function JobDetailsPageContent() {
         setNewPhotos([]);
         photoPreviews.forEach(url => URL.revokeObjectURL(url));
         setPhotoPreviews([]);
-        toast({title: "อัปเดตกองกิจกรรมสำเร็จแล้วค่ะ"});
+        toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
     } catch (error: any) {
         if (error.code === 'permission-denied') {
           errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -402,17 +398,19 @@ function JobDetailsPageContent() {
 
   const handleQuickPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const jobDocRef = getJobRef();
-    if (!e.target.files || !jobId || !db || !storage || !profile || !jobDocRef) return;
-    setIsAddingPhotos(true);
+    if (!e.target.files || !jobId || !db || !profile || !jobDocRef) return;
+    
     const files = Array.from(e.target.files);
     const currentPhotoCount = job?.photos?.length || 0;
     if (currentPhotoCount + files.length > 8) {
       toast({ variant: "destructive", title: "อัปโหลดรูปภาพรวมกันได้ไม่เกิน 8 รูปค่ะ" });
-      setIsAddingPhotos(false);
       e.target.value = '';
       return;
     }
+
+    setIsAddingPhotos(true);
     try {
+        if (!storage) throw new Error("ไม่สามารถเชื่อมต่อระบบเก็บไฟล์ได้");
         const activitiesColRef = collection(jobDocRef, "activities");
         const photoURLs: string[] = [];
         for (const photo of files) {
@@ -647,7 +645,7 @@ function JobDetailsPageContent() {
                   สมุดบันทึก (Notebook)
                 </CardTitle>
                 {canEditDetails && (
-                  <Button onClick={handleOpenEditNotebookDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}>
+                  <Button onClick={() => { setTechReport(job?.technicalReport || job?.officeNote || ""); setIsEditNotebookDialogOpen(true); }} variant="outline" size="sm" className="h-7" disabled={isViewOnly}>
                     <Edit className="h-3 w-3 mr-1"/> แก้ไข
                   </Button>
                 )}

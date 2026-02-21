@@ -10,7 +10,7 @@ export function FirebaseClientProvider({ children }: { children: ReactNode }) {
     return initializeFirebase();
   }, []);
 
-  if (!services.firebaseApp || !services.firestore || !services.auth) {
+  if (!services.firebaseApp || !services.firestore || !services.auth || !services.storage) {
     return null;
   }
 
@@ -19,6 +19,7 @@ export function FirebaseClientProvider({ children }: { children: ReactNode }) {
       firebaseApp={services.firebaseApp} 
       firestore={services.firestore} 
       auth={services.auth}
+      storage={services.storage}
     >
       <FirebaseErrorListener />
       {children}
