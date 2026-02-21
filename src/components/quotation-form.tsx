@@ -447,26 +447,31 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                             {fields.map((field, index) => (
                                 <TableRow key={field.id}>
                                     <TableCell className="text-center">{index + 1}</TableCell>
-                                    <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} placeholder="รายการสินค้า/บริการ" disabled={isCancelled} />)}/></TableCell>
+                                    <TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<FormItem><FormControl><Input {...field} placeholder="รายการสินค้า/บริการ" disabled={isCancelled} /></FormControl><FormMessage /></FormItem>)}/></TableCell>
                                     <TableCell>
                                     <FormField
                                         control={form.control}
                                         name={`items.${index}.quantity`}
                                         render={({ field }) => (
-                                        <Input
-                                            type="number"
-                                            inputMode="decimal"
-                                            placeholder="0"
-                                            className="text-right"
-                                            value={(field.value ?? 0) === 0 ? "" : field.value}
-                                            onChange={(e) => {
-                                            const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
-                                            field.onChange(newQuantity);
-                                            const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
-                                            form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
-                                            }}
-                                            disabled={isCancelled}
-                                        />
+                                        <FormItem>
+                                          <FormControl>
+                                            <Input
+                                                type="number"
+                                                inputMode="decimal"
+                                                placeholder="0"
+                                                className="text-right"
+                                                value={(field.value ?? 0) === 0 ? "" : field.value}
+                                                onChange={(e) => {
+                                                const newQuantity = e.target.value === '' ? 0 : Number(e.target.value);
+                                                field.onChange(newQuantity);
+                                                const unitPrice = form.getValues(`items.${index}.unitPrice`) || 0;
+                                                form.setValue(`items.${index}.total`, newQuantity * unitPrice, { shouldValidate: true });
+                                                }}
+                                                disabled={isCancelled}
+                                            />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
                                         )}
                                     />
                                     </TableCell>
@@ -475,20 +480,25 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                                         control={form.control}
                                         name={`items.${index}.unitPrice`}
                                         render={({ field }) => (
-                                        <Input
-                                            type="number"
-                                            inputMode="decimal"
-                                            placeholder="0.00"
-                                            className="text-right"
-                                            value={(field.value ?? 0) === 0 ? "" : field.value}
-                                            onChange={(e) => {
-                                            const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
-                                            field.onChange(newPrice);
-                                            const quantity = form.getValues(`items.${index}.quantity`) || 0;
-                                            form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
-                                            }}
-                                            disabled={isCancelled}
-                                        />
+                                        <FormItem>
+                                          <FormControl>
+                                            <Input
+                                                type="number"
+                                                inputMode="decimal"
+                                                placeholder="0.00"
+                                                className="text-right"
+                                                value={(field.value ?? 0) === 0 ? "" : field.value}
+                                                onChange={(e) => {
+                                                const newPrice = e.target.value === '' ? 0 : Number(e.target.value);
+                                                field.onChange(newPrice);
+                                                const quantity = form.getValues(`items.${index}.quantity`) || 0;
+                                                form.setValue(`items.${index}.total`, newPrice * quantity, { shouldValidate: true });
+                                                }}
+                                                disabled={isCancelled}
+                                            />
+                                          </FormControl>
+                                          <FormMessage />
+                                        </FormItem>
                                         )}
                                     />
                                     </TableCell>

@@ -189,7 +189,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   }, [db]);
 
   useEffect(() => {
-    if (!db || jobId || isEditing) return;
+    if (!db || !jobId || isEditing) return;
     setIsLoadingJobs(true);
     onSnapshot(query(collection(db, "jobs"), where("status", "==", "DONE")), (snap) => {
         setJobsReadyToBill(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
