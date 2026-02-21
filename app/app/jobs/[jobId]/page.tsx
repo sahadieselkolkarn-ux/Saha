@@ -40,7 +40,7 @@ import {
 import { JobVehicleDetails } from "@/components/job-details/job-vehicle-details";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
-import { cn } from "@/lib/utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 
 const getStatusVariant = (status: Job['status']) => {
   switch (status) {
@@ -137,7 +137,7 @@ function JobDetailsPageContent() {
       return query(collection(db, archiveCollectionNameByYear(year), jobId, "activities"), orderBy("createdAt", "desc"));
     }
     return query(collection(db, "jobs", jobId, "activities"), orderBy("createdAt", "desc"));
-  }, [db, jobId, job]);
+  }, [db, jobId, job?.isArchived, job?.closedDate]);
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
@@ -148,14 +148,18 @@ function JobDetailsPageContent() {
   
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   
-  // General UI view lock
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
-  
-  // Everyone (Staff) can add activities and manage photos as per user request
   const canUpdateActivity = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
-  
-  // Everyone (Staff) can edit details as per user request
   const canEditDetails = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
+
+  const getJobRef = () => {
+    if (!db || !job) return null;
+    if (job.isArchived) {
+      const year = new Date(job.closedDate!).getFullYear();
+      return doc(db, archiveCollectionNameByYear(year), jobId);
+    }
+    return doc(db, "jobs", jobId);
+  };
 
   useEffect(() => {
     if (!db || !jobId) return;
@@ -197,11 +201,10 @@ function JobDetailsPageContent() {
         setNotFoundInPrimary(true);
       }
     }, (error) => {
-      toast({ variant: "destructive", title: "Error", description: "Failed to load job details."});
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [jobId, db, toast]);
+  }, [jobId, db]);
 
   useEffect(() => {
     if (!notFoundInPrimary || !db || !jobId) return;
@@ -234,10 +237,10 @@ function JobDetailsPageContent() {
   }
 
   const handleUpdateDescription = async () => {
-    if (!db || !job || !profile) return;
+    const jobDocRef = getJobRef();
+    if (!db || !job || !profile || !jobDocRef) return;
     setIsUpdatingDescription(true);
-    const jobDocRef = doc(db, "jobs", job.id);
-    const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
+    const activityDocRef = doc(collection(jobDocRef, "activities"));
     
     const batch = writeBatch(db);
     batch.update(jobDocRef, { description: descriptionToEdit, lastActivityAt: serverTimestamp() });
@@ -246,13 +249,12 @@ function JobDetailsPageContent() {
     batch.commit().then(() => {
       toast({ title: "อัปเดตรายการแจ้งซ่อมสำเร็จ" });
       setIsEditDescriptionDialogOpen(false);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: jobDocRef.path,
         operation: 'update',
         requestResourceData: { description: descriptionToEdit },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+      }));
     }).finally(() => {
       setIsUpdatingDescription(false);
     });
@@ -264,15 +266,15 @@ function JobDetailsPageContent() {
   }
 
   const handleUpdateNotebook = async () => {
-    if (!db || !job || !profile) return;
+    const jobDocRef = getJobRef();
+    if (!db || !job || !profile || !jobDocRef) return;
     setIsSavingTechReport(true);
-    const jobDocRef = doc(db, "jobs", job.id);
-    const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
+    const activityDocRef = doc(collection(jobDocRef, "activities"));
     
     const batch = writeBatch(db);
     batch.update(jobDocRef, { 
       technicalReport: techReport, 
-      officeNote: deleteField(), // Clear old field to keep only technicalReport as unified notebook
+      officeNote: deleteField(),
       lastActivityAt: serverTimestamp() 
     });
     batch.set(activityDocRef, { text: `อัปเดตสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
@@ -280,13 +282,12 @@ function JobDetailsPageContent() {
     batch.commit().then(() => {
       toast({ title: "บันทึกสมุดบันทึกสำเร็จ" });
       setIsEditNotebookDialogOpen(false);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: jobDocRef.path,
         operation: 'update',
         requestResourceData: { technicalReport: techReport },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+      }));
     }).finally(() => {
       setIsSavingTechReport(false);
     });
@@ -294,19 +295,17 @@ function JobDetailsPageContent() {
 
   const handleOpenEditVehicleDialog = () => {
     if (!job) return;
-    // Load based on existing data or department
     const data = job.carServiceDetails || job.commonrailDetails || job.mechanicDetails || {};
     setVehicleEditData(data);
     setIsEditVehicleDialogOpen(true);
   };
 
   const handleUpdateVehicleDetails = async () => {
-    if (!db || !job || !profile) return;
+    const jobDocRef = getJobRef();
+    if (!db || !job || !profile || !jobDocRef) return;
     setIsUpdatingVehicle(true);
-    const jobDocRef = doc(db, "jobs", job.id);
-    const activityDocRef = doc(collection(db, "jobs", job.id, "activities"));
+    const activityDocRef = doc(collection(jobDocRef, "activities"));
     
-    // Detect which field to update based on what already exists or current dept
     let fieldName = 'carServiceDetails';
     if (job.commonrailDetails || job.department === 'COMMONRAIL') fieldName = 'commonrailDetails';
     else if (job.mechanicDetails || job.department === 'MECHANIC') fieldName = 'mechanicDetails';
@@ -318,64 +317,52 @@ function JobDetailsPageContent() {
     batch.commit().then(() => {
       toast({ title: "อัปเดตรายละเอียดสำเร็จ" });
       setIsEditVehicleDialogOpen(false);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: jobDocRef.path,
         operation: 'update',
         requestResourceData: { [fieldName]: vehicleEditData },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+      }));
     }).finally(() => {
       setIsUpdatingVehicle(false);
     });
   };
 
-  const handleMarkAsDone = async () => {
-    if (!jobId || !db || !job || !profile) return;
+  const handleAddActivity = async () => {
+    const jobDocRef = getJobRef();
+    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile || !job || !jobDocRef) return;
     setIsSubmittingNote(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
-    
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
-    batch.set(activityDocRef, { text: `เปลี่ยนสถานะเป็น "${jobStatusLabel('DONE')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
-    batch.commit().then(() => {
-      toast({ title: "Job Marked as Done" });
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: { status: 'DONE' },
-      });
-      errorEmitter.emit('permission-error', permissionError);
-    }).finally(() => {
-      setIsSubmittingNote(false);
-    });
-  };
-
-  const handleRequestQuotation = async () => {
-    if (!jobId || !db || !job || !profile) return;
-    setIsRequestingQuotation(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
-    
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, { status: 'WAITING_QUOTATION', lastActivityAt: serverTimestamp() });
-    batch.set(activityDocRef, { text: `แจ้งขอเสนอราคา`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
-    batch.commit().then(() => {
-      toast({ title: "Quotation Requested" });
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: { status: 'WAITING_QUOTATION' },
-      });
-      errorEmitter.emit('permission-error', permissionError);
-    }).finally(() => {
-      setIsRequestingQuotation(false);
-    });
+    try {
+        const activitiesColRef = collection(jobDocRef, "activities");
+        const photoURLs: string[] = [];
+        for (const photo of newPhotos) {
+            const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
+            await uploadBytes(photoRef, photo);
+            photoURLs.push(await getDownloadURL(photoRef));
+        }
+        const batch = writeBatch(db);
+        const newActData = { text: newNote.trim(), userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs };
+        batch.set(doc(activitiesColRef), newActData);
+        batch.update(jobDocRef, { lastActivityAt: serverTimestamp() });
+        
+        await batch.commit();
+        setNewNote("");
+        setNewPhotos([]);
+        photoPreviews.forEach(url => URL.revokeObjectURL(url));
+        setPhotoPreviews([]);
+        toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
+    } catch (error: any) {
+        if (error.code === 'permission-denied') {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: jobDocRef.path + '/activities',
+            operation: 'create',
+          }));
+        } else {
+          toast({variant: "destructive", title: "Failed to add activity", description: error.message});
+        }
+    } finally {
+        setIsSubmittingNote(false);
+    }
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -383,7 +370,7 @@ function JobDetailsPageContent() {
       const files = Array.from(e.target.files);
       files.forEach(file => {
           if (file.size > 5 * 1024 * 1024) {
-              toast({ variant: "destructive", title: `File ${file.name} is too large.`, description: "Max size is 5MB." });
+              toast({ variant: "destructive", title: `ไฟล์ ${file.name} ใหญ่เกินไปค่ะ`, description: "จำกัดไม่เกิน 5MB" });
               return;
           }
           setNewPhotos(prev => [...prev, file]);
@@ -397,59 +384,20 @@ function JobDetailsPageContent() {
     setNewPhotos(p => p.filter((_, i) => i !== index));
     setPhotoPreviews(p => p.filter((_, i) => i !== index));
   };
-  
-  const handleAddActivity = async () => {
-    if ((!newNote.trim() && newPhotos.length === 0) || !jobId || !db || !storage || !profile || !job) return;
-    setIsSubmittingNote(true);
-    try {
-        const jobDocRef = doc(db, "jobs", jobId);
-        const activitiesColRef = collection(db, "jobs", jobId, "activities");
-        const photoURLs: string[] = [];
-        for (const photo of newPhotos) {
-            const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
-            await uploadBytes(photoRef, photo);
-            photoURLs.push(await getDownloadURL(photoRef));
-        }
-        const batch = writeBatch(db);
-        batch.set(doc(activitiesColRef), { text: newNote, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
-        batch.update(jobDocRef, { lastActivityAt: serverTimestamp() });
-        
-        await batch.commit().then(() => {
-          setNewNote("");
-          setNewPhotos([]);
-          photoPreviews.forEach(url => URL.revokeObjectURL(url));
-          setPhotoPreviews([]);
-          toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
-        }).catch(async (serverError) => {
-          const permissionError = new FirestorePermissionError({
-            path: jobDocRef.path,
-            operation: 'update',
-            requestResourceData: { lastActivityAt: serverTimestamp() },
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        });
-    } catch (error: any) {
-        toast({variant: "destructive", title: "Failed to add activity", description: error.message});
-    } finally {
-        setIsSubmittingNote(false);
-    }
-  };
 
   const handleQuickPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !jobId || !db || !storage || !profile) return;
+    const jobDocRef = getJobRef();
+    if (!e.target.files || !jobId || !db || !storage || !profile || !jobDocRef) return;
     setIsAddingPhotos(true);
     const files = Array.from(e.target.files);
     const currentPhotoCount = job?.photos?.length || 0;
     if (currentPhotoCount + files.length > 8) {
-      toast({ variant: "destructive", title: "คุณสามารถอัปโหลดรูปภาพรวมกันได้ไม่เกิน 8 รูปค่ะ" });
+      toast({ variant: "destructive", title: "อัปโหลดรูปภาพรวมกันได้ไม่เกิน 8 รูปค่ะ" });
       setIsAddingPhotos(false);
       e.target.value = '';
       return;
     }
     try {
-        const jobDocRef = job?.isArchived 
-          ? doc(db, archiveCollectionNameByYear(new Date(job.closedDate!).getFullYear()), jobId)
-          : doc(db, "jobs", jobId);
         const activitiesColRef = collection(jobDocRef, "activities");
         const photoURLs: string[] = [];
         for (const photo of files) {
@@ -460,17 +408,8 @@ function JobDetailsPageContent() {
         const batch = writeBatch(db);
         batch.set(doc(activitiesColRef), { text: `อัปโหลดรูปประกอบงานเพิ่ม ${files.length} รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
         batch.update(jobDocRef, { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() });
-        
-        await batch.commit().then(() => {
-          toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
-        }).catch(async (serverError) => {
-          const permissionError = new FirestorePermissionError({
-            path: jobDocRef.path,
-            operation: 'update',
-            requestResourceData: { photos: arrayUnion(...photoURLs) },
-          });
-          errorEmitter.emit('permission-error', permissionError);
-        });
+        await batch.commit();
+        toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
     } catch(error: any) {
         toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message});
     } finally {
@@ -480,25 +419,22 @@ function JobDetailsPageContent() {
   }
 
   const handleTransferJob = async () => {
-    if (!canEditDetails) return;
-    if (!transferDepartment || !job || !db || !profile) return;
+    if (!canEditDetails || !transferDepartment || !job || !db || !profile) return;
     setIsTransferring(true);
     const jobDocRef = doc(db, "jobs", job.id);
-    
     const batch = writeBatch(db);
     batch.update(jobDocRef, { department: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(db, "jobs", job.id, "activities")), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${transferDepartment}. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${deptLabel(transferDepartment)}. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
       toast({ title: 'โอนย้ายแผนกสำเร็จ' });
       setIsTransferDialogOpen(false);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
         path: jobDocRef.path,
         operation: 'update',
         requestResourceData: { department: transferDepartment },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+      }));
     }).finally(() => {
       setIsTransferring(false);
     });
@@ -522,7 +458,7 @@ function JobDetailsPageContent() {
         setDepartmentWorkers(workers.filter(w => w.id !== job.assigneeUid));
       }
     } catch (error) {
-      toast({ variant: 'destructive', title: "Failed to fetch options" });
+      toast({ variant: 'destructive', title: "ไม่สามารถดึงข้อมูลได้" });
     } finally {
       setIsFetchingWorkers(false);
     }
@@ -534,38 +470,18 @@ function JobDetailsPageContent() {
     if (!newWorker) return;
     setIsReassigning(true);
     const jobDocRef = doc(db, "jobs", job.id);
-    
     const batch = writeBatch(db);
-    const updateData: any = { 
-      assigneeUid: newWorker.id, 
-      assigneeName: newWorker.displayName, 
-      lastActivityAt: serverTimestamp() 
-    };
-    
-    if (job.department === 'OUTSOURCE' && job.status === 'RECEIVED') {
-      updateData.status = 'IN_PROGRESS';
-    }
-
+    const updateData: any = { assigneeUid: newWorker.id, assigneeName: newWorker.displayName, lastActivityAt: serverTimestamp() };
+    if (job.department === 'OUTSOURCE' && job.status === 'RECEIVED') updateData.status = 'IN_PROGRESS';
     batch.update(jobDocRef, updateData);
-    
     const actionText = job.department === 'OUTSOURCE' ? `มอบหมายงานนอกให้: ${newWorker.displayName}` : `มอบหมายงานให้: ${newWorker.displayName}`;
-    batch.set(doc(collection(db, "jobs", job.id, "activities")), { 
-      text: actionText, 
-      userName: profile.displayName, 
-      userId: profile.uid, 
-      createdAt: serverTimestamp() 
-    });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: actionText, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
       toast({ title: "ดำเนินการสำเร็จ" });
       setIsReassignDialogOpen(false);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: updateData,
-      });
-      errorEmitter.emit('permission-error', permissionError);
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: updateData }));
     }).finally(() => {
       setIsReassigning(false);
     });
@@ -575,21 +491,15 @@ function JobDetailsPageContent() {
     if (!jobId || !db || !profile) return;
     setIsApprovalActionLoading(true);
     const jobDocRef = doc(db, "jobs", jobId);
-    
     const batch = writeBatch(db);
     batch.update(jobDocRef, { status: 'PENDING_PARTS', lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
-      toast({ title: "Job Approved" });
+      toast({ title: "อนุมัติเรียบร้อยค่ะ" });
       setIsApproveConfirmOpen(false);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: { status: 'PENDING_PARTS' },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'PENDING_PARTS' } }));
     }).finally(() => {
       setIsApprovalActionLoading(false);
     });
@@ -599,27 +509,21 @@ function JobDetailsPageContent() {
     if (!jobId || !db || !profile || !rejectionChoice || !job) return;
     setIsApprovalActionLoading(true);
     const jobDocRef = doc(db, "jobs", jobId);
-    
     const batch = writeBatch(db);
     if (rejectionChoice === 'with_cost') {
         batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
-        batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+        batch.set(doc(collection(jobDocRef, "activities")), { text: `ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     } else {
         batch.update(jobDocRef, { status: 'CLOSED', lastActivityAt: serverTimestamp() });
-        batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+        batch.set(doc(collection(jobDocRef, "activities")), { text: `ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     }
     
     batch.commit().then(() => {
-      toast({ title: "Job Rejected" });
+      toast({ title: "ดำเนินการปฏิเสธสำเร็จ" });
       setIsRejectConfirmOpen(false);
       setRejectionChoice(null);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: { status: rejectionChoice === 'with_cost' ? 'DONE' : 'CLOSED' },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: rejectionChoice === 'with_cost' ? 'DONE' : 'CLOSED' } }));
     }).finally(() => {
       setIsApprovalActionLoading(false);
     });
@@ -629,33 +533,55 @@ function JobDetailsPageContent() {
     if (!jobId || !db || !profile) return;
     setIsApprovalActionLoading(true);
     const jobDocRef = doc(db, "jobs", jobId);
-    
     const batch = writeBatch(db);
     batch.update(jobDocRef, { status: 'IN_REPAIR_PROCESS', lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(db, "jobs", jobId, "activities")), { text: `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "กำลังดำเนินการซ่อม"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "กำลังดำเนินการซ่อม"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
-      toast({ title: "Parts Ready" });
+      toast({ title: "อะไหล่พร้อมซ่อมแล้วค่ะ" });
       setIsPartsReadyConfirmOpen(false);
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: { status: 'IN_REPAIR_PROCESS' },
-      });
-      errorEmitter.emit('permission-error', permissionError);
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'IN_REPAIR_PROCESS' } }));
     }).finally(() => {
       setIsApprovalActionLoading(false);
     });
   };
 
-  if (loading || !job) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="animate-spin h-8 w-8 text-primary" />
-      </div>
-    );
-  }
+  const handleMarkAsDone = async () => {
+    if (!jobId || !db || !job || !profile) return;
+    setIsSubmittingNote(true);
+    const jobDocRef = doc(db, "jobs", jobId);
+    const batch = writeBatch(db);
+    batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `เปลี่ยนสถานะเป็น "${jobStatusLabel('DONE')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    
+    batch.commit().then(() => {
+      toast({ title: "จบงานเรียบร้อย รอฝ่ายออฟฟิศทำบิลค่ะ" });
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'DONE' } }));
+    }).finally(() => {
+      setIsSubmittingNote(false);
+    });
+  };
+
+  const handleRequestQuotation = async () => {
+    if (!jobId || !db || !job || !profile) return;
+    setIsRequestingQuotation(true);
+    const jobDocRef = doc(db, "jobs", jobId);
+    const batch = writeBatch(db);
+    batch.update(jobDocRef, { status: 'WAITING_QUOTATION', lastActivityAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `แจ้งขอเสนอราคา`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    
+    batch.commit().then(() => {
+      toast({ title: "ส่งเรื่องขอเสนอราคาให้ออฟฟิศแล้วค่ะ" });
+    }).catch(async (error) => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'WAITING_QUOTATION' } }));
+    }).finally(() => {
+      setIsRequestingQuotation(false);
+    });
+  };
+
+  if (loading || !job) return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
 
   return (
     <>
