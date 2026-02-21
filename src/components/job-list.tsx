@@ -34,9 +34,21 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
-  FileText
+  FileText,
+  Receipt
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useRouter } from "next/navigation";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
@@ -85,6 +97,7 @@ export function JobList({
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +108,8 @@ export function JobList({
   const pageStartCursors = useRef<(QueryDocumentSnapshot | null)[]>([null]);
   const [isLastPage, setIsLastPage] = useState(false);
 
+  const [billingJob, setBillingJob] = useState<Job | null>(null);
+
   const memoizedStatusArray = useMemo(() => {
     if (!status) return [];
     return Array.isArray(status) ? status : [status];
@@ -104,6 +119,8 @@ export function JobList({
     if (!excludeStatus) return [];
     return Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus];
   }, [excludeStatus]);
+
+  const isOfficeOrAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
 
   const fetchData = useCallback(async (pageIndex: number) => {
     if (!db) return;
@@ -274,12 +291,22 @@ export function JobList({
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
-              {job.status === 'WAITING_QUOTATION' && (
+              {job.status === 'WAITING_QUOTATION' && isOfficeOrAdmin && (
                 <Button asChild className="w-full h-9 bg-primary hover:bg-primary/90 text-white font-bold" variant="default">
                   <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
                     <FileText className="mr-2 h-4 w-4" />
                     สร้างใบเสนอราคา
                   </Link>
+                </Button>
+              )}
+              {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && isOfficeOrAdmin && (
+                <Button 
+                  className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" 
+                  variant="outline"
+                  onClick={() => setBillingJob(job)}
+                >
+                  <Receipt className="mr-2 h-4 w-4" />
+                  ออกบิล
                 </Button>
               )}
             </CardFooter>
@@ -300,6 +327,32 @@ export function JobList({
           </div>
         </div>
       )}
+
+      {/* Billing Dialog */}
+      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
+              <AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
+                <Button variant="outline" onClick={() => setBillingJob(null)} className="w-full sm:w-auto">ยกเลิก</Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }}
+                  className="w-full sm:w-auto"
+                >
+                  ใบส่งของชั่วคราว
+                </Button>
+                <Button 
+                  onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}
+                  className="w-full sm:w-auto"
+                >
+                  ใบกำกับภาษี
+                </Button>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
