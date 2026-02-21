@@ -120,15 +120,12 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     return () => unsubscribe();
   }, [db]);
 
-  // Handle initial data loading from Job or Document
   useEffect(() => {
     const dataToLoad = docToEdit || job;
     if (!dataToLoad) return;
 
-    // Try to find matching customer ID
     let customerId = (dataToLoad as any).customerId || (dataToLoad as any).customerSnapshot?.id || "";
     
-    // If we only have snapshot but no ID matching current customer list, we use snapshot ID if available
     if (!customerId && dataToLoad.customerSnapshot?.name && dataToLoad.customerSnapshot?.phone && customers.length > 0) {
       const found = customers.find(c => c.name === dataToLoad.customerSnapshot?.name && c.phone === dataToLoad.customerSnapshot?.phone);
       if (found) customerId = found.id;
@@ -309,10 +306,19 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit, (err) => {
         console.error("Quotation Form Validation Errors:", JSON.stringify(err, null, 2));
+        
+        // Detailed error message for the user
+        let errorDesc = "กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วนค่ะ";
+        if (err.items) {
+            errorDesc = "กรุณาระบุรายละเอียดรายการและจำนวนให้ถูกต้องในทุกแถวค่ะ (จำนวนต้องมากกว่า 0)";
+        } else if (err.customerId) {
+            errorDesc = "กรุณาเลือกลูกค้าจากรายการค่ะ";
+        }
+
         toast({
           variant: "destructive",
           title: "ข้อมูลไม่ครบถ้วน",
-          description: "กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วนในช่องที่มีเครื่องหมายกำกับสีแดงค่ะ"
+          description: errorDesc
         });
       })} className="space-y-6">
         {isCancelled && (

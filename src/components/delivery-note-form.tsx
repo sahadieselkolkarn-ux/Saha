@@ -408,53 +408,8 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader><CardTitle>หมายเหตุ</CardTitle></CardHeader>
-                <CardContent className="space-y-4">
-                  <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormControl><Textarea placeholder="รายละเอียด..." rows={4} {...field} disabled={isLocked}/></FormControl></FormItem>)} />
-                  <div className="grid grid-cols-1 gap-4">
-                    <FormField control={form.control} name="issueDate" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>วันที่</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} value={field.value ?? ''} disabled={isLocked} />
-                        </FormControl>
-                      </FormItem>
-                    )} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-                    <FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} />
-                  </div>
-                </CardContent>
-              </Card>
-              <div className="space-y-4 p-6 border rounded-lg bg-muted/30">
-                <div className="flex justify-between items-center text-sm">
-                  <span>รวมเป็นเงิน</span>
-                  <span>{formatCurrency(form.watch('subtotal'))}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span>ส่วนลด</span>
-                  <FormField 
-                    control={form.control} 
-                    name="discountAmount" 
-                    render={({ field }) => ( 
-                      <Input 
-                        type="number" 
-                        step="any" 
-                        className="w-32 text-right bg-background h-8" 
-                        {...field} 
-                        value={(field.value ?? 0) === 0 ? "" : field.value} 
-                        onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))} 
-                        disabled={isLocked} 
-                      /> 
-                    )}
-                  />
-                </div>
-                <Separator/>
-                <div className="flex justify-between items-center text-lg font-bold text-primary">
-                  <span>ยอดรวมสุทธิ</span>
-                  <span>{formatCurrency(form.watch('grandTotal'))}</span>
-                </div>
-              </div>
+                <CardContent className="space-y-4"><FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormControl><Textarea placeholder="รายละเอียด..." rows={4} {...field} disabled={isLocked}/></FormControl></FormItem>)} /><div className="grid grid-cols-1 gap-4"><FormField control={form.control} name="issueDate" render={({ field }) => (<FormItem><FormLabel>วันที่</FormLabel><FormControl><Input type="date" {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} /></div><div className="grid grid-cols-2 gap-4"><FormField control={form.control} name="senderName" render={({ field }) => (<FormItem><FormLabel>ผู้ส่งของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} /><FormField control={form.control} name="receiverName" render={({ field }) => (<FormItem><FormLabel>ผู้รับของ</FormLabel><FormControl><Input {...field} value={field.value ?? ''} disabled={isLocked} /></FormControl></FormItem>)} /></div></CardContent></Card>
+              <div className="space-y-4 p-6 border rounded-lg bg-muted/30"><div className="flex justify-between items-center text-sm"><span>รวมเป็นเงิน</span><span>{formatCurrency(form.watch('subtotal'))}</span></div><div className="flex justify-between items-center text-sm"><span>ส่วนลด</span><FormField control={form.control} name="discountAmount" render={({ field }) => ( <Input type="number" step="any" className="w-32 text-right bg-background h-8" {...field} value={(field.value ?? 0) === 0 ? "" : field.value} onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))} disabled={isLocked} /> )}/></div><Separator/><div className="flex justify-between items-center text-lg font-bold text-primary"><span>ยอดรวมสุทธิ</span><span>{formatCurrency(form.watch('grandTotal'))}</span></div></div>
             </div>
           </form>
         </Form>
