@@ -5,13 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, addDoc, getDocs, setDoc } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, addDoc, getDocs, limit } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useDoc } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -37,12 +37,12 @@ import type { PurchaseDoc, Vendor, AccountingAccount } from "@/lib/types";
 const lineItemSchema = z.object({
   description: z.string().min(1, "กรุณากรอกรายการ"),
   quantity: z.coerce.number().min(0.01, "จำนวนต้องมากกว่า 0"),
-  unitPrice: z.coerce.number().min(0),
+  unitPrice: z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
   total: z.coerce.number(),
 });
 
 const purchaseFormSchema = z.object({
-  vendorId: z.string().min(1, "กรุณาเลือกล้านค้า"),
+  vendorId: z.string().min(1, "กรุณาเลือกร้านค้า"),
   docDate: z.string().min(1, "กรุณาเลือกวันที่"),
   invoiceNo: z.string().min(1, "กรุณากรอกเลขที่บิล"),
   items: z.array(lineItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
@@ -80,6 +80,7 @@ export function PurchaseDocForm() {
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Consistent ID for new docs to prevent duplicates on double-click
   const [creationId] = useState(() => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let autoId = '';
@@ -113,9 +114,6 @@ export function PurchaseDocForm() {
   const watchedIsVat = useWatch({ control: form.control, name: "withTax" });
   const watchedPaymentMode = form.watch("paymentMode");
 
-  const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
-  const { data: storeSettings } = useDoc<any>(storeSettingsRef);
-
   useEffect(() => {
     if (!db) return;
     const unsubVendors = onSnapshot(query(collection(db, "vendors"), where("isActive", "==", true)), (snap) => {
@@ -123,7 +121,7 @@ export function PurchaseDocForm() {
       setIsLoadingData(false);
     });
     const unsubAccounts = onSnapshot(query(collection(db, "accountingAccounts"), where("isActive", "==", true)), (snap) => {
-      setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingAccount)));
+        setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingAccount)));
     });
     return () => { unsubVendors(); unsubAccounts(); };
   }, [db]);
@@ -134,7 +132,7 @@ export function PurchaseDocForm() {
         vendorId: docToEdit.vendorId,
         docDate: docToEdit.docDate,
         invoiceNo: docToEdit.invoiceNo,
-        items: docToEdit.items,
+        items: docToEdit.items.map(i => ({ ...i })),
         subtotal: docToEdit.subtotal,
         discountAmount: docToEdit.discountAmount,
         net: docToEdit.net,
@@ -144,6 +142,8 @@ export function PurchaseDocForm() {
         paymentMode: docToEdit.paymentMode,
         dueDate: docToEdit.dueDate,
         note: docToEdit.note,
+        suggestedAccountId: docToEdit.suggestedAccountId || '',
+        suggestedPaymentMethod: docToEdit.suggestedPaymentMethod || 'CASH',
       });
       
       if (vendors.length > 0) {
@@ -189,28 +189,41 @@ export function PurchaseDocForm() {
   };
 
   const onSubmit = async (data: PurchaseFormData, isSubmitForReview: boolean) => {
-    if (!db || !profile || !storage || isSubmitting) return;
+    if (!db || !profile || !storage) {
+        toast({ variant: 'destructive', title: 'ระบบยังไม่พร้อม', description: 'กรุณารอข้อมูลสักครู่หรือรีเฟรชหน้าจอค่ะ' });
+        return;
+    }
+    if (isSubmitting) return;
     
     const vendor = vendors.find(v => v.id === data.vendorId);
     if (!vendor) {
-        toast({ variant: 'destructive', title: 'กรุณาเลือกล้านค้า' });
+        toast({ variant: 'destructive', title: 'กรุณาเลือกร้านค้า' });
         return;
     }
 
     setIsSubmitting(true);
     try {
+      // 1. Photo Upload
       const uploadedPhotos: string[] = docToEdit?.billPhotos || [];
-      for (const file of photos) {
-        const photoRef = ref(storage, `purchases/${Date.now()}-${file.name}`);
-        await uploadBytes(photoRef, file);
-        uploadedPhotos.push(await getDownloadURL(photoRef));
+      if (photos.length > 0) {
+        for (const file of photos) {
+          const photoRef = ref(storage, `purchases/${Date.now()}-${file.name}`);
+          await uploadBytes(photoRef, file);
+          const url = await getDownloadURL(photoRef);
+          uploadedPhotos.push(url);
+        }
       }
 
       const targetStatus = isSubmitForReview ? 'PENDING_REVIEW' : 'DRAFT';
 
       const docData = {
         ...data,
-        vendorSnapshot: { shortName: vendor.shortName, companyName: vendor.companyName, taxId: vendor.taxId, address: vendor.address },
+        vendorSnapshot: { 
+          shortName: vendor.shortName, 
+          companyName: vendor.companyName, 
+          taxId: vendor.taxId || "", 
+          address: vendor.address || "" 
+        },
         billPhotos: uploadedPhotos,
         status: targetStatus,
         updatedAt: serverTimestamp(),
@@ -220,6 +233,7 @@ export function PurchaseDocForm() {
       let finalDocId = editDocId || creationId;
       let finalDocNo: string;
 
+      // 2. Save PurchaseDoc
       if (editDocId) {
         await updateDoc(doc(db, "purchaseDocs", editDocId), sanitizeForFirestore(docData));
         finalDocNo = docToEdit?.docNo || "Unknown";
@@ -227,6 +241,7 @@ export function PurchaseDocForm() {
         finalDocNo = await createPurchaseDoc(db, docData, profile, targetStatus, creationId);
       }
 
+      // 3. Create or Update Purchase Claim for Accounting
       if (isSubmitForReview && finalDocId && finalDocNo) {
         const claimsQuery = query(collection(db, "purchaseClaims"), where("purchaseDocId", "==", finalDocId));
         const claimsSnap = await getDocs(claimsQuery);
@@ -261,7 +276,8 @@ export function PurchaseDocForm() {
       toast({ title: isSubmitForReview ? "ส่งรายการตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
       router.push("/app/office/parts/purchases");
     } catch (e: any) {
-      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: e.message });
+      console.error("Purchase Submit Error:", e);
+      toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: e.message || "ไม่สามารถบันทึกข้อมูลได้" });
       setIsSubmitting(false);
     }
   };
@@ -286,7 +302,7 @@ export function PurchaseDocForm() {
                     variant="secondary" 
                     className="flex-1 sm:flex-none"
                     disabled={isSubmitting} 
-                    onClick={() => form.handleSubmit(data => onSubmit(data, false))()}
+                    onClick={form.handleSubmit(data => onSubmit(data, false))}
                 >
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
                     บันทึกฉบับร่าง
@@ -295,7 +311,7 @@ export function PurchaseDocForm() {
                     type="button" 
                     className="flex-1 sm:flex-none"
                     disabled={isSubmitting} 
-                    onClick={() => form.handleSubmit(data => onSubmit(data, true))()}
+                    onClick={form.handleSubmit(data => onSubmit(data, true))}
                 >
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
                     บันทึกและส่งตรวจสอบ
@@ -367,8 +383,8 @@ export function PurchaseDocForm() {
                     </div>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <FormField name="invoiceNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล</FormLabel><FormControl><Input {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
-                      <FormField name="docDate" render={({ field }) => (<FormItem><FormLabel>วันที่ในบิล</FormLabel><FormControl><Input type="date" {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
+                      <FormField name="invoiceNo" render={({ field }) => (<FormItem><FormLabel>เลขที่บิล</FormLabel><FormControl><Input {...field} disabled={isSubmitting} /></FormControl><FormMessage/></FormItem>)} />
+                      <FormField name="docDate" render={({ field }) => (<FormItem><FormLabel>วันที่ในบิล</FormLabel><FormControl><Input type="date" {...field} disabled={isSubmitting} /></FormControl><FormMessage/></FormItem>)} />
                     </div>
                 </CardContent>
             </Card>
@@ -392,7 +408,7 @@ export function PurchaseDocForm() {
                         </FormItem>
                     )} />
                     {watchedPaymentMode === 'CREDIT' ? (
-                        <FormField name="dueDate" render={({ field }) => (<FormItem><FormLabel>วันครบกำหนด</FormLabel><FormControl><Input type="date" {...field} value={field.value || ''} disabled={isSubmitting}/></FormControl></FormItem>)} />
+                        <FormField name="dueDate" render={({ field }) => (<FormItem><FormLabel>วันครบกำหนด</FormLabel><FormControl><Input type="date" {...field} value={field.value || ''} disabled={isSubmitting}/></FormControl><FormMessage/></FormItem>)} />
                     ) : (
                         <div className="grid grid-cols-2 gap-4">
                             <FormField name="suggestedPaymentMethod" render={({ field }) => (

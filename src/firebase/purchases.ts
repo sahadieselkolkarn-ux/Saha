@@ -29,6 +29,7 @@ function extractSequence(docNo: string): number {
 
 /**
  * Creates a new purchase document with prefix isolation and collision prevention.
+ * Uses a robust transaction pattern on documentCounters.
  */
 export async function createPurchaseDoc(
   db: Firestore,
@@ -42,11 +43,12 @@ export async function createPurchaseDoc(
   
   const newDocRef = providedDocId ? doc(db, 'purchaseDocs', providedDocId) : doc(collection(db, 'purchaseDocs'));
 
+  // Get current document settings for the prefix
   const docSettingsSnap = await getDoc(doc(db, 'settings', 'documents'));
-  if (!docSettingsSnap.exists()) throw new Error("ยังไม่ได้ตั้งค่ารูปแบบเลขที่เอกสารจัดซื้อ");
-  const prefix = (docSettingsSnap.data() as DocumentSettings).purchasePrefix || 'PUR';
+  const prefix = (docSettingsSnap.exists() ? (docSettingsSnap.data() as DocumentSettings).purchasePrefix : 'PUR') || 'PUR';
 
-  // Baseline sync for this specific prefix
+  // 1. Pre-transaction: Find the highest existing number for this prefix in the current year.
+  // This provides a starting baseline to avoid reuse of numbers if counters were reset.
   const prefixSearch = `${prefix}${year}-`;
   const highestQ = query(
     collection(db, "purchaseDocs"),
@@ -55,13 +57,16 @@ export async function createPurchaseDoc(
     orderBy("docNo", "desc"),
     limit(1)
   );
+  
   const highestSnap = await getDocs(highestQ);
   let collectionBaseline = 0;
   if (!highestSnap.empty) {
     collectionBaseline = extractSequence(highestSnap.docs[0].data().docNo);
   }
 
+  // 2. Transaction: Calculate next number and write the document.
   const documentNumber = await runTransaction(db, async (transaction) => {
+    // If we're retrying/re-submitting, check if the doc already exists to avoid duplicate numbers
     if (providedDocId) {
       const existingDoc = await transaction.get(newDocRef);
       if (existingDoc.exists()) return existingDoc.data().docNo as string;
@@ -71,27 +76,12 @@ export async function createPurchaseDoc(
     const counterDoc = await transaction.get(counterRef);
     let counters = counterDoc.exists() ? counterDoc.data() : { year };
     
-    // Prefix Change Detection for Purchases - Isolated key
-    const countKey = `PURCHASE_${prefix}_count`;
+    // Prefix-specific counter key
+    const countKey = `PURCHASE_${prefix.toUpperCase()}_count`;
     const lastCount = counters[countKey] || 0;
     
-    let nextCount = Math.max(lastCount, collectionBaseline) + 1;
-    let docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
-
-    // Collision check loop
-    let isUsed = true;
-    let safetyCap = 0;
-    while (isUsed && safetyCap < 100) {
-      const collCheck = query(collection(db, "purchaseDocs"), where("docNo", "==", docNo), limit(1));
-      const collSnap = await getDocs(collCheck);
-      if (collSnap.empty) {
-        isUsed = false;
-      } else {
-        nextCount++;
-        docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
-        safetyCap++;
-      }
-    }
+    const nextCount = Math.max(lastCount, collectionBaseline) + 1;
+    const docNo = `${prefix}${year}-${String(nextCount).padStart(4, '0')}`;
 
     const docData = sanitizeForFirestore({
       ...data,

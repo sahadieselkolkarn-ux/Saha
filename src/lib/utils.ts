@@ -9,6 +9,8 @@ export function cn(...inputs: ClassValue[]) {
  * Recursively removes undefined values from an object or array.
  * This is useful for preparing data to be sent to Firestore, which
  * does not allow `undefined` field values.
+ * 
+ * Updated to safely ignore Firestore internal objects like FieldValues and Timestamps.
  * @param data The data to sanitize.
  * @returns A new object or array with all `undefined` values removed.
  */
@@ -18,8 +20,16 @@ export function sanitizeForFirestore(data: any): any {
       .map(v => sanitizeForFirestore(v))
       .filter(v => v !== undefined);
   }
-  // Check for Firestore Timestamp and other object-like types that should not be traversed
-  if (data !== null && typeof data === 'object' && typeof data.toDate !== 'function' && !(data instanceof Date)) {
+  
+  if (data !== null && typeof data === 'object') {
+    // Skip sanitization for Date, Timestamp, or other non-plain objects (like Firestore FieldValues)
+    const isPlainObject = Object.getPrototypeOf(data) === Object.prototype;
+    const isTimestamp = typeof data.toDate === 'function';
+    
+    if (!isPlainObject || isTimestamp || data instanceof Date) {
+      return data;
+    }
+
     return Object.entries(data).reduce((acc, [key, value]) => {
       if (value !== undefined) {
         const sanitizedValue = sanitizeForFirestore(value);
@@ -30,5 +40,6 @@ export function sanitizeForFirestore(data: any): any {
       return acc;
     }, {} as {[key: string]: any});
   }
+  
   return data;
 }
