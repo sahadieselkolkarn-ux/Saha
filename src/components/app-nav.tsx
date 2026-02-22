@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import React, { useMemo, useState, useEffect } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Bot, Share2, FileUp
 } from "lucide-react"
 import { collection, query, where, getDocs } from "firebase/firestore"
 
@@ -32,7 +32,7 @@ const departmentNames: Record<Department, string> = {
 };
 
 // Helper components for navigation
-const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onClick?: () => void }) => {
+const SubNavLink = ({ href, label, icon: Icon, onClick }: { href: string; label: string; icon?: React.ElementType; onClick?: () => void }) => {
     const pathname = usePathname();
     const isActive = pathname === href;
     return (
@@ -42,7 +42,10 @@ const SubNavLink = ({ href, label, onClick }: { href: string; label: string; onC
             className="w-full justify-start text-muted-foreground text-sm h-9"
             onClick={onClick}
         >
-            <Link href={href}>{label}</Link>
+            <Link href={href}>
+                {Icon && <Icon className="mr-2 h-3.5 w-3.5" />}
+                {label}
+            </Link>
         </Button>
     );
 };
@@ -328,7 +331,14 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                     <>
                        <SubNavLink href="/app/car-service/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
                        {profile?.role === 'OFFICER' ? (
-                            <CarServiceByWorkerNav onLinkClick={onLinkClick} />
+                            <>
+                                <CarServiceByWorkerNav onLinkClick={onLinkClick} />
+                                <div className="my-2 border-t border-muted/50 mx-2"></div>
+                                <p className="px-4 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">ผู้ช่วยซ่อมรถยนต์</p>
+                                <SubNavLink href="/app/car-service/assistant/chat" label="สอบถาม AI" icon={Bot} onClick={onLinkClick} />
+                                <SubNavLink href="/app/car-service/assistant/share" label="แชร์ประสบการณ์" icon={Share2} onClick={onLinkClick} />
+                                <SubNavLink href="/app/car-service/assistant/upload" label="อัปโหลดคู่มือ" icon={FileUp} onClick={onLinkClick} />
+                            </>
                        ) : (
                             profile?.role === 'WORKER' && <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                        )}

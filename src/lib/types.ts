@@ -834,3 +834,24 @@ export interface GenAISettings {
   updatedByUid?: string;
   updatedByName?: string;
 }
+
+export interface CarRepairExperience {
+  id: string;
+  brand: string;
+  model: string;
+  symptoms: string;
+  solution: string;
+  createdAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+}
+
+export interface CarRepairManual {
+  id: string;
+  name: string;
+  url: string;
+  fileSize?: number;
+  createdAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+}
