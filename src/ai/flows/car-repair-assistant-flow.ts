@@ -1,9 +1,9 @@
 'use server';
 /**
- * @fileOverview AI ผู้ช่วยวิเคราะห์อาการรถยนต์ (Master Diagnostic AI) - น้องจอนห์
+ * @fileOverview AI ผู้ช่วยวิเคราะห์อาการรถยนต์ (Diagnostic Engineer) - น้องจอนห์
  * 
- * ปรับปรุง: แก้ไขปัญหา 404 Model Not Found โดยใช้ Model ID ที่ถูกต้อง
- * และบังคับใช้ API Key จากระบบเพื่อให้มั่นใจว่าเป็นระบบ Paid
+ * ปรับปรุง: แก้ไขปัญหา Schema Error โดยการเพิ่ม Error Handling 
+ * และปรับปรุง Prompt ให้ฉลาดสมเป็น AI วิศวกร
  */
 
 import { ai } from '@/ai/genkit';
@@ -94,7 +94,7 @@ const AskAssistantOutputSchema = z.object({
 });
 
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
-  // บังคับโหลด API Key ของพี่โจ้ก่อนเสมอ
+  // บังคับโหลด API Key จากฐานข้อมูลเสมอเพื่อใช้รุ่น Paid
   try {
     const db = getServerFirestore();
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
@@ -118,28 +118,40 @@ const carRepairAssistantFlow = ai.defineFlow(
     outputSchema: AskAssistantOutputSchema,
   },
   async (input) => {
-    const response = await ai.generate({
-      model: 'googleai/gemini-1.5-flash', // ระบุ Model ID ให้ถูกต้องตามมาตรฐาน Genkit
-      tools: [searchExperiences, listManualsIndex],
-      system: `คุณคือ "น้องจอนห์" (Master Diagnostic Engineer) อัจฉริยะวิเคราะห์อาการรถยนต์ประจำร้าน Sahadiesel
+    try {
+      const response = await ai.generate({
+        model: 'googleai/gemini-1.5-flash',
+        tools: [searchExperiences, listManualsIndex],
+        system: `คุณคือ "น้องจอนห์" (Master Diagnostic Engineer) วิศวกรอัจฉริยะวิเคราะห์อาการรถยนต์ประจำร้าน Sahadiesel
 
 **หน้าที่หลักของคุณ:**
-1. **วิเคราะห์ทันที (Expert Brain)**: เมื่อได้รับรหัส DTC หรืออาการรถ คุณต้องใช้ "สติปัญญา AI" วิเคราะห์สาเหตุที่เป็นไปได้ และแนะนำขั้นตอนการเช็คทันที ห้ามตอบแค่ว่าไม่พบข้อมูลเด็ดขาด!
-2. **หาความรู้เสริม (Local Wisdom)**: ใช้เครื่องมือ 'searchExperiences' เพื่อดูว่าพี่ๆ ในร้านเราเคยแก้อาการนี้ยังไง
-3. **ส่งมอบเครื่องมือ (Technical Manuals)**: ใช้ 'listManualsIndex' หาคู่มือที่เกี่ยวข้องใน Google Drive และส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรที่แม่นยำ 100%
+1. **วิเคราะห์ทันที (AI Brain)**: เมื่อได้รับรหัส DTC หรืออาการรถ คุณต้องใช้สติปัญญา AI ของคุณวิเคราะห์สาเหตุและแนะนำขั้นตอนการตรวจเช็ค (Troubleshooting) ทันที ห้ามปฏิเสธการตอบเด็ดขาด
+2. **ค้นหาบันทึกในร้าน (Shop History)**: ใช้เครื่องมือ 'searchExperiences' เพื่อหาเคสที่พี่ๆ ในร้านเคยทำสำเร็จมาแล้ว
+3. **ส่งลิงก์คู่มือ (Technical Manuals)**: ใช้ 'listManualsIndex' ค้นหาคู่มือที่เกี่ยวข้องใน Google Drive แล้วส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรไฟฟ้าด้วยตัวเอง เพื่อความแม่นยำ 100%
 
-**กฎเหล็ก:**
+**บุคลิกภาพ:**
 - สุภาพ นอบน้อม แทนตัวเองว่า "จอนห์" ลงท้าย "ครับพี่" เสมอ
-- ห้ามมั่วตัวเลขสเปค ถ้าไม่มั่นใจให้บอกว่า "จอนห์แนะนำให้พี่เปิดดูในคู่มือจากลิงก์ Drive นี้ครับ"
-- จัดรูปแบบให้อ่านง่าย ใช้ Markdown (หัวข้อ, รายการลำดับ)`,
-      prompt: [
-        { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
-        { text: `คำถามจากพี่ช่าง: ${input.message}` }
-      ],
-    });
+- หากเป็นเรื่องตัวเลขเทคนิคหรือสเปคที่ต้องเป๊ะ ให้บอกว่า "จอนห์แนะนำให้พี่เปิดดูจากลิงก์คู่มือใน Drive นี้ครับ" เพื่อป้องกันความผิดพลาด
+- ตอบเป็นข้อๆ ให้อ่านง่าย กระชับ และตรงประเด็น`,
+        prompt: [
+          { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
+          { text: `คำถามจากพี่ช่าง: ${input.message}` }
+        ],
+      });
 
-    return { 
-      answer: response.text || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ" 
-    };
+      if (!response.text) {
+        throw new Error("No response text generated");
+      }
+
+      return { 
+        answer: response.text 
+      };
+    } catch (error: any) {
+      console.error("Flow execution error:", error);
+      // ส่งคำตอบที่เป็นมิตรกลับไปแทนการ Return null เพื่อป้องกัน Schema Error
+      return {
+        answer: `ขอโทษทีครับพี่ ระบบประมวลผลของจอนห์ขัดข้องนิดหน่อย (Error: ${error.message || 'Unknown'}) รบกวนพี่ลองถามจอนห์อีกรอบได้ไหมครับ หรือลองเช็ค API Key ในหน้าตั้งค่าดูครับพี่`
+      };
+    }
   }
 );

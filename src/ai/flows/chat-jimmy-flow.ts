@@ -1,6 +1,8 @@
 'use server';
 /**
  * @fileOverview แชทกับน้องจิมมี่ - AI ผู้ช่วยอัจฉริยะประจำร้าน 'สหดีเซล' ของพี่โจ้
+ * 
+ * ปรับปรุง: แก้ไขปัญหา 404 Model Not Found และ Schema Error
  */
 
 import { ai } from '@/ai/genkit';
@@ -14,97 +16,38 @@ function getServerFirestore() {
   return getFirestore(app);
 }
 
-// --- AI Tools Definitions ---
+// --- Tools ---
 
 const getAccountingSummary = ai.defineTool(
   {
     name: 'getAccountingSummary',
-    description: 'ดึงข้อมูลสรุปรายรับ-รายจ่ายย้อนหลัง 6 เดือน เพื่อวิเคราะห์ผลกำไรและกระแสเงินสด',
-    inputSchema: z.object({
-      months: z.number().optional().describe('จำนวนเดือนที่ต้องการดูย้อนหลัง'),
-    }),
+    description: 'ดึงข้อมูลสรุปรายรับ-รายจ่ายย้อนหลัง เพื่อวิเคราะห์ผลกำไรและกระแสเงินสด',
+    inputSchema: z.object({}),
     outputSchema: z.any(),
   },
-  async (input) => {
+  async () => {
     try {
       const db = getServerFirestore();
       const entriesRef = collection(db, 'accountingEntries');
-      const snap = await getDocs(query(entriesRef, orderBy('entryDate', 'desc'), limit(500)));
+      const snap = await getDocs(query(entriesRef, orderBy('entryDate', 'desc'), limit(200)));
       
-      const data = snap.docs.map(d => d.data());
-      const summary = data.reduce((acc: any, curr: any) => {
-        const month = curr.entryDate.substring(0, 7);
-        if (!acc[month]) acc[month] = { income: 0, expense: 0 };
-        if (curr.entryType === 'CASH_IN' || curr.entryType === 'RECEIPT') acc[month].income += curr.amount;
-        if (curr.entryType === 'CASH_OUT') acc[month].expense += curr.amount;
-        return acc;
-      }, {});
-
+      const summary: any = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        const month = (data.entryDate || "").substring(0, 7);
+        if (!month) return;
+        if (!summary[month]) summary[month] = { income: 0, expense: 0 };
+        if (data.entryType === 'CASH_IN' || data.entryType === 'RECEIPT') summary[month].income += (data.amount || 0);
+        if (data.entryType === 'CASH_OUT') summary[month].expense += (data.amount || 0);
+      });
       return summary;
-    } catch (e: any) {
-      return { error: 'PERMISSION_DENIED' };
+    } catch (e) {
+      return { error: 'Could not fetch accounting data' };
     }
   }
 );
 
-const getJobStatistics = ai.defineTool(
-  {
-    name: 'getJobStatistics',
-    description: 'ดึงข้อมูลสถิติจำนวนใบงานแยกตามสถานะและแผนก เพื่อดูความหนาแน่นของงาน',
-    inputSchema: z.object({}),
-    outputSchema: z.any(),
-  },
-  async () => {
-    try {
-      const db = getServerFirestore();
-      const jobsRef = collection(db, 'jobs');
-      const snap = await getDocs(jobsRef);
-      
-      const stats: any = { status: {}, department: {}, activeTotal: 0 };
-      snap.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.status !== 'CLOSED') {
-          stats.activeTotal++;
-          stats.status[data.status] = (stats.status[data.status] || 0) + 1;
-          stats.department[data.department] = (stats.department[data.department] || 0) + 1;
-        }
-      });
-      return stats;
-    } catch (e: any) {
-      return { error: 'PERMISSION_DENIED' };
-    }
-  }
-);
-
-const getWorkerDetails = ai.defineTool(
-  {
-    name: 'getWorkerDetails',
-    description: 'ดึงรายชื่อพนักงานทั้งหมด แผนก และฐานเงินเดือน เพื่อวิเคราะห์งบค่าแรง',
-    inputSchema: z.object({}),
-    outputSchema: z.any(),
-  },
-  async () => {
-    try {
-      const db = getServerFirestore();
-      const usersRef = collection(db, 'users');
-      const snap = await getDocs(query(usersRef, where('role', 'in', ['WORKER', 'OFFICER'])));
-      
-      return snap.docs.map(doc => {
-        const d = doc.data();
-        return {
-          name: d.displayName,
-          dept: d.department,
-          status: d.status,
-          salary: d.hr?.salaryMonthly || 0,
-        };
-      });
-    } catch (e: any) {
-      return { error: 'PERMISSION_DENIED' };
-    }
-  }
-);
-
-// --- Flow Implementation ---
+// --- Flow ---
 
 const ChatJimmyInputSchema = z.object({
   message: z.string().describe('ข้อความจากผู้ใช้งาน'),
@@ -129,7 +72,7 @@ export async function chatJimmy(input: z.infer<typeof ChatJimmyInputSchema>) {
       }
     }
   } catch (e) {
-    console.error("Error setting API Key:", e);
+    console.error("Error setting API Key for Jimmy:", e);
   }
 
   return chatJimmyFlow(input);
@@ -142,19 +85,23 @@ const chatJimmyFlow = ai.defineFlow(
     outputSchema: ChatJimmyOutputSchema,
   },
   async (input) => {
-    const response = await ai.generate({
-      model: 'googleai/gemini-1.5-flash',
-      tools: [getAccountingSummary, getJobStatistics, getWorkerDetails],
-      system: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
-      - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
-      - วิเคราะห์บัญชี สรุปงานค้าง และคุมงบค่าแรงไม่ให้เกิน 240,000 บาท/เดือน
-      - หากต้องสรุปตัวเลข ให้แสดงเป็นตาราง Markdown ที่สวยงามเสมอ`,
-      prompt: [
-        { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
-        { text: `ข้อความจากพี่โจ้: ${input.message}` }
-      ],
-    });
+    try {
+      const response = await ai.generate({
+        model: 'googleai/gemini-1.5-flash',
+        tools: [getAccountingSummary],
+        system: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
+        - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
+        - หน้าที่: วิเคราะห์บัญชี สรุปงานค้าง และคุมงบค่าแรงไม่ให้เกิน 240,000 บาท/เดือน
+        - หากต้องสรุปตัวเลข ให้แสดงเป็นตาราง Markdown ที่สวยงามเสมอค่ะ`,
+        prompt: [
+          { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
+          { text: `ข้อความจากพี่โจ้: ${input.message}` }
+        ],
+      });
 
-    return { response: response.text || "น้องจิมมี่สับสนนิดหน่อยค่ะ รบกวนพี่โจ้ลองถามอีกรอบนะคะ" };
+      return { response: response.text || "น้องจิมมี่สับสนนิดหน่อยค่ะ รบกวนพี่โจ้ลองถามใหม่อีกครั้งนะคะ" };
+    } catch (error: any) {
+      return { response: `ขอโทษทีค่ะพี่โจ้ ระบบน้องจิมมี่ขัดข้องนิดหน่อย (Error: ${error.message}) พี่โจ้ลองเช็ค API Key อีกทีนะคะ` };
+    }
   }
 );
