@@ -9,13 +9,6 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   serverExternalPackages: ["firebase-admin"],
-  experimental: {
-    // Fix Cross origin request warnings in Cloud Workstations
-    allowedDevOrigins: [
-      "*.cluster-bqwaigqtxbeautecnatk4o6ynk.cloudworkstations.dev",
-      "*.cloudworkstations.dev"
-    ]
-  },
   images: {
     remotePatterns: [
       {
