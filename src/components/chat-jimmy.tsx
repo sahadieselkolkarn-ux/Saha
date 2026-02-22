@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -22,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useDoc } from "@/firebase/firestore/use-doc";
+import { chatJimmy } from "@/ai/flows/chat-jimmy-flow";
 import type { GenAISettings } from "@/lib/types";
 
 interface Message {
@@ -31,7 +31,7 @@ interface Message {
 }
 
 export function ChatJimmy() {
-  const { db, firebaseApp } = useFirebase();
+  const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   
@@ -63,12 +63,12 @@ export function ChatJimmy() {
   }, [messages, isLoading]);
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading || !firebaseApp) return;
+    if (!inputValue.trim() || isLoading) return;
 
     if (!aiSettings?.geminiApiKey) {
         toast({
             variant: "destructive",
-            title: "จิมมี่ยังไม่พร้อม",
+            title: "จิมมี่ยยังไม่พร้อม",
             description: "กรุณาตั้งค่า API Key ก่อนนะคะ"
         });
         setIsApiKeyDialogOpen(true);
@@ -85,16 +85,12 @@ export function ChatJimmy() {
     setIsLoading(true);
 
     try {
-      // Call Cloud Function instead of Server Action
-      const functions = getFunctions(firebaseApp, 'us-central1');
-      const chatFn = httpsCallable(functions, "chatWithJimmy");
+      const history = messages.map(m => ({ role: m.role, content: m.content }));
+      const result = await chatJimmy({ message: userMessage, history });
       
-      const result = await chatFn({ message: userMessage });
-      const data = result.data as { answer: string };
-
       setMessages(prev => [
         ...prev,
-        { role: 'model', content: data.answer, timestamp: new Date() }
+        { role: 'model', content: result.response, timestamp: new Date() }
       ]);
     } catch (error: any) {
       console.error("Chat Error:", error);

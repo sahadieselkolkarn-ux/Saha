@@ -38,9 +38,9 @@ export default function CarRepairAIChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: `สวัสดีครับพี่ๆ ช่าง! ผม "น้องจอนห์" ผู้ช่วยวิเคราะห์อาการรถคู่ใจของพี่ๆ ครับ
+      content: `สวัสดีค่ะพี่ๆ ช่าง! จิมมี่มารับหน้าที่ดูแลการวิเคราะห์อาการรถให้แทนจอนห์แล้วนะคะ
 
-วันนี้พี่เจอรถคันไหนอาการหนัก หรือเจอโค้ด DTC อะไรมา พิมพ์บอกจอนห์ได้เลยครับ จอนห์จะช่วยวิเคราะห์หาสาเหตุ พร้อมกับค้นหาบันทึกการซ่อมในร้านและคู่มือใน Drive ให้พี่ลุยงานต่อได้ทันทีครับ!`,
+วันนี้พี่เจอรถคันไหนอาการหนัก หรือเจอโค้ด DTC อะไรมา พิมพ์บอกจิมมี่ได้เลยค่ะ จิมมี่จะช่วยวิเคราะห์หาสาเหตุ พร้อมกับค้นหาบันทึกการซ่อมในร้านและคู่มือให้พี่ลุยงานต่อได้ทันทีเลยค่ะ!`,
       timestamp: new Date()
     }
   ]);
@@ -73,8 +73,8 @@ export default function CarRepairAIChatPage() {
     if (!aiSettings?.geminiApiKey) {
         toast({
             variant: "destructive",
-            title: "ระบบ AI ยังไม่พร้อม",
-            description: "กรุณาติดต่อแอดมินเพื่อตั้งค่า API Key ก่อนนะครับ"
+            title: "จิมมี่ยังไม่พร้อม",
+            description: "กรุณาติดต่อแอดมินเพื่อตั้งค่า API Key ก่อนนะคะ"
         });
         if (isAdmin) setIsApiKeyDialogOpen(true);
         return;
@@ -91,14 +91,14 @@ export default function CarRepairAIChatPage() {
       
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: result?.answer || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ", 
+        content: result?.answer || "ขอโทษทีค่ะพี่ จิมมี่กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมคะ", 
         timestamp: new Date() 
       }]);
     } catch (error: any) {
       console.error("AI Flow Error:", error);
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: `ขอโทษทีครับพี่ ระบบผมขัดข้องนิดหน่อย: ${error.message || "Unknown Error"}`, 
+        content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้องนิดหน่อย: ${error.message || "Unknown Error"}`, 
         timestamp: new Date() 
       }]);
     } finally {
@@ -116,7 +116,7 @@ export default function CarRepairAIChatPage() {
         updatedByUid: profile.uid,
         updatedByName: profile.displayName
       }, { merge: true });
-      toast({ title: "บันทึก API Key สำเร็จแล้วครับพี่!" });
+      toast({ title: "บันทึก API Key สำเร็จแล้วค่ะพี่!" });
       setIsApiKeyDialogOpen(false);
       setNewApiKeyInput("");
     } catch (e: any) {
@@ -129,13 +129,13 @@ export default function CarRepairAIChatPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-9rem)] space-y-3">
       <PageHeader 
-        title="สอบถามน้องจอนห์ (AI)" 
+        title="สอบถามน้องจิมมี่ (AI ช่างเทคนิค)" 
         description="ปรึกษาปัญหาทางเทคนิค วิเคราะห์อาการเสีย และค้นหาคู่มือจากคลังข้อมูลร้าน Sahadiesel"
       >
         <div className="flex items-center gap-2">
             <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
                 <Sparkles className="h-3 w-3 text-primary animate-pulse" />
-                <span className="text-[10px] font-bold text-primary uppercase tracking-wider">John is Online</span>
+                <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Jimmy is Online</span>
             </div>
             {isAdmin && (
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setIsApiKeyDialogOpen(true)}>
@@ -203,7 +203,7 @@ export default function CarRepairAIChatPage() {
                     </Avatar>
                     <div className="bg-white border rounded-2xl rounded-tl-none px-4 py-2.5 flex items-center gap-2 shadow-sm border-border">
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                    <span className="text-xs text-muted-foreground italic">จอนห์กำลังวิเคราะห์อาการและค้นหาข้อมูลอ้างอิงให้ครับพี่...</span>
+                    <span className="text-xs text-muted-foreground italic">จิมมี่กำลังวิเคราะห์อาการและค้นหาข้อมูลอ้างอิงให้ค่ะพี่...</span>
                     </div>
                 </div>
                 )}
@@ -213,7 +213,7 @@ export default function CarRepairAIChatPage() {
             <div className="p-3 bg-background border-t">
             <div className="flex gap-2 max-w-4xl mx-auto items-center">
                 <Input 
-                placeholder="พิมพ์อาการรถ หรือรหัส DTC มาได้เลยครับพี่..." 
+                placeholder="พิมพ์อาการรถ หรือรหัส DTC มาได้เลยค่ะพี่..." 
                 className="rounded-full bg-muted/30 border-primary/20 h-10 px-5 focus-visible:ring-primary shadow-inner"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -241,9 +241,9 @@ export default function CarRepairAIChatPage() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="text-[11px] text-amber-700 space-y-2">
-                    <p>• หากจอนห์ตอบไม่ถูก ให้พี่ไปบันทึกวิธีแก้ที่ถูกต้องในเมนู <b>"แชร์ประสบการณ์"</b> ครับ</p>
-                    <p>• จอนห์จะใช้ข้อมูลที่พี่บันทึก มาตอบคำถามครั้งต่อไปทันที (Learning)</p>
-                    <p>• หากหาในบันทึกไม่เจอ จอนห์จะใช้ความรู้ AI วิเคราะห์และส่งลิงก์คู่มือให้ครับ</p>
+                    <p>• หากจิมมี่ตอบไม่ถูก ให้พี่ไปบันทึกวิธีแก้ที่ถูกต้องในเมนู <b>"แชร์ประสบการณ์"</b> ค่ะ</p>
+                    <p>• จิมมี่จะเรียนรู้ข้อมูลนั้นมาตอบคำถามครั้งต่อไปทันที</p>
+                    <p>• หากหาในบันทึกไม่เจอ จิมมี่จะใช้ความรู้ AI วิเคราะห์และส่งลิงก์คู่มือให้ค่ะ</p>
                 </CardContent>
             </Card>
 
@@ -254,7 +254,7 @@ export default function CarRepairAIChatPage() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="text-[11px] text-muted-foreground">
-                    ข้อมูลเทคนิคและบันทึกการซ่อมทั้งหมด เป็นความลับเฉพาะของร้าน Sahadiesel จะไม่ถูกนำไปเผยแพร่ที่อื่นครับ
+                    ข้อมูลเทคนิคและบันทึกการซ่อมทั้งหมด เป็นความลับเฉพาะของร้าน Sahadiesel จะไม่ถูกนำไปเผยแพร่ที่อื่นค่ะ
                 </CardContent>
             </Card>
         </div>
@@ -266,7 +266,7 @@ export default function CarRepairAIChatPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Key className="h-5 w-5 text-primary" /> 
-              ตั้งค่าสมองน้องจอนห์ (Paid API)
+              ตั้งค่าสมองน้องจิมมี่
             </DialogTitle>
             <DialogDescription>
               ระบุ Gemini API Key ของร้านเพื่อให้ AI ทำงานได้เสถียรและแม่นยำขึ้น
@@ -285,7 +285,7 @@ export default function CarRepairAIChatPage() {
             </div>
             {aiSettings?.geminiApiKey && (
               <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center gap-2 text-xs text-green-700 font-medium">
-                <ShieldCheck className="h-4 w-4" /> ระบบเชื่อมต่อกับ Paid API เรียบร้อยแล้วครับพี่โจ้
+                <ShieldCheck className="h-4 w-4" /> ระบบเชื่อมต่อกับ Paid API เรียบร้อยแล้วค่ะพี่โจ้
               </div>
             )}
           </div>
@@ -293,7 +293,7 @@ export default function CarRepairAIChatPage() {
             <Button variant="outline" onClick={() => setIsApiKeyDialogOpen(false)}>ยกเลิก</Button>
             <Button onClick={saveApiKey} disabled={isSavingKey || !apiKeyInput.trim()}>
               {isSavingKey && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              บันทึกกุญแจ
+              บันทึก
             </Button>
           </DialogFooter>
         </DialogContent>

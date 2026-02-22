@@ -1,13 +1,13 @@
 'use server';
 /**
- * @fileOverview แชทกับน้องจิมมี่ - AI ผู้ช่วยอัจฉริยะประจำร้าน 'สหดีเซล' ของพี่โจ้
+ * @fileOverview "น้องจิมมี่ (ฝ่ายบริหาร)" - AI ผู้ช่วยอัจฉริยะประจำร้าน 'สหดีเซล' ของพี่โจ้
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, collection, query, getDocs, orderBy, limit } from 'firebase/firestore';
 
 function getServerFirestore() {
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -26,9 +26,7 @@ const getAccountingSummary = ai.defineTool(
   async () => {
     try {
       const db = getServerFirestore();
-      const entriesRef = collection(db, 'accountingEntries');
-      const snap = await getDocs(query(entriesRef, orderBy('entryDate', 'desc'), limit(100)));
-      
+      const snap = await getDocs(query(collection(db, 'accountingEntries'), orderBy('entryDate', 'desc'), limit(100)));
       const summary: any = {};
       snap.docs.forEach(d => {
         const data = d.data();
@@ -45,6 +43,32 @@ const getAccountingSummary = ai.defineTool(
   }
 );
 
+const getActiveJobsStatus = ai.defineTool(
+  {
+    name: 'getActiveJobsStatus',
+    description: 'ดึงสถานะงานซ่อมที่กำลังดำเนินการอยู่ในปัจจุบันทุกแผนก',
+    inputSchema: z.object({}),
+    outputSchema: z.any(),
+  },
+  async () => {
+    try {
+      const db = getServerFirestore();
+      const snap = await getDocs(query(collection(db, 'jobs'), limit(100)));
+      return snap.docs
+        .filter(d => d.data().status !== 'CLOSED')
+        .map(d => ({
+          id: d.id,
+          customer: d.data().customerSnapshot?.name,
+          dept: d.data().department,
+          status: d.data().status,
+          desc: d.data().description
+        }));
+    } catch (e) {
+      return { error: 'Could not fetch jobs' };
+    }
+  }
+);
+
 // --- Flow ---
 
 const ChatJimmyInputSchema = z.object({
@@ -56,7 +80,7 @@ const ChatJimmyInputSchema = z.object({
 });
 
 const ChatJimmyOutputSchema = z.object({
-  response: z.string().describe('ข้อความตอบกลับจาก AI'),
+  response: z.string().describe('ข้อความตอบกลับจากจิมมี่'),
 });
 
 export async function chatJimmy(input: z.infer<typeof ChatJimmyInputSchema>): Promise<z.infer<typeof ChatJimmyOutputSchema>> {
@@ -65,16 +89,12 @@ export async function chatJimmy(input: z.infer<typeof ChatJimmyInputSchema>): Pr
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
     if (settingsSnap.exists()) {
       const key = settingsSnap.data().geminiApiKey;
-      if (key) {
-        process.env.GOOGLE_GENAI_API_KEY = key;
-      }
+      if (key) process.env.GOOGLE_GENAI_API_KEY = key;
     }
-    
     const result = await chatJimmyFlow(input);
-    return result || { response: "น้องจิมมี่สับสนนิดหน่อยค่ะ รบกวนพี่โจ้ลองถามอีกรอบนะจ๊ะ" };
+    return result || { response: "น้องจิมมี่สับสนนิดหน่อยค่ะพี่โจ้ รบกวนถามอีกรอบนะคะ" };
   } catch (e: any) {
-    console.error("chatJimmy Wrapper Error:", e);
-    return { response: `ขอโทษทีค่ะพี่โจ้ ระบบขัดข้อง: ${e.message}. พี่โจ้ลองเช็ค API Key อีกทีนะคะ` };
+    return { response: `ขอโทษทีค่ะพี่จ๋า ระบบของจิมมี่ขัดข้อง: ${e.message}. พี่โจ้ลองเช็ค API Key อีกทีนะจ๊ะ` };
   }
 }
 
@@ -85,24 +105,28 @@ const chatJimmyFlow = ai.defineFlow(
     outputSchema: ChatJimmyOutputSchema,
   },
   async (input) => {
-    try {
-      const response = await ai.generate({
-        model: 'googleai/gemini-1.5-flash',
-        tools: [getAccountingSummary],
-        system: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
-        - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
-        - หน้าที่: วิเคราะห์บัญชี สรุปงานค้าง และคุมงบค่าแรงไม่ให้เกิน 240,000 บาท/เดือน
-        - หากต้องสรุปตัวเลข ให้แสดงเป็นตาราง Markdown ที่สวยงามเสมอค่ะ`,
-        prompt: [
-          { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
-          { text: `ข้อความจากพี่โจ้: ${input.message}` }
-        ],
-      });
+    const response = await ai.generate({
+      model: 'googleai/gemini-1.5-flash',
+      tools: [getAccountingSummary, getActiveJobsStatus],
+      system: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
 
-      return { response: response.text || "น้องจิมมี่ไปพักผ่อนแป๊บนึงนะคะ รบกวนถามใหม่ค่ะ" };
-    } catch (error: any) {
-      console.error("chatJimmyFlow Internal Error:", error);
-      throw error;
-    }
+**บุคลิกและเป้าหมาย:**
+- เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ และเอาใจใส่ "พี่โจ้" และ "พี่ถิน" มากๆ
+- แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" หรือ "นะจ๊ะ" เสมอ
+- คุณมองเห็นข้อมูล "งานซ่อม" "บัญชี" และ "พนักงาน" ทั้งหมดในร้านผ่านเครื่องมือของคุณ
+
+**หน้าที่ของคุณ:**
+1. วิเคราะห์บัญชี: สรุปกำไร/ขาดทุนจากข้อมูลบัญชีที่ได้รับ
+2. คุมงบค่าแรง: งบรวมต้องไม่เกิน 240,000 บาท/เดือน (เตือนพี่โจ้หากเกิน)
+3. บริหารงานซ่อม: สรุปงานค้างและแจ้งแผนกที่งานเยอะเกินไป
+4. ให้กำลังใจ: สู้ไปพร้อมกับพี่โจ้เสมอค่ะ
+
+หากต้องแสดงตัวเลขเยอะๆ ให้สรุปเป็น "ตาราง (Markdown Table)" ที่สวยงามเสมอนะคะ`,
+      prompt: [
+        { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
+        { text: `ข้อความจากพี่โจ้: ${input.message}` }
+      ],
+    });
+    return { response: response.text || "น้องจิมมี่ไปพักผ่อนแป๊บนึงนะคะพี่โจ้ รบกวนถามใหม่ค่ะ" };
   }
 );
