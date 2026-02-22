@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, query, getDocs, limit, orderBy } from "firebase/firestore";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { askCarRepairAI } from "@/ai/flows/car-repair-assistant-flow";
+import { askJimmy } from "@/ai/flows/jimmy-ai-flow";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { GenAISettings } from "@/lib/types";
@@ -38,9 +38,9 @@ export default function CarRepairAIChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: `สวัสดีค่ะพี่ๆ ช่าง! จิมมี่มารับหน้าที่ดูแลการวิเคราะห์อาการรถให้แทนจอนห์แล้วนะคะ
+      content: `สวัสดีค่ะพี่ๆ ช่าง! จิมมี่มารับหน้าที่ดูแลการวิเคราะห์อาการรถต่อจากจอนห์แล้วนะคะ
 
-วันนี้พี่เจอรถคันไหนอาการหนัก หรือเจอโค้ด DTC อะไรมา พิมพ์บอกจิมมี่ได้เลยค่ะ จิมมี่จะช่วยวิเคราะห์หาสาเหตุ พร้อมกับค้นหาบันทึกการซ่อมในร้านและคู่มือให้พี่ลุยงานต่อได้ทันทีเลยค่ะ!`,
+วันนี้พี่เจอรถคันไหนอาการหนัก หรือเจอโค้ด DTC อะไรมา พิมพ์บอกจิมมี่ได้เลยค่ะ จิมมี่จะช่วยวิเคราะห์สาเหตุ พร้อมกับค้นหาบันทึกการซ่อมในร้านและคู่มือให้พี่ลุยงานต่อได้ทันทีเลยค่ะ!`,
       timestamp: new Date()
     }
   ]);
@@ -57,7 +57,6 @@ export default function CarRepairAIChatPage() {
 
   const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
 
-  // Auto scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       const scrollContainer = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -68,14 +67,10 @@ export default function CarRepairAIChatPage() {
   }, [messages, isLoading]);
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || !db) return;
 
     if (!aiSettings?.geminiApiKey) {
-        toast({
-            variant: "destructive",
-            title: "จิมมี่ยังไม่พร้อม",
-            description: "กรุณาติดต่อแอดมินเพื่อตั้งค่า API Key ก่อนนะคะ"
-        });
+        toast({ variant: "destructive", title: "จิมมี่ยังไม่พร้อม", description: "กรุณาติดต่อแอดมินเพื่อตั้งค่า API Key ก่อนนะคะ" });
         if (isAdmin) setIsApiKeyDialogOpen(true);
         return;
     }
@@ -86,19 +81,32 @@ export default function CarRepairAIChatPage() {
     setIsLoading(true);
 
     try {
+      // 1. Fetch Context from Client-side (Permission-safe)
+      const expSnap = await getDocs(query(collection(db, "carRepairExperiences"), orderBy("createdAt", "desc"), limit(20)));
+      const manualsSnap = await getDocs(collection(db, "carRepairManuals"));
+      
+      const experiences = expSnap.docs.map(d => d.data());
+      const manuals = manualsSnap.docs.map(d => d.data());
+
+      // 2. Call Jimmy AI
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const result = await askCarRepairAI({ message: userMsg, history });
+      const result = await askJimmy({ 
+        message: userMsg, 
+        scope: 'TECHNICAL',
+        apiKey: aiSettings.geminiApiKey,
+        history,
+        contextData: { experiences, manuals }
+      });
       
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: result?.answer || "ขอโทษทีค่ะพี่ จิมมี่กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมคะ", 
+        content: result?.answer || "ขอโทษทีค่ะพี่ จิมมี่ประมวลผลขัดข้อง รบกวนลองอีกรอบนะคะ", 
         timestamp: new Date() 
       }]);
     } catch (error: any) {
-      console.error("AI Flow Error:", error);
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้องนิดหน่อย: ${error.message || "Unknown Error"}`, 
+        content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้อง: ${error.message || "Unknown Error"}`, 
         timestamp: new Date() 
       }]);
     } finally {
@@ -146,7 +154,6 @@ export default function CarRepairAIChatPage() {
       </PageHeader>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 flex-1 overflow-hidden">
-        {/* Chat Area */}
         <Card className="lg:col-span-3 overflow-hidden flex flex-col border-primary/20 shadow-lg bg-background/50 backdrop-blur-sm">
             <div className="p-2 bg-muted/30 border-b flex items-center justify-between px-4">
                 <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
@@ -193,13 +200,10 @@ export default function CarRepairAIChatPage() {
                     </div>
                 );
                 })}
-                
                 {isLoading && (
                 <div className="flex w-full gap-3">
                     <Avatar className="h-8 w-8 shrink-0 bg-primary text-white border shadow-sm">
-                    <div className="bg-primary flex items-center justify-center w-full h-full text-white">
-                        <Bot className="h-4 w-4 animate-bounce" />
-                    </div>
+                    <div className="bg-primary flex items-center justify-center w-full h-full text-white"><Bot className="h-4 w-4 animate-bounce" /></div>
                     </Avatar>
                     <div className="bg-white border rounded-2xl rounded-tl-none px-4 py-2.5 flex items-center gap-2 shadow-sm border-border">
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
@@ -220,80 +224,40 @@ export default function CarRepairAIChatPage() {
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 disabled={isLoading}
                 />
-                <Button 
-                size="icon" 
-                className="rounded-full h-10 w-10 shrink-0 shadow-md hover:scale-105 active:scale-95 transition-transform"
-                onClick={handleSend}
-                disabled={!inputValue.trim() || isLoading}
-                >
+                <Button size="icon" className="rounded-full h-10 w-10 shrink-0 shadow-md transition-transform" onClick={handleSend} disabled={!inputValue.trim() || isLoading}>
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
             </div>
             </div>
         </Card>
 
-        {/* Info Sidebar */}
         <div className="hidden lg:flex flex-col gap-4">
             <Card className="bg-amber-50 border-amber-200">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-xs font-bold flex items-center gap-2 text-amber-800">
-                        <Info className="h-3 w-3" /> คำแนะนำการใช้งาน
-                    </CardTitle>
-                </CardHeader>
+                <CardHeader className="pb-2"><CardTitle className="text-xs font-bold flex items-center gap-2 text-amber-800"><Info className="h-3 w-3" /> คำแนะนำการใช้งาน</CardTitle></CardHeader>
                 <CardContent className="text-[11px] text-amber-700 space-y-2">
                     <p>• หากจิมมี่ตอบไม่ถูก ให้พี่ไปบันทึกวิธีแก้ที่ถูกต้องในเมนู <b>"แชร์ประสบการณ์"</b> ค่ะ</p>
                     <p>• จิมมี่จะเรียนรู้ข้อมูลนั้นมาตอบคำถามครั้งต่อไปทันที</p>
-                    <p>• หากหาในบันทึกไม่เจอ จิมมี่จะใช้ความรู้ AI วิเคราะห์และส่งลิงก์คู่มือให้ค่ะ</p>
-                </CardContent>
-            </Card>
-
-            <Card className="bg-primary/5 border-primary/20">
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-xs font-bold flex items-center gap-2 text-primary">
-                        <ShieldCheck className="h-3 w-3" /> ความปลอดภัยข้อมูล
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="text-[11px] text-muted-foreground">
-                    ข้อมูลเทคนิคและบันทึกการซ่อมทั้งหมด เป็นความลับเฉพาะของร้าน Sahadiesel จะไม่ถูกนำไปเผยแพร่ที่อื่นค่ะ
                 </CardContent>
             </Card>
         </div>
       </div>
 
-      {/* API Key Dialog */}
       <Dialog open={isApiKeyDialogOpen} onOpenChange={setIsApiKeyDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5 text-primary" /> 
-              ตั้งค่าสมองน้องจิมมี่
-            </DialogTitle>
-            <DialogDescription>
-              ระบุ Gemini API Key ของร้านเพื่อให้ AI ทำงานได้เสถียรและแม่นยำขึ้น
-            </DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><Key className="h-5 w-5 text-primary" /> ตั้งค่าสมองน้องจิมมี่</DialogTitle>
+            <DialogDescription>ระบุ Gemini API Key ของร้านเพื่อให้ AI ทำงานได้เสถียรและแม่นยำขึ้น</DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="api-key">Gemini API Key</Label>
-              <Input 
-                id="api-key" 
-                type="password" 
-                placeholder="ระบุ API Key ที่นี่..." 
-                value={apiKeyInput}
-                onChange={(e) => setNewApiKeyInput(e.target.value)}
-              />
+              <Input id="api-key" type="password" placeholder="ระบุ API Key ที่นี่..." value={apiKeyInput} onChange={(e) => setNewApiKeyInput(e.target.value)} />
             </div>
-            {aiSettings?.geminiApiKey && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-md flex items-center gap-2 text-xs text-green-700 font-medium">
-                <ShieldCheck className="h-4 w-4" /> ระบบเชื่อมต่อกับ Paid API เรียบร้อยแล้วค่ะพี่โจ้
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsApiKeyDialogOpen(false)}>ยกเลิก</Button>
             <Button onClick={saveApiKey} disabled={isSavingKey || !apiKeyInput.trim()}>
-              {isSavingKey && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              บันทึก
+              {isSavingKey && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} บันทึก
             </Button>
           </DialogFooter>
         </DialogContent>
