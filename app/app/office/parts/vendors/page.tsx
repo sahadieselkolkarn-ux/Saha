@@ -35,11 +35,13 @@ function VendorsPageContent() {
   const [vendorToDelete, setVendorToDelete] = useState<WithId<Vendor> | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
 
+  // Management and Office can view
   const hasPermission = useMemo(() => {
     if (!profile) return false;
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
   }, [profile]);
   
+  // Management and Office can add/edit (unless they are Viewers)
   const canEdit = useMemo(() => {
     if (!profile || profile.role === 'VIEWER') return false;
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'OFFICE' || profile.department === 'MANAGEMENT';
@@ -196,7 +198,7 @@ function VendorsPageContent() {
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal /></Button></DropdownMenuTrigger>
+                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem asChild><Link href={`/app/office/parts/vendors/${vendor.id}?view=1`}><Eye className="mr-2 h-4 w-4"/> ดู</Link></DropdownMenuItem>
                             {canEdit && (
