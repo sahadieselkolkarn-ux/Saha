@@ -1,6 +1,7 @@
 'use server';
 /**
  * @fileOverview "น้องจิมมี่" Unified AI Flow - หนึ่งเดียวที่ดูแลทั้งบริหารและเทคนิค
+ * ปรับปรุงระบบการส่งข้อมูลเพื่อจบปัญหา "Invalid JSON payload (systemInstruction)"
  */
 
 import { ai } from '@/ai/genkit';
@@ -25,8 +26,11 @@ const JimmyAiOutputSchema = z.object({
   answer: z.string().describe('คำตอบจากน้องจิมมี่'),
 });
 
+/**
+ * askJimmy - ฟังก์ชันหลักสำหรับการเรียกใช้งานน้องจิมมี่จากหน้าจอต่างๆ
+ */
 export async function askJimmy(input: z.infer<typeof JimmyAiInputSchema>): Promise<z.infer<typeof JimmyAiOutputSchema>> {
-  // Set API Key for this request
+  // บันทึก API Key สำหรับ Request นี้
   process.env.GOOGLE_GENAI_API_KEY = input.apiKey;
   
   try {
@@ -34,10 +38,9 @@ export async function askJimmy(input: z.infer<typeof JimmyAiInputSchema>): Promi
     return result || { answer: "ขอโทษทีค่ะพี่จ๋า จิมมี่สับสนนิดหน่อย รบกวนถามอีกรอบนะคะ" };
   } catch (e: any) {
     console.error("Jimmy Flow Error:", e);
-    // Return a structured error message instead of throwing to prevent UI crash
-    const errorMsg = e.message || "เกิดข้อผิดพลาดในการประมวลผล";
+    // ส่งข้อความแจ้งเตือนกลับในรูปแบบที่ถูกต้องเพื่อป้องกันหน้าจอค้าง
     return { 
-      answer: `น้องจิมมี่ขัดข้องนิดหน่อยค่ะพี่: ${errorMsg}. รบกวนพี่เช็ค API Key อีกทีนะคะ` 
+      answer: `น้องจิมมี่ขัดข้องนิดหน่อยค่ะพี่: ${e.message || "ระบบประมวลผลล้มเหลว"}. รบกวนพี่เช็ค API Key อีกทีนะคะ` 
     };
   }
 }
@@ -51,6 +54,7 @@ const jimmyAiFlow = ai.defineFlow(
   async (input) => {
     const isTechnical = input.scope === 'TECHNICAL';
     
+    // กำหนดคำสั่งระบบ (System Instruction) ตามขอบเขตการใช้งาน
     const systemInstruction = isTechnical 
       ? `คุณคือ "น้องจิมมี่" (Technical Expert) ผู้ช่วยช่างอัจฉริยะประจำร้าน Sahadiesel
       
@@ -61,11 +65,11 @@ const jimmyAiFlow = ai.defineFlow(
       
       **หน้าที่ของคุณ:**
       1. วิเคราะห์อาการทันที: ใช้ความรู้ AI วิเคราะห์รหัส DTC หรืออาการรถที่พี่ช่างพิมพ์มา
-      2. อ้างอิงข้อมูลร้าน: ใช้ข้อมูล 'contextData.experiences' ที่ได้รับมาบอกพี่ช่างว่า "ในร้านเราเคยแก้แบบนี้ค่ะ..."
-      3. ส่งมอบคู่มือ: ตรวจสอบ 'contextData.manuals' และส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรที่ถูกต้อง
+      2. อ้างอิงข้อมูลร้าน: ใช้ข้อมูล 'บันทึกการซ่อม' ที่ได้รับมาบอกพี่ช่างว่า "ในร้านเราเคยแก้แบบนี้ค่ะ..."
+      3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรที่ถูกต้อง
       
       **ข้อมูลร้านที่จิมมี่เห็นตอนนี้:**
-      - บันทึกการซ่อมในอดีต: ${JSON.stringify(input.contextData?.experiences || [])}
+      - บันทึกการซ่อม: ${JSON.stringify(input.contextData?.experiences || [])}
       - รายชื่อคู่มือใน Drive: ${JSON.stringify(input.contextData?.manuals || [])}`
       
       : `คุณคือ "น้องจิมมี่" (Business Assistant) ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
@@ -81,19 +85,26 @@ const jimmyAiFlow = ai.defineFlow(
       **ข้อมูลธุรกิจที่ได้รับ:**
       ${JSON.stringify(input.contextData?.businessSummary || {})}`;
 
-    // Properly map history for Genkit 1.x format
-    const history = input.history?.map(m => ({
-      role: m.role as 'user' | 'model',
-      content: [{ text: m.content }]
-    }));
+    // เตรียมประวัติการคุยโดยใช้บทบาท 'system' ที่จุดเริ่มต้น เพื่อความเสถียรสูงสุด
+    const messages = [
+      {
+        role: 'system' as const,
+        content: [{ text: systemInstruction }]
+      },
+      ...(input.history?.map(m => ({
+        role: m.role as 'user' | 'model',
+        content: [{ text: m.content }]
+      })) || []),
+      {
+        role: 'user' as const,
+        content: [{ text: input.message }]
+      }
+    ];
 
+    // เรียกใช้งาน AI โดยส่ง messages ทั้งหมดไปประมวลผล
     const response = await ai.generate({
       model: 'googleai/gemini-1.5-flash',
-      // IMPORTANT: DO NOT put apiVersion in the generate config block. 
-      // It is a plugin-level configuration and invalid in generation_config.
-      system: systemInstruction,
-      history: history,
-      prompt: input.message,
+      messages: messages,
     });
 
     return { answer: response.text || "จิมมี่กำลังพยายามประมวลผลอยู่ค่ะพี่..." };
