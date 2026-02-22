@@ -5,7 +5,9 @@
  * ระบบวิเคราะห์ปัญหาการซ่อมโดยอ้างอิงจาก:
  * 1. ข้อมูลประสบการณ์ที่ช่างบันทึกไว้ (carRepairExperiences)
  * 2. ค้นหาดัชนีคู่มือที่มีในระบบ ทั้งไฟล์ PDF และลิงก์ Google Drive
- * 3. ค้นหาความรู้ทั่วไปจากการเทรนของ Model
+ * 
+ * ข้อสำคัญ: AI ตัวนี้สามารถเห็น "รายชื่อคู่มือ" แต่ไม่สามารถ "อ่านไส้ใน" ของไฟล์ใน Google Drive ได้
+ * ดังนั้นหากพบคู่มือที่เกี่ยวข้อง จะต้องส่งลิงก์ให้ผู้ใช้เปิดดูเอง
  */
 
 import { ai } from '@/ai/genkit';
@@ -54,9 +56,9 @@ const searchExperiences = ai.defineTool(
 const listManualsIndex = ai.defineTool(
   {
     name: 'listManualsIndex',
-    description: 'ดึงรายชื่อคู่มือซ่อม (Manuals) ทั้งหมดที่มีในระบบ เพื่อดูว่ามีข้อมูลของยี่ห้อหรือรุ่นที่ต้องการหรือไม่',
+    description: 'ดึงรายชื่อคู่มือซ่อม (Manuals) ทั้งหมดที่มีในคลังของร้าน เพื่อดูว่ามีไฟล์ที่เกี่ยวข้องกับคำถามหรือไม่',
     inputSchema: z.object({
-      searchQuery: z.string().optional().describe('คำค้นหายี่ห้อหรือรุ่นรถ เช่น Toyota, Vigo, Revo'),
+      searchQuery: z.string().optional().describe('คำค้นหายี่ห้อหรือรุ่นรถ'),
     }),
     outputSchema: z.array(z.any()),
   },
@@ -69,7 +71,6 @@ const listManualsIndex = ai.defineTool(
       
       if (input.searchQuery) {
         const q = input.searchQuery.toLowerCase();
-        // Search in both file name and brand field
         items = items.filter((m: any) => 
           m.name?.toLowerCase().includes(q) || 
           m.brand?.toLowerCase().includes(q)
@@ -97,23 +98,19 @@ const AskAssistantOutputSchema = z.object({
   answer: z.string().describe('คำตอบหรือการวิเคราะห์จาก AI'),
 });
 
-/**
- * Main function to call from client side.
- * Ensures API Key is loaded from Firestore before executing.
- */
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
-  if (!process.env.GOOGLE_GENAI_API_KEY) {
-    try {
-      const db = getServerFirestore();
-      const settingsSnap = await getDoc(doc(db, "settings", "ai"));
-      if (settingsSnap.exists()) {
-        const key = settingsSnap.data().geminiApiKey;
-        if (key) process.env.GOOGLE_GENAI_API_KEY = key;
-      }
-    } catch (e) {
-      console.error("Error fetching AI settings for Nong John:", e);
+  // ✅ ใช้ API Key จาก Firestore เสมอ (ระบบ Paid ของพี่โจ้)
+  try {
+    const db = getServerFirestore();
+    const settingsSnap = await getDoc(doc(db, "settings", "ai"));
+    if (settingsSnap.exists()) {
+      const key = settingsSnap.data().geminiApiKey;
+      if (key) process.env.GOOGLE_GENAI_API_KEY = key;
     }
+  } catch (e) {
+    console.error("Error loading Paid API Key:", e);
   }
+  
   return carRepairAssistantFlow(input);
 }
 
@@ -122,27 +119,20 @@ const prompt = ai.definePrompt({
   input: { schema: AskAssistantInputSchema },
   output: { schema: AskAssistantOutputSchema },
   tools: [searchExperiences, listManualsIndex],
-  prompt: `คุณคือ "น้องจอนห์" ผู้ช่วยซ่อมรถยนต์สุดหล่อและเก่งกาจประจำร้านสหดีเซล
+  prompt: `คุณคือ "น้องจอนห์" ผู้ช่วยซ่อมรถยนต์อัจฉริยะประจำร้านสหดีเซล
 
-**บุคลิกของน้องจอนห์:**
-- เป็นกันเอง พูดจาสบายๆ เหมือนคุยกับพี่ชายหรือเพื่อนร่วมงาน แต่ยังให้เกียรติพี่ๆ ช่างเสมอ
-- แทนตัวเองว่า "น้องจอนห์" หรือ "จอนห์" และใช้คำลงท้ายที่ฟังดูสนิทสนม เช่น "ครับพี่", "ครับผม", "ลุยเลยพี่"
-- มีความกระตือรือร้นในการช่วยแก้ปัญหา พร้อมซัพพอร์ตพี่ๆ ทุกคน
+**กฎเหล็กของน้องจอนห์ (สำคัญมาก):**
+1. **ห้ามมั่วข้อมูลทางเทคนิค**: หากพี่ช่างถามถึง "แรงขันน็อต", "สเปคหัวฉีด", "ความหมายของรหัสตัวย่อ" หรือ "ขั้นตอนซ่อมเฉพาะทาง" ที่ไม่ได้อยู่ในฐานข้อมูล 'searchExperiences' ห้ามเดาคำตอบจากความรู้ทั่วไปเด็ดขาด
+2. **สารภาพตามตรง**: หากไม่เจอข้อมูลที่ชัวร์ ให้บอกว่า "จอนห์ไม่พบข้อมูลนี้ในระบบบันทึกของร้านครับพี่"
+3. **ส่งต่อให้คู่มือ**: หากคุณค้นหาผ่านเครื่องมือ 'listManualsIndex' แล้วเจอชื่อไฟล์ที่น่าจะเกี่ยวข้อง (เช่น พี่ช่างถาม Vigo แล้วเจอคู่มือ Toyota Vigo) ให้ส่งชื่อคู่มือและลิงก์ (URL) ให้พี่ช่างกดเปิดดูเองทันที โดยบอกว่า "จอนห์เจอคู่มือที่น่าจะมีคำตอบครับพี่ รบกวนพี่กดดูรายละเอียดในลิงก์นี้เพื่อความแม่นยำนะครับ"
+4. **ความจำจำกัด**: ยอมรับกับพี่ช่างว่า "จอนห์สามารถค้นหาชื่อไฟล์ได้ แต่จอนห์อ่านเนื้อหาข้างในไฟล์ PDF หรือไฟล์ใน Drive ไม่ได้โดยตรงครับ"
 
-**หน้าที่ของน้องจอนห์:**
-1. วิเคราะห์อาการเสียของรถยนต์ตามที่พี่ๆ ช่างสอบถามมา
-2. ค้นหาจาก "ฐานข้อมูลประสบการณ์ช่าง" ผ่านเครื่องมือ searchExperiences เพื่อดูเคสจริง
-3. ตรวจสอบรายชื่อคู่มือที่มีในระบบผ่านเครื่องมือ listManualsIndex เสมอ โดยเฉพาะเมื่อถูกถามถึงสเปคทางเทคนิค เช่น แรงขันน็อต (Torque) หรือรหัสไฟโชว์
-   - หากคุณพบคู่มือที่เกี่ยวข้อง (เช่น พี่ช่างถามถึง Vigo แต่คุณเจอคู่มือ Toyota) ให้แสดงรายชื่อคู่มือพร้อมลิงก์ให้พี่ช่างดูด้วย
-   - หากคู่มือเป็นลิงก์ Google Drive ให้บอกว่า "จอนห์เจอคู่มือที่น่าจะมีคำตอบอยู่ใน Google Drive ครับพี่ ลองเปิดดูที่ลิงก์นี้ได้เลยนะครับ [URL]"
-4. ให้คำแนะนำขั้นตอนการตรวจเช็คเบื้องต้นอย่างเป็นระบบ 1, 2, 3...
-5. หากข้อมูลในร้านไม่มี ให้ใช้ความรู้ความสามารถของตัวเองในการวิเคราะห์และแนะนำอย่างตรงจุด
-
-**สำคัญ:** ข้อมูลใน Google Drive ทาง AI จะอ่านข้างในไฟล์ไม่ได้โดยตรง ดังนั้นคุณต้องแจ้งให้พี่ช่างทราบว่า "ข้อมูลน่าจะอยู่ในไฟล์นี้ครับพี่ รบกวนพี่กดเข้าไปดูรายละเอียดในลิงก์นี้นะครับ"
+**บุคลิก:**
+- นอบน้อม พูดจาเป็นกันเอง แทนตัวเองว่า "น้องจอนห์" หรือ "จอนห์" และลงท้ายว่า "ครับพี่" เสมอ
 
 **บริบทการสนทนา:**
 {{#if history}}
-ประวัติการคุยกัน:
+ประวัติการคุย:
 {{#each history}}
 - {{role}}: {{content}}
 {{/each}}
@@ -159,14 +149,11 @@ const carRepairAssistantFlow = ai.defineFlow(
   },
   async (input) => {
     const response = await prompt(input);
-    
-    // Safety check: If model fails to produce structured output, use plain text or fallback
     if (!response.output) {
         return { 
             answer: response.text || "ขอโทษทีครับพี่ จอนห์สับสนนิดหน่อย รบกวนพี่ลองถามอาการใหม่อีกรอบได้ไหมครับ" 
         };
     }
-    
     return response.output;
   }
 );
