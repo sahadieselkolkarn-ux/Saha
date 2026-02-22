@@ -3,11 +3,10 @@
  * @fileOverview AI ผู้ช่วยซ่อมรถยนต์ (Car Repair AI Assistant) - น้องจอนห์
  * 
  * ระบบวิเคราะห์ปัญหาการซ่อมโดยอ้างอิงจาก:
- * 1. ข้อมูลประสบการณ์ที่ช่างบันทึกไว้ (carRepairExperiences)
- * 2. ค้นหาดัชนีคู่มือที่มีในระบบ ทั้งไฟล์ PDF และลิงก์ Google Drive
+ * 1. ข้อมูลประสบการณ์ที่ช่างบันทึกไว้ (carRepairExperiences) - แหล่งข้อมูลหลัก
+ * 2. ค้นหาดัชนีคู่มือที่มีในระบบ เพื่อส่งลิงก์ให้ช่างเปิดดูเอง
  * 
- * ข้อสำคัญ: AI ตัวนี้สามารถเห็น "รายชื่อคู่มือ" แต่ไม่สามารถ "อ่านไส้ใน" ของไฟล์ใน Google Drive ได้
- * ดังนั้นหากพบคู่มือที่เกี่ยวข้อง จะต้องส่งลิงก์ให้ผู้ใช้เปิดดูเอง
+ * ข้อสำคัญ: ป้องกัน AI มั่วข้อมูลโดยการสั่งให้ห้ามตอบหากไม่มีข้อมูลใน Tool
  */
 
 import { ai } from '@/ai/genkit';
@@ -26,19 +25,19 @@ function getServerFirestore() {
 const searchExperiences = ai.defineTool(
   {
     name: 'searchExperiences',
-    description: 'ค้นหาฐานข้อมูลประสบการณ์ซ่อมของช่างในร้าน เพื่อดูปัญหาและวิธีแก้ที่เคยเกิดขึ้นจริง',
+    description: 'ค้นหาฐานข้อมูลประสบการณ์ซ่อมจริงของช่างในร้าน Sahadiesel เพื่อดูวิธีแก้ปัญหาที่ถูกต้อง',
     inputSchema: z.object({
-      keyword: z.string().describe('คำค้นหา เช่น ยี่ห้อรถ รุ่นรถ หรืออาการเสีย'),
+      keyword: z.string().describe('คำค้นหา เช่น ชื่ออะไหล่ อาการเสีย หรือรุ่นรถ'),
     }),
     outputSchema: z.array(z.any()),
   },
   async (input) => {
     try {
       const db = getServerFirestore();
-      const snap = await getDocs(query(collection(db, 'carRepairExperiences'), orderBy('createdAt', 'desc'), limit(50)));
+      const snap = await getDocs(query(collection(db, 'carRepairExperiences'), orderBy('createdAt', 'desc'), limit(100)));
       
       const k = input.keyword.toLowerCase();
-      return snap.docs
+      const results = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter((d: any) => 
           d.brand?.toLowerCase().includes(k) || 
@@ -46,6 +45,7 @@ const searchExperiences = ai.defineTool(
           d.symptoms?.toLowerCase().includes(k) ||
           d.solution?.toLowerCase().includes(k)
         );
+      return results;
     } catch (e) {
       console.error(e);
       return [];
@@ -56,7 +56,7 @@ const searchExperiences = ai.defineTool(
 const listManualsIndex = ai.defineTool(
   {
     name: 'listManualsIndex',
-    description: 'ดึงรายชื่อคู่มือซ่อม (Manuals) ทั้งหมดที่มีในคลังของร้าน เพื่อดูว่ามีไฟล์ที่เกี่ยวข้องกับคำถามหรือไม่',
+    description: 'ค้นหารายชื่อและลิงก์คู่มือซ่อม (Manuals) ใน Google Drive/PDF ของร้าน',
     inputSchema: z.object({
       searchQuery: z.string().optional().describe('คำค้นหายี่ห้อหรือรุ่นรถ'),
     }),
@@ -99,16 +99,19 @@ const AskAssistantOutputSchema = z.object({
 });
 
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
-  // ✅ ใช้ API Key จาก Firestore เสมอ (ระบบ Paid ของพี่โจ้)
+  // ✅ โหลด API Key จากระบบ Paid เสมอ
   try {
     const db = getServerFirestore();
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
     if (settingsSnap.exists()) {
       const key = settingsSnap.data().geminiApiKey;
-      if (key) process.env.GOOGLE_GENAI_API_KEY = key;
+      if (key) {
+        // We set it for this flow instance
+        process.env.GOOGLE_GENAI_API_KEY = key;
+      }
     }
   } catch (e) {
-    console.error("Error loading Paid API Key:", e);
+    console.error("Error setting Paid API Key:", e);
   }
   
   return carRepairAssistantFlow(input);
@@ -119,16 +122,20 @@ const prompt = ai.definePrompt({
   input: { schema: AskAssistantInputSchema },
   output: { schema: AskAssistantOutputSchema },
   tools: [searchExperiences, listManualsIndex],
-  prompt: `คุณคือ "น้องจอนห์" ผู้ช่วยซ่อมรถยนต์อัจฉริยะประจำร้านสหดีเซล
+  prompt: `คุณคือ "น้องจอนห์" บรรณารักษ์ผู้ช่วยซ่อมรถยนต์อัจฉริยะประจำร้าน Sahadiesel
 
-**กฎเหล็กของน้องจอนห์ (สำคัญมาก):**
-1. **ห้ามมั่วข้อมูลทางเทคนิค**: หากพี่ช่างถามถึง "แรงขันน็อต", "สเปคหัวฉีด", "ความหมายของรหัสตัวย่อ" หรือ "ขั้นตอนซ่อมเฉพาะทาง" ที่ไม่ได้อยู่ในฐานข้อมูล 'searchExperiences' ห้ามเดาคำตอบจากความรู้ทั่วไปเด็ดขาด
-2. **สารภาพตามตรง**: หากไม่เจอข้อมูลที่ชัวร์ ให้บอกว่า "จอนห์ไม่พบข้อมูลนี้ในระบบบันทึกของร้านครับพี่"
-3. **ส่งต่อให้คู่มือ**: หากคุณค้นหาผ่านเครื่องมือ 'listManualsIndex' แล้วเจอชื่อไฟล์ที่น่าจะเกี่ยวข้อง (เช่น พี่ช่างถาม Vigo แล้วเจอคู่มือ Toyota Vigo) ให้ส่งชื่อคู่มือและลิงก์ (URL) ให้พี่ช่างกดเปิดดูเองทันที โดยบอกว่า "จอนห์เจอคู่มือที่น่าจะมีคำตอบครับพี่ รบกวนพี่กดดูรายละเอียดในลิงก์นี้เพื่อความแม่นยำนะครับ"
-4. **ความจำจำกัด**: ยอมรับกับพี่ช่างว่า "จอนห์สามารถค้นหาชื่อไฟล์ได้ แต่จอนห์อ่านเนื้อหาข้างในไฟล์ PDF หรือไฟล์ใน Drive ไม่ได้โดยตรงครับ"
+**หน้าที่หลักของคุณคือ:**
+1. ค้นหา "บันทึกประสบการณ์" จากเครื่องมือ 'searchExperiences' และนำมาตอบพี่ช่าง
+2. ค้นหา "รายชื่อคู่มือและลิงก์ Drive" จากเครื่องมือ 'listManualsIndex' เพื่อส่งต่อให้พี่ช่างเปิดดูเอง
+
+**กฎเหล็กเพื่อป้องกันการให้ข้อมูลผิด (สำคัญที่สุด):**
+- **ห้ามเดาค่าทางเทคนิค**: ห้ามบอกแรงขันน็อต, สเปคไฟ, หรือตัวเลขใดๆ จากความรู้ทั่วไปของตัวคุณเองเด็ดขาด
+- **ห้ามมั่วความหมายตัวย่อ**: หากเครื่องมือค้นหาไม่ระบุความหมายของตัวย่อ (เช่น SCV, SCB) ห้ามสรุปเอง ให้ตอบว่า "จอนห์ไม่พบความหมายของตัวย่อนี้ในระบบบันทึกของร้านครับพี่ รบกวนพี่ตรวจสอบในคู่มือที่จอนห์หาให้แทนนะครับ"
+- **ความสัตย์จริง**: หากค้นหาใน 'searchExperiences' แล้วไม่เจอข้อมูลวิธีแก้ ให้ตอบว่า "จอนห์ยังไม่พบประวัติการซ่อมเคสนี้ในบันทึกของร้านเราครับพี่ แต่จอนห์เจอคู่มือที่น่าจะเกี่ยวข้องครับ..." แล้วส่งลิงก์ Drive ให้พี่ช่าง
+- **เน้นย้ำ**: คุณอ่านเนื้อหาข้างใน PDF ใน Drive ไม่ได้ คุณเห็นแค่ชื่อไฟล์ ให้ส่งลิงก์ให้พี่ช่างเสมอ
 
 **บุคลิก:**
-- นอบน้อม พูดจาเป็นกันเอง แทนตัวเองว่า "น้องจอนห์" หรือ "จอนห์" และลงท้ายว่า "ครับพี่" เสมอ
+- นอบน้อม สุภาพ เป็นกันเอง แทนตัวเองว่า "น้องจอนห์" หรือ "จอนห์" และลงท้ายว่า "ครับพี่" เสมอ
 
 **บริบทการสนทนา:**
 {{#if history}}
@@ -151,7 +158,7 @@ const carRepairAssistantFlow = ai.defineFlow(
     const response = await prompt(input);
     if (!response.output) {
         return { 
-            answer: response.text || "ขอโทษทีครับพี่ จอนห์สับสนนิดหน่อย รบกวนพี่ลองถามอาการใหม่อีกรอบได้ไหมครับ" 
+            answer: response.text || "ขอโทษทีครับพี่ จอนห์หาข้อมูลในระบบไม่เจอ และไม่แน่ใจว่าจะตอบยังไงดี รบกวนพี่ลองถามใหม่อีกรอบนะครับ" 
         };
     }
     return response.output;
