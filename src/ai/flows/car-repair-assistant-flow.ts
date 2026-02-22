@@ -12,7 +12,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, query, getDocs, limit, orderBy } from 'firebase/firestore';
+import { getFirestore, collection, query, getDocs, limit, orderBy, doc, getDoc } from 'firebase/firestore';
 
 function getServerFirestore() {
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -92,7 +92,23 @@ const AskAssistantOutputSchema = z.object({
   answer: z.string().describe('คำตอบหรือการวิเคราะห์จาก AI'),
 });
 
+/**
+ * Main function to call from client side.
+ * Ensures API Key is loaded from Firestore before executing.
+ */
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
+  if (!process.env.GOOGLE_GENAI_API_KEY) {
+    try {
+      const db = getServerFirestore();
+      const settingsSnap = await getDoc(doc(db, "settings", "ai"));
+      if (settingsSnap.exists()) {
+        const key = settingsSnap.data().geminiApiKey;
+        if (key) process.env.GOOGLE_GENAI_API_KEY = key;
+      }
+    } catch (e) {
+      console.error("Error fetching AI settings for Nong John:", e);
+    }
+  }
   return carRepairAssistantFlow(input);
 }
 
@@ -117,7 +133,15 @@ const prompt = ai.definePrompt({
 4. ให้คำแนะนำขั้นตอนการตรวจเช็คเบื้องต้นอย่างเป็นระบบ 1, 2, 3...
 5. หากข้อมูลในร้านไม่มี ให้ใช้ความรู้ความสามารถของตัวเองในการวิเคราะห์และแนะนำอย่างตรงจุด
 
-คำถามจากพี่ช่าง: {{{message}}}`,
+**บริบทการสนทนา:**
+{{#if history}}
+ประวัติการคุยกัน:
+{{#each history}}
+- {{role}}: {{content}}
+{{/each}}
+{{/if}}
+
+คำถามล่าสุดจากพี่ช่าง: {{{message}}}`,
 });
 
 const carRepairAssistantFlow = ai.defineFlow(
@@ -127,7 +151,15 @@ const carRepairAssistantFlow = ai.defineFlow(
     outputSchema: AskAssistantOutputSchema,
   },
   async (input) => {
-    const { output } = await prompt(input);
-    return output!;
+    const response = await prompt(input);
+    
+    // Safety check: If model fails to produce structured output, use plain text or fallback
+    if (!response.output) {
+        return { 
+            answer: response.text || "ขอโทษทีครับพี่ จอนห์สับสนนิดหน่อย รบกวนพี่ลองถามอาการใหม่อีกรอบได้ไหมครับ" 
+        };
+    }
+    
+    return response.output;
   }
 );
