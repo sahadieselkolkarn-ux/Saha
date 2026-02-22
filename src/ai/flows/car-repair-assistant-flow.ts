@@ -4,7 +4,8 @@
  * 
  * ระบบวิเคราะห์ปัญหาการซ่อมโดยอ้างอิงจาก:
  * 1. ข้อมูลประสบการณ์ที่ช่างบันทึกไว้ (carRepairExperiences)
- * 2. ค้นหาความรู้ทั่วไปจากการเทรนของ Model
+ * 2. ค้นหาดัชนีคู่มือที่มีในระบบ ทั้งไฟล์ PDF และลิงก์ Google Drive
+ * 3. ค้นหาความรู้ทั่วไปจากการเทรนของ Model
  */
 
 import { ai } from '@/ai/genkit';
@@ -50,6 +51,33 @@ const searchExperiences = ai.defineTool(
   }
 );
 
+const listManualsIndex = ai.defineTool(
+  {
+    name: 'listManualsIndex',
+    description: 'ค้นหารายชื่อคู่มือซ่อม (Manuals) ที่มีในระบบ ทั้งแบบอัปโหลดไว้และลิงก์ Google Drive',
+    inputSchema: z.object({
+      brand: z.string().optional().describe('ยี่ห้อรถที่ต้องการค้นหาคู่มือ'),
+    }),
+    outputSchema: z.array(z.any()),
+  },
+  async (input) => {
+    try {
+      const db = getServerFirestore();
+      const snap = await getDocs(collection(db, 'carRepairManuals'));
+      
+      let items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (input.brand) {
+        const b = input.brand.toLowerCase();
+        items = items.filter((m: any) => m.brand?.toLowerCase().includes(b));
+      }
+      return items;
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  }
+);
+
 // --- Flow ---
 
 const AskAssistantInputSchema = z.object({
@@ -72,7 +100,7 @@ const prompt = ai.definePrompt({
   name: 'carRepairAssistantPrompt',
   input: { schema: AskAssistantInputSchema },
   output: { schema: AskAssistantOutputSchema },
-  tools: [searchExperiences],
+  tools: [searchExperiences, listManualsIndex],
   prompt: `คุณคือ "น้องจอนห์" ผู้ช่วยซ่อมรถยนต์สุดหล่อและเก่งกาจประจำร้านสหดีเซล
 
 **บุคลิกของน้องจอนห์:**
@@ -82,9 +110,12 @@ const prompt = ai.definePrompt({
 
 **หน้าที่ของน้องจอนห์:**
 1. วิเคราะห์อาการเสียของรถยนต์ตามที่พี่ๆ ช่างสอบถามมา
-2. ค้นหาจาก "ฐานข้อมูลประสบการณ์ช่าง" ในร้านผ่านเครื่องมือ searchExperiences เพื่อดูว่าเคยมีใครเจอเคสแบบนี้มาก่อนไหม
-3. ให้คำแนะนำขั้นตอนการตรวจเช็คเบื้องต้นอย่างเป็นระบบ 1, 2, 3...
-4. หากข้อมูลในร้านไม่มี ให้ใช้ความรู้ความสามารถของตัวเองในการวิเคราะห์และแนะนำอย่างตรงจุด
+2. ค้นหาจาก "ฐานข้อมูลประสบการณ์ช่าง" ผ่านเครื่องมือ searchExperiences เพื่อดูเคสจริง
+3. ค้นหารายชื่อคู่มือที่มีในระบบผ่านเครื่องมือ listManualsIndex
+   - หากเจอคู่มือที่เป็นลิงก์ Google Drive ให้บอกพี่ช่างด้วยว่า "จอนห์เจอคู่มือใน Google Drive ครับพี่ ลองเปิดดูที่ลิงก์นี้ได้เลย [URL]"
+   - ข้อมูลใน Google Drive อาจมีไฟล์ขนาดใหญ่ พี่ช่างสามารถกดเข้าไปอ่านรายละเอียดที่ AI ไม่สามารถอ่านโดยตรงได้
+4. ให้คำแนะนำขั้นตอนการตรวจเช็คเบื้องต้นอย่างเป็นระบบ 1, 2, 3...
+5. หากข้อมูลในร้านไม่มี ให้ใช้ความรู้ความสามารถของตัวเองในการวิเคราะห์และแนะนำอย่างตรงจุด
 
 คำถามจากพี่ช่าง: {{{message}}}`,
 });

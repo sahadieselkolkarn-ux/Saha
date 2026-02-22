@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import React, { useMemo, useState, useEffect } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Bot, Share2, FileUp, Sparkles
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Bot, Share2, FileUp, Sparkles, BookOpen
 } from "lucide-react"
 import { collection, query, where, getDocs } from "firebase/firestore"
 
@@ -132,7 +132,7 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
 
 const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
-    const isOpen = pathname.startsWith('/app/admin') || pathname === '/app/car-service/assistant/upload';
+    const isOpen = pathname.startsWith('/app/admin');
     return (
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
@@ -144,7 +144,7 @@ const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/admin/users" label="จัดการผู้ใช้ / Maintenance" onClick={onLinkClick} />
                 <SubNavLink href="/app/admin/chat" label="คุยกับจิมมี่ (AI)" onClick={onLinkClick} />
-                <SubNavLink href="/app/car-service/assistant/upload" label="อัปโหลดคู่มือ PDF" icon={FileUp} onClick={onLinkClick} />
+                <SubNavLink href="/app/admin/manuals" label="คลังคู่มือ PDF / Drive" icon={BookOpen} onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );

@@ -850,6 +850,7 @@ export interface CarRepairManual {
   id: string;
   name: string;
   url: string;
+  sourceType: 'UPLOAD' | 'GDRIVE';
   brand?: string;
   fileSize?: number;
   createdAt: Timestamp;
