@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Send, Bot, Loader2, Sparkles, Settings, Key, 
-  AlertCircle, BarChart3, Users as UsersIcon, CheckCircle2 
+  AlertCircle, BarChart3, Users as UsersIcon, CheckCircle2, ShieldCheck
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -53,6 +53,13 @@ export function ChatJimmy() {
   const aiSettingsRef = useMemo(() => (db ? doc(db, "settings", "ai") : null), [db]);
   const { data: aiSettings } = useDoc<GenAISettings>(aiSettingsRef);
 
+  // Pre-fill API Key when dialog opens
+  useEffect(() => {
+    if (isApiKeyDialogOpen && aiSettings?.geminiApiKey) {
+      setNewApiKeyInput(aiSettings.geminiApiKey);
+    }
+  }, [isApiKeyDialogOpen, aiSettings]);
+
   useEffect(() => {
     if (scrollRef.current) {
       const scrollContainer = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -66,7 +73,7 @@ export function ChatJimmy() {
     if (!inputValue.trim() || isLoading || !db) return;
 
     if (!aiSettings?.geminiApiKey) {
-        toast({ variant: "destructive", title: "จิมมี่ยังไม่พร้อม", description: "กรุณาตั้งค่า API Key ก่อนนะคะ" });
+        toast({ variant: "destructive", title: "จิมมี่ยังไม่พร้อม", description: "กรุณาติดต่อแอดมินเพื่อตั้งค่า API Key ก่อนนะคะ" });
         setIsApiKeyDialogOpen(true);
         return;
     }
@@ -122,7 +129,6 @@ export function ChatJimmy() {
       }, { merge: true });
       toast({ title: "บันทึก API Key สำเร็จแล้วค่ะ" });
       setIsApiKeyDialogOpen(false);
-      setNewApiKeyInput("");
     } catch (e: any) {
       toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: e.message });
     } finally {
@@ -137,7 +143,12 @@ export function ChatJimmy() {
           <div className="bg-white/20 p-2 rounded-full ring-2 ring-white/30"><Bot className="h-6 w-6" /></div>
           <div>
             <h3 className="font-bold text-lg leading-none flex items-center gap-2">น้องจิมมี่ <Badge variant="secondary" className="bg-pink-500/80 text-white text-[10px] h-4">Manager Assistant</Badge></h3>
-            <p className="text-xs text-primary-foreground/70 mt-1">ผู้ช่วยคนเก่งประจำโต๊ะทำงานพี่โจ้</p>
+            <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs text-primary-foreground/70">ผู้ช่วยคนเก่งประจำโต๊ะทำงานพี่โจ้</p>
+                {aiSettings?.geminiApiKey && (
+                    <Badge variant="outline" className="text-[8px] h-3 border-white/40 text-white bg-white/10">API KEY CONFIGURED</Badge>
+                )}
+            </div>
           </div>
         </div>
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/10" onClick={() => setIsApiKeyDialogOpen(true)}><Settings className="h-5 w-5" /></Button>
@@ -182,6 +193,11 @@ export function ChatJimmy() {
           <div className="py-4 space-y-2">
             <Label htmlFor="api-key">Gemini API Key</Label>
             <Input id="api-key" type="password" placeholder="ระบุ API Key ที่นี่..." value={apiKeyInput} onChange={(e) => setNewApiKeyInput(e.target.value)} />
+            {aiSettings?.geminiApiKey && (
+                <p className="text-[10px] text-green-600 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> บันทึกไว้แล้ว: {aiSettings.geminiApiKey.substring(0, 8)}...
+                </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsApiKeyDialogOpen(false)}>ยกเลิก</Button>

@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { 
   Bot, Send, Loader2, Sparkles, User, Settings, 
-  Key, AlertCircle, Info, Database, ShieldCheck 
+  Key, AlertCircle, Info, Database, ShieldCheck, CheckCircle2 
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -56,6 +56,13 @@ export default function CarRepairAIChatPage() {
   const { data: aiSettings } = useDoc<GenAISettings>(aiSettingsRef);
 
   const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
+
+  // Pre-fill API Key when dialog opens
+  useEffect(() => {
+    if (isApiKeyDialogOpen && aiSettings?.geminiApiKey) {
+      setNewApiKeyInput(aiSettings.geminiApiKey);
+    }
+  }, [isApiKeyDialogOpen, aiSettings]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -126,7 +133,6 @@ export default function CarRepairAIChatPage() {
       }, { merge: true });
       toast({ title: "บันทึก API Key สำเร็จแล้วค่ะพี่!" });
       setIsApiKeyDialogOpen(false);
-      setNewApiKeyInput("");
     } catch (e: any) {
       toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: e.message });
     } finally {
@@ -159,7 +165,9 @@ export default function CarRepairAIChatPage() {
                 <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                     <Database className="h-3 w-3" /> แหล่งข้อมูล: ประวัติซ่อม & คู่มือร้าน
                 </div>
-                {!aiSettings?.geminiApiKey && (
+                {aiSettings?.geminiApiKey ? (
+                    <Badge variant="outline" className="text-[8px] h-4 border-green-200 text-green-600 bg-green-50">API KEY CONFIGURED</Badge>
+                ) : (
                     <Badge variant="destructive" className="text-[8px] h-4">API KEY MISSING</Badge>
                 )}
             </div>
@@ -252,6 +260,11 @@ export default function CarRepairAIChatPage() {
             <div className="space-y-2">
               <Label htmlFor="api-key">Gemini API Key</Label>
               <Input id="api-key" type="password" placeholder="ระบุ API Key ที่นี่..." value={apiKeyInput} onChange={(e) => setNewApiKeyInput(e.target.value)} />
+              {aiSettings?.geminiApiKey && (
+                <p className="text-[10px] text-green-600 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> บันทึกไว้แล้ว: {aiSettings.geminiApiKey.substring(0, 8)}...
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
