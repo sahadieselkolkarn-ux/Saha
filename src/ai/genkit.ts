@@ -1,13 +1,15 @@
 import {genkit} from 'genkit';
-import {googleAI, gemini15Flash} from '@genkit-ai/google-genai';
+import {googleAI} from '@genkit-ai/google-genai';
 
+/**
+ * @fileOverview Configuration for Genkit AI.
+ * Updated to use explicit v1 API version for Paid API Key stability.
+ */
 export const ai = genkit({
   plugins: [
     googleAI({
-      // ใช้ API v1 ซึ่งเป็นรุ่นมาตรฐานสำหรับ Paid Key เพื่อความเสถียรสูงสุด
       apiVersion: 'v1',
     }),
   ],
-  // กำหนดรุ่นมาตรฐานเป็น Gemini 1.5 Flash
-  model: gemini15Flash,
+  // We specify the model explicitly in each call to ensure reliability
 });

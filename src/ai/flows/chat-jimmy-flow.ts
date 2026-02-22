@@ -1,13 +1,10 @@
 'use server';
 /**
  * @fileOverview แชทกับน้องจิมมี่ - AI ผู้ช่วยอัจฉริยะประจำร้าน 'สหดีเซล' ของพี่โจ้
- * 
- * ปรับปรุง: แก้ไขปัญหา 404 และ Schema Error
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { gemini15Flash } from '@genkit-ai/google-genai';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
@@ -22,7 +19,7 @@ function getServerFirestore() {
 const getAccountingSummary = ai.defineTool(
   {
     name: 'getAccountingSummary',
-    description: 'ดึงข้อมูลสรุปรายรับ-รายจ่ายย้อนหลัง เพื่อวิเคราะห์ผลกำไรและกระแสเงินสด',
+    description: 'ดึงข้อมูลสรุปรายรับ-รายจ่ายย้อนหลัง เพื่อวิเคราะห์ผลกำไรและกระแสเงินสดให้พี่โจ้',
     inputSchema: z.object({}),
     outputSchema: z.any(),
   },
@@ -30,7 +27,7 @@ const getAccountingSummary = ai.defineTool(
     try {
       const db = getServerFirestore();
       const entriesRef = collection(db, 'accountingEntries');
-      const snap = await getDocs(query(entriesRef, orderBy('entryDate', 'desc'), limit(200)));
+      const snap = await getDocs(query(entriesRef, orderBy('entryDate', 'desc'), limit(100)));
       
       const summary: any = {};
       snap.docs.forEach(d => {
@@ -59,10 +56,10 @@ const ChatJimmyInputSchema = z.object({
 });
 
 const ChatJimmyOutputSchema = z.object({
-  response: z.string().describe('ข้อความตอบกลับจากน้องจิมมี่'),
+  response: z.string().describe('ข้อความตอบกลับจาก AI'),
 });
 
-export async function chatJimmy(input: z.infer<typeof ChatJimmyInputSchema>) {
+export async function chatJimmy(input: z.infer<typeof ChatJimmyInputSchema>): Promise<z.infer<typeof ChatJimmyOutputSchema>> {
   try {
     const db = getServerFirestore();
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
@@ -72,11 +69,13 @@ export async function chatJimmy(input: z.infer<typeof ChatJimmyInputSchema>) {
         process.env.GOOGLE_GENAI_API_KEY = key;
       }
     }
-  } catch (e) {
-    console.error("Error setting API Key for Jimmy:", e);
+    
+    const result = await chatJimmyFlow(input);
+    return result || { response: "น้องจิมมี่สับสนนิดหน่อยค่ะ รบกวนพี่โจ้ลองถามอีกรอบนะจ๊ะ" };
+  } catch (e: any) {
+    console.error("chatJimmy Wrapper Error:", e);
+    return { response: `ขอโทษทีค่ะพี่โจ้ ระบบขัดข้อง: ${e.message}. พี่โจ้ลองเช็ค API Key อีกทีนะคะ` };
   }
-
-  return chatJimmyFlow(input);
 }
 
 const chatJimmyFlow = ai.defineFlow(
@@ -88,7 +87,7 @@ const chatJimmyFlow = ai.defineFlow(
   async (input) => {
     try {
       const response = await ai.generate({
-        model: gemini15Flash,
+        model: 'googleai/gemini-1.5-flash',
         tools: [getAccountingSummary],
         system: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
         - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
@@ -100,10 +99,10 @@ const chatJimmyFlow = ai.defineFlow(
         ],
       });
 
-      return { response: response.text || "น้องจิมมี่สับสนนิดหน่อยค่ะ รบกวนพี่โจ้ลองถามใหม่อีกครั้งนะคะ" };
+      return { response: response.text || "น้องจิมมี่ไปพักผ่อนแป๊บนึงนะคะ รบกวนถามใหม่ค่ะ" };
     } catch (error: any) {
-      console.error("Jimmy Flow Error:", error);
-      return { response: `ขอโทษทีค่ะพี่โจ้ ระบบน้องจิมมี่ขัดข้องนิดหน่อย (Error: ${error.message}) พี่โจ้ลองเช็ค API Key อีกทีนะคะ` };
+      console.error("chatJimmyFlow Internal Error:", error);
+      throw error;
     }
   }
 );
