@@ -2,13 +2,12 @@
 /**
  * @fileOverview AI ผู้ช่วยวิเคราะห์อาการรถยนต์ (Master Diagnostic AI) - น้องจอนห์
  * 
- * ปรับปรุงใหม่: แก้ไขปัญหา 404 Model Not Found และ Schema Validation Error
- * ปลดล็อกให้ AI ใช้ความรู้ตัวเองวิเคราะห์ทันทีควบคู่กับฐานข้อมูลร้าน
+ * ปรับปรุง: แก้ไขปัญหา 404 Model Not Found โดยใช้ Model ID ที่ถูกต้อง
+ * และบังคับใช้ API Key จากระบบเพื่อให้มั่นใจว่าเป็นระบบ Paid
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { googleAI, gemini15Flash } from '@genkit-ai/google-genai';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, getDocs, limit, orderBy, doc, getDoc } from 'firebase/firestore';
@@ -95,7 +94,7 @@ const AskAssistantOutputSchema = z.object({
 });
 
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
-  // ดึง API Key ของร้านมาใช้เพื่อให้มั่นใจว่าเป็น Paid Tier
+  // บังคับโหลด API Key ของพี่โจ้ก่อนเสมอ
   try {
     const db = getServerFirestore();
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
@@ -120,7 +119,7 @@ const carRepairAssistantFlow = ai.defineFlow(
   },
   async (input) => {
     const response = await ai.generate({
-      model: gemini15Flash, // ใช้ตัวแปรอ้างอิงรุ่นที่ถูกต้องเพื่อป้องกัน 404
+      model: 'googleai/gemini-1.5-flash', // ระบุ Model ID ให้ถูกต้องตามมาตรฐาน Genkit
       tools: [searchExperiences, listManualsIndex],
       system: `คุณคือ "น้องจอนห์" (Master Diagnostic Engineer) อัจฉริยะวิเคราะห์อาการรถยนต์ประจำร้าน Sahadiesel
 

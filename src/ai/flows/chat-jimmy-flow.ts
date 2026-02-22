@@ -5,7 +5,6 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { googleAI, gemini15Flash } from '@genkit-ai/google-genai';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
@@ -125,7 +124,9 @@ export async function chatJimmy(input: z.infer<typeof ChatJimmyInputSchema>) {
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
     if (settingsSnap.exists()) {
       const key = settingsSnap.data().geminiApiKey;
-      if (key) process.env.GOOGLE_GENAI_API_KEY = key;
+      if (key) {
+        process.env.GOOGLE_GENAI_API_KEY = key;
+      }
     }
   } catch (e) {
     console.error("Error setting API Key:", e);
@@ -142,7 +143,7 @@ const chatJimmyFlow = ai.defineFlow(
   },
   async (input) => {
     const response = await ai.generate({
-      model: gemini15Flash,
+      model: 'googleai/gemini-1.5-flash',
       tools: [getAccountingSummary, getJobStatistics, getWorkerDetails],
       system: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
       - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
