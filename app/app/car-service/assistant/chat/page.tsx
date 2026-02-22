@@ -24,7 +24,7 @@ export default function CarRepairAIChatPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: `สวัสดีค่ะพี่ช่าง! มีรถอาการเป็นยังไง หรืออยากให้ช่วยค้นหาวิธีแก้ปัญหาอะไร บอกน้อง AI ได้เลยนะคะ น้องจะช่วยหาจากประวัติงานซ่อมในร้านและคู่มือให้นะคะ`,
+      content: `สวัสดีครับพี่ๆ ช่าง! ผม "น้องจอนห์" ผู้ช่วยวิเคราะห์อาการรถคู่ใจของพี่ๆ ครับ มีรถคันไหนอาการหนักหรืออยากให้ช่วยค้นหาวิธีแก้ตรงไหน บอกจอนห์มาได้เลย เดี๋ยวจอนห์ช่วยหาข้อมูลในร้านและคู่มือให้ครับ ลุยเลยพี่!`,
       timestamp: new Date()
     }
   ]);
@@ -58,7 +58,7 @@ export default function CarRepairAIChatPage() {
     } catch (error: any) {
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: `ขออภัยค่ะพี่ช่าง ระบบ AI ขัดข้องชั่วคราว: ${error.message}`, 
+        content: `ขอโทษทีครับพี่ ระบบผมขัดข้องนิดหน่อย: ${error.message}`, 
         timestamp: new Date() 
       }]);
     } finally {
@@ -67,28 +67,28 @@ export default function CarRepairAIChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] space-y-4">
+    <div className="flex flex-col h-[calc(100vh-9rem)] space-y-3">
       <PageHeader 
-        title="สอบถาม AI ผู้ช่วยช่าง" 
-        description="ปรึกษาปัญหาทางเทคนิค วิเคราะห์อาการเสีย และค้นหาประวัติการซ่อม"
+        title="สอบถามน้องจอนห์ (AI)" 
+        description="ปรึกษาปัญหาทางเทคนิค วิเคราะห์อาการเสีย และค้นหาประวัติการซ่อมกับน้องจอนห์"
       >
         <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
             <Sparkles className="h-3 w-3 text-primary animate-pulse" />
-            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">AI Support Active</span>
+            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">John is Online</span>
         </div>
       </PageHeader>
 
-      <Card className="flex-1 overflow-hidden flex flex-col border-primary/20 shadow-xl bg-background/50 backdrop-blur-sm">
-        <ScrollArea className="flex-1 p-4 md:p-6" ref={scrollRef}>
-          <div className="space-y-6 max-w-4xl mx-auto">
+      <Card className="flex-1 overflow-hidden flex flex-col border-primary/20 shadow-lg bg-background/50 backdrop-blur-sm">
+        <ScrollArea className="flex-1 p-3 md:p-5" ref={scrollRef}>
+          <div className="space-y-5 max-w-4xl mx-auto">
             {messages.map((m, i) => {
               const isAI = m.role === 'model';
               return (
-                <div key={i} className={cn("flex w-full gap-3", !isAI ? "flex-row-reverse" : "flex-row")}>
-                  <Avatar className={cn("h-9 w-9 shrink-0 border shadow-sm", isAI ? "bg-primary text-white" : "bg-muted")}>
+                <div key={i} className={cn("flex w-full gap-3", !isAI ? "flex-row-reverse" : "self-start")}>
+                  <Avatar className={cn("h-8 w-8 shrink-0 border shadow-sm", isAI ? "bg-primary text-white" : "bg-muted")}>
                     {isAI ? (
                       <div className="bg-primary flex items-center justify-center w-full h-full text-white">
-                        <Bot className="h-5 w-5" />
+                        <Bot className="h-4 w-4" />
                       </div>
                     ) : (
                       <>
@@ -98,16 +98,16 @@ export default function CarRepairAIChatPage() {
                     )}
                   </Avatar>
                   <div className={cn(
-                    "max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm transition-all",
+                    "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all border",
                     !isAI 
-                      ? "bg-primary text-primary-foreground rounded-tr-none" 
-                      : "bg-white border border-border rounded-tl-none text-foreground prose prose-sm dark:prose-invert"
+                      ? "bg-primary text-primary-foreground border-primary rounded-tr-none" 
+                      : "bg-white border-border rounded-tl-none text-foreground prose prose-sm dark:prose-invert"
                   )}>
                     <div className="whitespace-pre-wrap leading-relaxed">
                       {m.content}
                     </div>
                     <div className={cn(
-                      "text-[10px] mt-2 opacity-50",
+                      "text-[10px] mt-1.5 opacity-50 font-medium",
                       !isAI ? "text-right" : "text-left"
                     )}>
                       {format(m.timestamp, 'HH:mm')}
@@ -119,25 +119,25 @@ export default function CarRepairAIChatPage() {
             
             {isLoading && (
               <div className="flex w-full gap-3">
-                <Avatar className="h-9 w-9 shrink-0 bg-primary text-white border shadow-sm">
+                <Avatar className="h-8 w-8 shrink-0 bg-primary text-white border shadow-sm">
                   <div className="bg-primary flex items-center justify-center w-full h-full text-white">
-                    <Bot className="h-5 w-5 animate-bounce" />
+                    <Bot className="h-4 w-4 animate-bounce" />
                   </div>
                 </Avatar>
-                <div className="bg-white border rounded-2xl rounded-tl-none px-4 py-3 flex items-center gap-2 shadow-sm">
+                <div className="bg-white border rounded-2xl rounded-tl-none px-4 py-2.5 flex items-center gap-2 shadow-sm border-border">
                   <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                  <span className="text-xs text-muted-foreground italic">กำลังวิเคราะห์ข้อมูลให้นะคะ...</span>
+                  <span className="text-xs text-muted-foreground italic">จอนห์กำลังนึกอยู่ครับพี่...</span>
                 </div>
               </div>
             )}
           </div>
         </ScrollArea>
 
-        <div className="p-4 bg-background border-t">
-          <div className="flex gap-2 max-w-4xl mx-auto">
+        <div className="p-3 bg-background border-t">
+          <div className="flex gap-2 max-w-4xl mx-auto items-center">
             <Input 
-              placeholder="พิมพ์อาการรถ หรือยี่ห้อรุ่นที่สงสัย..." 
-              className="rounded-full bg-muted/30 border-primary/20 h-12 px-6 focus-visible:ring-primary shadow-inner"
+              placeholder="พิมพ์อาการรถมาได้เลยครับ..." 
+              className="rounded-full bg-muted/30 border-primary/20 h-10 px-5 focus-visible:ring-primary shadow-inner"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
@@ -145,11 +145,11 @@ export default function CarRepairAIChatPage() {
             />
             <Button 
               size="icon" 
-              className="rounded-full h-12 w-12 shrink-0 shadow-lg hover:scale-105 active:scale-95 transition-transform"
+              className="rounded-full h-10 w-10 shrink-0 shadow-md hover:scale-105 active:scale-95 transition-transform"
               onClick={handleSend}
               disabled={!inputValue.trim() || isLoading}
             >
-              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
         </div>
