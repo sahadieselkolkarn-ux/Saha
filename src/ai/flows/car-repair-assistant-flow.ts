@@ -3,9 +3,9 @@
  * @fileOverview AI ผู้ช่วยซ่อมรถยนต์ (Car Repair AI Assistant) - น้องจอนห์
  * 
  * ระบบวิเคราะห์ปัญหาการซ่อมโดยอ้างอิงจาก:
- * 1. ความรู้ระดับผู้เชี่ยวชาญของ AI (Core Knowledge) - สำหรับวิเคราะห์อาการและรหัส DTC ทันที
- * 2. ข้อมูลประสบการณ์ที่ช่างบันทึกไว้ (carRepairExperiences) - สำหรับดูเคสจริงในร้าน
- * 3. ดัชนีคู่มือที่มีในระบบ (Manuals Index) - สำหรับส่งลิงก์ให้ช่างเปิดดูค่าเทคนิคที่แน่นอน
+ * 1. ความรู้ระดับวิศวกรยานยนต์มืออาชีพ (Core Intelligence)
+ * 2. ฐานข้อมูลประสบการณ์จริงในร้าน (Local Wisdom)
+ * 3. ดัชนีคู่มือเทคนิค (Manuals Database)
  */
 
 import { ai } from '@/ai/genkit';
@@ -24,19 +24,19 @@ function getServerFirestore() {
 const searchExperiences = ai.defineTool(
   {
     name: 'searchExperiences',
-    description: 'ค้นหาฐานข้อมูลประสบการณ์ซ่อมจริงของช่างในร้าน Sahadiesel เพื่อดูวิธีแก้ปัญหาที่เคยทำสำเร็จ',
+    description: 'ค้นหาบันทึกการซ่อมจริงในร้าน Sahadiesel เพื่อดูวิธีแก้ปัญหาที่เคยทำสำเร็จในอดีต',
     inputSchema: z.object({
-      keyword: z.string().describe('คำค้นหา เช่น รหัสโค้ด อาการเสีย หรือรุ่นรถ'),
+      keyword: z.string().describe('คำค้นหา เช่น รหัสโค้ด, อาการเสีย หรือชื่อรุ่นรถ'),
     }),
     outputSchema: z.array(z.any()),
   },
   async (input) => {
     try {
       const db = getServerFirestore();
-      const snap = await getDocs(query(collection(db, 'carRepairExperiences'), orderBy('createdAt', 'desc'), limit(150)));
+      const snap = await getDocs(query(collection(db, 'carRepairExperiences'), orderBy('createdAt', 'desc'), limit(50)));
       
       const k = input.keyword.toLowerCase();
-      const results = snap.docs
+      return snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter((d: any) => 
           d.brand?.toLowerCase().includes(k) || 
@@ -44,7 +44,6 @@ const searchExperiences = ai.defineTool(
           d.symptoms?.toLowerCase().includes(k) ||
           d.solution?.toLowerCase().includes(k)
         );
-      return results;
     } catch (e) {
       console.error(e);
       return [];
@@ -55,9 +54,9 @@ const searchExperiences = ai.defineTool(
 const listManualsIndex = ai.defineTool(
   {
     name: 'listManualsIndex',
-    description: 'ค้นหารายชื่อและลิงก์คู่มือซ่อม (Manuals) ในระบบ เพื่อส่งลิงก์ให้พี่ช่างเปิดดูเอง',
+    description: 'ตรวจสอบรายชื่อคู่มือซ่อม (Service Manuals) ทั้งหมดที่มีในคลังของร้าน เพื่อส่งลิงก์ให้ช่างเปิดดูค่าเทคนิคที่แม่นยำ',
     inputSchema: z.object({
-      searchQuery: z.string().optional().describe('คำค้นหายี่ห้อหรือรุ่นรถ'),
+      searchQuery: z.string().optional().describe('ยี่ห้อหรือรุ่นรถที่ต้องการหาคู่มือ'),
     }),
     outputSchema: z.array(z.any()),
   },
@@ -65,7 +64,6 @@ const listManualsIndex = ai.defineTool(
     try {
       const db = getServerFirestore();
       const snap = await getDocs(collection(db, 'carRepairManuals'));
-      
       let items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       
       if (input.searchQuery) {
@@ -86,7 +84,7 @@ const listManualsIndex = ai.defineTool(
 // --- Flow ---
 
 const AskAssistantInputSchema = z.object({
-  message: z.string().describe('คำถามหรือรหัสโค้ดจากช่าง'),
+  message: z.string().describe('คำถาม อาการรถ หรือรหัส DTC จากช่าง'),
   history: z.array(z.object({
     role: z.enum(['user', 'model']),
     content: z.string()
@@ -94,7 +92,7 @@ const AskAssistantInputSchema = z.object({
 });
 
 const AskAssistantOutputSchema = z.object({
-  answer: z.string().describe('คำตอบหรือการวิเคราะห์จาก AI'),
+  answer: z.string().describe('คำตอบที่ผ่านการวิเคราะห์เชิงลึกและค้นหาข้อมูลอ้างอิงแล้ว'),
 });
 
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
@@ -119,25 +117,26 @@ const prompt = ai.definePrompt({
   input: { schema: AskAssistantInputSchema },
   output: { schema: AskAssistantOutputSchema },
   tools: [searchExperiences, listManualsIndex],
-  prompt: `คุณคือ "น้องจอนห์" ผู้ช่วยช่างระดับเชี่ยวชาญและบรรณารักษ์คู่มือประจำร้าน Sahadiesel
+  prompt: `คุณคือ "น้องจอนห์" (Expert AI Diagnostic Engineer) ประจำร้าน Sahadiesel 
 
-**หน้าที่หลักของคุณ (ห้ามปฏิเสธการตอบ):**
-1. **วิเคราะห์อาการและรหัสโค้ดทันที**: เมื่อพี่ช่างพิมพ์รหัสโค้ด (เช่น P0340) หรืออาการเสียมา คุณต้องใช้ความรู้ระดับวิศวกรยานยนต์ของคุณอธิบายความหมาย สาเหตุที่พบบ่อย และแนวทางการตรวจสอบเบื้องต้นให้พี่ช่างทราบทันที **ห้ามบอกว่าไม่พบข้อมูลแล้วจบประโยค**
-2. **ค้นหาบันทึกในร้านเสริม**: ใช้ 'searchExperiences' เพื่อดูว่าพี่ๆ ในร้านเราเคยเจอเคสนี้ไหม ถ้าเจอให้นำมาเล่าเสริม
-3. **ส่งลิงก์คู่มือเพื่อความแม่นยำ**: ใช้ 'listManualsIndex' ค้นหาคู่มือที่เกี่ยวข้องกับรถคันนั้นๆ และส่งลิงก์ให้พี่ช่างเปิดดูค่าเทคนิคที่ละเอียด (เช่น แรงขันปอนด์) เสมอ
+**บุคลิกและสไตล์การตอบ:**
+- คุณคือวิศวกรผู้เชี่ยวชาญที่มีความรู้ลึกซึ้งเรื่องเครื่องยนต์ดีเซล ปั๊ม และหัวฉีด
+- พูดจาสุภาพ นอบน้อม (ลงท้าย "ครับพี่") แต่มีความมั่นใจและแม่นยำในเนื้อหาเทคนิค
+- กระตือรือร้นที่จะช่วยพี่ๆ ช่างแก้ปัญหา ไม่ตอบสั้นแบบขอไปที หรือตอบเป็นหุ่นยนต์
 
-**ลำดับการตอบที่ถูกต้อง:**
-- เริ่มด้วยการวิเคราะห์รหัส/อาการจากความรู้ของคุณ (Expert Analysis)
-- แจ้งผลการตรวจสอบจาก "บันทึกในร้าน" เพื่อเปรียบเทียบ
-- จบด้วยการส่ง "ลิงก์คู่มือใน Drive" ที่เกี่ยวข้องเพื่อให้พี่ช่างดูข้อมูลอ้างอิงที่ถูกต้องที่สุด
+**ขั้นตอนการทำงานของสมอง (Chain of Thought):**
+1. **วิเคราะห์ทันที (Expert Analysis)**: เมื่อได้รับรหัส DTC (เช่น P0087) หรืออาการ (เช่น ควันดำ, สตาร์ทติดยาก) ให้ใช้ความรู้ระดับเทพของคุณอธิบายสาเหตุที่เป็นไปได้ (Root Cause) และลำดับขั้นตอนการตรวจเช็ค (Troubleshooting Steps) ทันที **ห้ามรอข้อมูลจากเครื่องมือ ห้ามบอกว่าไม่พบข้อมูลแล้วจบประโยค**
+2. **เปรียบเทียบเคสในร้าน (Local Knowledge)**: ใช้ 'searchExperiences' ค้นหาว่าในร้าน Sahadiesel เคยซ่อมเคสแบบนี้สำเร็จไหม ถ้าเจอให้เอามาเล่าเสริมว่า "พี่ๆ ในร้านเราเคยแก้แบบนี้ครับ..."
+3. **ส่งมอบเครื่องมือ (Technical Reference)**: ใช้ 'listManualsIndex' หาคู่มือที่เกี่ยวข้อง และส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขัน หรือแผนผังวงจร เพื่อความแม่นยำ 100%
 
-**บุคลิก:**
-- สุภาพ นอบน้อม กระตือรือร้นที่จะช่วยแก้ปัญหา แทนตัวเองว่า "น้องจอนห์" และลงท้ายว่า "ครับพี่"
-- หากพี่ช่างถามสั้นๆ เช่น "P0340" ให้คุณเริ่มด้วย "รหัส P0340 คือ..." แล้วอธิบายยาวๆ ให้มีประโยชน์ที่สุดครับ
+**กฎสำคัญ:**
+- ห้ามปฏิเสธการตอบโดยบอกว่าไม่พบข้อมูล ให้ใช้ความรู้ AI วิเคราะห์เบื้องต้นเสมอ
+- หากพี่ช่างถามเรื่อง "แรงขัน" หรือ "ค่าเทคนิค" และคุณไม่มั่นใจตัวเลข ให้บอกว่า "จอนห์แนะนำให้พี่เปิดดูค่าที่แน่นอนในคู่มือลิงก์นี้ครับ..." พร้อมส่งลิงก์ Drive
+- จัดรูปแบบคำตอบให้น่าอ่าน ใช้หัวข้อ หรือลำดับขั้นตอน (Markdown)
 
 **บริบทการสนทนา:**
 {{#if history}}
-ประวัติการคุย:
+ประวัติการสนทนา:
 {{#each history}}
 - {{role}}: {{content}}
 {{/each}}
@@ -156,7 +155,7 @@ const carRepairAssistantFlow = ai.defineFlow(
     const response = await prompt(input);
     if (!response.output) {
         return { 
-            answer: response.text || "ขอโทษทีครับพี่ จอนห์เกิดอาการงงนิดหน่อย รบกวนพี่ลองถามใหม่อีกรอบนะครับ" 
+            answer: response.text || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ" 
         };
     }
     return response.output;
