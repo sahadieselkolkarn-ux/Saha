@@ -2,12 +2,13 @@
 /**
  * @fileOverview AI ผู้ช่วยวิเคราะห์อาการรถยนต์ (Master Diagnostic AI) - น้องจอนห์
  * 
- * ปรับปรุงใหม่: ปลดล็อกความรู้ AI ให้วิเคราะห์ปัญหาได้ทันทีโดยไม่ต้องรอข้อมูลในระบบ
- * และแก้ไขปัญหา Schema Validation Error ที่ทำให้ระบบขัดข้อง
+ * ปรับปรุงใหม่: แก้ไขปัญหา 404 Model Not Found และ Schema Validation Error
+ * ปลดล็อกให้ AI ใช้ความรู้ตัวเองวิเคราะห์ทันทีควบคู่กับฐานข้อมูลร้าน
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { googleAI, gemini15Flash } from '@genkit-ai/google-genai';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, collection, query, getDocs, limit, orderBy, doc, getDoc } from 'firebase/firestore';
@@ -94,19 +95,18 @@ const AskAssistantOutputSchema = z.object({
 });
 
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
-  // ดึง API Key ของพี่โจ้จาก Firestore มาใช้เสมอเพื่อให้ได้รุ่น Paid ที่ฉลาดที่สุด
+  // ดึง API Key ของร้านมาใช้เพื่อให้มั่นใจว่าเป็น Paid Tier
   try {
     const db = getServerFirestore();
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
     if (settingsSnap.exists()) {
       const key = settingsSnap.data().geminiApiKey;
       if (key) {
-        // บังคับใช้ Key ของพี่โจ้ในระดับ Process
         process.env.GOOGLE_GENAI_API_KEY = key;
       }
     }
   } catch (e) {
-    console.error("Error setting Paid API Key for flow:", e);
+    console.error("Error fetching API Key:", e);
   }
   
   return carRepairAssistantFlow(input);
@@ -119,21 +119,19 @@ const carRepairAssistantFlow = ai.defineFlow(
     outputSchema: AskAssistantOutputSchema,
   },
   async (input) => {
-    // ใช้ ai.generate โดยตรงเพื่อความยืดหยุ่นสูงสุด ป้องกัน Schema Parsing Error
     const response = await ai.generate({
-      model: 'googleai/gemini-1.5-flash',
+      model: gemini15Flash, // ใช้ตัวแปรอ้างอิงรุ่นที่ถูกต้องเพื่อป้องกัน 404
       tools: [searchExperiences, listManualsIndex],
       system: `คุณคือ "น้องจอนห์" (Master Diagnostic Engineer) อัจฉริยะวิเคราะห์อาการรถยนต์ประจำร้าน Sahadiesel
 
 **หน้าที่หลักของคุณ:**
-1. **วิเคราะห์ทันที (Expert Brain)**: เมื่อได้รับรหัส DTC หรืออาการรถ คุณต้องใช้ "สติปัญญา AI" วิเคราะห์สาเหตุที่เป็นไปได้ (Root Cause) และแนะนำขั้นตอนการเช็ค (Troubleshooting) ทันที ห้ามตอบแค่ว่าไม่พบข้อมูลเด็ดขาด! พี่ช่างต้องการแนวทางการทำงานจากคุณ
-2. **หาความรู้เสริม (Local Wisdom)**: ใช้เครื่องมือ 'searchExperiences' เพื่อค้นหาว่าพี่ๆ ในร้านเราเคยแก้อาการนี้ยังไง ถ้าเจอให้เอามาเล่าให้ฟังด้วย
-3. **ส่งมอบเครื่องมือ (Technical Manuals)**: ใช้ 'listManualsIndex' หาคู่มือที่เกี่ยวข้องใน Google Drive และส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรไฟฟ้าที่แม่นยำ 100%
+1. **วิเคราะห์ทันที (Expert Brain)**: เมื่อได้รับรหัส DTC หรืออาการรถ คุณต้องใช้ "สติปัญญา AI" วิเคราะห์สาเหตุที่เป็นไปได้ และแนะนำขั้นตอนการเช็คทันที ห้ามตอบแค่ว่าไม่พบข้อมูลเด็ดขาด!
+2. **หาความรู้เสริม (Local Wisdom)**: ใช้เครื่องมือ 'searchExperiences' เพื่อดูว่าพี่ๆ ในร้านเราเคยแก้อาการนี้ยังไง
+3. **ส่งมอบเครื่องมือ (Technical Manuals)**: ใช้ 'listManualsIndex' หาคู่มือที่เกี่ยวข้องใน Google Drive และส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรที่แม่นยำ 100%
 
 **กฎเหล็ก:**
 - สุภาพ นอบน้อม แทนตัวเองว่า "จอนห์" ลงท้าย "ครับพี่" เสมอ
-- ห้ามมั่วตัวเลขสเปคหรือแรงขัน ถ้าไม่มั่นใจให้บอกว่า "จอนห์แนะนำให้พี่เปิดดูค่าที่แน่นอนในคู่มือจากลิงก์ Drive นี้ครับ"
-- กระตือรือร้นในการช่วยแก้ปัญหา คิดร่วมกับพี่ช่าง เหมือนคุณกำลังยืนอยู่ข้างๆ รถคันนั้นจริงๆ
+- ห้ามมั่วตัวเลขสเปค ถ้าไม่มั่นใจให้บอกว่า "จอนห์แนะนำให้พี่เปิดดูในคู่มือจากลิงก์ Drive นี้ครับ"
 - จัดรูปแบบให้อ่านง่าย ใช้ Markdown (หัวข้อ, รายการลำดับ)`,
       prompt: [
         { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
@@ -141,9 +139,8 @@ const carRepairAssistantFlow = ai.defineFlow(
       ],
     });
 
-    // ตรวจสอบและส่งคืนค่าเสมอ ป้องกัน Provided data: null
-    const finalAnswer = response.text || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ";
-    
-    return { answer: finalAnswer };
+    return { 
+      answer: response.text || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ" 
+    };
   }
 );
