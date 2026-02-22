@@ -132,7 +132,7 @@ const HRSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
 
 const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
-    const isOpen = pathname.startsWith('/app/admin');
+    const isOpen = pathname.startsWith('/app/admin') || pathname === '/app/car-service/assistant/upload';
     return (
         <Collapsible defaultOpen={isOpen}>
             <CollapsibleTrigger asChild>
@@ -144,6 +144,7 @@ const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/admin/users" label="จัดการผู้ใช้ / Maintenance" onClick={onLinkClick} />
                 <SubNavLink href="/app/admin/chat" label="คุยกับจิมมี่ (AI)" onClick={onLinkClick} />
+                <SubNavLink href="/app/car-service/assistant/upload" label="อัปโหลดคู่มือ PDF" icon={FileUp} onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
@@ -260,7 +261,6 @@ const CarAssistantNav = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             <CollapsibleContent className="py-1 pl-6 space-y-1">
                 <SubNavLink href="/app/car-service/assistant/chat" label="สอบถาม AI (จอนห์)" icon={Bot} onClick={onLinkClick} />
                 <SubNavLink href="/app/car-service/assistant/share" label="แชร์ประสบการณ์" icon={Share2} onClick={onLinkClick} />
-                <SubNavLink href="/app/car-service/assistant/upload" label="อัปโหลดคู่มือ PDF" icon={FileUp} onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
