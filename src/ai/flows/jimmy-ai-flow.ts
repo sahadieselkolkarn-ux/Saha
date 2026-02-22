@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview "น้องจิมมี่" Unified AI Flow - หนึ่งเดียวที่ดูแลทั้งบริหารและเทคนิค
- * ปรับปรุงระบบการส่งข้อมูลเพื่อจบปัญหา "Invalid JSON payload (systemInstruction)"
+ * ปรับปรุงโครงสร้างการเรียกใช้ ai.generate ให้ถูกต้องตามมาตรฐาน Genkit 1.x
  */
 
 import { ai } from '@/ai/genkit';
@@ -30,7 +30,7 @@ const JimmyAiOutputSchema = z.object({
  * askJimmy - ฟังก์ชันหลักสำหรับการเรียกใช้งานน้องจิมมี่จากหน้าจอต่างๆ
  */
 export async function askJimmy(input: z.infer<typeof JimmyAiInputSchema>): Promise<z.infer<typeof JimmyAiOutputSchema>> {
-  // บันทึก API Key สำหรับ Request นี้
+  // ตั้งค่า API Key สำหรับ Request ปัจจุบัน
   process.env.GOOGLE_GENAI_API_KEY = input.apiKey;
   
   try {
@@ -54,19 +54,18 @@ const jimmyAiFlow = ai.defineFlow(
   async (input) => {
     const isTechnical = input.scope === 'TECHNICAL';
     
-    // กำหนดคำสั่งระบบ (System Instruction) ตามขอบเขตการใช้งาน
+    // กำหนดคำสั่งระบบ (System Instruction)
     const systemInstruction = isTechnical 
       ? `คุณคือ "น้องจิมมี่" (Technical Expert) ผู้ช่วยช่างอัจฉริยะประจำร้าน Sahadiesel
       
       **บุคลิกและเป้าหมาย:**
       - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แต่มีความรู้เรื่องเครื่องยนต์ดีเซลระดับวิศวกร
-      - แทนตัวเองว่า "จิมมี่" และลงท้ายว่า "ค่ะพี่" หรือ "นะคะ" เสมอ
-      - กระตือรือร้นที่จะช่วยพี่ๆ ช่างแก้ปัญหา ไม่ว่าอาการจะหนักแค่ไหน
+      - แทนตัวเองว่า "จิมมี่" และลงท้ายด้วย "ค่ะพี่" หรือ "นะคะ" เสมอ
       
       **หน้าที่ของคุณ:**
       1. วิเคราะห์อาการทันที: ใช้ความรู้ AI วิเคราะห์รหัส DTC หรืออาการรถที่พี่ช่างพิมพ์มา
       2. อ้างอิงข้อมูลร้าน: ใช้ข้อมูล 'บันทึกการซ่อม' ที่ได้รับมาบอกพี่ช่างว่า "ในร้านเราเคยแก้แบบนี้ค่ะ..."
-      3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรที่ถูกต้อง
+      3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์จากรายการคู่มือใน Drive ให้พี่กดดูทันที
       
       **ข้อมูลร้านที่จิมมี่เห็นตอนนี้:**
       - บันทึกการซ่อม: ${JSON.stringify(input.contextData?.experiences || [])}
@@ -85,26 +84,15 @@ const jimmyAiFlow = ai.defineFlow(
       **ข้อมูลธุรกิจที่ได้รับ:**
       ${JSON.stringify(input.contextData?.businessSummary || {})}`;
 
-    // เตรียมประวัติการคุยโดยใช้บทบาท 'system' ที่จุดเริ่มต้น เพื่อความเสถียรสูงสุด
-    const messages = [
-      {
-        role: 'system' as const,
-        content: [{ text: systemInstruction }]
-      },
-      ...(input.history?.map(m => ({
-        role: m.role as 'user' | 'model',
-        content: [{ text: m.content }]
-      })) || []),
-      {
-        role: 'user' as const,
-        content: [{ text: input.message }]
-      }
-    ];
-
-    // เรียกใช้งาน AI โดยส่ง messages ทั้งหมดไปประมวลผล
+    // เรียกใช้งาน AI โดยใช้โครงสร้างมาตรฐานของ Genkit 1.x
     const response = await ai.generate({
       model: 'googleai/gemini-1.5-flash',
-      messages: messages,
+      system: systemInstruction,
+      messages: input.history?.map(m => ({
+        role: m.role as 'user' | 'model',
+        content: [{ text: m.content }]
+      })) || [],
+      prompt: input.message,
     });
 
     return { answer: response.text || "จิมมี่กำลังพยายามประมวลผลอยู่ค่ะพี่..." };
