@@ -89,11 +89,16 @@ export default function CarRepairAIChatPage() {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
       const result = await askCarRepairAI({ message: userMsg, history });
       
-      setMessages(prev => [...prev, { role: 'model', content: result.answer, timestamp: new Date() }]);
-    } catch (error: any) {
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: `ขอโทษทีครับพี่ ระบบผมขัดข้องนิดหน่อย: ${error.message}`, 
+        content: result?.answer || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ", 
+        timestamp: new Date() 
+      }]);
+    } catch (error: any) {
+      console.error("AI Flow Error:", error);
+      setMessages(prev => [...prev, { 
+        role: 'model', 
+        content: `ขอโทษทีครับพี่ ระบบผมขัดข้องนิดหน่อย: ${error.message || "Unknown Error"}`, 
         timestamp: new Date() 
       }]);
     } finally {
@@ -198,7 +203,7 @@ export default function CarRepairAIChatPage() {
                     </Avatar>
                     <div className="bg-white border rounded-2xl rounded-tl-none px-4 py-2.5 flex items-center gap-2 shadow-sm border-border">
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                    <span className="text-xs text-muted-foreground italic">จอนห์กำลังค้นหาในคลังความรู้ Sahadiesel...</span>
+                    <span className="text-xs text-muted-foreground italic">จอนห์กำลังวิเคราะห์อาการและค้นหาข้อมูลอ้างอิงให้ครับพี่...</span>
                     </div>
                 </div>
                 )}
@@ -208,7 +213,7 @@ export default function CarRepairAIChatPage() {
             <div className="p-3 bg-background border-t">
             <div className="flex gap-2 max-w-4xl mx-auto items-center">
                 <Input 
-                placeholder="พิมพ์อาการรถ หรือคำถามมาได้เลยครับพี่..." 
+                placeholder="พิมพ์อาการรถ หรือรหัส DTC มาได้เลยครับพี่..." 
                 className="rounded-full bg-muted/30 border-primary/20 h-10 px-5 focus-visible:ring-primary shadow-inner"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -238,7 +243,7 @@ export default function CarRepairAIChatPage() {
                 <CardContent className="text-[11px] text-amber-700 space-y-2">
                     <p>• หากจอนห์ตอบไม่ถูก ให้พี่ไปบันทึกวิธีแก้ที่ถูกต้องในเมนู <b>"แชร์ประสบการณ์"</b> ครับ</p>
                     <p>• จอนห์จะใช้ข้อมูลที่พี่บันทึก มาตอบคำถามครั้งต่อไปทันที (Learning)</p>
-                    <p>• จอนห์อ่านข้างในไฟล์ Drive ไม่ได้ แต่จะส่งลิงก์ที่เกี่ยวข้องให้พี่เปิดดูเองเพื่อความแม่นยำครับ</p>
+                    <p>• หากหาในบันทึกไม่เจอ จอนห์จะใช้ความรู้ AI วิเคราะห์และส่งลิงก์คู่มือให้ครับ</p>
                 </CardContent>
             </Card>
 

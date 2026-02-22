@@ -1,11 +1,9 @@
 'use server';
 /**
- * @fileOverview AI ผู้ช่วยซ่อมรถยนต์ (Car Repair AI Assistant) - น้องจอนห์
+ * @fileOverview AI ผู้ช่วยวิเคราะห์อาการรถยนต์ (Master Diagnostic AI) - น้องจอนห์
  * 
- * ระบบวิเคราะห์ปัญหาการซ่อมโดยอ้างอิงจาก:
- * 1. ความรู้ระดับวิศวกรยานยนต์มืออาชีพ (Core Intelligence)
- * 2. ฐานข้อมูลประสบการณ์จริงในร้าน (Local Wisdom)
- * 3. ดัชนีคู่มือเทคนิค (Manuals Database)
+ * ปรับปรุงใหม่: ปลดล็อกความรู้ AI ให้วิเคราะห์ปัญหาได้ทันทีโดยไม่ต้องรอข้อมูลในระบบ
+ * และแก้ไขปัญหา Schema Validation Error ที่ทำให้ระบบขัดข้อง
  */
 
 import { ai } from '@/ai/genkit';
@@ -26,14 +24,14 @@ const searchExperiences = ai.defineTool(
     name: 'searchExperiences',
     description: 'ค้นหาบันทึกการซ่อมจริงในร้าน Sahadiesel เพื่อดูวิธีแก้ปัญหาที่เคยทำสำเร็จในอดีต',
     inputSchema: z.object({
-      keyword: z.string().describe('คำค้นหา เช่น รหัสโค้ด, อาการเสีย หรือชื่อรุ่นรถ'),
+      keyword: z.string().describe('คำค้นหา เช่น รหัส DTC, อาการเสีย หรือชื่อรุ่นรถ'),
     }),
     outputSchema: z.array(z.any()),
   },
   async (input) => {
     try {
       const db = getServerFirestore();
-      const snap = await getDocs(query(collection(db, 'carRepairExperiences'), orderBy('createdAt', 'desc'), limit(50)));
+      const snap = await getDocs(query(collection(db, 'carRepairExperiences'), orderBy('createdAt', 'desc'), limit(100)));
       
       const k = input.keyword.toLowerCase();
       return snap.docs
@@ -45,7 +43,7 @@ const searchExperiences = ai.defineTool(
           d.solution?.toLowerCase().includes(k)
         );
     } catch (e) {
-      console.error(e);
+      console.error("Tool Error (searchExperiences):", e);
       return [];
     }
   }
@@ -54,7 +52,7 @@ const searchExperiences = ai.defineTool(
 const listManualsIndex = ai.defineTool(
   {
     name: 'listManualsIndex',
-    description: 'ตรวจสอบรายชื่อคู่มือซ่อม (Service Manuals) ทั้งหมดที่มีในคลังของร้าน เพื่อส่งลิงก์ให้ช่างเปิดดูค่าเทคนิคที่แม่นยำ',
+    description: 'ตรวจสอบรายชื่อคู่มือซ่อม (Manuals) ใน Google Drive ของร้าน เพื่อส่งลิงก์ให้ช่างเปิดดูค่าแรงขันหรือวงจรไฟฟ้า',
     inputSchema: z.object({
       searchQuery: z.string().optional().describe('ยี่ห้อหรือรุ่นรถที่ต้องการหาคู่มือ'),
     }),
@@ -75,7 +73,7 @@ const listManualsIndex = ai.defineTool(
       }
       return items;
     } catch (e) {
-      console.error(e);
+      console.error("Tool Error (listManualsIndex):", e);
       return [];
     }
   }
@@ -96,54 +94,23 @@ const AskAssistantOutputSchema = z.object({
 });
 
 export async function askCarRepairAI(input: z.infer<typeof AskAssistantInputSchema>) {
+  // ดึง API Key ของพี่โจ้จาก Firestore มาใช้เสมอเพื่อให้ได้รุ่น Paid ที่ฉลาดที่สุด
   try {
     const db = getServerFirestore();
     const settingsSnap = await getDoc(doc(db, "settings", "ai"));
     if (settingsSnap.exists()) {
       const key = settingsSnap.data().geminiApiKey;
       if (key) {
+        // บังคับใช้ Key ของพี่โจ้ในระดับ Process
         process.env.GOOGLE_GENAI_API_KEY = key;
       }
     }
   } catch (e) {
-    console.error("Error setting Paid API Key:", e);
+    console.error("Error setting Paid API Key for flow:", e);
   }
   
   return carRepairAssistantFlow(input);
 }
-
-const prompt = ai.definePrompt({
-  name: 'carRepairAssistantPrompt',
-  input: { schema: AskAssistantInputSchema },
-  output: { schema: AskAssistantOutputSchema },
-  tools: [searchExperiences, listManualsIndex],
-  prompt: `คุณคือ "น้องจอนห์" (Expert AI Diagnostic Engineer) ประจำร้าน Sahadiesel 
-
-**บุคลิกและสไตล์การตอบ:**
-- คุณคือวิศวกรผู้เชี่ยวชาญที่มีความรู้ลึกซึ้งเรื่องเครื่องยนต์ดีเซล ปั๊ม และหัวฉีด
-- พูดจาสุภาพ นอบน้อม (ลงท้าย "ครับพี่") แต่มีความมั่นใจและแม่นยำในเนื้อหาเทคนิค
-- กระตือรือร้นที่จะช่วยพี่ๆ ช่างแก้ปัญหา ไม่ตอบสั้นแบบขอไปที หรือตอบเป็นหุ่นยนต์
-
-**ขั้นตอนการทำงานของสมอง (Chain of Thought):**
-1. **วิเคราะห์ทันที (Expert Analysis)**: เมื่อได้รับรหัส DTC (เช่น P0087) หรืออาการ (เช่น ควันดำ, สตาร์ทติดยาก) ให้ใช้ความรู้ระดับเทพของคุณอธิบายสาเหตุที่เป็นไปได้ (Root Cause) และลำดับขั้นตอนการตรวจเช็ค (Troubleshooting Steps) ทันที **ห้ามรอข้อมูลจากเครื่องมือ ห้ามบอกว่าไม่พบข้อมูลแล้วจบประโยค**
-2. **เปรียบเทียบเคสในร้าน (Local Knowledge)**: ใช้ 'searchExperiences' ค้นหาว่าในร้าน Sahadiesel เคยซ่อมเคสแบบนี้สำเร็จไหม ถ้าเจอให้เอามาเล่าเสริมว่า "พี่ๆ ในร้านเราเคยแก้แบบนี้ครับ..."
-3. **ส่งมอบเครื่องมือ (Technical Reference)**: ใช้ 'listManualsIndex' หาคู่มือที่เกี่ยวข้อง และส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขัน หรือแผนผังวงจร เพื่อความแม่นยำ 100%
-
-**กฎสำคัญ:**
-- ห้ามปฏิเสธการตอบโดยบอกว่าไม่พบข้อมูล ให้ใช้ความรู้ AI วิเคราะห์เบื้องต้นเสมอ
-- หากพี่ช่างถามเรื่อง "แรงขัน" หรือ "ค่าเทคนิค" และคุณไม่มั่นใจตัวเลข ให้บอกว่า "จอนห์แนะนำให้พี่เปิดดูค่าที่แน่นอนในคู่มือลิงก์นี้ครับ..." พร้อมส่งลิงก์ Drive
-- จัดรูปแบบคำตอบให้น่าอ่าน ใช้หัวข้อ หรือลำดับขั้นตอน (Markdown)
-
-**บริบทการสนทนา:**
-{{#if history}}
-ประวัติการสนทนา:
-{{#each history}}
-- {{role}}: {{content}}
-{{/each}}
-{{/if}}
-
-คำถามล่าสุดจากพี่ช่าง: {{{message}}}`,
-});
 
 const carRepairAssistantFlow = ai.defineFlow(
   {
@@ -152,12 +119,31 @@ const carRepairAssistantFlow = ai.defineFlow(
     outputSchema: AskAssistantOutputSchema,
   },
   async (input) => {
-    const response = await prompt(input);
-    if (!response.output) {
-        return { 
-            answer: response.text || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ" 
-        };
-    }
-    return response.output;
+    // ใช้ ai.generate โดยตรงเพื่อความยืดหยุ่นสูงสุด ป้องกัน Schema Parsing Error
+    const response = await ai.generate({
+      model: 'googleai/gemini-1.5-flash',
+      tools: [searchExperiences, listManualsIndex],
+      system: `คุณคือ "น้องจอนห์" (Master Diagnostic Engineer) อัจฉริยะวิเคราะห์อาการรถยนต์ประจำร้าน Sahadiesel
+
+**หน้าที่หลักของคุณ:**
+1. **วิเคราะห์ทันที (Expert Brain)**: เมื่อได้รับรหัส DTC หรืออาการรถ คุณต้องใช้ "สติปัญญา AI" วิเคราะห์สาเหตุที่เป็นไปได้ (Root Cause) และแนะนำขั้นตอนการเช็ค (Troubleshooting) ทันที ห้ามตอบแค่ว่าไม่พบข้อมูลเด็ดขาด! พี่ช่างต้องการแนวทางการทำงานจากคุณ
+2. **หาความรู้เสริม (Local Wisdom)**: ใช้เครื่องมือ 'searchExperiences' เพื่อค้นหาว่าพี่ๆ ในร้านเราเคยแก้อาการนี้ยังไง ถ้าเจอให้เอามาเล่าให้ฟังด้วย
+3. **ส่งมอบเครื่องมือ (Technical Manuals)**: ใช้ 'listManualsIndex' หาคู่มือที่เกี่ยวข้องใน Google Drive และส่งลิงก์ให้พี่ช่างเปิดดูค่าแรงขันหรือวงจรไฟฟ้าที่แม่นยำ 100%
+
+**กฎเหล็ก:**
+- สุภาพ นอบน้อม แทนตัวเองว่า "จอนห์" ลงท้าย "ครับพี่" เสมอ
+- ห้ามมั่วตัวเลขสเปคหรือแรงขัน ถ้าไม่มั่นใจให้บอกว่า "จอนห์แนะนำให้พี่เปิดดูค่าที่แน่นอนในคู่มือจากลิงก์ Drive นี้ครับ"
+- กระตือรือร้นในการช่วยแก้ปัญหา คิดร่วมกับพี่ช่าง เหมือนคุณกำลังยืนอยู่ข้างๆ รถคันนั้นจริงๆ
+- จัดรูปแบบให้อ่านง่าย ใช้ Markdown (หัวข้อ, รายการลำดับ)`,
+      prompt: [
+        { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
+        { text: `คำถามจากพี่ช่าง: ${input.message}` }
+      ],
+    });
+
+    // ตรวจสอบและส่งคืนค่าเสมอ ป้องกัน Provided data: null
+    const finalAnswer = response.text || "ขอโทษทีครับพี่ จอนห์กำลังรวบรวมสมาธิวิเคราะห์ให้อยู่ รบกวนพี่ลองถามอีกรอบได้ไหมครับ";
+    
+    return { answer: finalAnswer };
   }
 );
