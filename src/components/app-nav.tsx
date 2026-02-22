@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import React, { useMemo, useState, useEffect } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Bot, Share2, FileUp
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Bot, Share2, FileUp, Sparkles
 } from "lucide-react"
 import { collection, query, where, getDocs } from "firebase/firestore"
 
@@ -234,6 +234,38 @@ const CarServiceByWorkerNav = ({ onLinkClick }: { onLinkClick?: () => void }) =>
   );
 };
 
+const CarAssistantNav = ({ onLinkClick }: { onLinkClick?: () => void }) => {
+    const { profile } = useAuth();
+    const pathname = usePathname();
+    const isOpen = pathname.startsWith('/app/car-service/assistant');
+
+    const isAllowed = (profile?.department === 'CAR_SERVICE' && profile?.role === 'OFFICER') || 
+                      profile?.role === 'ADMIN' || 
+                      profile?.role === 'MANAGER' || 
+                      profile?.department === 'MANAGEMENT';
+    
+    if (!isAllowed) return null;
+
+    return (
+        <Collapsible defaultOpen={isOpen} className="mt-1">
+            <CollapsibleTrigger asChild>
+                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between">
+                    <span className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        ผู้ช่วยซ่อมรถยนต์
+                    </span>
+                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="py-1 pl-6 space-y-1">
+                <SubNavLink href="/app/car-service/assistant/chat" label="สอบถาม AI (จอนห์)" icon={Bot} onClick={onLinkClick} />
+                <SubNavLink href="/app/car-service/assistant/share" label="แชร์ประสบการณ์" icon={Share2} onClick={onLinkClick} />
+                <SubNavLink href="/app/car-service/assistant/upload" label="อัปโหลดคู่มือ PDF" icon={FileUp} onClick={onLinkClick} />
+            </CollapsibleContent>
+        </Collapsible>
+    );
+};
+
 
 const DepartmentMenu = ({ department, onLinkClick }: { department: Department, onLinkClick?: () => void }) => {
     const pathname = usePathname();
@@ -331,14 +363,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                     <>
                        <SubNavLink href="/app/car-service/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
                        {profile?.role === 'OFFICER' ? (
-                            <>
-                                <CarServiceByWorkerNav onLinkClick={onLinkClick} />
-                                <div className="my-2 border-t border-muted/50 mx-2"></div>
-                                <p className="px-4 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">ผู้ช่วยซ่อมรถยนต์</p>
-                                <SubNavLink href="/app/car-service/assistant/chat" label="สอบถาม AI" icon={Bot} onClick={onLinkClick} />
-                                <SubNavLink href="/app/car-service/assistant/share" label="แชร์ประสบการณ์" icon={Share2} onClick={onLinkClick} />
-                                <SubNavLink href="/app/car-service/assistant/upload" label="อัปโหลดคู่มือ" icon={FileUp} onClick={onLinkClick} />
-                            </>
+                            <CarServiceByWorkerNav onLinkClick={onLinkClick} />
                        ) : (
                             profile?.role === 'WORKER' && <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                        )}
@@ -444,6 +469,8 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                 )}
 
                 {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
+                
+                <CarAssistantNav onLinkClick={onLinkClick} />
             </nav>
         </>
     );
