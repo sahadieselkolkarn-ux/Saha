@@ -240,10 +240,8 @@ const CarAssistantNav = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
     const isOpen = pathname.startsWith('/app/car-service/assistant');
 
-    const isAllowed = (profile?.department === 'CAR_SERVICE' && profile?.role === 'OFFICER') || 
-                      profile?.role === 'ADMIN' || 
-                      profile?.role === 'MANAGER' || 
-                      profile?.department === 'MANAGEMENT';
+    // Strictly show only for Car Service department as requested
+    const isAllowed = profile?.department === 'CAR_SERVICE';
     
     if (!isAllowed) return null;
 
@@ -259,7 +257,7 @@ const CarAssistantNav = ({ onLinkClick }: { onLinkClick?: () => void }) => {
                 </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-6 space-y-1">
-                <SubNavLink href="/app/car-service/assistant/chat" label="สอบถาม AI (จอนห์)" icon={Bot} onClick={onLinkClick} />
+                <SubNavLink href="/app/car-service/assistant/chat" label="สอบถาม AI (น้องจอนห์)" icon={Bot} onClick={onLinkClick} />
                 <SubNavLink href="/app/car-service/assistant/share" label="แชร์ประสบการณ์" icon={Share2} onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
@@ -367,6 +365,8 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                        ) : (
                             profile?.role === 'WORKER' && <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                        )}
+                       {/* Nested Car Assistant for this department only */}
+                       <CarAssistantNav onLinkClick={onLinkClick} />
                     </>
                 )}
                 {department === 'COMMONRAIL' && (
@@ -469,8 +469,6 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
                 )}
 
                 {departmentsToShow.map(dept => <DepartmentMenu key={dept} department={dept} onLinkClick={onLinkClick} />)}
-                
-                <CarAssistantNav onLinkClick={onLinkClick} />
             </nav>
         </>
     );
