@@ -34,7 +34,11 @@ export async function askJimmy(input: z.infer<typeof JimmyAiInputSchema>): Promi
     return result || { answer: "ขอโทษทีค่ะพี่จ๋า จิมมี่สับสนนิดหน่อย รบกวนถามอีกรอบนะคะ" };
   } catch (e: any) {
     console.error("Jimmy Flow Error:", e);
-    return { answer: `น้องจิมมี่ขัดข้องนิดหน่อยค่ะพี่: ${e.message}. รบกวนพี่เช็ค API Key อีกทีนะคะ` };
+    // Return a structured error message instead of throwing to prevent UI crash
+    const errorMsg = e.message || "เกิดข้อผิดพลาดในการประมวลผล";
+    return { 
+      answer: `น้องจิมมี่ขัดข้องนิดหน่อยค่ะพี่: ${errorMsg}. รบกวนพี่เช็ค API Key อีกทีนะคะ` 
+    };
   }
 }
 
@@ -77,16 +81,19 @@ const jimmyAiFlow = ai.defineFlow(
       **ข้อมูลธุรกิจที่ได้รับ:**
       ${JSON.stringify(input.contextData?.businessSummary || {})}`;
 
+    // Properly map history for Genkit 1.x format
+    const history = input.history?.map(m => ({
+      role: m.role as 'user' | 'model',
+      content: [{ text: m.content }]
+    }));
+
     const response = await ai.generate({
       model: 'googleai/gemini-1.5-flash',
-      config: {
-        apiVersion: 'v1',
-      },
+      // IMPORTANT: DO NOT put apiVersion in the generate config block. 
+      // It is a plugin-level configuration and invalid in generation_config.
       system: systemInstruction,
-      prompt: [
-        { text: `ประวัติการสนทนา: ${JSON.stringify(input.history || [])}` },
-        { text: `คำถาม: ${input.message}` }
-      ],
+      history: history,
+      prompt: input.message,
     });
 
     return { answer: response.text || "จิมมี่กำลังพยายามประมวลผลอยู่ค่ะพี่..." };
