@@ -1,8 +1,13 @@
 import {genkit} from 'genkit';
-import {googleAI} from '@genkit-ai/google-genai';
+import {googleAI, gemini15Flash} from '@genkit-ai/google-genai';
 
 export const ai = genkit({
-  plugins: [googleAI()],
-  // กำหนดรุ่นพื้นฐานเป็น gemini-1.5-flash ซึ่งเป็นรุ่นมาตรฐานที่เสถียรที่สุดในปัจจุบัน
-  model: 'googleai/gemini-1.5-flash',
+  plugins: [
+    googleAI({
+      // ใช้ API v1 ซึ่งเป็นรุ่นมาตรฐานสำหรับ Paid Key เพื่อความเสถียรสูงสุด
+      apiVersion: 'v1',
+    }),
+  ],
+  // กำหนดรุ่นมาตรฐานเป็น Gemini 1.5 Flash
+  model: gemini15Flash,
 });

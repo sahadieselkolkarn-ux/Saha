@@ -2,11 +2,12 @@
 /**
  * @fileOverview แชทกับน้องจิมมี่ - AI ผู้ช่วยอัจฉริยะประจำร้าน 'สหดีเซล' ของพี่โจ้
  * 
- * ปรับปรุง: แก้ไขปัญหา 404 Model Not Found และ Schema Error
+ * ปรับปรุง: แก้ไขปัญหา 404 และ Schema Error
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { gemini15Flash } from '@genkit-ai/google-genai';
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
@@ -87,7 +88,7 @@ const chatJimmyFlow = ai.defineFlow(
   async (input) => {
     try {
       const response = await ai.generate({
-        model: 'googleai/gemini-1.5-flash',
+        model: gemini15Flash,
         tools: [getAccountingSummary],
         system: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
         - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
@@ -101,6 +102,7 @@ const chatJimmyFlow = ai.defineFlow(
 
       return { response: response.text || "น้องจิมมี่สับสนนิดหน่อยค่ะ รบกวนพี่โจ้ลองถามใหม่อีกครั้งนะคะ" };
     } catch (error: any) {
+      console.error("Jimmy Flow Error:", error);
       return { response: `ขอโทษทีค่ะพี่โจ้ ระบบน้องจิมมี่ขัดข้องนิดหน่อย (Error: ${error.message}) พี่โจ้ลองเช็ค API Key อีกทีนะคะ` };
     }
   }
