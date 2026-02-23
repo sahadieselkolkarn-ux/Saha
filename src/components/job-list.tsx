@@ -39,7 +39,8 @@ import {
   FileText,
   Receipt,
   UserCheck,
-  CheckCircle2
+  CheckCircle2,
+  Users
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -52,8 +53,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
-import type { Job, JobStatus, JobDepartment } from "@/lib/types";
+import type { Job, JobStatus, JobDepartment, UserProfile } from "@/lib/types";
 import { JOB_STATUSES } from "@/lib/constants";
 import { safeFormat } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
@@ -115,6 +132,12 @@ export function JobList({
   const [isLastPage, setIsLastPage] = useState(false);
 
   const [billingJob, setBillingJob] = useState<Job | null>(null);
+
+  // Quick Assign States
+  const [assigningJob, setAssigningJob] = useState<Job | null>(null);
+  const [deptWorkers, setDeptWorkers] = useState<UserProfile[]>([]);
+  const [isLoadingWorkers, setIsLoadingWorkers] = useState(false);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>("");
 
   const statusConfig = useMemo(() => {
     const statusArray = status ? (Array.isArray(status) ? status : [status]) : [];
@@ -241,6 +264,70 @@ export function JobList({
     }
   };
 
+  const handleOpenAssignQuick = async (job: Job) => {
+    if (!db) return;
+    setAssigningJob(job);
+    setSelectedWorkerId("");
+    setIsLoadingWorkers(true);
+    try {
+      // ดึงพนักงานทั้งตำแหน่ง WORKER และ OFFICER ในแผนกที่เกี่ยวข้อง
+      const q = query(
+        collection(db, "users"),
+        where("department", "==", job.department),
+        where("status", "==", "ACTIVE")
+      );
+      const snapshot = await getDocs(q);
+      const workers = snapshot.docs
+        .map(d => ({ ...d.data(), uid: d.id } as UserProfile))
+        .filter(u => u.role === 'WORKER' || u.role === 'OFFICER'); // ดึงทั้งช่างและเจ้าหน้าที่ประจำแผนก
+      
+      setDeptWorkers(workers);
+    } catch (e) {
+      toast({ variant: 'destructive', title: "ไม่สามารถโหลดรายชื่อได้" });
+    } finally {
+      setIsLoadingWorkers(false);
+    }
+  };
+
+  const handleConfirmAssign = async () => {
+    if (!db || !profile || !assigningJob || !selectedWorkerId || isProcessing) return;
+    
+    const worker = deptWorkers.find(w => w.uid === selectedWorkerId);
+    if (!worker) return;
+
+    setIsProcessing(assigningJob.id);
+    try {
+      const batch = writeBatch(db);
+      const jobRef = doc(db, "jobs", assigningJob.id);
+      const activityRef = doc(collection(jobRef, "activities"));
+
+      const updateData = {
+        status: 'IN_PROGRESS',
+        assigneeUid: worker.uid,
+        assigneeName: worker.displayName,
+        lastActivityAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      batch.update(jobRef, updateData);
+      batch.set(activityRef, {
+        text: `มอบหมายงานให้: ${worker.displayName} โดย ${profile.displayName}`,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp()
+      });
+
+      await batch.commit();
+      toast({ title: "มอบหมายงานสำเร็จ" });
+      setAssigningJob(null);
+      fetchData(currentPage);
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "มอบหมายล้มเหลว", description: e.message });
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
   const handleNextPage = () => {
     if (!isLastPage) {
       const nextIdx = currentPage + 1;
@@ -354,17 +441,15 @@ export function JobList({
                   </Button>
                 )}
 
-                {/* Assign Job button for Management/Office/Officer */}
+                {/* Quick Assign button for Management/Office/Officer */}
                 {job.status === 'RECEIVED' && isOfficeOrAdmin && (
                   <Button 
-                    asChild
+                    onClick={() => handleOpenAssignQuick(job)}
                     className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" 
                     variant="default"
                   >
-                    <Link href={`/app/jobs/${job.id}`}>
-                      <UserCheck className="mr-2 h-4 w-4" />
-                      มอบหมายงาน
-                    </Link>
+                    <UserCheck className="mr-2 h-4 w-4" />
+                    มอบหมายงาน
                   </Button>
                 )}
 
@@ -418,6 +503,64 @@ export function JobList({
           </div>
         </div>
       )}
+
+      {/* Quick Assign Dialog */}
+      <Dialog open={!!assigningJob} onOpenChange={(open) => !open && setAssigningJob(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-amber-500" />
+              มอบหมายผู้รับผิดชอบงาน
+            </DialogTitle>
+            <DialogDescription>
+              เลือพนักงานในแผนก {assigningJob && deptLabel(assigningJob.department)} เพื่อรับผิดชอบงานของ <b>{assigningJob?.customerSnapshot.name}</b>
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>พนักงานประจำแผนก</Label>
+              {isLoadingWorkers ? (
+                <div className="flex items-center justify-center p-4 border rounded-md border-dashed">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  <span>กำลังโหลดรายชื่อ...</span>
+                </div>
+              ) : (
+                <Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="เลือกรายชื่อพนักงาน..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deptWorkers.length > 0 ? (
+                      deptWorkers.map((worker) => (
+                        <SelectItem key={worker.uid} value={worker.uid}>
+                          <div className="flex items-center gap-2">
+                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span>{worker.displayName}</span>
+                            <Badge variant="outline" className="text-[10px] ml-2 h-4 px-1">{worker.role}</Badge>
+                          </div>
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-sm text-muted-foreground italic">
+                        ไม่พบพนักงานในแผนกนี้
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setAssigningJob(null)} disabled={!!isProcessing}>ยกเลิก</Button>
+            <Button onClick={handleConfirmAssign} disabled={!selectedWorkerId || !!isProcessing}>
+              {isProcessing === assigningJob?.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              ยืนยันการมอบหมาย
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Billing Dialog */}
       <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
