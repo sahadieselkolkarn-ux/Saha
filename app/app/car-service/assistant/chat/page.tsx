@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
-import { useAuth } from "@/context/auth-context";
+import { useState, useRef, useEffect } from "react";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { collection, query, getDocs, limit, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
-import { doc, setDoc, serverTimestamp, collection, query, getDocs, limit, orderBy } from "firebase/firestore";
-import { useDoc } from "@/firebase/firestore/use-doc";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,15 +14,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Bot, Send, Loader2, Sparkles, User, Settings, 
-  Key, AlertCircle, Info, Database, ShieldCheck, CheckCircle2 
+  Bot, Send, Loader2, Sparkles, User, 
+  Database, Info, CheckCircle2 
 } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { askJimmy } from "@/ai/flows/jimmy-ai-flow";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import type { GenAISettings } from "@/lib/types";
 
 interface Message {
   role: 'user' | 'model';
@@ -31,14 +27,14 @@ interface Message {
 }
 
 export default function CarRepairAIChatPage() {
-  const { db } = useFirebase();
+  const { db, app: firebaseApp } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: `สวัสดีค่ะพี่ๆ ช่าง! จิมมี่มารับหน้าที่ดูแลการวิเคราะห์อาการรถต่อจากจอนห์แล้วนะคะ
+      content: `สวัสดีค่ะพี่ๆ ช่าง! จิมมี่มารับหน้าที่ดูแลการวิเคราะห์อาการรถให้แล้วนะคะ
 
 วันนี้พี่เจอรถคันไหนอาการหนัก หรือเจอโค้ด DTC อะไรมา พิมพ์บอกจิมมี่ได้เลยค่ะ จิมมี่จะช่วยวิเคราะห์สาเหตุ พร้อมกับค้นหาบันทึกการซ่อมในร้านและคู่มือให้พี่ลุยงานต่อได้ทันทีเลยค่ะ!`,
       timestamp: new Date()
@@ -46,23 +42,7 @@ export default function CarRepairAIChatPage() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
-  const [apiKeyInput, setNewApiKeyInput] = useState("");
-  const [isSavingKey, setIsSavingKey] = useState(false);
-
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const aiSettingsRef = useMemo(() => (db ? doc(db, "settings", "ai") : null), [db]);
-  const { data: aiSettings } = useDoc<GenAISettings>(aiSettingsRef);
-
-  const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
-
-  // Pre-fill API Key when dialog opens
-  useEffect(() => {
-    if (isApiKeyDialogOpen && aiSettings?.geminiApiKey) {
-      setNewApiKeyInput(aiSettings.geminiApiKey);
-    }
-  }, [isApiKeyDialogOpen, aiSettings]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -74,13 +54,7 @@ export default function CarRepairAIChatPage() {
   }, [messages, isLoading]);
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading || !db) return;
-
-    if (!aiSettings?.geminiApiKey) {
-        toast({ variant: "destructive", title: "จิมมี่ยังไม่พร้อม", description: "กรุณาติดต่อแอดมินเพื่อตั้งค่า API Key ก่อนนะคะ" });
-        if (isAdmin) setIsApiKeyDialogOpen(true);
-        return;
-    }
+    if (!inputValue.trim() || isLoading || !db || !firebaseApp) return;
 
     const userMsg = inputValue.trim();
     setInputValue("");
@@ -88,29 +62,35 @@ export default function CarRepairAIChatPage() {
     setIsLoading(true);
 
     try {
-      // 1. Fetch Context from Client-side (Permission-safe)
-      const expSnap = await getDocs(query(collection(db, "carRepairExperiences"), orderBy("createdAt", "desc"), limit(20)));
-      const manualsSnap = await getDocs(collection(db, "carRepairManuals"));
+      // 1. Fetch Context from Client-side
+      const [expSnap, manualsSnap] = await Promise.all([
+        getDocs(query(collection(db, "carRepairExperiences"), orderBy("createdAt", "desc"), limit(20))),
+        getDocs(collection(db, "carRepairManuals"))
+      ]);
       
-      const experiences = expSnap.docs.map(d => d.data());
-      const manuals = manualsSnap.docs.map(d => d.data());
+      const experiences = expSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const manuals = manualsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      // 2. Call Jimmy AI
+      // 2. Call Jimmy AI via Cloud Function
+      const functions = getFunctions(firebaseApp, 'us-central1');
+      const chatWithJimmy = httpsCallable(functions, 'chatWithJimmy');
+      
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const result = await askJimmy({ 
+      const result = await chatWithJimmy({ 
         message: userMsg, 
         scope: 'TECHNICAL',
-        apiKey: aiSettings.geminiApiKey,
         history,
         contextData: { experiences, manuals }
       });
       
+      const data = result.data as any;
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: result?.answer || "ขอโทษทีค่ะพี่ จิมมี่ประมวลผลขัดข้อง รบกวนลองอีกรอบนะคะ", 
+        content: data?.answer || "ขอโทษทีค่ะพี่ จิมมี่ประมวลผลขัดข้อง รบกวนลองอีกรอบนะคะ", 
         timestamp: new Date() 
       }]);
     } catch (error: any) {
+      console.error("Jimmy Error:", error);
       setMessages(prev => [...prev, { 
         role: 'model', 
         content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้อง: ${error.message || "Unknown Error"}`, 
@@ -121,41 +101,15 @@ export default function CarRepairAIChatPage() {
     }
   };
 
-  const saveApiKey = async () => {
-    if (!db || !apiKeyInput.trim() || !profile) return;
-    setIsSavingKey(true);
-    try {
-      await setDoc(doc(db, "settings", "ai"), {
-        geminiApiKey: apiKeyInput.trim(),
-        updatedAt: serverTimestamp(),
-        updatedByUid: profile.uid,
-        updatedByName: profile.displayName
-      }, { merge: true });
-      toast({ title: "บันทึก API Key สำเร็จแล้วค่ะพี่!" });
-      setIsApiKeyDialogOpen(false);
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "ไม่สามารถบันทึกได้", description: e.message });
-    } finally {
-      setIsSavingKey(false);
-    }
-  };
-
   return (
     <div className="flex flex-col h-[calc(100vh-9rem)] space-y-3">
       <PageHeader 
         title="สอบถามน้องจิมมี่ (AI ช่างเทคนิค)" 
         description="ปรึกษาปัญหาทางเทคนิค วิเคราะห์อาการเสีย และค้นหาคู่มือจากคลังข้อมูลร้าน Sahadiesel"
       >
-        <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
-                <Sparkles className="h-3 w-3 text-primary animate-pulse" />
-                <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Jimmy is Online</span>
-            </div>
-            {isAdmin && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setIsApiKeyDialogOpen(true)}>
-                    <Settings className="h-4 w-4 text-muted-foreground" />
-                </Button>
-            )}
+        <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
+            <Sparkles className="h-3 w-3 text-primary animate-pulse" />
+            <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Jimmy is Online</span>
         </div>
       </PageHeader>
 
@@ -165,11 +119,7 @@ export default function CarRepairAIChatPage() {
                 <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                     <Database className="h-3 w-3" /> แหล่งข้อมูล: ประวัติซ่อม & คู่มือร้าน
                 </div>
-                {aiSettings?.geminiApiKey ? (
-                    <Badge variant="outline" className="text-[8px] h-4 border-green-200 text-green-600 bg-green-50">API KEY CONFIGURED</Badge>
-                ) : (
-                    <Badge variant="destructive" className="text-[8px] h-4">API KEY MISSING</Badge>
-                )}
+                <Badge variant="outline" className="text-[8px] h-4 border-green-200 text-green-600 bg-green-50">SYSTEM AI CONNECTED</Badge>
             </div>
             <ScrollArea className="flex-1 p-3 md:p-5" ref={scrollRef}>
             <div className="space-y-5 max-w-4xl mx-auto">
@@ -215,14 +165,14 @@ export default function CarRepairAIChatPage() {
                     </Avatar>
                     <div className="bg-white border rounded-2xl rounded-tl-none px-4 py-2.5 flex items-center gap-2 shadow-sm border-border">
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                    <span className="text-xs text-muted-foreground italic">จิมมี่กำลังวิเคราะห์อาการและค้นหาข้อมูลอ้างอิงให้ค่ะพี่...</span>
+                    <span className="text-xs text-muted-foreground italic font-medium">จิมมี่กำลังวิเคราะห์อาการและค้นหาข้อมูลอ้างอิงให้ค่ะพี่...</span>
                     </div>
                 </div>
                 )}
             </div>
             </ScrollArea>
 
-            <div className="p-3 bg-background border-t">
+            <div className="p-3 bg-background border-t shadow-inner">
             <div className="flex gap-2 max-w-4xl mx-auto items-center">
                 <Input 
                 placeholder="พิมพ์อาการรถ หรือรหัส DTC มาได้เลยค่ะพี่..." 
@@ -232,8 +182,8 @@ export default function CarRepairAIChatPage() {
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 disabled={isLoading}
                 />
-                <Button size="icon" className="rounded-full h-10 w-10 shrink-0 shadow-md transition-transform" onClick={handleSend} disabled={!inputValue.trim() || isLoading}>
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                <Button size="icon" className="rounded-full h-10 w-10 shrink-0 shadow-md transition-transform hover:scale-105" onClick={handleSend} disabled={!inputValue.trim() || isLoading}>
+                  <Send className="h-4 w-4" />
                 </Button>
             </div>
             </div>
@@ -243,38 +193,13 @@ export default function CarRepairAIChatPage() {
             <Card className="bg-amber-50 border-amber-200">
                 <CardHeader className="pb-2"><CardTitle className="text-xs font-bold flex items-center gap-2 text-amber-800"><Info className="h-3 w-3" /> คำแนะนำการใช้งาน</CardTitle></CardHeader>
                 <CardContent className="text-[11px] text-amber-700 space-y-2">
+                    <p>• จิมมี่สามารถตอบรหัส DTC ได้ทันที</p>
                     <p>• หากจิมมี่ตอบไม่ถูก ให้พี่ไปบันทึกวิธีแก้ที่ถูกต้องในเมนู <b>"แชร์ประสบการณ์"</b> ค่ะ</p>
                     <p>• จิมมี่จะเรียนรู้ข้อมูลนั้นมาตอบคำถามครั้งต่อไปทันที</p>
                 </CardContent>
             </Card>
         </div>
       </div>
-
-      <Dialog open={isApiKeyDialogOpen} onOpenChange={setIsApiKeyDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Key className="h-5 w-5 text-primary" /> ตั้งค่าสมองน้องจิมมี่</DialogTitle>
-            <DialogDescription>ระบุ Gemini API Key ของร้านเพื่อให้ AI ทำงานได้เสถียรและแม่นยำขึ้น</DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="api-key">Gemini API Key</Label>
-              <Input id="api-key" type="password" placeholder="ระบุ API Key ที่นี่..." value={apiKeyInput} onChange={(e) => setNewApiKeyInput(e.target.value)} />
-              {aiSettings?.geminiApiKey && (
-                <p className="text-[10px] text-green-600 font-medium flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> บันทึกไว้แล้ว: {aiSettings.geminiApiKey.substring(0, 8)}...
-                </p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsApiKeyDialogOpen(false)}>ยกเลิก</Button>
-            <Button onClick={saveApiKey} disabled={isSavingKey || !apiKeyInput.trim()}>
-              {isSavingKey && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} บันทึก
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

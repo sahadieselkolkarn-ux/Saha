@@ -147,88 +147,82 @@ export const migrateClosedJobsToArchive2026 = onCall(
   }
 );
 
-// --- 3. ฟังก์ชัน น้องจิมมี่ ---
+// --- 3. ฟังก์ชัน น้องจิมมี่ (Unified AI Engine) ---
 export const chatWithJimmy = onCall(
   { region: "us-central1", cors: true },
   async (request) => {
-    if (!request.auth) throw new HttpsError("unauthenticated", "เข้าสู่ระบบก่อนนะจ๊ะพี่โจ้");
+    if (!request.auth) throw new HttpsError("unauthenticated", "กรุณาเข้าสู่ระบบก่อนนะคะ");
 
     const userRef = db.collection("users").doc(request.auth.uid);
     const userSnap = await userRef.get();
     const userData = userSnap.data();
 
-    const isAllowed =
-      userData?.role === "ADMIN" || userData?.role === "MANAGER" || userData?.department === "MANAGEMENT";
-    if (!isAllowed) throw new HttpsError("permission-denied", "หน้านี้สงวนไว้สำหรับผู้บริหารเท่านั้นค่ะพี่");
-
-    const message = (request.data?.message ?? "").toString().trim();
+    const { message, history = [], scope = 'TECHNICAL', contextData = {} } = request.data;
+    
     if (!message) throw new HttpsError("invalid-argument", "กรุณาพิมพ์ข้อความด้วยนะคะ");
 
-    const aiSettings = await db.collection("settings").doc("ai").get();
-    const apiKey = aiSettings.data()?.geminiApiKey;
-    if (!apiKey)
-      throw new HttpsError("failed-precondition", "กรุณาตั้งค่า Gemini API Key ในหน้าแอปก่อนนะคะพี่โจ้");
+    // ใช้ API Key จาก Environment (Firebase Secret หรือ Config)
+    // หากไม่มีใน Env จะพยายามหาจาก Settings เป็นทางเลือกสุดท้าย
+    let apiKey = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY;
+    
+    if (!apiKey) {
+        const aiSettings = await db.collection("settings").doc("ai").get();
+        apiKey = aiSettings.data()?.geminiApiKey;
+    }
+
+    if (!apiKey) throw new HttpsError("failed-precondition", "ระบบ AI ยังไม่พร้อมใช้งาน (Missing API Key)");
 
     try {
-      const [activeJobsSnap, entriesSnap, workersSnap] = await Promise.all([
-        db.collection("jobs").limit(100).get(),
-        db.collection("accountingEntries").limit(50).get(),
-        db.collection("users").limit(100).get(),
-      ]);
-
-      const jobSummary = activeJobsSnap.docs
-        .filter((d) => d.data().status !== "CLOSED")
-        .map((d) => ({
-          dept: d.data().department || "ไม่ระบุแผนก",
-          status: d.data().status || "RECEIVED",
-          customer: d.data().customerSnapshot?.name || "ไม่ทราบชื่อลูกค้า",
-        }));
-
-      const accSummary = entriesSnap.docs.map((d) => ({
-        date: d.data().entryDate || "ไม่ระบุวันที่",
-        type: d.data().entryType || "CASH_IN",
-        amount: d.data().amount || 0,
-        desc: d.data().description || "ไม่มีรายละเอียด",
-      }));
-
-      const workerSummary = workersSnap.docs
-        .filter((d) => ["WORKER", "OFFICER"].includes(d.data().role))
-        .map((d) => ({
-          name: d.data().displayName || "ไม่ทราบชื่อ",
-          dept: d.data().department || "ไม่ระบุแผนก",
-          salary: d.data().hr?.salaryMonthly || 0,
-        }));
+      const isTechnical = scope === 'TECHNICAL';
+      
+      const systemInstruction = isTechnical 
+        ? `คุณคือ "น้องจิมมี่" (Technical Expert) ผู้ช่วยช่างอัจฉริยะประจำร้าน Sahadiesel
+        
+        **บุคลิกและเป้าหมาย:**
+        - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แต่มีความรู้เรื่องเครื่องยนต์ดีเซลระดับวิศวกร
+        - แทนตัวเองว่า "จิมมี่" และลงท้ายว่า "ค่ะพี่" หรือ "นะคะ" เสมอ
+        
+        **หน้าที่ของคุณ:**
+        1. วิเคราะห์อาการทันที: ใช้ความรู้ AI วิเคราะห์รหัส DTC หรืออาการรถที่พี่ช่างพิมพ์มา อธิบายสาเหตุและวิธีเช็คแบบมือโปร
+        2. อ้างอิงข้อมูลร้าน: ใช้ข้อมูล 'บันทึกการซ่อม' ที่ได้รับมาบอกพี่ช่างว่า "ในร้านเราเคยแก้แบบนี้ค่ะ..."
+        3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์จากรายการคู่มือใน Drive ให้พี่กดดูทันที
+        
+        **ข้อมูลร้านที่จิมมี่เห็นตอนนี้:**
+        - บันทึกการซ่อม: ${JSON.stringify(contextData.experiences || [])}
+        - รายชื่อคู่มือใน Drive: ${JSON.stringify(contextData.manuals || [])}`
+        
+        : `คุณคือ "น้องจิมมี่" (Business Assistant) ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
+        
+        **บุคลิกและเป้าหมาย:**
+        - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ และเอาใจใส่ "พี่โจ้" และ "พี่ถิน" มากๆ
+        - แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" หรือ "นะจ๊ะ" เสมอ
+        
+        **หน้าที่ของคุณ:**
+        1. วิเคราะห์ธุรกิจ: สรุปภาพรวมงานซ่อมและบัญชีจากข้อมูลที่ได้รับ
+        2. ให้คำแนะนำบริหาร: แจ้งเตือนหากพบงานค้างนาน หรือยอดใช้จ่ายผิดปกติ
+        
+        **ข้อมูลธุรกิจที่ได้รับ:**
+        ${JSON.stringify(contextData.businessSummary || {})}`;
 
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
         model: "gemini-1.5-flash",
-        systemInstruction: `คุณคือ "น้องจิมมี่" ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
-
-**บุคลิกและเป้าหมาย:**
-- เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ และเอาใจใส่ "พี่โจ้" และ "พี่ถิน" มากๆ
-- แทนตัวเองว่า "น้องจิมมี่" และลงท้ายด้วย "ค่ะ" เสมอ
-- คุณมีความสามารถในการ "มองเห็นข้อมูลจริง" ในระบบผ่านเครื่องมือที่คุณมี
-
-**หน้าที่ของคุณ:**
-1. วิเคราะห์บัญชี: หากพี่โจ้ถามเรื่องเงินๆ ทองๆ ให้ใช้เครื่องมือดึงข้อมูลบัญชีมาวิเคราะห์กำไรขาดทุน
-2. คุมงบค่าแรง: งบต้องไม่เกิน 240,000 บาท/เดือน หากดึงข้อมูลพนักงานมาแล้วพบว่าเกิน ต้องเตือนพี่โจ้นะคะ
-3. บริหารงานซ่อม: สรุปงานค้างและแจ้งแผนกที่งานเยอะเกินไป
-4. ให้กำลังใจ: สู้ไปพร้อมกับพี่โจ้หลังน้ำท่วมนะคะ
-
-**ข้อมูลธุรกิจปัจจุบันที่น้องจิมมี่เห็น:**
-- รายการงานที่กำลังทำอยู่: ${JSON.stringify(jobSummary)}
-- รายการบัญชีล่าสุด: ${JSON.stringify(accSummary)}
-- รายชื่อและเงินเดือนพนักงาน: ${JSON.stringify(workerSummary)}
-- งบครอบครัว: พี่เตี้ย/ม่ะ 70,000, พี่โจ้/พี่ถิน 100,000
-
-หากต้องแสดงตัวเลขเยอะๆ ให้สรุปเป็น "ตาราง (Markdown Table)" ที่สวยงามเสมอนะคะ`,
+        systemInstruction: systemInstruction,
       });
 
-      const result = await model.generateContent(message);
+      // จัดการประวัติแชทให้ตรงตามรูปแบบ SDK
+      const chat = model.startChat({
+        history: history.map((m: any) => ({
+          role: m.role === 'model' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+      });
+
+      const result = await chat.sendMessage(message);
       return { answer: result.response.text() };
     } catch (e: any) {
-      console.error("Jimmy Error Detail:", e);
-      throw new HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + (e?.message || "Unknown AI error"));
+      console.error("Jimmy AI Error:", e);
+      throw new HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + (e?.message || "Unknown error"));
     }
   }
 );
