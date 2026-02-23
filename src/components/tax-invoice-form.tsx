@@ -461,7 +461,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         </Form>
       </div>
 
-      {/* Duplicate Dialog */}
       <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
