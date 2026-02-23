@@ -270,7 +270,7 @@ export function JobList({
     setSelectedWorkerId("");
     setIsLoadingWorkers(true);
     try {
-      // ดึงพนักงานทั้งตำแหน่ง WORKER และ OFFICER ในแผนกที่เกี่ยวข้อง
+      // ดึงพนักงานในแผนกที่เกี่ยวข้องที่มีสถานะ Active
       const q = query(
         collection(db, "users"),
         where("department", "==", job.department),
@@ -279,7 +279,7 @@ export function JobList({
       const snapshot = await getDocs(q);
       const workers = snapshot.docs
         .map(d => ({ ...d.data(), uid: d.id } as UserProfile))
-        .filter(u => u.role === 'WORKER' || u.role === 'OFFICER'); // ดึงทั้งช่างและเจ้าหน้าที่ประจำแผนก
+        .filter(u => u.role === 'WORKER'); // เลือกเฉพาะตำแหน่งช่าง (WORKER) ตามคำขอ
       
       setDeptWorkers(workers);
     } catch (e) {
@@ -513,7 +513,7 @@ export function JobList({
               มอบหมายผู้รับผิดชอบงาน
             </DialogTitle>
             <DialogDescription>
-              เลือพนักงานในแผนก {assigningJob && deptLabel(assigningJob.department)} เพื่อรับผิดชอบงานของ <b>{assigningJob?.customerSnapshot.name}</b>
+              เลือกพนักงานในแผนก {assigningJob && deptLabel(assigningJob.department)} เพื่อรับผิดชอบงานของ <b>{assigningJob?.customerSnapshot.name}</b>
             </DialogDescription>
           </DialogHeader>
           
@@ -534,16 +534,12 @@ export function JobList({
                     {deptWorkers.length > 0 ? (
                       deptWorkers.map((worker) => (
                         <SelectItem key={worker.uid} value={worker.uid}>
-                          <div className="flex items-center gap-2">
-                            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span>{worker.displayName}</span>
-                            <Badge variant="outline" className="text-[10px] ml-2 h-4 px-1">{worker.role}</Badge>
-                          </div>
+                          <span>{worker.displayName}</span>
                         </SelectItem>
                       ))
                     ) : (
                       <div className="p-4 text-center text-sm text-muted-foreground italic">
-                        ไม่พบพนักงานในแผนกนี้
+                        ไม่พบพนักงานช่างในแผนกนี้
                       </div>
                     )}
                   </SelectContent>
