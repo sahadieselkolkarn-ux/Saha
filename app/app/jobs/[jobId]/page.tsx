@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from 'next/link';
@@ -80,6 +81,10 @@ function JobDetailsPageContent() {
   const { profile } = useAuth();
   const { toast } = useToast();
   
+  // Refs for hidden inputs (Quick Upload)
+  const quickCameraRef = useRef<HTMLInputElement>(null);
+  const quickGalleryRef = useRef<HTMLInputElement>(null);
+
   const jobId = useMemo(() => {
     const id = params?.jobId;
     return (Array.isArray(id) ? id[0] : id) as string;
@@ -411,9 +416,14 @@ function JobDetailsPageContent() {
 
   const handleQuickPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const jobDocRef = getJobRef();
-    if (!e.target.files || !jobId || !db || !profile || !jobDocRef) return;
+    if (!e.target.files || !jobId || !db || !profile || !jobDocRef) {
+        e.target.value = '';
+        return;
+    }
     
     const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
     const currentPhotoCount = job?.photos?.length || 0;
     if (currentPhotoCount + files.length > MAX_TOTAL_PHOTOS) {
       toast({ variant: "destructive", title: `อัปโหลดรูปภาพรวมกันได้ไม่เกิน ${MAX_TOTAL_PHOTOS} รูปค่ะ` });
@@ -442,7 +452,12 @@ function JobDetailsPageContent() {
             photos: photoURLs 
         });
         
-        const updateData: any = { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() };
+        const updateData: any = { 
+            photos: arrayUnion(...photoURLs), 
+            lastActivityAt: serverTimestamp(),
+            updatedAt: serverTimestamp() 
+        };
+        
         if (job.status === 'RECEIVED') {
             updateData.status = 'IN_PROGRESS';
             if (!job.assigneeUid) {
@@ -716,19 +731,44 @@ function JobDetailsPageContent() {
                 <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
                 {canUpdateActivity && !isViewOnly && (
                     <div className="flex gap-2">
-                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}>
-                            <label className="cursor-pointer flex items-center">
-                                {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
-                                ถ่ายรูปเพิ่ม
-                                <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos} />
-                            </label>
+                        {/* Camera Trigger */}
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}
+                          onClick={() => quickCameraRef.current?.click()}
+                        >
+                            {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                            ถ่ายรูปเพิ่ม
+                            <input 
+                              type="file" 
+                              ref={quickCameraRef}
+                              className="hidden" 
+                              accept="image/*" 
+                              capture="environment" 
+                              onChange={handleQuickPhotoUpload} 
+                            />
                         </Button>
-                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}>
-                            <label className="cursor-pointer flex items-center">
-                                {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
-                                เลือกรูปถ่าย
-                                <input type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos} />
-                            </label>
+                        
+                        {/* Gallery Trigger */}
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}
+                          onClick={() => quickGalleryRef.current?.click()}
+                        >
+                            {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
+                            เลือกรูปถ่าย
+                            <input 
+                              type="file" 
+                              ref={quickGalleryRef}
+                              className="hidden" 
+                              multiple 
+                              accept="image/*" 
+                              onChange={handleQuickPhotoUpload} 
+                            />
                         </Button>
                     </div>
                 )}

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -66,6 +66,10 @@ export default function IntakePage() {
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   
+  // Refs for hidden inputs
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+
   const isViewer = profile?.role === 'VIEWER';
 
   const form = useForm<z.infer<typeof intakeSchema>>({
@@ -115,6 +119,7 @@ export default function IntakePage() {
       const newFiles = Array.from(e.target.files);
       if (photos.length + newFiles.length > MAX_INTAKE_PHOTOS) {
         toast({ variant: "destructive", title: `คุณสามารถอัปโหลดรูปภาพได้สูงสุด ${MAX_INTAKE_PHOTOS} รูปเท่านั้น` });
+        e.target.value = '';
         return;
       }
       const validFiles = newFiles.filter(file => {
@@ -296,6 +301,7 @@ export default function IntakePage() {
                                   <Button
                                     variant="ghost"
                                     key={customer.id}
+                                    type="button"
                                     onClick={() => {
                                       field.onChange(customer.id);
                                       setIsCustomerPopoverOpen(false);
@@ -445,19 +451,44 @@ export default function IntakePage() {
                 <FormLabel>รูปภาพประกอบ (สูงสุด {MAX_INTAKE_PHOTOS} รูป)</FormLabel>
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                        <Button asChild variant="outline" className="h-24 flex-col gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5" disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting}>
-                            <label className="cursor-pointer">
-                                <Camera className="h-8 w-8 text-primary" />
-                                <span className="text-xs font-bold uppercase tracking-wider">ถ่ายรูปจากกล้อง</span>
-                                <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting} />
-                            </label>
+                        {/* Camera Trigger */}
+                        <Button 
+                          type="button"
+                          variant="outline" 
+                          className="h-24 flex-col gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5" 
+                          disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting}
+                          onClick={() => cameraInputRef.current?.click()}
+                        >
+                            <Camera className="h-8 w-8 text-primary" />
+                            <span className="text-xs font-bold uppercase tracking-wider">ถ่ายรูปจากกล้อง</span>
+                            <input 
+                              type="file" 
+                              ref={cameraInputRef}
+                              className="hidden" 
+                              accept="image/*" 
+                              capture="environment" 
+                              onChange={handlePhotoChange} 
+                            />
                         </Button>
-                        <Button asChild variant="outline" className="h-24 flex-col gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5" disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting}>
-                            <label className="cursor-pointer">
-                                <ImageIcon className="h-8 w-8 text-primary" />
-                                <span className="text-xs font-bold uppercase tracking-wider">เลือกจากอัลบั้ม</span>
-                                <input type="file" className="hidden" multiple accept="image/*" onChange={handlePhotoChange} disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting} />
-                            </label>
+                        
+                        {/* Gallery Trigger */}
+                        <Button 
+                          type="button"
+                          variant="outline" 
+                          className="h-24 flex-col gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5" 
+                          disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting}
+                          onClick={() => galleryInputRef.current?.click()}
+                        >
+                            <ImageIcon className="h-8 w-8 text-primary" />
+                            <span className="text-xs font-bold uppercase tracking-wider">เลือกจากอัลบั้ม</span>
+                            <input 
+                              type="file" 
+                              ref={galleryInputRef}
+                              className="hidden" 
+                              multiple 
+                              accept="image/*" 
+                              onChange={handlePhotoChange} 
+                            />
                         </Button>
                     </div>
 
