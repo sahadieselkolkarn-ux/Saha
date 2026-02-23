@@ -10,6 +10,7 @@ import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
+import { archiveAndCloseJob } from '@/firebase/jobs-archive';
 import { archiveCollectionNameByYear } from '@/lib/archive-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 
@@ -144,7 +145,8 @@ function JobDetailsPageContent() {
   const isStaff = profile?.role !== 'VIEWER';
   const isUserAdmin = profile?.role === 'ADMIN';
   const isManager = profile?.role === 'MANAGER';
-  const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
+  const isOfficer = profile?.role === 'OFFICER';
+  const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || isOfficer || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
   
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   

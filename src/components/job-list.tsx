@@ -131,7 +131,7 @@ export function JobList({
     };
   }, [status, excludeStatus]);
 
-  const isOfficeOrAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
+  const isOfficeOrAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'OFFICER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
   const isWorker = profile?.role === 'WORKER';
 
   const fetchData = useCallback(async (pageIndex: number) => {
@@ -354,7 +354,7 @@ export function JobList({
                   </Button>
                 )}
 
-                {/* Assign Job button for Management/Office */}
+                {/* Assign Job button for Management/Office/Officer */}
                 {job.status === 'RECEIVED' && isOfficeOrAdmin && (
                   <Button 
                     asChild
