@@ -118,12 +118,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [isQtSearchOpen, setIsQtSearchOpen] = useState(false);
   const [qtSearchQuery, setQtSearchQuery] = useState("");
 
-  const [allBills, setAllBills] = useState<DocumentType[]>([]);
-  const [isSearchingBills, setIsSearchingBills] = useState(false);
-  const [isBillSearchOpen, setIsBillSearchOpen] = useState(false);
-  const [billSearchQuery, setBillSearchQuery] = useState("");
-  const [billSearchType, setBillSearchType] = useState<'DELIVERY_NOTE' | 'TAX_INVOICE'>('DELIVERY_NOTE');
-
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
@@ -151,8 +145,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   });
 
   const selectedCustomerId = form.watch('customerId');
+  const currentCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
   const grandTotal = form.watch('grandTotal');
-  const { data: customer } = useDoc<Customer>(db && selectedCustomerId ? doc(db, 'customers', selectedCustomerId) : null);
   
   const isLocked = isEditing && (docToEdit?.status === 'PAID' || docToEdit?.status === 'PENDING_REVIEW') && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
 
@@ -218,7 +212,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const remainingAmount = useMemo(() => (grandTotal || 0) - currentSuggestedTotal, [grandTotal, currentSuggestedTotal]);
 
   const executeSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
-    const customerSnapshot = customer || docToEdit?.customerSnapshot || job?.customerSnapshot;
+    const customerSnapshot = currentCustomer || docToEdit?.customerSnapshot || job?.customerSnapshot;
     if (!db || !customerSnapshot || !storeSettings || !profile) return;
     setIsProcessing(true);
     const targetStatus = submitForReview ? 'PENDING_REVIEW' : 'DRAFT';
@@ -314,26 +308,24 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
     form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
     setIsQtSearchOpen(false);
-    setIsBillSearchOpen(false);
   };
 
   const loadAllDocs = async (type: DocType | 'BILLS') => {
     if (!db) return;
-    type === 'QUOTATION' ? setIsSearchingQt(true) : setIsSearchingBills(true);
-    try {
-        const getTime = (v: any) => v?.toMillis?.() || v?.seconds * 1000 || 0;
-        if (type === 'QUOTATION') {
+    if (type === 'QUOTATION') {
+        setIsSearchingQt(true);
+        try {
             const snap = await getDocs(query(collection(db, "documents"), where("docType", "==", "QUOTATION"), limit(500)));
+            const getTime = (v: any) => v?.toMillis?.() || v?.seconds * 1000 || 0;
             setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED').sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt)));
-        } else {
-            const [s1, s2] = await Promise.all([getDocs(query(collection(db, "documents"), where("docType", "==", "DELIVERY_NOTE"), limit(500))), getDocs(query(collection(db, "documents"), where("docType", "==", "TAX_INVOICE"), limit(500)))]);
-            setAllBills([...s1.docs, ...s2.docs].map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED').sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt)));
-        }
-    } finally { type === 'QUOTATION' ? setIsSearchingQt(false) : setIsSearchingBills(false); }
+        } finally { setIsSearchingQt(false); }
+    }
   };
 
   const isLoading = isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingDocToEdit;
   if (isLoading && !jobId && !editDocId) return <Skeleton className="h-96" />;
+
+  const filteredCustomers = customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch));
 
   return (
     <div className="flex flex-col gap-6">
@@ -361,8 +353,26 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
                 <FormItem className="flex flex-col">
                   <FormLabel>ชื่อลูกค้า</FormLabel>
                   <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
-                    <PopoverTrigger asChild><FormControl><Button variant="outline" className={cn("w-full max-w-sm justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isLocked || !!jobId}>{customerSnapshot?.name || "เลือกลูกค้า..."}<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" /></Button></FormControl></PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start"><div className="p-2 border-b"><Input placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} /></div><ScrollArea className="h-fit max-h-60">{customers.filter(c=>c.name.includes(customerSearch)).map((c) => (<Button key={c.id} variant="ghost" onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 text-left"><span>{c.name}</span></Button>))}</ScrollArea></PopoverContent>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button variant="outline" className={cn("w-full max-w-sm justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isLocked || !!jobId}>
+                          {currentCustomer?.name || "เลือกลูกค้า..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <div className="p-2 border-b">
+                        <Input placeholder="ค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                      </div>
+                      <ScrollArea className="h-fit max-h-60">
+                        {filteredCustomers.map((c) => (
+                          <Button key={c.id} variant="ghost" onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); }} className="w-full justify-start h-auto py-2 px-3 text-left">
+                            <span>{c.name}</span>
+                          </Button>
+                        ))}
+                      </ScrollArea>
+                    </PopoverContent>
                   </Popover>
                 </FormItem>
               )} />
@@ -378,9 +388,21 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
 
       <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="flex items-center gap-2 text-destructive"><AlertCircle className="h-5 w-5" />พบใบเดิม</DialogTitle><DialogDescription>มีการออกใบกำกับภาษีไปแล้วคือเลขที่ <span className="font-bold">{existingTi?.docNo}</span></DialogDescription></DialogHeader>
-          <div className="py-4"><Alert variant="secondary" className="bg-amber-50 border-amber-200"><Info className="h-4 w-4 text-amber-600" /><AlertTitle>นโยบายระบบ</AlertTitle><AlertDescription className="text-amber-700 text-xs">หนึ่งงานซ่อมสามารถผูกใบกำกับภาษีได้เพียงฉบับเดียวเท่านั้นค่ะ</AlertDescription></Alert></div>
-          <DialogFooter className="gap-2"><Button variant="outline" onClick={() => router.push(`/app/office/documents/tax-invoice/${existingTi?.id}`)}><Eye className="mr-2 h-4 w-4" /> ดูใบเดิม</Button><Button variant="destructive" onClick={handleCancelExistingAndSave} disabled={isProcessing}>{isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />} ยกเลิกใบเดิมและสร้างใหม่</Button></DialogFooter>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive"><AlertCircle className="h-5 w-5" />พบใบเดิม</DialogTitle>
+            <DialogDescription>มีการออกใบกำกับภาษีไปแล้วคือเลขที่ <span className="font-bold">{existingTi?.docNo}</span></DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Alert variant="secondary" className="bg-amber-50 border-amber-200">
+              <Info className="h-4 w-4 text-amber-600" />
+              <AlertTitle>นโยบายระบบ</AlertTitle>
+              <AlertDescription className="text-amber-700 text-xs">หนึ่งงานซ่อมสามารถผูกใบกำกับภาษีได้เพียงฉบับเดียวเท่านั้นค่ะ</AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => router.push(`/app/office/documents/tax-invoice/${existingTi?.id}`)}><Eye className="mr-2 h-4 w-4" /> ดูใบเดิม</Button>
+            <Button variant="destructive" onClick={handleCancelExistingAndSave} disabled={isProcessing}>{isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />} ยกเลิกใบเดิมและสร้างใหม่</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
