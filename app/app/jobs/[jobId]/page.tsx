@@ -43,6 +43,8 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 
+const MAX_TOTAL_PHOTOS = 12;
+
 const getStatusVariant = (status: Job['status']) => {
   switch (status) {
     case 'RECEIVED':
@@ -416,8 +418,8 @@ function JobDetailsPageContent() {
     
     const files = Array.from(e.target.files);
     const currentPhotoCount = job?.photos?.length || 0;
-    if (currentPhotoCount + files.length > 8) {
-      toast({ variant: "destructive", title: "อัปโหลดรูปภาพรวมกันได้ไม่เกิน 8 รูปค่ะ" });
+    if (currentPhotoCount + files.length > MAX_TOTAL_PHOTOS) {
+      toast({ variant: "destructive", title: `อัปโหลดรูปภาพรวมกันได้ไม่เกิน ${MAX_TOTAL_PHOTOS} รูปค่ะ` });
       e.target.value = '';
       return;
     }
@@ -706,15 +708,15 @@ function JobDetailsPageContent() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
-                {canUpdateActivity && (
+                {canUpdateActivity && !isViewOnly && (
                     <div className="flex gap-2">
-                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 8}>
+                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}>
                             <label htmlFor="camera-photo-upload" className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                                 ถ่ายรูปเพิ่ม
                             </label>
                         </Button>
-                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= 8}>
+                        <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}>
                             <label htmlFor="library-photo-upload" className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
                                 เลือกรูปถ่าย
@@ -741,7 +743,7 @@ function JobDetailsPageContent() {
           <Card>
               <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={!canUpdateActivity} />
+                <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={!canUpdateActivity || isViewOnly} />
                 {(photoPreviews.length > 0) && (
                   <div className="grid grid-cols-4 gap-2">
                     {photoPreviews.map((src, i) => (
@@ -753,8 +755,8 @@ function JobDetailsPageContent() {
                   </div>
                 )}
                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || !canUpdateActivity}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
-                    <Button asChild variant="outline" disabled={!canUpdateActivity || isSubmittingNote || isAddingPhotos}>
+                    <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || !canUpdateActivity || isViewOnly}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
+                    <Button asChild variant="outline" disabled={!canUpdateActivity || isSubmittingNote || isAddingPhotos || isViewOnly}>
                         <label className="cursor-pointer flex items-center"><Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม
                             <Input id="activity-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} />
                         </label>
@@ -897,7 +899,7 @@ function JobDetailsPageContent() {
         </div>
       </div>
       
-      <AlertDialog primary open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
+      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
         <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle><AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมนี้</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter>

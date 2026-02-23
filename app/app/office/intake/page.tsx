@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -23,12 +24,14 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
-import { Loader2, Camera, X, ChevronsUpDown, PlusCircle } from "lucide-react";
+import { Loader2, Camera, X, ChevronsUpDown, PlusCircle, ImageIcon } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+
+const MAX_INTAKE_PHOTOS = 8;
 
 const intakeSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
@@ -110,8 +113,8 @@ export default function IntakePage() {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
-      if (photos.length + newFiles.length > 4) {
-        toast({ variant: "destructive", title: "คุณสามารถอัปโหลดรูปภาพได้สูงสุด 4 รูปเท่านั้น" });
+      if (photos.length + newFiles.length > MAX_INTAKE_PHOTOS) {
+        toast({ variant: "destructive", title: `คุณสามารถอัปโหลดรูปภาพได้สูงสุด ${MAX_INTAKE_PHOTOS} รูปเท่านั้น` });
         return;
       }
       const validFiles = newFiles.filter(file => {
@@ -146,17 +149,18 @@ export default function IntakePage() {
     setIsSubmitting(true);
     
     try {
-        const batch = writeBatch(db);
-        
+        const photoURLs: string[] = [];
         const jobDocRef = doc(collection(db, "jobs"));
         const jobId = jobDocRef.id;
 
-        const photoURLs: string[] = [];
-        for (const photo of photos) {
-            const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
-            await uploadBytes(photoRef, photo);
-            const url = await getDownloadURL(photoRef);
-            photoURLs.push(url);
+        // Upload photos first to get URLs
+        if (photos.length > 0) {
+            for (const photo of photos) {
+                const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
+                await uploadBytes(photoRef, photo);
+                const url = await getDownloadURL(photoRef);
+                photoURLs.push(url);
+            }
         }
 
         const marketingSource = selectedCustomer.acquisitionSource || 'EXISTING';
@@ -192,37 +196,41 @@ export default function IntakePage() {
             jobData.mechanicDetails = values.mechanicDetails;
         }
 
+        const batch = writeBatch(db);
         batch.set(jobDocRef, sanitizeForFirestore(jobData));
         
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.set(activityDocRef, {
-            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)}`,
+            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)} พร้อมรูปประกอบ ${photoURLs.length} รูป`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
             photos: [],
         });
 
-        batch.commit().catch(async (error) => {
-          if (error.code === 'permission-denied') {
-            const permissionError = new FirestorePermissionError({
-              path: jobDocRef.path,
-              operation: 'create',
-              requestResourceData: jobData,
-            } satisfies SecurityRuleContext);
-            errorEmitter.emit('permission-error', permissionError);
-          }
+        // Use .then() to ensure sequential success feedback and cleanup
+        await batch.commit().then(() => {
+            toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
+            form.reset();
+            setPhotos([]);
+            photoPreviews.forEach(url => URL.revokeObjectURL(url));
+            setPhotoPreviews([]);
+            setCustomerSearch("");
+        }).catch(async (error) => {
+            if (error.code === 'permission-denied') {
+                const permissionError = new FirestorePermissionError({
+                    path: jobDocRef.path,
+                    operation: 'create',
+                    requestResourceData: jobData,
+                } satisfies SecurityRuleContext);
+                errorEmitter.emit('permission-error', permissionError);
+            } else {
+                throw error;
+            }
         });
 
-        toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
-        
-        form.reset();
-        setPhotos([]);
-        photoPreviews.forEach(url => URL.revokeObjectURL(url));
-        setPhotoPreviews([]);
-        setCustomerSearch("");
-
     } catch (error: any) {
+        console.error("Intake Error:", error);
         toast({ variant: "destructive", title: "สร้างงานไม่สำเร็จ", description: error.message });
     } finally {
         setIsSubmitting(false);
@@ -265,7 +273,7 @@ export default function IntakePage() {
                                   "w-full justify-between font-normal",
                                   !field.value && "text-muted-foreground"
                                 )}
-                                disabled={isViewer}
+                                disabled={isViewer || isSubmitting}
                               >
                                 {selectedCustomer
                                   ? `${selectedCustomer.name} (${selectedCustomer.phone})`
@@ -328,7 +336,7 @@ export default function IntakePage() {
               <FormField name="department" control={form.control} render={({ field }) => (
                 <FormItem>
                   <FormLabel>แผนกที่รับผิดชอบ (Department)</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} disabled={isViewer}>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={isViewer || isSubmitting}>
                     <FormControl><SelectTrigger><SelectValue placeholder="กรุณาเลือกแผนก..." /></SelectTrigger></FormControl>
                     <SelectContent>
                       {JOB_DEPARTMENTS.map(d => (
@@ -349,7 +357,7 @@ export default function IntakePage() {
                             <FormItem>
                               <FormLabel>ยี่ห้อรถ</FormLabel>
                               <FormControl>
-                                <Input placeholder="เช่น Toyota, Isuzu" {...field} disabled={isViewer} />
+                                <Input placeholder="เช่น Toyota, Isuzu" {...field} disabled={isViewer || isSubmitting} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -358,7 +366,7 @@ export default function IntakePage() {
                             <FormItem>
                               <FormLabel>รุ่นรถ</FormLabel>
                               <FormControl>
-                                <Input placeholder="เช่น Revo, D-Max" {...field} disabled={isViewer} />
+                                <Input placeholder="เช่น Revo, D-Max" {...field} disabled={isViewer || isSubmitting} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -368,7 +376,7 @@ export default function IntakePage() {
                           <FormItem>
                             <FormLabel>ทะเบียนรถ</FormLabel>
                             <FormControl>
-                              <Input placeholder="เช่น 1กข 1234" {...field} disabled={isViewer} />
+                              <Input placeholder="เช่น 1กข 1234" {...field} disabled={isViewer || isSubmitting} />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -389,7 +397,7 @@ export default function IntakePage() {
                               <FormItem>
                                 <FormLabel>ยี่ห้อ</FormLabel>
                                 <FormControl>
-                                  <Input placeholder="เช่น Denso, Bosch" {...field} disabled={isViewer} />
+                                  <Input placeholder="เช่น Denso, Bosch" {...field} disabled={isViewer || isSubmitting} />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -402,7 +410,7 @@ export default function IntakePage() {
                               <FormItem>
                                 <FormLabel>เลขทะเบียนชิ้นส่วน</FormLabel>
                                 <FormControl>
-                                  <Input placeholder="Registration Number" {...field} disabled={isViewer} />
+                                  <Input placeholder="Registration Number" {...field} disabled={isViewer || isSubmitting} />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -416,7 +424,7 @@ export default function IntakePage() {
                             <FormItem>
                               <FormLabel>เลขอะไหล่ (Part Number)</FormLabel>
                               <FormControl>
-                                <Input placeholder="ระบุหมายเลขอะไหล่..." {...field} disabled={isViewer} />
+                                <Input placeholder="ระบุหมายเลขอะไหล่..." {...field} disabled={isViewer || isSubmitting} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -429,25 +437,25 @@ export default function IntakePage() {
               <FormField name="description" control={form.control} render={({ field }) => (
                 <FormItem>
                   <FormLabel>รายละเอียดงาน / อาการแจ้งซ่อม (Description)</FormLabel>
-                  <FormControl><Textarea placeholder="ระบุรายละเอียดอาการเสีย หรือสิ่งที่ลูกค้าต้องการให้ทำ..." rows={5} {...field} disabled={isViewer} /></FormControl>
+                  <FormControl><Textarea placeholder="ระบุรายละเอียดอาการเสีย หรือสิ่งที่ลูกค้าต้องการให้ทำ..." rows={5} {...field} disabled={isViewer || isSubmitting} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
 
               <FormItem>
-                <FormLabel>รูปภาพประกอบ (สูงสุด 4 รูป, ไม่เกิน 5MB ต่อรูป)</FormLabel>
+                <FormLabel>รูปภาพประกอบ (สูงสุด {MAX_INTAKE_PHOTOS} รูป, ไม่เกิน 5MB ต่อรูป)</FormLabel>
                 <FormControl>
                   <div className="flex items-center justify-center w-full">
                     <label htmlFor="intake-dropzone-file" className={cn(
                       "flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg transition-colors",
-                      (photos.length >= 4 || isViewer) ? 'cursor-not-allowed bg-muted/50 border-muted' : 'cursor-pointer bg-muted/50 hover:bg-secondary border-muted-foreground/20'
+                      (photos.length >= MAX_INTAKE_PHOTOS || isViewer || isSubmitting) ? 'cursor-not-allowed bg-muted/50 border-muted' : 'cursor-pointer bg-muted/50 hover:bg-secondary border-muted-foreground/20'
                     )}>
                         <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <Camera className="w-8 h-8 mb-2 text-muted-foreground" />
                             <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">กดที่นี่เพื่อถ่ายภาพ</span> หรือเลือกจากอัลบั้ม</p>
                              <p className="text-xs text-muted-foreground">รองรับไฟล์รูปภาพเท่านั้น</p>
                         </div>
-                      <Input id="intake-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= 4 || isViewer} />
+                      <Input id="intake-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= MAX_INTAKE_PHOTOS || isViewer || isSubmitting} />
                     </label>
                   </div>
                 </FormControl>
@@ -456,7 +464,7 @@ export default function IntakePage() {
                     {photoPreviews.map((src, index) => (
                       <div key={index} className="relative group">
                         <Image src={src} alt={`Preview ${index + 1}`} width={150} height={150} className="rounded-md border object-cover w-full aspect-square" />
-                        {!isViewer && (
+                        {(!isViewer && !isSubmitting) && (
                           <Button type="button" variant="destructive" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-md" onClick={() => removePhoto(index)}>
                             <X className="h-4 w-4" />
                           </Button>
@@ -472,7 +480,7 @@ export default function IntakePage() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      กำลังบันทึกข้อมูล...
+                      กำลังบันทึกข้อมูลและอัปโหลดรูปภาพ...
                     </>
                   ) : isViewer ? "คุณไม่มีสิทธิ์สร้างใบงาน" : "สร้างใบงาน (Create Job)"}
                 </Button>
