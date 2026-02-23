@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
@@ -22,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen, Eye } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile, Vendor } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -636,6 +637,9 @@ function JobDetailsPageContent() {
 
   if (loading || !job) return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
 
+  const hasQuotation = job.salesDocId && job.salesDocType === 'QUOTATION';
+  const hasBillingDoc = job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE');
+
   return (
     <>
       <Button variant="outline" size="sm" className="mb-4" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4" /> ย้อนกลับ</Button>
@@ -756,7 +760,7 @@ function JobDetailsPageContent() {
                         </label>
                     </Button>
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
-                    {job.status === 'WAITING_QUOTATION' && (
+                    {job.status === 'WAITING_QUOTATION' && !hasQuotation && (
                       <Button 
                         asChild={isOfficeOrAdminOrMgmt} 
                         variant="outline" 
@@ -774,16 +778,35 @@ function JobDetailsPageContent() {
                         )}
                       </Button>
                     )}
+                    {job.status === 'WAITING_APPROVE' && hasQuotation && (
+                      <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                        <Link href={`/app/office/documents/quotation/${job.salesDocId}`}>
+                          <Eye className="mr-2 h-4 w-4" /> ดูใบเสนอราคา {job.salesDocNo}
+                        </Link>
+                      </Button>
+                    )}
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isViewOnly} variant="outline"><CheckCircle className="mr-2 h-4 w-4" /> จบงาน</Button>}
                     {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
-                      <Button 
-                        onClick={() => setBillingJob(job)} 
-                        disabled={isSubmittingNote || !isOfficeOrAdminOrMgmt} 
-                        variant="outline" 
-                        className={cn("border-primary text-primary hover:bg-primary/10", !isOfficeOrAdminOrMgmt && "opacity-50")}
-                      >
-                        <Receipt className="mr-2 h-4 w-4" /> ออกบิล
-                      </Button>
+                      hasBillingDoc ? (
+                        <Button 
+                          asChild
+                          variant="outline" 
+                          className="border-primary text-primary hover:bg-primary/10"
+                        >
+                          <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
+                            <Eye className="mr-2 h-4 w-4" /> ดูบิล {job.salesDocNo}
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button 
+                          onClick={() => setBillingJob(job)} 
+                          disabled={isSubmittingNote || !isOfficeOrAdminOrMgmt} 
+                          variant="outline" 
+                          className={cn("border-primary text-primary hover:bg-primary/10", !isOfficeOrAdminOrMgmt && "opacity-50")}
+                        >
+                          <Receipt className="mr-2 h-4 w-4" /> ออกบิล
+                        </Button>
+                      )
                     )}
                 </div>
               </CardContent>

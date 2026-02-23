@@ -41,7 +41,8 @@ import {
   Receipt,
   UserCheck,
   CheckCircle2,
-  Users
+  Users,
+  Eye
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -390,6 +391,10 @@ export function JobList({
         {jobs.map((job) => {
           const isOwnDept = profile?.department === job.department;
           const canWorkerAccept = isWorker && isOwnDept && job.status === 'RECEIVED';
+          
+          // Check if documents already exist to prevent redundant actions
+          const hasQuotation = job.salesDocId && job.salesDocType === 'QUOTATION';
+          const hasBillingDoc = job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE');
 
           return (
             <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
@@ -456,7 +461,8 @@ export function JobList({
                   </Button>
                 )}
 
-                {job.status === 'WAITING_QUOTATION' && (
+                {/* Quotation Logic - Show View if already has one */}
+                {job.status === 'WAITING_QUOTATION' && !hasQuotation && (
                   <Button 
                     disabled={!isOfficeOrAdmin}
                     asChild={isOfficeOrAdmin}
@@ -476,16 +482,39 @@ export function JobList({
                     )}
                   </Button>
                 )}
+                {job.status === 'WAITING_APPROVE' && hasQuotation && (
+                   <Button asChild className="w-full h-9 font-bold" variant="outline">
+                      <Link href={`/app/office/documents/quotation/${job.salesDocId}`}>
+                        <FileText className="mr-2 h-4 w-4" />
+                        ดูใบเสนอราคา {job.salesDocNo}
+                      </Link>
+                   </Button>
+                )}
+
+                {/* Billing Logic - Show View if already has one, hide Create button if sent to accounting */}
                 {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
-                  <Button 
-                    className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
-                    variant="outline"
-                    disabled={!isOfficeOrAdmin}
-                    onClick={() => setBillingJob(job)}
-                  >
-                    <Receipt className="mr-2 h-4 w-4" />
-                    ออกบิล
-                  </Button>
+                  hasBillingDoc ? (
+                    <Button 
+                      asChild
+                      className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" 
+                      variant="outline"
+                    >
+                      <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
+                        <Eye className="mr-2 h-4 w-4" />
+                        ดูบิล {job.salesDocNo}
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button 
+                      className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
+                      variant="outline"
+                      disabled={!isOfficeOrAdmin}
+                      onClick={() => setBillingJob(job)}
+                    >
+                      <Receipt className="mr-2 h-4 w-4" />
+                      ออกบิล
+                    </Button>
+                  )
                 )}
               </CardFooter>
             </Card>
