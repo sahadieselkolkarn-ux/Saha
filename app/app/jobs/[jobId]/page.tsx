@@ -352,9 +352,20 @@ function JobDetailsPageContent() {
 
         const activitiesColRef = collection(jobDocRef, "activities");
         const batch = writeBatch(db);
+        
+        // Auto-assign and move to IN_PROGRESS if tech starts working on a new job
+        const updateData: any = { lastActivityAt: serverTimestamp() };
+        if (job.status === 'RECEIVED') {
+            updateData.status = 'IN_PROGRESS';
+            if (!job.assigneeUid) {
+                updateData.assigneeUid = profile.uid;
+                updateData.assigneeName = profile.displayName;
+            }
+        }
+        
         const newActData = { text: newNote.trim(), userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs };
         batch.set(doc(activitiesColRef), newActData);
-        batch.update(jobDocRef, { lastActivityAt: serverTimestamp() });
+        batch.update(jobDocRef, updateData);
         
         await batch.commit();
         setNewNote("");
@@ -420,7 +431,17 @@ function JobDetailsPageContent() {
         }
         const batch = writeBatch(db);
         batch.set(doc(activitiesColRef), { text: `อัปโหลดรูปประกอบงานเพิ่ม ${files.length} รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
-        batch.update(jobDocRef, { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() });
+        
+        const updateData: any = { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() };
+        if (job.status === 'RECEIVED') {
+            updateData.status = 'IN_PROGRESS';
+            if (!job.assigneeUid) {
+                updateData.assigneeUid = profile.uid;
+                updateData.assigneeName = profile.displayName;
+            }
+        }
+        
+        batch.update(jobDocRef, updateData);
         await batch.commit();
         toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
     } catch(error: any) {
@@ -484,11 +505,28 @@ function JobDetailsPageContent() {
     setIsReassigning(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
-    const updateData: any = { assigneeUid: newWorker.id, assigneeName: newWorker.displayName, lastActivityAt: serverTimestamp() };
-    if (job.department === 'OUTSOURCE' && job.status === 'RECEIVED') updateData.status = 'IN_PROGRESS';
+    
+    const nextStatus = job.status === 'RECEIVED' ? 'IN_PROGRESS' : job.status;
+    const updateData: any = { 
+        assigneeUid: newWorker.id, 
+        assigneeName: newWorker.displayName, 
+        status: nextStatus,
+        lastActivityAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    };
+    
     batch.update(jobDocRef, updateData);
-    const actionText = job.department === 'OUTSOURCE' ? `มอบหมายงานนอกให้: ${newWorker.displayName}` : `มอบหมายงานให้: ${newWorker.displayName}`;
-    batch.set(doc(collection(jobDocRef, "activities")), { text: actionText, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    
+    const actionText = job.status === 'RECEIVED' 
+        ? `มอบหมายงานให้: ${newWorker.displayName} และเปลี่ยนสถานะเป็น "${jobStatusLabel('IN_PROGRESS')}"`
+        : `เปลี่ยนผู้รับผิดชอบเป็น: ${newWorker.displayName}`;
+        
+    batch.set(doc(collection(jobDocRef, "activities")), { 
+        text: actionText, 
+        userName: profile.displayName, 
+        userId: profile.uid, 
+        createdAt: serverTimestamp() 
+    });
     
     batch.commit().then(() => {
       toast({ title: "ดำเนินการสำเร็จ" });
@@ -834,7 +872,7 @@ function JobDetailsPageContent() {
         </div>
       </div>
       
-      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
+      <AlertDialog primary open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
         <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle><AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมนี้</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter>
