@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -135,7 +134,6 @@ export function JobList({
 
   const [billingJob, setBillingJob] = useState<Job | null>(null);
 
-  // Quick Assign States
   const [assigningJob, setAssigningJob] = useState<Job | null>(null);
   const [deptWorkers, setDeptWorkers] = useState<UserProfile[]>([]);
   const [isLoadingWorkers, setIsLoadingWorkers] = useState(false);
@@ -217,9 +215,7 @@ export function JobList({
       setError(err);
       if (err.message?.includes('requires an index')) {
         const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-        if (urlMatch) {
-          setIndexUrl(urlMatch[0]);
-        }
+        if (urlMatch) setIndexUrl(urlMatch[0]);
       }
     } finally {
       setLoading(false);
@@ -234,38 +230,16 @@ export function JobList({
 
   const handleAcceptJob = async (job: Job) => {
     if (!db || !profile || isProcessing) return;
-    
     setIsProcessing(job.id);
     try {
       const batch = writeBatch(db);
       const jobRef = doc(db, "jobs", job.id);
-      const activityRef = doc(collection(jobRef, "activities"));
-
-      batch.update(jobRef, {
-        status: 'IN_PROGRESS',
-        assigneeUid: profile.uid,
-        assigneeName: profile.displayName,
-        lastActivityAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      batch.set(activityRef, {
-        text: `ช่างรับงานเองเรียบร้อยแล้ว แผนก ${deptLabel(job.department)}`,
-        userName: profile.displayName,
-        userId: profile.uid,
-        createdAt: serverTimestamp()
-      });
-
+      batch.update(jobRef, { status: 'IN_PROGRESS', assigneeUid: profile.uid, assigneeName: profile.displayName, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.set(doc(collection(jobRef, "activities")), { text: `ช่างรับงานเองเรียบร้อยแล้ว แผนก ${deptLabel(job.department)}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
       await batch.commit();
-      toast({ title: "รับงานสำเร็จ", description: "ลุยงานต่อได้เลยค่ะพี่!" });
-      
-      // Refresh current page
+      toast({ title: "รับงานสำเร็จ" });
       fetchData(currentPage);
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "รับงานไม่สำเร็จ", description: e.message });
-    } finally {
-      setIsProcessing(null);
-    }
+    } catch (e: any) { toast({ variant: "destructive", title: "รับงานไม่สำเร็จ", description: e.message }); } finally { setIsProcessing(null); }
   };
 
   const handleOpenAssignQuick = async (job: Job) => {
@@ -274,347 +248,71 @@ export function JobList({
     setSelectedWorkerId("");
     setIsLoadingWorkers(true);
     try {
-      // ดึงพนักงานในแผนกที่เกี่ยวข้องที่มีสถานะ Active
-      const q = query(
-        collection(db, "users"),
-        where("department", "==", job.department),
-        where("status", "==", "ACTIVE")
-      );
+      const q = query(collection(db, "users"), where("department", "==", job.department), where("status", "==", "ACTIVE"));
       const snapshot = await getDocs(q);
-      const workers = snapshot.docs
-        .map(d => ({ ...d.data(), uid: d.id } as UserProfile))
-        .filter(u => u.role === 'WORKER'); // เลือกเฉพาะตำแหน่งช่าง (WORKER) ตามคำขอ
-      
-      setDeptWorkers(workers);
-    } catch (e) {
-      toast({ variant: 'destructive', title: "ไม่สามารถโหลดรายชื่อได้" });
-    } finally {
-      setIsLoadingWorkers(false);
-    }
+      setDeptWorkers(snapshot.docs.map(d => ({ ...d.data(), uid: d.id } as UserProfile)).filter(u => u.role === 'WORKER'));
+    } catch (e) { toast({ variant: 'destructive', title: "ไม่สามารถโหลดรายชื่อได้" }); } finally { setIsLoadingWorkers(false); }
   };
 
   const handleConfirmAssign = async () => {
     if (!db || !profile || !assigningJob || !selectedWorkerId || isProcessing) return;
-    
     const worker = deptWorkers.find(w => w.uid === selectedWorkerId);
     if (!worker) return;
-
     setIsProcessing(assigningJob.id);
     try {
       const batch = writeBatch(db);
       const jobRef = doc(db, "jobs", assigningJob.id);
-      const activityRef = doc(collection(jobRef, "activities"));
-
-      const updateData = {
-        status: 'IN_PROGRESS',
-        assigneeUid: worker.uid,
-        assigneeName: worker.displayName,
-        lastActivityAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-
-      batch.update(jobRef, updateData);
-      batch.set(activityRef, {
-        text: `มอบหมายงานให้: ${worker.displayName} โดย ${profile.displayName}`,
-        userName: profile.displayName,
-        userId: profile.uid,
-        createdAt: serverTimestamp()
-      });
-
+      batch.update(jobRef, { status: 'IN_PROGRESS', assigneeUid: worker.uid, assigneeName: worker.displayName, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.set(doc(collection(jobRef, "activities")), { text: `มอบหมายงานให้: ${worker.displayName} โดย ${profile.displayName}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
       await batch.commit();
       toast({ title: "มอบหมายงานสำเร็จ" });
       setAssigningJob(null);
       fetchData(currentPage);
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: "มอบหมายล้มเหลว", description: e.message });
-    } finally {
-      setIsProcessing(null);
-    }
+    } catch (e: any) { toast({ variant: 'destructive', title: "มอบหมายล้มเหลว", description: e.message }); } finally { setIsProcessing(null); }
   };
 
-  const handleNextPage = () => {
-    if (!isLastPage) {
-      const nextIdx = currentPage + 1;
-      setCurrentPage(nextIdx);
-      fetchData(nextIdx);
-    }
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage > 0) {
-      const prevIdx = currentPage - 1;
-      setCurrentPage(prevIdx);
-      fetchData(prevIdx);
-    }
-  };
-
-  if (indexUrl) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 text-center bg-muted/20 rounded-lg border-2 border-dashed">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <h3 className="text-lg font-bold mb-2">ต้องสร้างดัชนี (Index) สำหรับคิวรีนี้</h3>
-        <p className="text-muted-foreground mb-6 max-w-md">
-          ระบบต้องการการสร้างดัชนีในฐานข้อมูลเพื่อให้สามารถแสดงข้อมูลได้ถูกต้อง กรุณาคลิกปุ่มด้านล่างเพื่อสร้างดัชนี
-        </p>
-        <Button asChild>
-          <a href={indexUrl} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="mr-2 h-4 w-4" />
-            กดเพื่อสร้าง Index (Firebase Console)
-          </a>
-        </Button>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex justify-center p-12">
-        <Loader2 className="animate-spin h-8 w-8 text-primary" />
-      </div>
-    );
-  }
-
-  if (jobs.length === 0) {
-    return (
-      <Card className="text-center py-12">
-        <CardHeader>
-          <CardTitle className="text-muted-foreground">{emptyTitle}</CardTitle>
-          <CardDescription>{emptyDescription}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
+  if (indexUrl) return (<div className="flex flex-col items-center justify-center p-12 text-center bg-muted/20 rounded-lg border-2 border-dashed"><AlertCircle className="h-12 w-12 text-destructive mb-4" /><h3 className="text-lg font-bold mb-2">ต้องสร้างดัชนี (Index)</h3><Button asChild><a href={indexUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4" />กดเพื่อสร้าง Index</a></Button></div>);
+  if (loading) return (<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>);
+  if (jobs.length === 0) return (<Card className="text-center py-12"><CardHeader><CardTitle className="text-muted-foreground">{emptyTitle}</CardTitle><CardDescription>{emptyDescription}</CardDescription></CardHeader></Card>);
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {jobs.map((job) => {
-          const isOwnDept = profile?.department === job.department;
-          const canWorkerAccept = isWorker && isOwnDept && job.status === 'RECEIVED';
-          
-          // Check if documents already exist to prevent redundant actions
           const hasQuotation = job.salesDocId && job.salesDocType === 'QUOTATION';
           const hasBillingDoc = job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE');
-
+          const isOwnDept = profile?.department === job.department;
+          
           return (
             <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
               <div className="relative aspect-video bg-muted">
-                {job.photos && job.photos.length > 0 ? (
-                  <Image
-                    src={job.photos[0]}
-                    alt={job.description}
-                    fill
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
-                    <FileImage className="h-10 w-10 opacity-20" />
-                  </div>
-                )}
-                <Badge 
-                  variant={getStatusVariant(job.status)}
-                  className="absolute top-2 right-2 shadow-sm border-white/20"
-                >
-                  {jobStatusLabel(job.status)}
-                </Badge>
+                {job.photos && job.photos.length > 0 ? (<Image src={job.photos[0]} alt={job.description} fill className="object-cover" />) : (<div className="flex h-full items-center justify-center text-muted-foreground"><FileImage className="h-10 w-10 opacity-20" /></div>)}
+                <Badge variant={getStatusVariant(job.status)} className="absolute top-2 right-2 shadow-sm border-white/20">{jobStatusLabel(job.status)}</Badge>
               </div>
               <CardHeader className="p-4 space-y-1">
                 <CardTitle className="text-base line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-                <CardDescription className="text-[10px]">
-                  {deptLabel(job.department)} • {safeFormat(job.lastActivityAt, "dd/MM/yy HH:mm")}
-                </CardDescription>
+                <CardDescription className="text-[10px]">{deptLabel(job.department)} • {safeFormat(job.lastActivityAt, "dd/MM/yy HH:mm")}</CardDescription>
               </CardHeader>
-              <CardContent className="px-4 pb-4 flex-grow">
-                <p className="text-sm line-clamp-2 text-muted-foreground">
-                  {job.description}
-                </p>
-              </CardContent>
+              <CardContent className="px-4 pb-4 flex-grow"><p className="text-sm line-clamp-2 text-muted-foreground">{job.description}</p></CardContent>
               <CardFooter className="px-4 pb-4 pt-0 flex flex-col gap-2">
-                <Button asChild className="w-full h-9" variant="secondary">
-                  <Link href={`/app/jobs/${job.id}`}>
-                    ดูรายละเอียด
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
+                <Button asChild className="w-full h-9" variant="secondary"><Link href={`/app/jobs/${job.id}`}>ดูรายละเอียด<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
+                {isWorker && isOwnDept && job.status === 'RECEIVED' && (<Button onClick={() => handleAcceptJob(job)} disabled={isProcessing === job.id} className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold animate-in fade-in slide-in-from-bottom-1">{isProcessing === job.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}รับงานนี้</Button>)}
+                {job.status === 'RECEIVED' && isOfficeOrAdmin && (<Button onClick={() => handleOpenAssignQuick(job)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" variant="default"><UserCheck className="mr-2 h-4 w-4" />มอบหมายงาน</Button>)}
+                
+                {/* Quotation Logic */}
+                {job.status === 'WAITING_QUOTATION' && !hasQuotation && (<Button asChild={isOfficeOrAdmin} className={cn("w-full h-9 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} variant="default">{isOfficeOrAdmin ? <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link> : <span className="flex items-center"><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</span>}</Button>)}
+                {hasQuotation && (<Button asChild className="w-full h-9 font-bold" variant="outline"><Link href={`/app/office/documents/quotation/${job.salesDocId}`}><FileText className="mr-2 h-4 w-4" />ดูใบเสนอราคา {job.salesDocNo}</Link></Button>)}
 
-                {/* Accept Job button for Workers */}
-                {canWorkerAccept && (
-                  <Button 
-                    onClick={() => handleAcceptJob(job)}
-                    disabled={isProcessing === job.id}
-                    className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold animate-in fade-in slide-in-from-bottom-1"
-                  >
-                    {isProcessing === job.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                    รับงานนี้
-                  </Button>
-                )}
-
-                {/* Quick Assign button for Management/Office/Officer */}
-                {job.status === 'RECEIVED' && isOfficeOrAdmin && (
-                  <Button 
-                    onClick={() => handleOpenAssignQuick(job)}
-                    className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" 
-                    variant="default"
-                  >
-                    <UserCheck className="mr-2 h-4 w-4" />
-                    มอบหมายงาน
-                  </Button>
-                )}
-
-                {/* Quotation Logic - Show View if already has one */}
-                {job.status === 'WAITING_QUOTATION' && !hasQuotation && (
-                  <Button 
-                    disabled={!isOfficeOrAdmin}
-                    asChild={isOfficeOrAdmin}
-                    className={cn("w-full h-9 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
-                    variant="default"
-                  >
-                    {isOfficeOrAdmin ? (
-                      <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                        <FileText className="mr-2 h-4 w-4" />
-                        สร้างใบเสนอราคา
-                      </Link>
-                    ) : (
-                      <span className="flex items-center">
-                        <FileText className="mr-2 h-4 w-4" />
-                        สร้างใบเสนอราคา
-                      </span>
-                    )}
-                  </Button>
-                )}
-                {job.status === 'WAITING_APPROVE' && hasQuotation && (
-                   <Button asChild className="w-full h-9 font-bold" variant="outline">
-                      <Link href={`/app/office/documents/quotation/${job.salesDocId}`}>
-                        <FileText className="mr-2 h-4 w-4" />
-                        ดูใบเสนอราคา {job.salesDocNo}
-                      </Link>
-                   </Button>
-                )}
-
-                {/* Billing Logic - Show View if already has one, hide Create button if sent to accounting */}
-                {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
-                  hasBillingDoc ? (
-                    <Button 
-                      asChild
-                      className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" 
-                      variant="outline"
-                    >
-                      <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        ดูบิล {job.salesDocNo}
-                      </Link>
-                    </Button>
-                  ) : (
-                    <Button 
-                      className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
-                      variant="outline"
-                      disabled={!isOfficeOrAdmin}
-                      onClick={() => setBillingJob(job)}
-                    >
-                      <Receipt className="mr-2 h-4 w-4" />
-                      ออกบิล
-                    </Button>
-                  )
-                )}
+                {/* Billing Logic */}
+                {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (hasBillingDoc ? (<Button asChild className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline"><Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</Link></Button>) : (<Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} variant="outline" disabled={!isOfficeOrAdmin} onClick={() => setBillingJob(job)}><Receipt className="mr-2 h-4 w-4" />ออกบิล</Button>))}
               </CardFooter>
             </Card>
           );
         })}
       </div>
-      
-      {!searchTerm && (
-        <div className="flex justify-between items-center bg-muted/30 p-4 rounded-lg border">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">หน้า {currentPage + 1}</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handlePrevPage} disabled={currentPage === 0}>
-              <ChevronLeft className="h-4 w-4 mr-1" /> ก่อนหน้า
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleNextPage} disabled={isLastPage}>
-              ถัดไป <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Quick Assign Dialog */}
-      <Dialog open={!!assigningJob} onOpenChange={(open) => !open && setAssigningJob(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-amber-500" />
-              มอบหมายผู้รับผิดชอบงาน
-            </DialogTitle>
-            <DialogDescription>
-              เลือกพนักงานในแผนก {assigningJob && deptLabel(assigningJob.department)} เพื่อรับผิดชอบงานของ <b>{assigningJob?.customerSnapshot.name}</b>
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label>พนักงานประจำแผนก</Label>
-              {isLoadingWorkers ? (
-                <div className="flex items-center justify-center p-4 border rounded-md border-dashed">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  <span>กำลังโหลดรายชื่อ...</span>
-                </div>
-              ) : (
-                <Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="เลือกรายชื่อพนักงาน..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {deptWorkers.length > 0 ? (
-                      deptWorkers.map((worker) => (
-                        <SelectItem key={worker.uid} value={worker.uid}>
-                          <span>{worker.displayName}</span>
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-sm text-muted-foreground italic">
-                        ไม่พบพนักงานช่างในแผนกนี้
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setAssigningJob(null)} disabled={!!isProcessing}>ยกเลิก</Button>
-            <Button onClick={handleConfirmAssign} disabled={!selectedWorkerId || !!isProcessing}>
-              {isProcessing === assigningJob?.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              ยืนยันการมอบหมาย
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Billing Dialog */}
-      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
-        <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
-              <AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
-                <Button variant="outline" onClick={() => setBillingJob(null)} className="w-full sm:w-auto">ยกเลิก</Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }}
-                  className="w-full sm:w-auto"
-                >
-                  ใบส่งของชั่วคราว
-                </Button>
-                <Button 
-                  onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}
-                  className="w-full sm:w-auto"
-                >
-                  ใบกำกับภาษี
-                </Button>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {!searchTerm && (<div className="flex justify-between items-center bg-muted/30 p-4 rounded-lg border"><span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">หน้า {currentPage + 1}</span><div className="flex gap-2"><Button variant="outline" size="sm" onClick={handlePrevPage} disabled={currentPage === 0}><ChevronLeft className="h-4 w-4 mr-1" /> ก่อนหน้า</Button><Button variant="outline" size="sm" onClick={handleNextPage} disabled={isLastPage}>ถัดไป <ChevronRight className="h-4 w-4 ml-1" /></Button></div></div>)}
+      <Dialog open={!!assigningJob} onOpenChange={(open) => !open && setAssigningJob(null)}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-amber-500" />มอบหมายผู้รับผิดชอบงาน</DialogTitle><DialogDescription>เลือกพนักงานเพื่อรับผิดชอบงานของ <b>{assigningJob?.customerSnapshot.name}</b></DialogDescription></DialogHeader><div className="py-4 space-y-4"><div className="space-y-2"><Label>พนักงานตำแหน่งช่าง</Label>{isLoadingWorkers ? (<div className="flex items-center justify-center p-4 border rounded-md border-dashed"><Loader2 className="h-5 w-5 animate-spin mr-2" /><span>กำลังโหลดรายชื่อ...</span></div>) : (<Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}><SelectTrigger className="w-full"><SelectValue placeholder="เลือกรายชื่อพนักงาน..." /></SelectTrigger><SelectContent>{deptWorkers.length > 0 ? (deptWorkers.map((worker) => (<SelectItem key={worker.uid} value={worker.uid}>{worker.displayName}</SelectItem>))) : (<div className="p-4 text-center text-sm text-muted-foreground italic">ไม่พบพนักงานในแผนกนี้</div>)}</SelectContent></Select>)}</div></div><DialogFooter className="gap-2 sm:gap-0"><Button variant="outline" onClick={() => setAssigningJob(null)} disabled={!!isProcessing}>ยกเลิก</Button><Button onClick={handleConfirmAssign} disabled={!selectedWorkerId || !!isProcessing}>{isProcessing === assigningJob?.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยันการมอบหมาย</Button></DialogFooter></DialogContent></Dialog>
+      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle><AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="flex flex-col sm:flex-row gap-2"><Button variant="outline" onClick={() => setBillingJob(null)} className="w-full sm:w-auto">ยกเลิก</Button><Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button><Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </div>
   );
 }

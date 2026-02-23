@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
@@ -152,9 +151,7 @@ function JobDetailsPageContent() {
   const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || isOfficer || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
   
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
-  
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
-  
   const canUpdateActivity = isStaff;
   const canEditDetails = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
 
@@ -358,7 +355,6 @@ function JobDetailsPageContent() {
         const activitiesColRef = collection(jobDocRef, "activities");
         const batch = writeBatch(db);
         
-        // Auto-assign and move to IN_PROGRESS if tech starts working on a new job
         const updateData: any = { lastActivityAt: serverTimestamp() };
         if (job.status === 'RECEIVED') {
             updateData.status = 'IN_PROGRESS';
@@ -403,7 +399,6 @@ function JobDetailsPageContent() {
           setNewPhotos(prev => [...prev, file]);
           setPhotoPreviews(prev => [...prev, URL.createObjectURL(file)]);
       });
-      // Clear input to allow same file re-selection
       e.target.value = '';
     }
   };
@@ -648,7 +643,7 @@ function JobDetailsPageContent() {
     });
   };
 
-  if (loading || !job) return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
+  if (loading || !job) return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
 
   const hasQuotation = job.salesDocId && job.salesDocType === 'QUOTATION';
   const hasBillingDoc = job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE');
@@ -775,24 +770,17 @@ function JobDetailsPageContent() {
                     </Button>
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
                     {job.status === 'WAITING_QUOTATION' && !hasQuotation && (
-                      <Button 
-                        asChild={isOfficeOrAdminOrMgmt} 
-                        variant="outline" 
-                        className="border-primary text-primary hover:bg-primary/10"
-                        disabled={!isOfficeOrAdminOrMgmt}
-                      >
+                      <Button asChild={isOfficeOrAdminOrMgmt} variant="outline" className="border-primary text-primary hover:bg-primary/10" disabled={!isOfficeOrAdminOrMgmt}>
                         {isOfficeOrAdminOrMgmt ? (
                           <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
                             <FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา
                           </Link>
                         ) : (
-                          <span className="flex items-center opacity-50">
-                            <FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา
-                          </span>
+                          <span className="flex items-center opacity-50"><FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา</span>
                         )}
                       </Button>
                     )}
-                    {job.status === 'WAITING_APPROVE' && hasQuotation && (
+                    {hasQuotation && (
                       <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
                         <Link href={`/app/office/documents/quotation/${job.salesDocId}`}>
                           <Eye className="mr-2 h-4 w-4" /> ดูใบเสนอราคา {job.salesDocNo}
@@ -802,22 +790,13 @@ function JobDetailsPageContent() {
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isViewOnly} variant="outline"><CheckCircle className="mr-2 h-4 w-4" /> จบงาน</Button>}
                     {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
                       hasBillingDoc ? (
-                        <Button 
-                          asChild
-                          variant="outline" 
-                          className="border-primary text-primary hover:bg-primary/10"
-                        >
+                        <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
                           <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
                             <Eye className="mr-2 h-4 w-4" /> ดูบิล {job.salesDocNo}
                           </Link>
                         </Button>
                       ) : (
-                        <Button 
-                          onClick={() => setBillingJob(job)} 
-                          disabled={isSubmittingNote || !isOfficeOrAdminOrMgmt} 
-                          variant="outline" 
-                          className={cn("border-primary text-primary hover:bg-primary/10", !isOfficeOrAdminOrMgmt && "opacity-50")}
-                        >
+                        <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote || !isOfficeOrAdminOrMgmt} variant="outline" className={cn("border-primary text-primary hover:bg-primary/10", !isOfficeOrAdminOrMgmt && "opacity-50")}>
                           <Receipt className="mr-2 h-4 w-4" /> ออกบิล
                         </Button>
                       )
@@ -957,19 +936,11 @@ function JobDetailsPageContent() {
         <DialogContent className="sm:max-w-xl">
             <DialogHeader><DialogTitle>แก้ไขสมุดบันทึก</DialogTitle></DialogHeader>
             <div className="py-4">
-              <Textarea 
-                placeholder="บันทึกรายละเอียดงาน ผลตรวจ หรือบันทึกข้อความที่นี่..." 
-                value={techReport} 
-                onChange={(e) => setTechReport(e.target.value)} 
-                rows={12} 
-              />
+              <Textarea placeholder="บันทึกรายละเอียดงาน ผลตรวจ หรือบันทึกข้อความที่นี่..." value={techReport} onChange={(e) => setTechReport(e.target.value)} rows={12} />
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setIsEditNotebookDialogOpen(false)} disabled={isSavingTechReport}>ยกเลิก</Button>
-                <Button onClick={handleUpdateNotebook} disabled={isSavingTechReport}>
-                  {isSavingTechReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  บันทึกข้อมูล
-                </Button>
+                <Button onClick={handleUpdateNotebook} disabled={isSavingTechReport}>{isSavingTechReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}บันทึกข้อมูล</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>

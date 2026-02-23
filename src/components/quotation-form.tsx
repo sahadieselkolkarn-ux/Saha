@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, orderBy, setDoc, getDocs, limit, writeBatch, deleteField } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, serverTimestamp, updateDoc, where, orderBy, getDocs, limit, writeBatch, deleteField } from "firebase/firestore";
 import { useFirebase, useCollection, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,12 +24,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 
 import { createDocument } from "@/firebase/documents";
-import { archiveAndCloseJob } from "@/firebase/jobs-archive";
 import type { Job, StoreSettings, Customer, Document as DocumentType, QuotationTemplate } from "@/lib/types";
-import { safeFormat } from "@/lib/date-utils";
 
 const lineItemSchema = z.object({
   description: z.string().min(1, "ต้องกรอกรายละเอียดรายการ"),
@@ -71,10 +68,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
   const [customerSearch, setCustomerSearch] = useState("");
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
-  
   const [isTemplatePopoverOpen, setIsTemplatePopoverOpen] = useState(false);
 
-  // Status management
   const [isProcessing, setIsProcessing] = useState(false);
   const [existingActiveDoc, setExistingActiveDoc] = useState<DocumentType | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
@@ -115,12 +110,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   useEffect(() => {
     if (!db) return;
     setIsLoadingCustomers(true);
-    const q = query(collection(db, "customers"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(collection(db, "customers"), (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
-      setIsLoadingCustomers(false);
-    }, (error) => {
-      console.error("Error loading customers:", error);
       setIsLoadingCustomers(false);
     });
     return () => unsubscribe();
@@ -238,6 +229,36 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     }
   };
 
+  const checkUniqueness = async (jobIdVal: string) => {
+    if (!db || isEditing) return true;
+    const q = query(
+      collection(db, "documents"), 
+      where("jobId", "==", jobIdVal), 
+      where("docType", "==", "QUOTATION"),
+      limit(5)
+    );
+    const snap = await getDocs(q);
+    const activeDoc = snap.docs.find(d => d.data().status !== 'CANCELLED');
+    if (activeDoc) {
+      setExistingActiveDoc({ id: activeDoc.id, ...activeDoc.data() } as DocumentType);
+      return false;
+    }
+    return true;
+  };
+
+  const onSubmit = async (data: QuotationFormData) => {
+    if (isCancelled) return;
+    if (data.jobId) {
+      const ok = await checkUniqueness(data.jobId);
+      if (!ok) {
+        setPendingFormData(data);
+        setShowDuplicateDialog(true);
+        return;
+      }
+    }
+    await executeSave(data);
+  };
+
   const handleCancelExistingAndSave = async () => {
     if (!db || !existingActiveDoc || !profile || !pendingFormData) return;
     setIsProcessing(true);
@@ -272,36 +293,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     }
   };
 
-  const checkUniqueness = async (jobIdVal: string) => {
-    if (!db || isEditing) return true;
-    const q = query(
-      collection(db, "documents"), 
-      where("jobId", "==", jobIdVal), 
-      where("docType", "==", "QUOTATION"),
-      limit(5)
-    );
-    const snap = await getDocs(q);
-    const activeDoc = snap.docs.find(d => d.data().status !== 'CANCELLED');
-    if (activeDoc) {
-      setExistingActiveDoc({ id: activeDoc.id, ...activeDoc.data() } as DocumentType);
-      return false;
-    }
-    return true;
-  };
-
-  const onSubmit = async (data: QuotationFormData) => {
-    if (isCancelled) return;
-    if (data.jobId) {
-      const ok = await checkUniqueness(data.jobId);
-      if (!ok) {
-        setPendingFormData(data);
-        setShowDuplicateDialog(true);
-        return;
-      }
-    }
-    await executeSave(data);
-  };
-
   const applyTemplate = (template: QuotationTemplate) => {
     form.setValue("items", template.items.map(i => ({ ...i })), { shouldValidate: true });
     form.setValue("notes", template.notes || "", { shouldValidate: true });
@@ -324,7 +315,13 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   return (
     <Form {...form}>
       <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
-        {isCancelled && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertTitle>ยกเลิกแล้ว</AlertTitle><AlertDescription>ไม่สามารถแก้ไขข้อมูลได้</AlertDescription></Alert>}
+        {isCancelled && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>ยกเลิกแล้ว</AlertTitle>
+            <AlertDescription>ไม่สามารถแก้ไขข้อมูลได้</AlertDescription>
+          </Alert>
+        )}
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card shadow-sm">
             <div className="lg:col-span-2 space-y-2">
@@ -334,12 +331,20 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             </div>
             <div className="space-y-4">
               <h1 className="text-2xl font-bold text-right text-primary">ใบเสนอราคา</h1>
-              {isEditing && <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>}
+              {isEditing && (
+                <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>
+              )}
               <FormField control={form.control} name="issueDate" render={({ field }) => (
-                <FormItem><FormLabel>วันที่ออกเอกสาร</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl></FormItem>
+                <FormItem>
+                  <FormLabel>วันที่ออกเอกสาร</FormLabel>
+                  <FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl>
+                </FormItem>
               )} />
               <FormField control={form.control} name="expiryDate" render={({ field }) => (
-                <FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl></FormItem>
+                <FormItem>
+                  <FormLabel>ยืนราคาถึงวันที่</FormLabel>
+                  <FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl>
+                </FormItem>
               )} />
             </div>
         </div>
@@ -494,45 +499,45 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             {isEditing ? 'บันทึกการแก้ไข' : 'บันทึกใบเสนอราคา'}
           </Button>
         </div>
-      </form>
 
-      {/* Duplicate Dialog */}
-      <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="h-5 w-5" />
-              พบใบเสนอราคาเดิม
-            </DialogTitle>
-            <DialogDescription>
-              งานซ่อมนี้มีการออกใบเสนอราคาไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingActiveDoc?.docNo}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <Alert variant="secondary" className="bg-amber-50 border-amber-200">
-              <Info className="h-4 w-4 text-amber-600" />
-              <AlertTitle className="text-amber-800">นโยบายระบบ</AlertTitle>
-              <AlertDescription className="text-amber-700 text-xs">
-                หนึ่งงานซ่อมสามารถผูกใบเสนอราคาได้เพียงฉบับเดียวเท่านั้นค่ะ
-              </AlertDescription>
-            </Alert>
-          </div>
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push(`/app/office/documents/quotation/${existingActiveDoc?.id}`)}>
-              <Eye className="mr-2 h-4 w-4" /> ดูใบเดิม
-            </Button>
-            <Button 
-              variant="destructive" 
-              className="w-full sm:w-auto" 
-              onClick={handleCancelExistingAndSave} 
-              disabled={isProcessing}
-            >
-              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
-              ยกเลิกใบเดิมและสร้างใหม่
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {/* Duplicate Dialog */}
+        <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-5 w-5" />
+                พบใบเสนอราคาเดิม
+              </DialogTitle>
+              <DialogDescription>
+                งานซ่อมนี้มีการออกใบเสนอราคาไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingActiveDoc?.docNo}</span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <Alert variant="secondary" className="bg-amber-50 border-amber-200">
+                <Info className="h-4 w-4 text-amber-600" />
+                <AlertTitle className="text-amber-800">นโยบายระบบ</AlertTitle>
+                <AlertDescription className="text-amber-700 text-xs">
+                  หนึ่งงานซ่อมสามารถผูกใบเสนอราคาได้เพียงฉบับเดียวเท่านั้นค่ะ
+                </AlertDescription>
+              </Alert>
+            </div>
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push(`/app/office/documents/quotation/${existingActiveDoc?.id}`)}>
+                <Eye className="mr-2 h-4 w-4" /> ดูใบเดิม
+              </Button>
+              <Button 
+                variant="destructive" 
+                className="w-full sm:w-auto" 
+                onClick={handleCancelExistingAndSave} 
+                disabled={isProcessing}
+              >
+                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                ยกเลิกใบเดิมและสร้างใหม่
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </form>
     </Form>
   );
 }
