@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -256,7 +257,9 @@ export default function ManagementJobsPage() {
             openJobs = openJobs.filter(j =>
                 (j.customerSnapshot?.name || "").toLowerCase().includes(q) ||
                 (j.customerSnapshot?.phone || "").includes(q) ||
-                (j.description || "").toLowerCase().includes(q)
+                (j.description || "").toLowerCase().includes(q) ||
+                (j.carServiceDetails?.licensePlate || "").toLowerCase().includes(q) ||
+                (j.carSnapshot?.licensePlate || "").toLowerCase().includes(q)
             );
         }
         return openJobs;
@@ -303,7 +306,7 @@ export default function ManagementJobsPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             type="search"
-                            placeholder="ค้นหาชื่องาน/ลูกค้า..."
+                            placeholder="ค้นหาชื่องาน/ลูกค้า/ทะเบียน..."
                             className="w-full rounded-lg bg-background pl-9 sm:w-[250px]"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}

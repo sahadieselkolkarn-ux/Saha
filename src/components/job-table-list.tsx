@@ -143,7 +143,9 @@ export function JobTableList({
           (j.customerSnapshot?.name || "").toLowerCase().includes(term) ||
           (j.customerSnapshot?.phone || "").includes(term) ||
           (j.description || "").toLowerCase().includes(term) ||
-          (j.id && j.id.toLowerCase().includes(term))
+          (j.id && j.id.toLowerCase().includes(term)) ||
+          (j.carServiceDetails?.licensePlate || "").toLowerCase().includes(term) ||
+          (j.carSnapshot?.licensePlate || "").toLowerCase().includes(term)
         );
         setIsLastPage(true);
       } else {
