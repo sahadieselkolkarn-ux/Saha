@@ -35,7 +35,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  Receipt
+  Receipt,
+  UserCheck
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -298,6 +299,18 @@ export function JobList({
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
+              {job.status === 'RECEIVED' && isOfficeOrAdmin && (
+                <Button 
+                  asChild
+                  className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" 
+                  variant="default"
+                >
+                  <Link href={`/app/jobs/${job.id}`}>
+                    <UserCheck className="mr-2 h-4 w-4" />
+                    มอบหมายงาน
+                  </Link>
+                </Button>
+              )}
               {job.status === 'WAITING_QUOTATION' && (
                 <Button 
                   disabled={!isOfficeOrAdmin}
