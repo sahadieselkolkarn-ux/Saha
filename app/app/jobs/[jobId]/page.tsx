@@ -403,6 +403,8 @@ function JobDetailsPageContent() {
           setNewPhotos(prev => [...prev, file]);
           setPhotoPreviews(prev => [...prev, URL.createObjectURL(file)]);
       });
+      // Clear input to allow same file re-selection
+      e.target.value = '';
     }
   };
 
@@ -429,13 +431,21 @@ function JobDetailsPageContent() {
         if (!storage) throw new Error("ไม่สามารถเชื่อมต่อระบบเก็บไฟล์ได้");
         const activitiesColRef = collection(jobDocRef, "activities");
         const photoURLs: string[] = [];
+        
         for (const photo of files) {
             const photoRef = ref(storage, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
             await uploadBytes(photoRef, photo);
             photoURLs.push(await getDownloadURL(photoRef));
         }
+
         const batch = writeBatch(db);
-        batch.set(doc(activitiesColRef), { text: `อัปโหลดรูปประกอบงานเพิ่ม ${files.length} รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
+        batch.set(doc(activitiesColRef), { 
+            text: `อัปโหลดรูปประกอบงานเพิ่ม ${photoURLs.length} รูป`, 
+            userName: profile.displayName, 
+            userId: profile.uid, 
+            createdAt: serverTimestamp(), 
+            photos: photoURLs 
+        });
         
         const updateData: any = { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp() };
         if (job.status === 'RECEIVED') {
@@ -450,6 +460,7 @@ function JobDetailsPageContent() {
         await batch.commit();
         toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
     } catch(error: any) {
+        console.error("Quick upload error:", error);
         toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message});
     } finally {
         setIsAddingPhotos(false);
@@ -711,19 +722,19 @@ function JobDetailsPageContent() {
                 {canUpdateActivity && !isViewOnly && (
                     <div className="flex gap-2">
                         <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}>
-                            <label htmlFor="camera-photo-upload" className="cursor-pointer flex items-center">
+                            <label className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                                 ถ่ายรูปเพิ่ม
+                                <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos} />
                             </label>
                         </Button>
                         <Button asChild variant="outline" size="sm" disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}>
-                            <label htmlFor="library-photo-upload" className="cursor-pointer flex items-center">
+                            <label className="cursor-pointer flex items-center">
                                 {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
                                 เลือกรูปถ่าย
+                                <input type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} disabled={isAddingPhotos} />
                             </label>
                         </Button>
-                        <input id="camera-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} />
-                        <input id="library-photo-upload" type="file" className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} />
                     </div>
                 )}
             </CardHeader>
@@ -757,8 +768,9 @@ function JobDetailsPageContent() {
                  <div className="flex flex-wrap gap-2">
                     <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || !canUpdateActivity || isViewOnly}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
                     <Button asChild variant="outline" disabled={!canUpdateActivity || isSubmittingNote || isAddingPhotos || isViewOnly}>
-                        <label className="cursor-pointer flex items-center"><Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม
-                            <Input id="activity-photo-upload" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} />
+                        <label className="cursor-pointer flex items-center">
+                            <Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม
+                            <input type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} />
                         </label>
                     </Button>
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}

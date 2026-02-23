@@ -128,6 +128,8 @@ export default function IntakePage() {
       setPhotos(prev => [...prev, ...validFiles]);
       const newPreviews = validFiles.map(file => URL.createObjectURL(file));
       setPhotoPreviews(prev => [...prev, ...newPreviews]);
+      // Clear input value to allow selecting same file again if removed
+      e.target.value = '';
     }
   };
 
@@ -153,13 +155,17 @@ export default function IntakePage() {
         const jobDocRef = doc(collection(db, "jobs"));
         const jobId = jobDocRef.id;
 
-        // Upload photos first to get URLs
+        // 1. Upload photos first to get URLs
         if (photos.length > 0) {
             for (const photo of photos) {
-                const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
-                await uploadBytes(photoRef, photo);
-                const url = await getDownloadURL(photoRef);
-                photoURLs.push(url);
+                try {
+                    const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
+                    await uploadBytes(photoRef, photo);
+                    const url = await getDownloadURL(photoRef);
+                    photoURLs.push(url);
+                } catch (uploadError) {
+                    console.error("Error uploading individual photo:", uploadError);
+                }
             }
         }
 
@@ -196,6 +202,7 @@ export default function IntakePage() {
             jobData.mechanicDetails = values.mechanicDetails;
         }
 
+        // 2. Commit everything in a batch
         const batch = writeBatch(db);
         batch.set(jobDocRef, sanitizeForFirestore(jobData));
         
@@ -205,29 +212,19 @@ export default function IntakePage() {
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),
-            photos: [],
+            photos: photoURLs,
         });
 
-        // Use .then() to ensure sequential success feedback and cleanup
-        await batch.commit().then(() => {
-            toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
-            form.reset();
-            setPhotos([]);
-            photoPreviews.forEach(url => URL.revokeObjectURL(url));
-            setPhotoPreviews([]);
-            setCustomerSearch("");
-        }).catch(async (error) => {
-            if (error.code === 'permission-denied') {
-                const permissionError = new FirestorePermissionError({
-                    path: jobDocRef.path,
-                    operation: 'create',
-                    requestResourceData: jobData,
-                } satisfies SecurityRuleContext);
-                errorEmitter.emit('permission-error', permissionError);
-            } else {
-                throw error;
-            }
-        });
+        await batch.commit();
+        
+        toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
+        
+        // 3. Cleanup
+        form.reset();
+        setPhotos([]);
+        photoPreviews.forEach(url => URL.revokeObjectURL(url));
+        setPhotoPreviews([]);
+        setCustomerSearch("");
 
     } catch (error: any) {
         console.error("Intake Error:", error);
@@ -270,14 +267,16 @@ export default function IntakePage() {
                                 variant="outline"
                                 role="combobox"
                                 className={cn(
-                                  "w-full justify-between font-normal",
+                                  "w-full justify-between font-normal text-left",
                                   !field.value && "text-muted-foreground"
                                 )}
                                 disabled={isViewer || isSubmitting}
                               >
-                                {selectedCustomer
-                                  ? `${selectedCustomer.name} (${selectedCustomer.phone})`
-                                  : "ค้นหาชื่อ หรือเบอร์โทรลูกค้า..."}
+                                <span className="truncate">
+                                    {selectedCustomer
+                                    ? `${selectedCustomer.name} (${selectedCustomer.phone})`
+                                    : "ค้นหาชื่อ หรือเบอร์โทรลูกค้า..."}
+                                </span>
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </FormControl>
@@ -443,36 +442,40 @@ export default function IntakePage() {
               )} />
 
               <FormItem>
-                <FormLabel>รูปภาพประกอบ (สูงสุด {MAX_INTAKE_PHOTOS} รูป, ไม่เกิน 5MB ต่อรูป)</FormLabel>
-                <FormControl>
-                  <div className="flex items-center justify-center w-full">
-                    <label htmlFor="intake-dropzone-file" className={cn(
-                      "flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg transition-colors",
-                      (photos.length >= MAX_INTAKE_PHOTOS || isViewer || isSubmitting) ? 'cursor-not-allowed bg-muted/50 border-muted' : 'cursor-pointer bg-muted/50 hover:bg-secondary border-muted-foreground/20'
-                    )}>
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                            <Camera className="w-8 h-8 mb-2 text-muted-foreground" />
-                            <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">กดที่นี่เพื่อถ่ายภาพ</span> หรือเลือกจากอัลบั้ม</p>
-                             <p className="text-xs text-muted-foreground">รองรับไฟล์รูปภาพเท่านั้น</p>
+                <FormLabel>รูปภาพประกอบ (สูงสุด {MAX_INTAKE_PHOTOS} รูป)</FormLabel>
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <Button asChild variant="outline" className="h-24 flex-col gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5" disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting}>
+                            <label className="cursor-pointer">
+                                <Camera className="h-8 w-8 text-primary" />
+                                <span className="text-xs font-bold uppercase tracking-wider">ถ่ายรูปจากกล้อง</span>
+                                <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting} />
+                            </label>
+                        </Button>
+                        <Button asChild variant="outline" className="h-24 flex-col gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5" disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting}>
+                            <label className="cursor-pointer">
+                                <ImageIcon className="h-8 w-8 text-primary" />
+                                <span className="text-xs font-bold uppercase tracking-wider">เลือกจากอัลบั้ม</span>
+                                <input type="file" className="hidden" multiple accept="image/*" onChange={handlePhotoChange} disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting} />
+                            </label>
+                        </Button>
+                    </div>
+
+                    {photoPreviews.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/20">
+                        {photoPreviews.map((src, index) => (
+                        <div key={index} className="relative group aspect-square">
+                            <Image src={src} alt={`Preview ${index + 1}`} fill className="rounded-md border object-cover" />
+                            {(!isViewer && !isSubmitting) && (
+                            <Button type="button" variant="destructive" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-md z-10" onClick={() => removePhoto(index)}>
+                                <X className="h-4 w-4" />
+                            </Button>
+                            )}
                         </div>
-                      <Input id="intake-dropzone-file" type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} disabled={photos.length >= MAX_INTAKE_PHOTOS || isViewer || isSubmitting} />
-                    </label>
-                  </div>
-                </FormControl>
-                {photoPreviews.length > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                    {photoPreviews.map((src, index) => (
-                      <div key={index} className="relative group">
-                        <Image src={src} alt={`Preview ${index + 1}`} width={150} height={150} className="rounded-md border object-cover w-full aspect-square" />
-                        {(!isViewer && !isSubmitting) && (
-                          <Button type="button" variant="destructive" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-md" onClick={() => removePhoto(index)}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        ))}
+                    </div>
+                    )}
+                </div>
               </FormItem>
 
               <div className="pt-4">
