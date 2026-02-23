@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 import { createDocument } from "@/firebase/documents";
 import type { Job, StoreSettings, Customer, Document as DocumentType, QuotationTemplate } from "@/lib/types";
@@ -481,6 +482,17 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                   <Input type="number" step="any" className="w-32 text-right bg-background h-8" {...field} disabled={isCancelled} />
                 )}/>
               </div>
+              
+              <div className="flex justify-between items-center py-2">
+                <FormField control={form.control} name="isVat" render={({ field }) => (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isCancelled}/>
+                    <Label className="text-sm font-normal cursor-pointer">ภาษีมูลค่าเพิ่ม 7%</Label>
+                  </div>
+                )} />
+                <span className="text-sm">{formatCurrency(form.watch('vatAmount'))}</span>
+              </div>
+
               <Separator/>
               <div className="flex justify-between items-center text-lg font-bold">
                 <span>ยอดรวมสุทธิ</span>
