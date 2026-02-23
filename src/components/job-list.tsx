@@ -228,6 +228,22 @@ export function JobList({
     fetchData(0);
   }, [searchTerm, department, statusConfig.key, fetchData]);
 
+  const handleNextPage = () => {
+    if (!isLastPage) {
+      const nextIdx = currentPage + 1;
+      setCurrentPage(nextIdx);
+      fetchData(nextIdx);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 0) {
+      const prevIdx = currentPage - 1;
+      setCurrentPage(prevIdx);
+      fetchData(prevIdx);
+    }
+  };
+
   const handleAcceptJob = async (job: Job) => {
     if (!db || !profile || isProcessing) return;
     setIsProcessing(job.id);
