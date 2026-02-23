@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet, Eye, XCircle } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet, Eye, XCircle, Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -208,12 +208,12 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         issueDate: docToEdit.docDate,
         items: docToEdit.items.map(item => ({...item})),
         notes: docToEdit.notes ?? '',
-        senderName: (profile?.displayName || docToEdit.senderName) || '',
-        receiverName: (docToEdit.customerSnapshot?.name || docToEdit.receiverName) || '',
+        isVat: false,
         discountAmount: docToEdit.discountAmount || 0,
+        senderName: profile?.displayName || docToEdit.senderName,
+        receiverName: docToEdit.customerSnapshot?.name || docToEdit.receiverName || '',
         isBackfill: false,
         paymentTerms: docToEdit.paymentTerms || 'CASH',
-        suggestedPaymentMethod: docToEdit.suggestedPaymentMethod || 'CASH',
         suggestedAccountId: docToEdit.suggestedAccountId || '',
         billingRequired: docToEdit.billingRequired || false,
         dueDate: docToEdit.dueDate || null,
@@ -235,7 +235,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         setSuggestedPayments([{method: 'CASH', accountId: '', amount: 0}]);
     }
     if (profile) form.setValue('senderName', profile.displayName || '');
-  }, [job, docToEdit, profile, form, jobId, customers]);
+  }, [job, docToEdit, profile, form, jobId]);
 
   const { fields, append, remove, replace } = useFieldArray({ control: form.control, name: "items" });
   const watchedItems = useWatch({ control: form.control, name: "items" });

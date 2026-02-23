@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, LayoutTemplate, Eye, XCircle } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, AlertCircle, LayoutTemplate, Eye, XCircle, Info } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -109,6 +109,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   });
 
   const selectedCustomerId = form.watch('customerId');
+  const currentCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
+  const isCustomerSelectionDisabled = !!jobId || (isEditing && !!docToEdit?.customerId);
   const isCancelled = docToEdit?.status === 'CANCELLED';
 
   useEffect(() => {
@@ -352,9 +354,18 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
               พบใบเสนอราคาเดิม
             </DialogTitle>
             <DialogDescription>
-              งานนี้มีการออกใบเสนอราคาไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingActiveDoc?.docNo}</span>
+              งานซ่อมนี้มีการออกใบเสนอราคาไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingActiveDoc?.docNo}</span>
             </DialogDescription>
           </DialogHeader>
+          <div className="py-4 space-y-4">
+            <Alert variant="secondary" className="bg-amber-50 border-amber-200">
+              <Info className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800">นโยบายระบบ</AlertTitle>
+              <AlertDescription className="text-amber-700 text-xs">
+                หนึ่งงานซ่อมสามารถผูกใบเสนอราคาได้เพียงฉบับเดียวเท่านั้นค่ะ
+              </AlertDescription>
+            </Alert>
+          </div>
           <DialogFooter className="flex flex-col sm:flex-row gap-2">
             <Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push(`/app/office/documents/quotation/${existingActiveDoc?.id}`)}>
               <Eye className="mr-2 h-4 w-4" /> ดูใบเดิม

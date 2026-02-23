@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet, Eye, XCircle } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet, Eye, XCircle, Info } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
@@ -217,7 +217,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
       setSuggestedPayments([{method: 'CASH', accountId: '', amount: 0}]);
     }
     if (profile) form.setValue('senderName', profile.displayName ?? '');
-  }, [job, docToEdit, profile, form, jobId, customers]);
+  }, [job, docToEdit, profile, form, jobId]);
 
   const { fields, append, remove, replace } = useFieldArray({ control: form.control, name: "items" });
   const watchedItems = useWatch({ control: form.control, name: "items" });
@@ -475,7 +475,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </DialogHeader>
           <div className="py-4 space-y-4">
             <Alert variant="secondary" className="bg-amber-50 border-amber-200 text-amber-800 text-xs">
-              <Info className="h-4 w-4" />
+              <Info className="h-4 w-4 text-amber-600" />
               หนึ่งงานซ่อมสามารถผูกใบกำกับภาษีได้เพียงฉบับเดียวเท่านั้นค่ะ
             </Alert>
           </div>
