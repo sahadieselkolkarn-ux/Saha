@@ -5,8 +5,8 @@ import { useState, useEffect, useMemo, Suspense, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from 'next/link';
-import { doc, onSnapshot, updateDoc, arrayUnion, serverTimestamp, Timestamp, collection, query, where, getDocs, getDoc, writeBatch, orderBy, deleteField } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { doc, onSnapshot, updateDoc, arrayUnion, arrayRemove, serverTimestamp, Timestamp, collection, query, where, getDocs, getDoc, writeBatch, orderBy, deleteField } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen, Eye } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen, Eye, Trash2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile, Vendor } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -478,6 +478,45 @@ function JobDetailsPageContent() {
     }
   }
 
+  const handleDeletePhoto = async (url: string) => {
+    const jobDocRef = getJobRef();
+    if (!db || !storage || !profile || !job || !jobDocRef) return;
+    if (!confirm("คุณต้องการลบรูปภาพนี้ออกจากระบบถาวรใช่หรือไม่?")) return;
+
+    setIsAddingPhotos(true);
+    try {
+      const batch = writeBatch(db);
+
+      // 1. Remove from Firestore
+      batch.update(jobDocRef, {
+        photos: arrayRemove(url),
+        lastActivityAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      // 2. Add Activity Log
+      const activityRef = doc(collection(jobDocRef, "activities"));
+      batch.set(activityRef, {
+        text: `ลบรูปภาพประกอบงานออก 1 รูป`,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp()
+      });
+
+      await batch.commit();
+
+      // 3. Delete from Storage
+      const photoRef = ref(storage, url);
+      await deleteObject(photoRef).catch(e => console.warn("File not found in storage or already deleted", e));
+
+      toast({ title: "ลบรูปภาพสำเร็จแล้วค่ะ" });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "ลบไม่สำเร็จ", description: error.message });
+    } finally {
+      setIsAddingPhotos(false);
+    }
+  };
+
   const handleTransferJob = async () => {
     if (!canEditDetails || !transferDepartment || !job || !db || !profile) return;
     setIsTransferring(true);
@@ -777,9 +816,32 @@ function JobDetailsPageContent() {
                 {job.photos && job.photos.length > 0 ? (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {job.photos.map((url, i) => (
-                            <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                                <Image src={url} alt={`Job photo ${i+1}`} width={200} height={200} className="rounded-md object-cover w-full aspect-square hover:opacity-80 transition-opacity" />
-                            </a>
+                            <div key={i} className="relative group aspect-square">
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full">
+                                    <Image 
+                                      src={url} 
+                                      alt={`Job photo ${i+1}`} 
+                                      width={200} 
+                                      height={200} 
+                                      className="rounded-md border object-cover w-full h-full hover:opacity-80 transition-opacity" 
+                                    />
+                                </a>
+                                {isUserAdmin && !isViewOnly && (
+                                    <Button 
+                                      type="button" 
+                                      variant="destructive" 
+                                      size="icon" 
+                                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        handleDeletePhoto(url);
+                                      }}
+                                      disabled={isAddingPhotos}
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                )}
+                            </div>
                         ))}
                     </div>
                 ) : <p className="text-muted-foreground text-sm">ยังไม่มีรูปตอนรับงาน</p>}
