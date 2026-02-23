@@ -82,7 +82,8 @@ function CustomersContent() {
   const [currentPage, setCurrentPage] = useState(0);
   const PAGE_SIZE = 20;
 
-  const isManagerOrAdmin = profile?.role === 'MANAGER' || profile?.role === 'ADMIN' || profile?.department === 'MANAGEMENT';
+  // Updated permissions logic
+  const canEdit = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT' || profile?.department === 'OFFICE';
   const isAdmin = profile?.role === 'ADMIN';
 
   const form = useForm<z.infer<typeof customerSchema>>({
@@ -261,7 +262,7 @@ function CustomersContent() {
       })
       .finally(() => {
         setIsDeleteAlertOpen(false);
-        setCustomerToDelete(null);
+        setUserToDelete(null);
       });
   };
 
@@ -413,7 +414,7 @@ function CustomersContent() {
 
           <DialogFooter className="p-6 border-t">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button type="submit" form="edit-customer-form" disabled={isSubmitting || !isManagerOrAdmin}>
+            <Button type="submit" form="edit-customer-form" disabled={isSubmitting || !canEdit}>
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} บันทึกการเปลี่ยนแปลง
             </Button>
           </DialogFooter>
