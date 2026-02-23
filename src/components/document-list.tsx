@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, limit, getDoc, deleteField, setDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, type FirestoreError, doc, updateDoc, serverTimestamp, deleteDoc, orderBy, type OrderByDirection, limit, getDoc, deleteField, setDoc, writeBatch } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { safeFormat } from '@/lib/date-utils';
@@ -154,83 +154,66 @@ export function DocumentList({
     return ["ALL", ...Array.from(allStatuses)];
   }, [allDocuments]);
 
-  /**
-   * Cleans up associations in billingRuns when a Billing Note is removed.
-   */
-  const cleanBillingRun = async (doc: Document) => {
-    if (!db || doc.docType !== 'BILLING_NOTE') return;
-    
-    // Try to find the exact batch month this note belongs to
-    const monthId = doc.billingRunId || doc.docDate.substring(0, 7);
-    const customerId = doc.customerId || doc.customerSnapshot?.id || doc.customerSnapshot?.phone;
-    
+  const cleanBillingRun = async (docObj: Document) => {
+    if (!db || docObj.docType !== 'BILLING_NOTE') return;
+    const monthId = docObj.billingRunId || docObj.docDate.substring(0, 7);
+    const customerId = docObj.customerId || docObj.customerSnapshot?.id || docObj.customerSnapshot?.phone;
     if (monthId && customerId) {
-      const runRef = doc(db, 'billingRuns', monthId);
       try {
-        await updateDoc(runRef, {
+        await updateDoc(doc(db, 'billingRuns', monthId), {
           [`createdBillingNotes.${customerId}`]: deleteField(),
           updatedAt: serverTimestamp()
         });
-      } catch (e) {
-        console.warn("Could not cleanup billing run record:", e);
-      }
+      } catch (e) { console.warn("Billing run cleanup failed", e); }
     }
   };
 
-  const handleCancelRequest = (doc: Document) => {
-    setDocToAction(doc);
-    setIsCancelAlertOpen(true);
-  };
-  
-  const handleDeleteRequest = (doc: Document) => {
-    setDocToAction(doc);
-    setIsDeleteAlertOpen(true);
-  };
-
   const confirmCancel = async () => {
-    if (!db || !docToAction) return;
+    if (!db || !docToAction || !profile) return;
     setIsActionLoading(true);
     try {
+      const batch = writeBatch(db);
       const docRef = doc(db, 'documents', docToAction.id);
       
-      // 1. Update document status to CANCELLED
-      await updateDoc(docRef, {
+      // 1. Update document status
+      batch.update(docRef, {
         status: 'CANCELLED',
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        notes: (docToAction.notes || "") + `\n[System] ยกเลิกเมื่อ ${safeFormat(new Date(), 'dd/MM/yy HH:mm')} โดย ${profile.displayName}`
       });
 
-      // 2. Revert the Job state if linked
+      // 2. Clear Job reference and Revert status
       if (docToAction.jobId) {
         const jobRef = doc(db, 'jobs', docToAction.jobId);
         const jobSnap = await getDoc(jobRef);
         
         if (jobSnap.exists()) {
-          // Reset Job status to DONE and clear ALL sales doc links
-          await updateDoc(jobRef, {
-            status: 'DONE',
-            salesDocId: deleteField(),
-            salesDocNo: deleteField(),
-            salesDocType: deleteField(),
-            lastActivityAt: serverTimestamp(),
-          });
+          const jobData = jobSnap.data();
+          // Only clear if this document is actually the one currently linked
+          if (jobData.salesDocId === docToAction.id) {
+            batch.update(jobRef, {
+              status: 'DONE', // Revert to finished state so it can be re-billed
+              salesDocId: deleteField(),
+              salesDocNo: deleteField(),
+              salesDocType: deleteField(),
+              lastActivityAt: serverTimestamp(),
+            });
 
-          // Log the reversion
-          const activityRef = doc(collection(db, 'jobs', docToAction.jobId, 'activities'));
-          await setDoc(activityRef, {
-            text: `ยกเลิกเอกสาร ${docToAction.docNo}: ระบบย้อนสถานะใบงานกลับเป็น "งานเสร็จรอทำบิล" (DONE) เพื่อให้ออกบิลใหม่ได้`,
-            userName: profile?.displayName || 'System',
-            userId: profile?.uid || 'system',
-            createdAt: serverTimestamp(),
-          });
+            const activityRef = doc(collection(db, 'jobs', docToAction.jobId, 'activities'));
+            batch.set(activityRef, {
+              text: `ยกเลิกเอกสาร ${docToAction.docNo}: ระบบล้างข้อมูลการผูกบิลและย้อนสถานะงานกลับเป็น "ทำเสร็จ" เพื่อให้ออกบิลใหม่ได้`,
+              userName: profile.displayName,
+              userId: profile.uid,
+              createdAt: serverTimestamp(),
+            });
+          }
         }
       }
 
-      // 3. Reset Billing Run link
+      await batch.commit();
       await cleanBillingRun(docToAction);
-
-      toast({ title: "ยกเลิกเอกสารเรียบร้อย" });
+      toast({ title: "ยกเลิกเอกสารเรียบร้อย", description: "สถานะใบงานถูกย้อนกลับเพื่อให้จัดการใหม่ได้แล้วค่ะ" });
     } catch (err: any) {
-      console.error("Cancellation failed:", err);
       toast({ variant: 'destructive', title: "ยกเลิกไม่สำเร็จ", description: err.message });
     } finally {
       setIsActionLoading(false);
@@ -243,10 +226,7 @@ export function DocumentList({
     if (!db || !docToAction) return;
     setIsActionLoading(true);
     try {
-      // 1. Clean up the billing run record first
       await cleanBillingRun(docToAction);
-
-      // 2. Delete the document
       await deleteDoc(doc(db, 'documents', docToAction.id));
       toast({ title: "ลบเอกสารสำเร็จ" });
     } catch (err: any) {
@@ -318,8 +298,8 @@ export function DocumentList({
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onSelect={() => router.push(viewPath)}><Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด</DropdownMenuItem>
                               {editPath && <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'PAID' && !isUserAdmin}> <Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>}
-                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleCancelRequest(docItem); }} disabled={docItem.status === 'CANCELLED' || (docItem.status === 'PAID' && !isUserAdmin)}> <XCircle className="mr-2 h-4 w-4"/> ยกเลิก</DropdownMenuItem>
-                              {isUserAdmin && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); handleDeleteRequest(docItem); }} className="text-destructive focus:text-destructive"> <Trash2 className="mr-2 h-4 w-4" /> ลบ</DropdownMenuItem>}
+                              <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setDocToAction(docItem); setIsCancelAlertOpen(true); }} disabled={docItem.status === 'CANCELLED' || (docItem.status === 'PAID' && !isUserAdmin)}> <XCircle className="mr-2 h-4 w-4"/> ยกเลิก</DropdownMenuItem>
+                              {isUserAdmin && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setDocToAction(docItem); setIsDeleteAlertOpen(true); }} className="text-destructive focus:text-destructive"> <Trash2 className="mr-2 h-4 w-4" /> ลบ</DropdownMenuItem>}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -350,7 +330,7 @@ export function DocumentList({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการยกเลิกเอกสาร</AlertDialogTitle>
-            <AlertDialogDescription>การยกเลิกนี้จะย้อนสถานะใบงานกลับไปเป็น "งานเสร็จรอทำบิล" เพื่อให้ออกบิลใหม่ได้ คุณต้องการดำเนินการต่อหรือไม่?</AlertDialogDescription>
+            <AlertDialogDescription>การยกเลิกนี้จะย้อนสถานะใบงานกลับไปเป็น "ทำเสร็จ" (DONE) เพื่อให้สามารถออกบิลใบใหม่ได้ คุณต้องการดำเนินการต่อหรือไม่?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
@@ -361,7 +341,7 @@ export function DocumentList({
 
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle><AlertDialogDescription>คุณต้องการลบเอกสารนี้อย่างถาวรใช่หรือไม่? ข้อมูลนี้จะหายไปจากระบบทันที</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle><AlertDialogDescription>คุณต้องการลบเอกสารนี้อย่างถาวรใช่หรือไม่? การลบจะล้างประวัติการผูกพันกับใบงานด้วยเช่นกัน</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} disabled={isActionLoading}>{isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการลบ'}</AlertDialogAction>

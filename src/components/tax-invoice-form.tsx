@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, limit, writeBatch } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, orderBy, limit, writeBatch, getDoc, deleteField, setDoc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet, Eye, XCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
@@ -111,8 +111,8 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const [referencedQuotationId, setReferencedQuotationId] = useState<string | null>(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [existingDn, setExistingDn] = useState<DocumentType | null>(null);
-  const [showDnCancelDialog, setShowDnCancelDialog] = useState(false);
+  const [existingTi, setExistingActiveDoc] = useState<DocumentType | null>(null);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingData, setPendingData] = useState<TaxInvoiceFormData | null>(null);
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
@@ -239,6 +239,23 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   const currentSuggestedTotal = useMemo(() => suggestedPayments.reduce((sum, p) => sum + (p.amount || 0), 0), [suggestedPayments]);
   const remainingAmount = useMemo(() => (grandTotal || 0) - currentSuggestedTotal, [grandTotal, currentSuggestedTotal]);
 
+  const checkUniqueness = async (jobIdVal: string) => {
+    if (!db || isEditing) return true;
+    const q = query(
+      collection(db, "documents"), 
+      where("jobId", "==", jobIdVal), 
+      where("docType", "==", "TAX_INVOICE"),
+      limit(5)
+    );
+    const snap = await getDocs(q);
+    const activeDoc = snap.docs.find(d => d.data().status !== 'CANCELLED');
+    if (activeDoc) {
+      setExistingActiveDoc({ id: activeDoc.id, ...activeDoc.data() } as DocumentType);
+      return false;
+    }
+    return true;
+  };
+
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
     const itemsFromDoc = (sourceDoc.items || []).map((item: any) => ({
       description: String(item.description ?? ''),
@@ -317,22 +334,60 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
   };
 
   const handleSave = async (data: TaxInvoiceFormData, submitForReview: boolean) => {
+    if (data.jobId) {
+      const ok = await checkUniqueness(data.jobId);
+      if (!ok) {
+        setPendingData(data);
+        setIsReviewSubmission(submitForReview);
+        setShowDuplicateDialog(true);
+        return;
+      }
+    }
+
     if (submitForReview) {
         setPendingData(data);
         setIsReviewSubmission(true);
         if (suggestedPayments.length === 1 && suggestedPayments[0].amount === 0) {
             setSuggestedPayments([{method: 'CASH', accountId: accounts.find(a=>a.type==='CASH')?.id || '', amount: data.grandTotal}]);
         }
-        if (!isEditing && data.jobId) {
-            const q = query(collection(db, "documents"), where("jobId", "==", data.jobId), where("docType", "==", "DELIVERY_NOTE"));
-            const snap = await getDocs(q);
-            const activeDn = snap.docs.find(d => d.data().status !== 'CANCELLED');
-            if (activeDn) { setExistingDn({ id: activeDn.id, ...activeDn.data() } as DocumentType); setShowDnCancelDialog(true); return; }
-        }
         setShowReviewConfirm(true);
         return;
     }
     await executeSave(data, false);
+  };
+
+  const handleCancelExistingAndSave = async () => {
+    if (!db || !existingTi || !profile || !pendingData) return;
+    setIsSubmitting(true);
+    try {
+        const batch = writeBatch(db);
+        const docRef = doc(db, 'documents', existingTi.id);
+        
+        batch.update(docRef, { 
+            status: 'CANCELLED', 
+            updatedAt: serverTimestamp(), 
+            notes: (existingTi.notes || "") + `\n[System] ยกเลิกเพื่อออกใบใหม่โดย ${profile.displayName}` 
+        });
+
+        if (existingTi.jobId) {
+            const jobRef = doc(db, 'jobs', existingTi.jobId);
+            batch.update(jobRef, { 
+                salesDocId: deleteField(), 
+                salesDocNo: deleteField(), 
+                salesDocType: deleteField(),
+                lastActivityAt: serverTimestamp() 
+            });
+        }
+        
+        await batch.commit();
+        setShowDuplicateDialog(false);
+        setExistingActiveDoc(null);
+        await handleSave(pendingData, isReviewSubmission);
+    } catch(e: any) {
+        toast({ variant: 'destructive', title: "Error", description: e.message });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const handleFinalSubmit = async () => {
@@ -349,15 +404,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     };
     await executeSave(finalPayload, true);
     setShowReviewConfirm(false);
-  };
-
-  const handleConfirmCancelAndSave = async () => {
-    if (!db || !existingDn) return;
-    try {
-        await updateDoc(doc(db, 'documents', existingDn.id), { status: 'CANCELLED', updatedAt: serverTimestamp(), notes: (existingDn.notes || "") + "\n[System] ยกเลิกเพื่อออกใบกำกับภาษีแทน" });
-        setShowDnCancelDialog(false);
-        setShowReviewConfirm(true);
-    } catch(e) { toast({ variant: 'destructive', title: "Error" }); }
   };
 
   const loadAllDocs = async (type: DocType | 'BILLS') => {
@@ -414,6 +460,36 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           </form>
         </Form>
       </div>
+
+      {/* Duplicate Dialog */}
+      <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-5 w-5" />
+              พบเอกสารซ้ำในระบบ
+            </DialogTitle>
+            <DialogDescription>
+              งานซ่อมนี้มีการออก <b>ใบกำกับภาษี</b> ไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingTi?.docNo}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <Alert variant="secondary" className="bg-amber-50 border-amber-200 text-amber-800 text-xs">
+              <Info className="h-4 w-4" />
+              หนึ่งงานซ่อมสามารถผูกใบกำกับภาษีได้เพียงฉบับเดียวเท่านั้นค่ะ
+            </Alert>
+          </div>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push(`/app/office/documents/tax-invoice/${existingTi?.id}`)}>
+              <Eye className="mr-2 h-4 w-4" /> ดูใบเดิม
+            </Button>
+            <Button variant="destructive" className="w-full sm:w-auto" onClick={handleCancelExistingAndSave} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+              ยกเลิกใบเดิมและบันทึกใหม่
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
         <DialogContent className="sm:max-w-2xl max-h-[95vh] flex flex-col p-0 overflow-hidden">
@@ -538,7 +614,6 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={showDnCancelDialog} onOpenChange={setShowDnCancelDialog}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>พบใบส่งของเดิม</AlertDialogTitle><AlertDialogDescription>ยกเลิกใบเดิมเพื่อใช้ใบกำกับภาษีนี้แทน?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><Button variant="secondary" onClick={() => { setShowDnCancelDialog(false); setShowReviewConfirm(true); }}>ไม่ยกเลิก</Button><AlertDialogAction onClick={handleConfirmCancelAndSave} className="bg-destructive">ยกเลิกใบเดิมและไปต่อ</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
       <AlertDialog open={showLinkConfirm} onOpenChange={setShowLinkConfirm}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>เชื่อมโยงเอกสารเดิม</AlertDialogTitle><AlertDialogDescription>ต้องการเชื่อมบิล {selectedLinkDoc?.docNo} เข้ากับงานนี้?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel onClick={() => setSelectedLinkDoc(null)}>ยกเลิก</AlertDialogCancel><AlertDialogAction onClick={handleConfirmLinkDoc} disabled={isSubmitting}>ใช่, เชื่อมโยง</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
     </>
   );

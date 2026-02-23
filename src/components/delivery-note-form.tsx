@@ -6,7 +6,6 @@ import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, getDocs, writeBatch, limit, getDoc, deleteField, setDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet } from "lucide-react";
+import { Loader2, Save, Trash2, PlusCircle, ArrowLeft, ChevronsUpDown, FileSearch, FileStack, AlertCircle, Send, Search, Wallet, Eye, XCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -119,6 +118,10 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [isReviewSubmission, setIsReviewSubmission] = useState(false);
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<DeliveryNoteFormData | null>(null);
+
+  // Uniqueness check states
+  const [existingActiveDoc, setExistingActiveDoc] = useState<DocumentType | null>(null);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
 
   // Suggested submission states
   const [suggestedPayments, setSuggestedPayments] = useState<{method: 'CASH' | 'TRANSFER', accountId: string, amount: number}[]>([{method: 'CASH', accountId: '', amount: 0}]);
@@ -250,6 +253,23 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const currentSuggestedTotal = useMemo(() => suggestedPayments.reduce((sum, p) => sum + (p.amount || 0), 0), [suggestedPayments]);
   const remainingAmount = useMemo(() => (grandTotal || 0) - currentSuggestedTotal, [grandTotal, currentSuggestedTotal]);
 
+  const checkUniqueness = async (jobIdVal: string) => {
+    if (!db || isEditing) return true;
+    const q = query(
+      collection(db, "documents"), 
+      where("jobId", "==", jobIdVal), 
+      where("docType", "==", "DELIVERY_NOTE"),
+      limit(5)
+    );
+    const snap = await getDocs(q);
+    const activeDoc = snap.docs.find(d => d.data().status !== 'CANCELLED');
+    if (activeDoc) {
+      setExistingActiveDoc({ id: activeDoc.id, ...activeDoc.data() } as DocumentType);
+      return false;
+    }
+    return true;
+  };
+
   const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
     const itemsFromDoc = (sourceDoc.items || []).map((item: any) => ({
       description: String(item.description ?? ''),
@@ -328,6 +348,16 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   };
 
   const handleSave = async (data: DeliveryNoteFormData, submitForReview: boolean) => {
+    if (data.jobId) {
+      const ok = await checkUniqueness(data.jobId);
+      if (!ok) {
+        setPendingFormData(data);
+        setIsReviewSubmission(submitForReview);
+        setShowDuplicateDialog(true);
+        return;
+      }
+    }
+
     if (submitForReview) { 
         setPendingFormData(data); 
         setIsReviewSubmission(true); 
@@ -338,6 +368,40 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         return; 
     }
     await executeSave(data, false);
+  };
+
+  const handleCancelExistingAndSave = async () => {
+    if (!db || !existingActiveDoc || !profile || !pendingFormData) return;
+    setIsSubmitting(true);
+    try {
+        const batch = writeBatch(db);
+        const docRef = doc(db, 'documents', existingActiveDoc.id);
+        
+        batch.update(docRef, { 
+            status: 'CANCELLED', 
+            updatedAt: serverTimestamp(), 
+            notes: (existingActiveDoc.notes || "") + `\n[System] ยกเลิกเพื่อออกใบใหม่โดย ${profile.displayName}` 
+        });
+
+        if (existingActiveDoc.jobId) {
+            const jobRef = doc(db, 'jobs', existingActiveDoc.jobId);
+            batch.update(jobRef, { 
+                salesDocId: deleteField(), 
+                salesDocNo: deleteField(), 
+                salesDocType: deleteField(),
+                lastActivityAt: serverTimestamp() 
+            });
+        }
+        
+        await batch.commit();
+        setShowDuplicateDialog(false);
+        setExistingActiveDoc(null);
+        await handleSave(pendingFormData, isReviewSubmission);
+    } catch(e: any) {
+        toast({ variant: 'destructive', title: "Error", description: e.message });
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const handleFinalSubmit = async () => {
@@ -414,6 +478,39 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
           </form>
         </Form>
       </div>
+
+      {/* Uniqueness/Duplicate Check Dialog */}
+      <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-5 w-5" />
+              พบเอกสารเดิมในระบบ
+            </DialogTitle>
+            <DialogDescription>
+              งานซ่อมนี้มีการออก <b>ใบส่งของชั่วคราว</b> ไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingActiveDoc?.docNo}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <Alert variant="secondary" className="bg-amber-50 border-amber-200">
+              <Info className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800">นโยบายระบบ</AlertTitle>
+              <AlertDescription className="text-amber-700 text-xs">
+                หนึ่งงานซ่อมสามารถผูกใบส่งของได้เพียงฉบับเดียวเท่านั้น เพื่อป้องกันการสับสนทางบัญชีค่ะ
+              </AlertDescription>
+            </Alert>
+          </div>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push(`/app/office/documents/delivery-note/${existingActiveDoc?.id}`)}>
+              <Eye className="mr-2 h-4 w-4" /> ดูใบเดิม
+            </Button>
+            <Button variant="destructive" className="w-full sm:w-auto" onClick={handleCancelExistingAndSave} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+              ยกเลิกใบเดิมและบันทึกใหม่
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showReviewConfirm} onOpenChange={setShowReviewConfirm}>
         <DialogContent className="sm:max-w-2xl max-h-[95vh] flex flex-col p-0 overflow-hidden">
