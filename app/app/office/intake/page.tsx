@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -24,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
-import { Loader2, Camera, X, ChevronsUpDown, PlusCircle, ImageIcon } from "lucide-react";
+import { Loader2, Camera, X, ChevronsUpDown, PlusCircle, ImageIcon, AlertCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
@@ -66,7 +65,6 @@ export default function IntakePage() {
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   
-  // Refs for hidden inputs
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,7 +121,7 @@ export default function IntakePage() {
         return;
       }
       const validFiles = newFiles.filter(file => {
-          if (file.size > 5 * 1024 * 1024) { // 5MB limit
+          if (file.size > 5 * 1024 * 1024) {
               toast({ variant: "destructive", title: `ไฟล์ ${file.name} มีขนาดใหญ่เกินไป`, description: "ขนาดสูงสุดคือ 5MB" });
               return false;
           }
@@ -133,7 +131,6 @@ export default function IntakePage() {
       setPhotos(prev => [...prev, ...validFiles]);
       const newPreviews = validFiles.map(file => URL.createObjectURL(file));
       setPhotoPreviews(prev => [...prev, ...newPreviews]);
-      // Clear input value to allow selecting same file again if removed
       e.target.value = '';
     }
   };
@@ -160,17 +157,13 @@ export default function IntakePage() {
         const jobDocRef = doc(collection(db, "jobs"));
         const jobId = jobDocRef.id;
 
-        // 1. Upload photos first to get URLs
+        // 1. Upload photos first
         if (photos.length > 0) {
             for (const photo of photos) {
-                try {
-                    const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
-                    await uploadBytes(photoRef, photo);
-                    const url = await getDownloadURL(photoRef);
-                    photoURLs.push(url);
-                } catch (uploadError) {
-                    console.error("Error uploading individual photo:", uploadError);
-                }
+                const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
+                await uploadBytes(photoRef, photo);
+                const url = await getDownloadURL(photoRef);
+                photoURLs.push(url);
             }
         }
 
@@ -207,7 +200,7 @@ export default function IntakePage() {
             jobData.mechanicDetails = values.mechanicDetails;
         }
 
-        // 2. Commit everything in a batch
+        // 2. Batch write
         const batch = writeBatch(db);
         batch.set(jobDocRef, sanitizeForFirestore(jobData));
         
@@ -224,7 +217,6 @@ export default function IntakePage() {
         
         toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
         
-        // 3. Cleanup
         form.reset();
         setPhotos([]);
         photoPreviews.forEach(url => URL.revokeObjectURL(url));
@@ -233,7 +225,7 @@ export default function IntakePage() {
 
     } catch (error: any) {
         console.error("Intake Error:", error);
-        toast({ variant: "destructive", title: "สร้างงานไม่สำเร็จ", description: error.message });
+        toast({ variant: "destructive", title: "สร้างงานไม่สำเร็จ", description: error.message || "เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดรูป" });
     } finally {
         setIsSubmitting(false);
     }
@@ -451,7 +443,6 @@ export default function IntakePage() {
                 <FormLabel>รูปภาพประกอบ (สูงสุด {MAX_INTAKE_PHOTOS} รูป)</FormLabel>
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                        {/* Camera Trigger */}
                         <Button 
                           type="button"
                           variant="outline" 
@@ -465,13 +456,12 @@ export default function IntakePage() {
                               type="file" 
                               ref={cameraInputRef}
                               className="hidden" 
-                              accept="image/*" 
+                              accept="image/jpeg,image/png" 
                               capture="environment" 
                               onChange={handlePhotoChange} 
                             />
                         </Button>
                         
-                        {/* Gallery Trigger */}
                         <Button 
                           type="button"
                           variant="outline" 
@@ -486,7 +476,7 @@ export default function IntakePage() {
                               ref={galleryInputRef}
                               className="hidden" 
                               multiple 
-                              accept="image/*" 
+                              accept="image/jpeg,image/png" 
                               onChange={handlePhotoChange} 
                             />
                         </Button>
@@ -514,7 +504,7 @@ export default function IntakePage() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      กำลังบันทึกข้อมูลและอัปโหลดรูปภาพ...
+                      กำลังบันทึกและอัปโหลด...
                     </>
                   ) : isViewer ? "คุณไม่มีสิทธิ์สร้างใบงาน" : "สร้างใบงาน (Create Job)"}
                 </Button>

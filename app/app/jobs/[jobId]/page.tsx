@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, Suspense, useRef } from "react";
@@ -81,7 +80,6 @@ function JobDetailsPageContent() {
   const { profile } = useAuth();
   const { toast } = useToast();
   
-  // Refs for hidden inputs (Quick Upload)
   const quickCameraRef = useRef<HTMLInputElement>(null);
   const quickGalleryRef = useRef<HTMLInputElement>(null);
 
@@ -353,14 +351,15 @@ function JobDetailsPageContent() {
             for (const photo of newPhotos) {
                 const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
                 await uploadBytes(photoRef, photo);
-                photoURLs.push(await getDownloadURL(photoRef));
+                const url = await getDownloadURL(photoRef);
+                photoURLs.push(url);
             }
         }
 
         const activitiesColRef = collection(jobDocRef, "activities");
         const batch = writeBatch(db);
         
-        const updateData: any = { lastActivityAt: serverTimestamp() };
+        const updateData: any = { lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() };
         if (job.status === 'RECEIVED') {
             updateData.status = 'IN_PROGRESS';
             if (!job.assigneeUid) {
@@ -380,14 +379,7 @@ function JobDetailsPageContent() {
         setPhotoPreviews([]);
         toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
     } catch (error: any) {
-        if (error.code === 'permission-denied') {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
-            path: jobDocRef.path + '/activities',
-            operation: 'create',
-          }));
-        } else {
-          toast({variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message});
-        }
+        toast({variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message});
     } finally {
         setIsSubmittingNote(false);
     }
@@ -434,17 +426,18 @@ function JobDetailsPageContent() {
     setIsAddingPhotos(true);
     try {
         if (!storage) throw new Error("ไม่สามารถเชื่อมต่อระบบเก็บไฟล์ได้");
-        const activitiesColRef = collection(jobDocRef, "activities");
         const photoURLs: string[] = [];
         
         for (const photo of files) {
             const photoRef = ref(storage, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
             await uploadBytes(photoRef, photo);
-            photoURLs.push(await getDownloadURL(photoRef));
+            const url = await getDownloadURL(photoRef);
+            photoURLs.push(url);
         }
 
         const batch = writeBatch(db);
-        batch.set(doc(activitiesColRef), { 
+        const activityRef = doc(collection(jobDocRef, "activities"));
+        batch.set(activityRef, { 
             text: `อัปโหลดรูปประกอบงานเพิ่ม ${photoURLs.length} รูป`, 
             userName: profile.displayName, 
             userId: profile.uid, 
@@ -471,7 +464,7 @@ function JobDetailsPageContent() {
         toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
     } catch(error: any) {
         console.error("Quick upload error:", error);
-        toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message});
+        toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message || "ไม่มีสิทธิ์เข้าถึงหรือเกิดข้อผิดพลาดในการอัปโหลด"});
     } finally {
         setIsAddingPhotos(false);
         e.target.value = '';
@@ -487,14 +480,12 @@ function JobDetailsPageContent() {
     try {
       const batch = writeBatch(db);
 
-      // 1. Remove from Firestore
       batch.update(jobDocRef, {
         photos: arrayRemove(url),
         lastActivityAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
 
-      // 2. Add Activity Log
       const activityRef = doc(collection(jobDocRef, "activities"));
       batch.set(activityRef, {
         text: `ลบรูปภาพประกอบงานออก 1 รูป`,
@@ -505,7 +496,6 @@ function JobDetailsPageContent() {
 
       await batch.commit();
 
-      // 3. Delete from Storage
       const photoRef = ref(storage, url);
       await deleteObject(photoRef).catch(e => console.warn("File not found in storage or already deleted", e));
 
@@ -770,7 +760,6 @@ function JobDetailsPageContent() {
                 <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
                 {canUpdateActivity && !isViewOnly && (
                     <div className="flex gap-2">
-                        {/* Camera Trigger */}
                         <Button 
                           type="button" 
                           variant="outline" 
@@ -784,13 +773,12 @@ function JobDetailsPageContent() {
                               type="file" 
                               ref={quickCameraRef}
                               className="hidden" 
-                              accept="image/*" 
+                              accept="image/jpeg,image/png" 
                               capture="environment" 
                               onChange={handleQuickPhotoUpload} 
                             />
                         </Button>
                         
-                        {/* Gallery Trigger */}
                         <Button 
                           type="button" 
                           variant="outline" 
@@ -805,7 +793,7 @@ function JobDetailsPageContent() {
                               ref={quickGalleryRef}
                               className="hidden" 
                               multiple 
-                              accept="image/*" 
+                              accept="image/jpeg,image/png" 
                               onChange={handleQuickPhotoUpload} 
                             />
                         </Button>
@@ -867,7 +855,7 @@ function JobDetailsPageContent() {
                     <Button asChild variant="outline" disabled={!canUpdateActivity || isSubmittingNote || isAddingPhotos || isViewOnly}>
                         <label className="cursor-pointer flex items-center">
                             <Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม
-                            <input type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} />
+                            <input type="file" className="hidden" multiple accept="image/jpeg,image/png" capture="environment" onChange={handlePhotoChange} />
                         </label>
                     </Button>
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
