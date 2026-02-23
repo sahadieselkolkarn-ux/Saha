@@ -249,7 +249,7 @@ export default function OfficeCustomersNewPage() {
                                     <FormItem><FormLabel>เลขประจำตัวผู้เสียภาษี (Tax ID)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="เลข 13 หลัก" /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <FormField name="taxPhone" control={form.control} render={({ field }) => (
-                                    <FormItem><FormLabel>เบอร์โทรศัพท์ (สำหรับบิล)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ระบุเบอร์โทร" /></FormControl><FormMessage /></FormItem>
+                                    <FormItem><FormLabel>เบอร์โทรศัพท์ (สำหรับบิล)</FormLabel><FormControl><Input {...field} value={field.value ?? ''} placeholder="ระบุเบอร์โทร" /></FormControl><FormMessage /></FormMessage>
                                 )} />
                             </div>
 
@@ -312,12 +312,14 @@ export default function OfficeCustomersNewPage() {
                         <AlertTriangle className="h-5 w-5 text-amber-500" />
                         พบข้อมูลซ้ำในระบบ
                     </AlertDialogTitle>
-                    <AlertDialogDescription className="space-y-3">
-                        <p>เบอร์โทรศัพท์ <span className="font-bold">{duplicateCustomer?.phone}</span> ถูกใช้งานแล้วโดยลูกค้า:</p>
-                        <div className="p-3 bg-muted rounded-md font-bold text-center border">
-                            {duplicateCustomer?.name}
+                    <AlertDialogDescription asChild>
+                        <div className="space-y-3">
+                            <p>เบอร์โทรศัพท์ <span className="font-bold">{duplicateCustomer?.phone}</span> ถูกใช้งานแล้วโดยลูกค้า:</p>
+                            <div className="p-3 bg-muted rounded-md font-bold text-center border">
+                                {duplicateCustomer?.name}
+                            </div>
+                            <p className="font-semibold text-primary">ระบบมีข้อมูลอยู่แล้ว ต้องการแก้ไขข้อมูลลูกค้าท่านนี้หรือไม่?</p>
                         </div>
-                        <p className="font-semibold text-primary">ระบบมีข้อมูลอยู่แล้ว ต้องการแก้ไขข้อมูลลูกค้าท่านนี้หรือไม่?</p>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
