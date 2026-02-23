@@ -71,7 +71,7 @@ export function DocumentList({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FirestoreError | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("DRAFT");
   const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
   
   const [docToAction, setDocToAction] = useState<Document | null>(null);
@@ -151,6 +151,8 @@ export function DocumentList({
 
   const uniqueStatuses = useMemo(() => {
     const allStatuses = new Set(allDocuments.map(doc => getDocDisplayStatus(doc).key));
+    // Ensure DRAFT is always an option even if not currently in the set
+    allStatuses.add("DRAFT");
     return ["ALL", ...Array.from(allStatuses)];
   }, [allDocuments]);
 
@@ -305,7 +307,7 @@ export function DocumentList({
                         </TableCell>
                       </TableRow>
                     )}) : (
-                      <TableRow><TableCell colSpan={6} className="text-center h-24">{searchTerm ? "ไม่พบเอกสารที่ตรงกับคำค้นหา" : "ไม่พบเอกสาร"}</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="h-24 text-center">{searchTerm ? "ไม่พบเอกสารที่ตรงกับคำค้นหา" : "ไม่พบเอกสาร"}</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
