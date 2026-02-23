@@ -338,6 +338,27 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
               <Button type="button" onClick={() => form.handleSubmit((d) => handleSave(d, true))()} disabled={isLocked}><Send className="mr-2 h-4 w-4" />ส่งบัญชีตรวจสอบ</Button>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 border rounded-lg bg-card shadow-sm">
+            <div className="lg:col-span-2 space-y-2">
+              <h2 className="text-xl font-bold">{storeSettings?.taxName || 'Sahadiesel Service'}</h2>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{storeSettings?.taxAddress}</p>
+              <p className="text-sm text-muted-foreground">โทร: {storeSettings?.phone}</p>
+            </div>
+            <div className="space-y-4">
+              <h1 className="text-2xl font-bold text-right text-primary">ใบกำกับภาษี</h1>
+              {isEditing && (
+                <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>
+              )}
+              <FormField control={form.control} name="issueDate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>วันที่ออกเอกสาร</FormLabel>
+                  <FormControl><Input type="date" {...field} /></FormControl>
+                </FormItem>
+              )} />
+            </div>
+          </div>
+
           <Card>
             <CardHeader className="flex flex-row items-center gap-4 py-3">
               <CardTitle className="text-base whitespace-nowrap">ข้อมูลลูกค้าและรายการ</CardTitle>
@@ -383,6 +404,44 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
               <Button type="button" variant="outline" size="sm" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isLocked}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>
             </CardContent>
           </Card>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader><CardTitle className="text-base">หมายเหตุ</CardTitle></CardHeader>
+              <CardContent>
+                <FormField control={form.control} name="notes" render={({ field }) => (
+                  <Textarea {...field} value={field.value || ""} rows={5} disabled={isLocked} placeholder="ระบุหมายเหตุเพิ่มเติม (ถ้ามี)..." />
+                )} />
+              </CardContent>
+            </Card>
+            <div className="space-y-4">
+              <div className="space-y-2 p-4 border rounded-lg bg-muted/30">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">รวมเป็นเงิน (ก่อนภาษี)</span>
+                  <span>{formatCurrency(form.watch('subtotal'))}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">ส่วนลด (บาท)</span>
+                  <FormField control={form.control} name="discountAmount" render={({ field }) => (
+                    <Input type="number" step="any" className="w-32 text-right bg-background h-8" {...field} disabled={isLocked} />
+                  )}/>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">ยอดหลังหักส่วนลด</span>
+                  <span>{formatCurrency(form.watch('net'))}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">ภาษีมูลค่าเพิ่ม 7%</span>
+                  <span>{formatCurrency(form.watch('vatAmount'))}</span>
+                </div>
+                <Separator/>
+                <div className="flex justify-between items-center text-xl font-bold text-primary">
+                  <span>ยอดสุทธิรวมทั้งสิ้น</span>
+                  <span>{formatCurrency(form.watch('grandTotal'))} บาท</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </form>
       </Form>
 
@@ -395,7 +454,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           <div className="py-4">
             <Alert variant="secondary" className="bg-amber-50 border-amber-200">
               <Info className="h-4 w-4 text-amber-600" />
-              <AlertTitle>นโยบายระบบ</AlertTitle>
+              <AlertTitle className="text-amber-800">นโยบายระบบ</AlertTitle>
               <AlertDescription className="text-amber-700 text-xs">หนึ่งงานซ่อมสามารถผูกใบกำกับภาษีได้เพียงฉบับเดียวเท่านั้นค่ะ</AlertDescription>
             </Alert>
           </div>
