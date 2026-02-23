@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
@@ -13,6 +12,9 @@ import {
   limit, 
   startAfter, 
   QueryDocumentSnapshot, 
+  doc,
+  writeBatch,
+  serverTimestamp,
   type OrderByDirection, 
   type QueryConstraint, 
   type FirestoreError 
@@ -36,7 +38,8 @@ import {
   ChevronRight,
   FileText,
   Receipt,
-  UserCheck
+  UserCheck,
+  CheckCircle2
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -103,6 +106,7 @@ export function JobList({
 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState<string | null>(null);
   const [error, setError] = useState<any>(null);
   const [indexUrl, setIndexUrl] = useState<string | null>(null);
   
@@ -112,12 +116,10 @@ export function JobList({
 
   const [billingJob, setBillingJob] = useState<Job | null>(null);
 
-  // Memoize status configurations using stringified keys to prevent infinite loops from array literals
   const statusConfig = useMemo(() => {
     const statusArray = status ? (Array.isArray(status) ? status : [status]) : [];
     const excludeArray = excludeStatus ? (Array.isArray(excludeStatus) ? excludeStatus : [excludeStatus]) : [];
     
-    // If we have exclude, calculate the inverse set from JOB_STATUSES to avoid 'not-in' query which is limited
     let finalInStatus: JobStatus[] = statusArray;
     if (statusArray.length === 0 && excludeArray.length > 0) {
         finalInStatus = (JOB_STATUSES as unknown as JobStatus[]).filter(s => !excludeArray.includes(s));
@@ -130,6 +132,7 @@ export function JobList({
   }, [status, excludeStatus]);
 
   const isOfficeOrAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
+  const isWorker = profile?.role === 'WORKER';
 
   const fetchData = useCallback(async (pageIndex: number) => {
     if (!db) return;
@@ -145,7 +148,6 @@ export function JobList({
       if (department) qConstraints.push(where('department', '==', department));
       if (assigneeUid) qConstraints.push(where('assigneeUid', '==', assigneeUid));
       
-      // Use 'in' operator instead of 'not-in' for better performance and easier indexing
       if (statusConfig.inStatus.length > 0) {
         qConstraints.push(where('status', 'in', statusConfig.inStatus));
       }
@@ -203,6 +205,42 @@ export function JobList({
     fetchData(0);
   }, [searchTerm, department, statusConfig.key, fetchData]);
 
+  const handleAcceptJob = async (job: Job) => {
+    if (!db || !profile || isProcessing) return;
+    
+    setIsProcessing(job.id);
+    try {
+      const batch = writeBatch(db);
+      const jobRef = doc(db, "jobs", job.id);
+      const activityRef = doc(collection(jobRef, "activities"));
+
+      batch.update(jobRef, {
+        status: 'IN_PROGRESS',
+        assigneeUid: profile.uid,
+        assigneeName: profile.displayName,
+        lastActivityAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      batch.set(activityRef, {
+        text: `ช่างรับงานเองเรียบร้อยแล้ว แผนก ${deptLabel(job.department)}`,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp()
+      });
+
+      await batch.commit();
+      toast({ title: "รับงานสำเร็จ", description: "ลุยงานต่อได้เลยค่ะพี่!" });
+      
+      // Refresh current page
+      fetchData(currentPage);
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "รับงานไม่สำเร็จ", description: e.message });
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
   const handleNextPage = () => {
     if (!isLastPage) {
       const nextIdx = currentPage + 1;
@@ -259,92 +297,112 @@ export function JobList({
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {jobs.map((job) => (
-          <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
-            <div className="relative aspect-video bg-muted">
-              {job.photos && job.photos.length > 0 ? (
-                <Image
-                  src={job.photos[0]}
-                  alt={job.description}
-                  fill
-                  className="object-cover"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center text-muted-foreground">
-                  <FileImage className="h-10 w-10 opacity-20" />
-                </div>
-              )}
-              <Badge 
-                variant={getStatusVariant(job.status)}
-                className="absolute top-2 right-2 shadow-sm border-white/20"
-              >
-                {jobStatusLabel(job.status)}
-              </Badge>
-            </div>
-            <CardHeader className="p-4 space-y-1">
-              <CardTitle className="text-base line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-              <CardDescription className="text-[10px]">
-                {deptLabel(job.department)} • {safeFormat(job.lastActivityAt, "dd/MM/yy HH:mm")}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-4 pb-4 flex-grow">
-              <p className="text-sm line-clamp-2 text-muted-foreground">
-                {job.description}
-              </p>
-            </CardContent>
-            <CardFooter className="px-4 pb-4 pt-0 flex flex-col gap-2">
-              <Button asChild className="w-full h-9" variant="secondary">
-                <Link href={`/app/jobs/${job.id}`}>
-                  ดูรายละเอียด
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-              {job.status === 'RECEIVED' && isOfficeOrAdmin && (
-                <Button 
-                  asChild
-                  className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" 
-                  variant="default"
+        {jobs.map((job) => {
+          const isOwnDept = profile?.department === job.department;
+          const canWorkerAccept = isWorker && isOwnDept && job.status === 'RECEIVED';
+
+          return (
+            <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
+              <div className="relative aspect-video bg-muted">
+                {job.photos && job.photos.length > 0 ? (
+                  <Image
+                    src={job.photos[0]}
+                    alt={job.description}
+                    fill
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-muted-foreground">
+                    <FileImage className="h-10 w-10 opacity-20" />
+                  </div>
+                )}
+                <Badge 
+                  variant={getStatusVariant(job.status)}
+                  className="absolute top-2 right-2 shadow-sm border-white/20"
                 >
+                  {jobStatusLabel(job.status)}
+                </Badge>
+              </div>
+              <CardHeader className="p-4 space-y-1">
+                <CardTitle className="text-base line-clamp-1">{job.customerSnapshot.name}</CardTitle>
+                <CardDescription className="text-[10px]">
+                  {deptLabel(job.department)} • {safeFormat(job.lastActivityAt, "dd/MM/yy HH:mm")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 flex-grow">
+                <p className="text-sm line-clamp-2 text-muted-foreground">
+                  {job.description}
+                </p>
+              </CardContent>
+              <CardFooter className="px-4 pb-4 pt-0 flex flex-col gap-2">
+                <Button asChild className="w-full h-9" variant="secondary">
                   <Link href={`/app/jobs/${job.id}`}>
-                    <UserCheck className="mr-2 h-4 w-4" />
-                    มอบหมายงาน
+                    ดูรายละเอียด
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
-              )}
-              {job.status === 'WAITING_QUOTATION' && (
-                <Button 
-                  disabled={!isOfficeOrAdmin}
-                  asChild={isOfficeOrAdmin}
-                  className={cn("w-full h-9 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
-                  variant="default"
-                >
-                  {isOfficeOrAdmin ? (
-                    <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      สร้างใบเสนอราคา
+
+                {/* Accept Job button for Workers */}
+                {canWorkerAccept && (
+                  <Button 
+                    onClick={() => handleAcceptJob(job)}
+                    disabled={isProcessing === job.id}
+                    className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold animate-in fade-in slide-in-from-bottom-1"
+                  >
+                    {isProcessing === job.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                    รับงานนี้
+                  </Button>
+                )}
+
+                {/* Assign Job button for Management/Office */}
+                {job.status === 'RECEIVED' && isOfficeOrAdmin && (
+                  <Button 
+                    asChild
+                    className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" 
+                    variant="default"
+                  >
+                    <Link href={`/app/jobs/${job.id}`}>
+                      <UserCheck className="mr-2 h-4 w-4" />
+                      มอบหมายงาน
                     </Link>
-                  ) : (
-                    <span className="flex items-center">
-                      <FileText className="mr-2 h-4 w-4" />
-                      สร้างใบเสนอราคา
-                    </span>
-                  )}
-                </Button>
-              )}
-              {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
-                <Button 
-                  className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
-                  variant="outline"
-                  disabled={!isOfficeOrAdmin}
-                  onClick={() => setBillingJob(job)}
-                >
-                  <Receipt className="mr-2 h-4 w-4" />
-                  ออกบิล
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
-        ))}
+                  </Button>
+                )}
+
+                {job.status === 'WAITING_QUOTATION' && (
+                  <Button 
+                    disabled={!isOfficeOrAdmin}
+                    asChild={isOfficeOrAdmin}
+                    className={cn("w-full h-9 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
+                    variant="default"
+                  >
+                    {isOfficeOrAdmin ? (
+                      <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
+                        <FileText className="mr-2 h-4 w-4" />
+                        สร้างใบเสนอราคา
+                      </Link>
+                    ) : (
+                      <span className="flex items-center">
+                        <FileText className="mr-2 h-4 w-4" />
+                        สร้างใบเสนอราคา
+                      </span>
+                    )}
+                  </Button>
+                )}
+                {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
+                  <Button 
+                    className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} 
+                    variant="outline"
+                    disabled={!isOfficeOrAdmin}
+                    onClick={() => setBillingJob(job)}
+                  >
+                    <Receipt className="mr-2 h-4 w-4" />
+                    ออกบิล
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+          );
+        })}
       </div>
       
       {!searchTerm && (
