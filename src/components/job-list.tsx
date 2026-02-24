@@ -356,7 +356,7 @@ export function JobList({
                     {/* Office can send back for revision directly from list */}
                     {canDoBilling && (
                       <Button asChild variant="ghost" className="w-full h-8 text-destructive hover:text-destructive hover:bg-destructive/10 text-[10px] font-bold">
-                        <Link href={`/app/jobs/${job.id}`}>
+                        <Link href={`/app/jobs/${job.id}?action=revert`}>
                           <RotateCcw className="mr-1 h-3 w-3" /> ส่งกลับแก้ไข
                         </Link>
                       </Button>

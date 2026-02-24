@@ -155,10 +155,7 @@ function JobDetailsPageContent() {
   const isTechnicalDept = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
   const isJobInFinishedState = job?.status === 'DONE' || job?.status === 'WAITING_CUSTOMER_PICKUP' || job?.status === 'CLOSED';
 
-  // Strict View-Only logic: 
-  // Finished jobs are read-only for technicians.
-  // Office people can still add notes if needed, but per latest request "Cancel update work/photos for finished jobs", 
-  // we will hide the update card for finished jobs unless override editing is active.
+  // View-Only logic for Technicians
   const isViewOnly = job?.isArchived || 
                      profile?.role === 'VIEWER' || 
                      (job?.status === 'CLOSED' && !allowEditing) ||
@@ -168,6 +165,13 @@ function JobDetailsPageContent() {
   
   const isManagementOrOffice = profile?.department === 'MANAGEMENT' || profile?.department === 'OFFICE' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
   const canEditDetails = isStaff && isManagementOrOffice && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
+
+  // Auto-open revert dialog if requested from URL
+  useEffect(() => {
+    if (searchParams.get('action') === 'revert' && isJobInFinishedState && canIssueBill) {
+      setIsRevertDialogOpen(true);
+    }
+  }, [searchParams, isJobInFinishedState, canIssueBill]);
 
   const getJobRef = () => {
     if (!db || !job) return null;
@@ -505,6 +509,8 @@ function JobDetailsPageContent() {
       toast({ title: "ส่งกลับแก้ไขสำเร็จ", description: "งานถูกส่งกลับไปยังสถานะกำลังดำเนินการซ่อมแล้วค่ะ" });
       setIsRevertDialogOpen(false);
       setRevertReason("");
+      // Clean query params if any
+      router.replace(`/app/jobs/${jobId}`, { scroll: false });
     } catch (e: any) {
       toast({ variant: 'destructive', title: 'Error', description: e.message });
     } finally {
@@ -576,6 +582,11 @@ function JobDetailsPageContent() {
                           {job.assigneeUid ? 'เปลี่ยนผู้รับผิดชอบ' : 'มอบหมายงาน'}
                       </Button>
                   )}
+                  {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canIssueBill && (
+                    <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" onClick={() => setIsRevertDialogOpen(true)}>
+                      <RotateCcw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
+                    </Button>
+                  )}
               </div>
             </CardContent>
           </Card>
@@ -638,12 +649,6 @@ function JobDetailsPageContent() {
                               <CheckCircle className="mr-2 h-4 w-4" /> 
                               {isSubTask ? "ส่งงานกลับแผนกหลัก" : (canIssueBill ? "จบงาน/ออกบิล" : "จบงาน (Finish Job)")}
                           </Button>
-                      )}
-
-                      {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canIssueBill && (
-                        <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" onClick={() => setIsRevertDialogOpen(true)}>
-                          <RotateCcw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
-                        </Button>
                       )}
                   </div>
                 </CardContent>
@@ -719,7 +724,7 @@ function JobDetailsPageContent() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRevertDialogOpen(false)} disabled={isReverting}>ยกเลิก</Button>
+            <Button variant="outline" onClick={() => { setIsRevertDialogOpen(false); router.replace(`/app/jobs/${jobId}`, { scroll: false }); }} disabled={isReverting}>ยกเลิก</Button>
             <Button variant="destructive" onClick={handleRevertJob} disabled={isReverting || !revertReason.trim()}>
               {isReverting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
               ยืนยันส่งกลับแก้ไข
@@ -733,7 +738,7 @@ function JobDetailsPageContent() {
 
 export default function JobDetailsPage() {
   return (
-    <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>}>
+    <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8" /></div>}>
       <JobDetailsPageContent />
     </Suspense>
   );
