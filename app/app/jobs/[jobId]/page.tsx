@@ -10,8 +10,6 @@ import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat } from '@/lib/date-utils';
-import { archiveAndCloseJob } from '@/firebase/jobs-archive';
-import { archiveCollectionNameByYear } from '@/lib/archive-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 
 import { PageHeader } from "@/components/page-header";
@@ -138,15 +136,16 @@ function JobDetailsPageContent() {
 
   const [billingJob, setBillingJob] = useState<Job | null>(null);
   
+  const isSubTask = useMemo(() => job?.mainDepartment && job.department !== job.mainDepartment, [job]);
+
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
     if (job?.isArchived) {
-      const dateStr = job.closedDate || job.archivedAtDate || new Date().toISOString().split('T')[0];
-      const year = parseInt(dateStr.split('-')[0]) || new Date().getFullYear();
-      return query(collection(db, archiveCollectionNameByYear(year), jobId, "activities"), orderBy("createdAt", "desc"));
+      const year = parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
+      return query(collection(db, `jobsArchive_${year}`, jobId, "activities"), orderBy("createdAt", "desc"));
     }
     return query(collection(db, "jobs", jobId, "activities"), orderBy("createdAt", "desc"));
-  }, [db, jobId, job?.isArchived, job?.closedDate, job?.archivedAtDate]);
+  }, [db, jobId, job?.isArchived, job?.closedDate]);
 
   const { data: activities, isLoading: activitiesLoading, error: activitiesError } = useCollection<JobActivity>(activitiesQuery);
 
@@ -161,14 +160,11 @@ function JobDetailsPageContent() {
   const canUpdateActivity = isStaff;
   const canEditDetails = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
 
-  const isSubTask = useMemo(() => job?.mainDepartment && job.department !== job.mainDepartment, [job]);
-
   const getJobRef = () => {
     if (!db || !job) return null;
     if (job.isArchived) {
-      const dateStr = job.closedDate || job.archivedAtDate || new Date().toISOString().split('T')[0];
-      const year = parseInt(dateStr.split('-')[0]) || new Date().getFullYear();
-      return doc(db, archiveCollectionNameByYear(year), jobId);
+      const year = parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
+      return doc(db, `jobsArchive_${year}`, jobId);
     }
     return doc(db, "jobs", jobId);
   };
@@ -225,9 +221,8 @@ function JobDetailsPageContent() {
       const currentYear = new Date().getFullYear();
       for (let i = 0; i < 5; i++) {
         const year = currentYear - i;
-        const archiveColName = archiveCollectionNameByYear(year);
         try {
-          const archiveDocRef = doc(db, archiveColName, jobId);
+          const archiveDocRef = doc(db, `jobsArchive_${year}`, jobId);
           const docSnap = await getDoc(archiveDocRef);
           if (docSnap.exists()) {
             const jobData = { id: docSnap.id, ...docSnap.data(), isArchived: true } as Job;
@@ -252,11 +247,9 @@ function JobDetailsPageContent() {
     const jobDocRef = getJobRef();
     if (!db || !job || !profile || !jobDocRef) return;
     setIsUpdatingDescription(true);
-    const activityDocRef = doc(collection(jobDocRef, "activities"));
-    
     const batch = writeBatch(db);
     batch.update(jobDocRef, { description: descriptionToEdit, lastActivityAt: serverTimestamp() });
-    batch.set(activityDocRef, { text: `แก้ไขรายการแจ้งซ่อม`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `แก้ไขรายการแจ้งซ่อม`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
       toast({ title: "อัปเดตรายการแจ้งซ่อมสำเร็จ" });
@@ -276,15 +269,9 @@ function JobDetailsPageContent() {
     const jobDocRef = getJobRef();
     if (!db || !job || !profile || !jobDocRef) return;
     setIsSavingTechReport(true);
-    const activityDocRef = doc(collection(jobDocRef, "activities"));
-    
     const batch = writeBatch(db);
-    batch.update(jobDocRef, { 
-      technicalReport: techReport, 
-      officeNote: deleteField(),
-      lastActivityAt: serverTimestamp() 
-    });
-    batch.set(activityDocRef, { text: `อัปเดตสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.update(jobDocRef, { technicalReport: techReport, officeNote: deleteField(), lastActivityAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `อัปเดตสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
       toast({ title: "บันทึกสมุดบันทึกสำเร็จ" });
@@ -311,15 +298,13 @@ function JobDetailsPageContent() {
     const jobDocRef = getJobRef();
     if (!db || !job || !profile || !jobDocRef) return;
     setIsUpdatingVehicle(true);
-    const activityDocRef = doc(collection(jobDocRef, "activities"));
-    
     let fieldName = 'carServiceDetails';
     if (job.commonrailDetails || job.department === 'COMMONRAIL') fieldName = 'commonrailDetails';
     else if (job.mechanicDetails || job.department === 'MECHANIC') fieldName = 'mechanicDetails';
     
     const batch = writeBatch(db);
     batch.update(jobDocRef, { [fieldName]: vehicleEditData, lastActivityAt: serverTimestamp() });
-    batch.set(activityDocRef, { text: `แก้ไขรายละเอียดรถ/ชิ้นส่วน`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `แก้ไขรายละเอียดรถ/ชิ้นส่วน`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
       toast({ title: "อัปเดตรายละเอียดสำเร็จ" });
@@ -337,33 +322,23 @@ function JobDetailsPageContent() {
 
   const handleAddActivity = async () => {
     const jobDocRef = getJobRef();
-    
     if (!newNote.trim() && newPhotos.length === 0) {
         toast({ variant: "destructive", title: "กรุณากรอกข้อความ", description: "กรุณาพิมพ์บันทึกหรือแนบรูปภาพก่อนกดอัปเดตค่ะ" });
         return;
     }
-
-    if (!db || !profile || !job || !jobDocRef) {
-        toast({ variant: "destructive", title: "ไม่สามารถอัปเดตได้", description: "ข้อมูลใบงานไม่พร้อม กรุณาลองใหม่อีกครั้งค่ะ" });
-        return;
-    }
+    if (!db || !profile || !job || !jobDocRef) return;
 
     setIsSubmittingNote(true);
     try {
         const photoURLs: string[] = [];
         if (newPhotos.length > 0) {
-            if (!storage) throw new Error("ไม่สามารถเชื่อมต่อระบบเก็บไฟล์ได้");
             for (const photo of newPhotos) {
-                const photoRef = ref(storage, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
+                const photoRef = ref(storage!, `jobs/${jobId}/activity/${Date.now()}-${photo.name}`);
                 await uploadBytes(photoRef, photo);
-                const url = await getDownloadURL(photoRef);
-                photoURLs.push(url);
+                photoURLs.push(await getDownloadURL(photoRef));
             }
         }
-
-        const activitiesColRef = collection(jobDocRef, "activities");
         const batch = writeBatch(db);
-        
         const updateData: any = { lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() };
         if (job.status === 'RECEIVED') {
             updateData.status = 'IN_PROGRESS';
@@ -372,16 +347,10 @@ function JobDetailsPageContent() {
                 updateData.assigneeName = profile.displayName;
             }
         }
-        
-        const newActData = { text: newNote.trim(), userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs };
-        batch.set(doc(activitiesColRef), newActData);
+        batch.set(doc(collection(jobDocRef, "activities")), { text: newNote.trim(), userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
         batch.update(jobDocRef, updateData);
-        
         await batch.commit();
-        setNewNote("");
-        setNewPhotos([]);
-        photoPreviews.forEach(url => URL.revokeObjectURL(url));
-        setPhotoPreviews([]);
+        setNewNote(""); setNewPhotos([]); setPhotoPreviews([]);
         toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
     } catch (error: any) {
         toast({variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message});
@@ -405,111 +374,52 @@ function JobDetailsPageContent() {
     }
   };
 
-  const removeNewPhoto = (index: number) => {
-    URL.revokeObjectURL(photoPreviews[index]);
-    setNewPhotos(p => p.filter((_, i) => i !== index));
-    setPhotoPreviews(p => p.filter((_, i) => i !== index));
-  };
-
   const handleQuickPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const jobDocRef = getJobRef();
-    if (!e.target.files || !jobId || !db || !profile || !jobDocRef) {
-        e.target.value = '';
-        return;
-    }
-    
+    if (!e.target.files || !jobId || !db || !profile || !jobDocRef) { e.target.value = ''; return; }
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
-
     const currentPhotoCount = job?.photos?.length || 0;
     if (currentPhotoCount + files.length > MAX_TOTAL_PHOTOS) {
       toast({ variant: "destructive", title: `อัปโหลดรูปภาพรวมกันได้ไม่เกิน ${MAX_TOTAL_PHOTOS} รูปค่ะ` });
-      e.target.value = '';
-      return;
+      e.target.value = ''; return;
     }
-
     setIsAddingPhotos(true);
     try {
-        if (!storage) throw new Error("ไม่สามารถเชื่อมต่อระบบเก็บไฟล์ได้");
         const photoURLs: string[] = [];
-        
         for (const photo of files) {
-            const photoRef = ref(storage, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
+            const photoRef = ref(storage!, `jobs/${jobId}/photos/${Date.now()}-${photo.name}`);
             await uploadBytes(photoRef, photo);
-            const url = await getDownloadURL(photoRef);
-            photoURLs.push(url);
+            photoURLs.push(await getDownloadURL(photoRef));
         }
-
         const batch = writeBatch(db);
-        const activityRef = doc(collection(jobDocRef, "activities"));
-        batch.set(activityRef, { 
-            text: `อัปโหลดรูปประกอบงานเพิ่ม ${photoURLs.length} รูป`, 
-            userName: profile.displayName, 
-            userId: profile.uid, 
-            createdAt: serverTimestamp(), 
-            photos: photoURLs 
-        });
-        
-        const updateData: any = { 
-            photos: arrayUnion(...photoURLs), 
-            lastActivityAt: serverTimestamp(),
-            updatedAt: serverTimestamp() 
-        };
-        
+        batch.set(doc(collection(jobDocRef, "activities")), { text: `อัปโหลดรูปประกอบงานเพิ่ม ${photoURLs.length} รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp(), photos: photoURLs });
+        const updateData: any = { photos: arrayUnion(...photoURLs), lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() };
         if (job.status === 'RECEIVED') {
             updateData.status = 'IN_PROGRESS';
-            if (!job.assigneeUid) {
-                updateData.assigneeUid = profile.uid;
-                updateData.assigneeName = profile.displayName;
-            }
+            if (!job.assigneeUid) { updateData.assigneeUid = profile.uid; updateData.assigneeName = profile.displayName; }
         }
-        
         batch.update(jobDocRef, updateData);
         await batch.commit();
         toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
     } catch(error: any) {
-        console.error("Quick upload error:", error);
-        toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message || "ไม่มีสิทธิ์เข้าถึงหรือเกิดข้อผิดพลาดในการอัปโหลด"});
-    } finally {
-        setIsAddingPhotos(false);
-        e.target.value = '';
-    }
+        toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message});
+    } finally { setIsAddingPhotos(false); e.target.value = ''; }
   }
 
   const handleDeletePhoto = async (url: string) => {
     const jobDocRef = getJobRef();
     if (!db || !storage || !profile || !job || !jobDocRef) return;
     if (!confirm("คุณต้องการลบรูปภาพนี้ออกจากระบบถาวรใช่หรือไม่?")) return;
-
     setIsAddingPhotos(true);
     try {
       const batch = writeBatch(db);
-
-      batch.update(jobDocRef, {
-        photos: arrayRemove(url),
-        lastActivityAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      const activityRef = doc(collection(jobDocRef, "activities"));
-      batch.set(activityRef, {
-        text: `ลบรูปภาพประกอบงานออก 1 รูป`,
-        userName: profile.displayName,
-        userId: profile.uid,
-        createdAt: serverTimestamp()
-      });
-
+      batch.update(jobDocRef, { photos: arrayRemove(url), lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.set(doc(collection(jobDocRef, "activities")), { text: `ลบรูปภาพประกอบงานออก 1 รูป`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
       await batch.commit();
-
-      const photoRef = ref(storage, url);
-      await deleteObject(photoRef).catch(e => console.warn("File not found in storage or already deleted", e));
-
+      await deleteObject(ref(storage, url)).catch(e => console.warn("File already deleted", e));
       toast({ title: "ลบรูปภาพสำเร็จแล้วค่ะ" });
-    } catch (error: any) {
-      toast({ variant: "destructive", title: "ลบไม่สำเร็จ", description: error.message });
-    } finally {
-      setIsAddingPhotos(false);
-    }
+    } catch (error: any) { toast({ variant: "destructive", title: "ลบไม่สำเร็จ", description: error.message }); } finally { setIsAddingPhotos(false); }
   };
 
   const handleTransferJob = async () => {
@@ -519,19 +429,10 @@ function JobDetailsPageContent() {
     const batch = writeBatch(db);
     batch.update(jobDocRef, { department: transferDepartment, mainDepartment: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
     batch.set(doc(collection(jobDocRef, "activities")), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${deptLabel(transferDepartment)}. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
     batch.commit().then(() => {
       toast({ title: 'โอนย้ายแผนกสำเร็จ' });
       setIsTransferDialogOpen(false);
-    }).catch(async (error) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-        path: jobDocRef.path,
-        operation: 'update',
-        requestResourceData: { department: transferDepartment },
-      }));
-    }).finally(() => {
-      setIsTransferring(false);
-    });
+    }).catch(e => toast({ variant: 'destructive', title: "Error", description: e.message })).finally(() => setIsTransferring(false));
   };
 
   const handleSubTransfer = async () => {
@@ -539,33 +440,12 @@ function JobDetailsPageContent() {
     setIsTransferring(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
-    
-    const updateData = {
-        department: subTransferDept,
-        mainDepartment: job.mainDepartment || job.department, // Preserve main if already set, or set current as main
-        status: 'RECEIVED',
-        assigneeUid: null,
-        assigneeName: null,
-        lastActivityAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-    };
-
-    batch.update(jobDocRef, updateData);
-    batch.set(doc(collection(jobDocRef, "activities")), {
-        text: `ส่งงานต่อให้แผนก: ${deptLabel(subTransferDept)} เพื่อดำเนินการย่อย`,
-        userName: profile.displayName,
-        userId: profile.uid,
-        createdAt: serverTimestamp()
-    });
-
+    batch.update(jobDocRef, { department: subTransferDept, mainDepartment: job.mainDepartment || job.department, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `ส่งงานต่อให้แผนก: ${deptLabel(subTransferDept)} เพื่อดำเนินการย่อย`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     batch.commit().then(() => {
         toast({ title: `ส่งงานต่อไปยังแผนก ${deptLabel(subTransferDept)} เรียบร้อย` });
         setIsSubTransferDialogOpen(false);
-    }).catch(e => {
-        toast({ variant: 'destructive', title: 'ส่งงานไม่สำเร็จ', description: e.message });
-    }).finally(() => {
-        setIsTransferring(false);
-    });
+    }).catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message })).finally(() => setIsTransferring(false));
   };
 
   const handleReturnToMain = async () => {
@@ -573,31 +453,11 @@ function JobDetailsPageContent() {
     setIsSubmittingNote(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
-
-    const updateData = {
-        department: job.mainDepartment,
-        status: 'IN_PROGRESS',
-        assigneeUid: null,
-        assigneeName: null,
-        lastActivityAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-    };
-
-    batch.update(jobDocRef, updateData);
-    batch.set(doc(collection(jobDocRef, "activities")), {
-        text: `แผนกย่อย (${deptLabel(job.department)}) ดำเนินการเสร็จสิ้น ส่งงานกลับแผนกหลัก (${deptLabel(job.mainDepartment)})`,
-        userName: profile.displayName,
-        userId: profile.uid,
-        createdAt: serverTimestamp()
-    });
-
-    batch.commit().then(() => {
-        toast({ title: "ส่งงานกลับแผนกหลักเรียบร้อยแล้วค่ะ" });
-    }).catch(e => {
-        toast({ variant: 'destructive', title: 'ส่งงานกลับไม่สำเร็จ', description: e.message });
-    }).finally(() => {
-        setIsSubmittingNote(false);
-    });
+    batch.update(jobDocRef, { department: job.mainDepartment, status: 'IN_PROGRESS', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `แผนกย่อย (${deptLabel(job.department)}) ดำเนินการเสร็จสิ้น ส่งงานกลับแผนกหลัก (${deptLabel(job.mainDepartment)})`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.commit().then(() => toast({ title: "ส่งงานกลับแผนกหลักเรียบร้อยแล้วค่ะ" }))
+    .catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message }))
+    .finally(() => setIsSubmittingNote(false));
   };
 
   const handleOpenReassignDialog = async () => {
@@ -609,159 +469,32 @@ function JobDetailsPageContent() {
       if (job.department === 'OUTSOURCE') {
         const q = query(collection(db, "vendors"), where("vendorType", "==", "CONTRACTOR"), where("isActive", "==", true));
         const snapshot = await getDocs(q);
-        const fetched = snapshot.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id } as WithId<Vendor>));
-        setDepartmentWorkers(fetched.map(v => ({ id: v.id, displayName: v.companyName } as any)));
+        setDepartmentWorkers(snapshot.docs.map(d => ({ id: d.id, displayName: d.data().companyName } as any)));
       } else {
         const q = query(collection(db, "users"), where("department", "==", job.department), where("role", "==", "WORKER"), where("status", "==", "ACTIVE"));
         const snapshot = await getDocs(q);
-        const workers = snapshot.docs.map(docSnap => ({ ...docSnap.data(), id: docSnap.id } as WithId<UserProfile>));
-        setDepartmentWorkers(workers.filter(w => w.id !== job.assigneeUid));
+        setDepartmentWorkers(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as WithId<UserProfile>)));
       }
-    } catch (error) {
-      toast({ variant: 'destructive', title: "ไม่สามารถดึงข้อมูลได้" });
-    } finally {
-      setIsFetchingWorkers(false);
-    }
+    } catch (e) { toast({ variant: 'destructive', title: "Error" }); } finally { setIsFetchingWorkers(false); }
   };
 
   const handleReassignJob = async () => {
     if (!db || !profile || !job || !reassignWorkerId) return;
-    const newWorker = departmentWorkers.find(w => w.id === reassignWorkerId);
-    if (!newWorker) return;
+    const worker = departmentWorkers.find(w => w.id === reassignWorkerId);
+    if (!worker) return;
     setIsReassigning(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
-    
     const nextStatus = job.status === 'RECEIVED' ? 'IN_PROGRESS' : job.status;
-    const updateData: any = { 
-        assigneeUid: newWorker.id, 
-        assigneeName: newWorker.displayName, 
-        status: nextStatus,
-        lastActivityAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-    };
-    
-    batch.update(jobDocRef, updateData);
-    
-    const actionText = job.status === 'RECEIVED' 
-        ? `มอบหมายงานให้: ${newWorker.displayName} และเปลี่ยนสถานะเป็น "${jobStatusLabel('IN_PROGRESS')}"`
-        : `เปลี่ยนผู้รับผิดชอบเป็น: ${newWorker.displayName}`;
-        
-    batch.set(doc(collection(jobDocRef, "activities")), { 
-        text: actionText, 
-        userName: profile.displayName, 
-        userId: profile.uid, 
-        createdAt: serverTimestamp() 
-    });
-    
+    batch.update(jobDocRef, { assigneeUid: worker.id, assigneeName: worker.displayName, status: nextStatus, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `มอบหมายงานให้: ${worker.displayName}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     batch.commit().then(() => {
       toast({ title: "ดำเนินการสำเร็จ" });
       setIsReassignDialogOpen(false);
-    }).catch(async (error) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: updateData }));
-    }).finally(() => {
-      setIsReassigning(false);
-    });
-  };
-
-  const handleCustomerApproval = async () => {
-    if (!jobId || !db || !profile) return;
-    setIsApprovalActionLoading(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, { status: 'PENDING_PARTS', lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `ลูกค้าอนุมัติ → เปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
-    batch.commit().then(() => {
-      toast({ title: "อนุมัติเรียบร้อยค่ะ" });
-      setIsApproveConfirmOpen(false);
-    }).catch(async (error) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'PENDING_PARTS' } }));
-    }).finally(() => {
-      setIsApprovalActionLoading(false);
-    });
-  };
-
-  const handleCustomerRejection = async () => {
-    if (!jobId || !db || !profile || !rejectionChoice || !job) return;
-    setIsApprovalActionLoading(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const batch = writeBatch(db);
-    if (rejectionChoice === 'with_cost') {
-        batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
-        batch.set(doc(collection(jobDocRef, "activities")), { text: `ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    } else {
-        batch.update(jobDocRef, { status: 'CLOSED', lastActivityAt: serverTimestamp() });
-        batch.set(doc(collection(jobDocRef, "activities")), { text: `ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    }
-    
-    batch.commit().then(() => {
-      toast({ title: "ดำเนินการปฏิเสธสำเร็จ" });
-      setIsRejectConfirmOpen(false);
-      setRejectionChoice(null);
-    }).catch(async (error) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: rejectionChoice === 'with_cost' ? 'DONE' : 'CLOSED' } }));
-    }).finally(() => {
-      setIsApprovalActionLoading(false);
-    });
-  };
-
-  const handlePartsReady = async () => {
-    if (!jobId || !db || !profile) return;
-    setIsApprovalActionLoading(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, { status: 'IN_REPAIR_PROCESS', lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `เตรียมอะไหล่เรียบร้อย → เปลี่ยนสถานะเป็น "กำลังดำเนินการซ่อม"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
-    batch.commit().then(() => {
-      toast({ title: "อะไหล่พร้อมซ่อมแล้วค่ะ" });
-      setIsPartsReadyConfirmOpen(false);
-    }).catch(async (error) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'IN_REPAIR_PROCESS' } }));
-    }).finally(() => {
-      setIsApprovalActionLoading(false);
-    });
-  };
-
-  const handleMarkAsDone = async () => {
-    if (!jobId || !db || !job || !profile) return;
-    setIsSubmittingNote(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `เปลี่ยนสถานะเป็น "${jobStatusLabel('DONE')}"`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
-    batch.commit().then(() => {
-      toast({ title: "จบงานเรียบร้อย รอฝ่ายออฟฟิศทำบิลค่ะ" });
-    }).catch(async (error) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'DONE' } }));
-    }).finally(() => {
-      setIsSubmittingNote(false);
-    });
-  };
-
-  const handleRequestQuotation = async () => {
-    if (!jobId || !db || !job || !profile) return;
-    setIsRequestingQuotation(true);
-    const jobDocRef = doc(db, "jobs", jobId);
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, { status: 'WAITING_QUOTATION', lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `แจ้งขอเสนอราคา`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
-    
-    batch.commit().then(() => {
-      toast({ title: "ส่งเรื่องขอเสนอราคาให้ออฟฟิศแล้วค่ะ" });
-    }).catch(async (error) => {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'update', requestResourceData: { status: 'WAITING_QUOTATION' } }));
-    }).finally(() => {
-      setIsRequestingQuotation(false);
-    });
+    }).finally(() => setIsReassigning(false));
   };
 
   if (loading || !job) return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
-
-  const hasQuotation = job.salesDocId && job.salesDocType === 'QUOTATION';
-  const hasBillingDoc = job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE');
 
   return (
     <>
@@ -773,37 +506,22 @@ function JobDetailsPageContent() {
           <Card>
             <CardHeader><CardTitle>รายละเอียดใบงาน</CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <div>
-                <h4 className="font-semibold text-base">ลูกค้า</h4>
-                <p>{job.customerSnapshot.name} (<a href={`tel:${job.customerSnapshot.phone}`} className="text-primary hover:underline font-medium inline-flex items-center gap-1"><Phone className="h-3 w-3" />{job.customerSnapshot.phone}</a>)</p>
-              </div>
+              <div><h4 className="font-semibold text-base">ลูกค้า</h4><p>{job.customerSnapshot.name} (<a href={`tel:${job.customerSnapshot.phone}`} className="text-primary hover:underline inline-flex items-center gap-1"><Phone className="h-3 w-3" />{job.customerSnapshot.phone}</a>)</p></div>
               <div className="flex gap-8">
                 <div><h4 className="font-semibold text-base">แผนกที่ดูแล</h4><Badge variant="secondary" className="text-sm">{deptLabel(job.department)}</Badge></div>
                 {job.mainDepartment && job.mainDepartment !== job.department && (
-                    <div><h4 className="font-semibold text-base text-muted-foreground">แผนกหลัก (เจ้าของงาน)</h4><Badge variant="outline" className="text-sm">{deptLabel(job.mainDepartment)}</Badge></div>
+                    <div><h4 className="font-semibold text-base text-muted-foreground">แผนกหลัก</h4><Badge variant="outline" className="text-sm">{deptLabel(job.mainDepartment)}</Badge></div>
                 )}
               </div>
               {job.assigneeName && <div><h4 className="font-semibold text-base">{job.department === 'OUTSOURCE' ? 'ร้านที่รับทำ' : 'ผู้รับผิดชอบ'}</h4><p>{job.assigneeName}</p></div>}
-              <div>
-                <div className="flex items-center gap-4">
-                    <h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4>
-                    {canEditDetails && <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}
-                </div>
-                <p className="whitespace-pre-wrap pt-1">{job.description}</p>
-              </div>
-              <div className="border-t pt-4">
-                  <div className="flex items-center gap-4 mb-2">
-                      <h4 className="font-semibold text-base">รายละเอียดรถ/ชิ้นส่วน</h4>
-                      {canEditDetails && <Button onClick={handleOpenEditVehicleDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}
-                  </div>
-                  <JobVehicleDetails job={job} />
-              </div>
+              <div><div className="flex items-center gap-4"><h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4>{canEditDetails && <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}</div><p className="whitespace-pre-wrap pt-1">{job.description}</p></div>
+              <div className="border-t pt-4"><div className="flex items-center gap-4 mb-2"><h4 className="font-semibold text-base">รายละเอียดรถ/ชิ้นส่วน</h4>{canEditDetails && <Button onClick={handleOpenEditVehicleDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}</div><JobVehicleDetails job={job} /></div>
                <div className="flex gap-2 pt-4 border-t">
                   {canEditDetails && <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>เปลี่ยนแปลงแผนกหลัก</Button>}
                   {canEditDetails && (
                       <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}>
                           <UserCheck className="mr-2 h-4 w-4" /> 
-                          {job.assigneeUid ? (job.department === 'OUTSOURCE' ? 'เปลี่ยนผู้รับเหมา' : 'เปลี่ยนพนักงานซ่อม') : (job.department === 'OUTSOURCE' ? 'มอบหมายงานนอก' : 'มอบหมายพนักงาน')}
+                          {job.assigneeUid ? 'เปลี่ยนผู้รับผิดชอบ' : 'มอบหมายงาน'}
                       </Button>
                   )}
               </div>
@@ -811,182 +529,56 @@ function JobDetailsPageContent() {
           </Card>
           
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <BookOpen className="h-5 w-5 text-primary" />
-                  สมุดบันทึก (Notebook)
-                </CardTitle>
-                {canEditDetails && (
-                  <Button onClick={() => { setTechReport(job?.technicalReport || job?.officeNote || ""); setIsEditNotebookDialogOpen(true); }} variant="outline" size="sm" className="h-7" disabled={isViewOnly}>
-                    <Edit className="h-3 w-3 mr-1"/> แก้ไข
-                  </Button>
-                )}
-            </CardHeader>
-            <CardContent>
-                <div className="min-h-[100px] p-4 bg-muted/30 rounded-md border border-dashed">
-                  <p className="whitespace-pre-wrap text-sm">
-                    {job.technicalReport || job.officeNote || 'ยังไม่มีบันทึก'}
-                  </p>
-                </div>
-            </CardContent>
+            <CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-lg flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />สมุดบันทึก (Notebook)</CardTitle>{canEditDetails && <Button onClick={() => { setTechReport(job?.technicalReport || job?.officeNote || ""); setIsEditNotebookDialogOpen(true); }} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}</CardHeader>
+            <CardContent><div className="min-h-[100px] p-4 bg-muted/30 rounded-md border border-dashed"><p className="whitespace-pre-wrap text-sm">{job.technicalReport || job.officeNote || 'ยังไม่มีบันทึก'}</p></div></CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>
-                {canUpdateActivity && !isViewOnly && (
-                    <div className="flex gap-2">
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          size="sm" 
-                          disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}
-                          onClick={() => quickCameraRef.current?.click()}
-                        >
-                            {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
-                            ถ่ายรูปเพิ่ม
-                            <input 
-                              type="file" 
-                              ref={quickCameraRef}
-                              className="hidden" 
-                              accept="image/jpeg,image/png" 
-                              capture="environment" 
-                              onChange={handleQuickPhotoUpload} 
-                            />
-                        </Button>
-                        
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          size="sm" 
-                          disabled={isAddingPhotos || isSubmittingNote || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS}
-                          onClick={() => quickGalleryRef.current?.click()}
-                        >
-                            {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageIcon className="mr-2 h-4 w-4" />}
-                            เลือกรูปถ่าย
-                            <input 
-                              type="file" 
-                              ref={quickGalleryRef}
-                              className="hidden" 
-                              multiple 
-                              accept="image/jpeg,image/png" 
-                              onChange={handleQuickPhotoUpload} 
-                            />
-                        </Button>
+            <CardHeader className="flex flex-row items-center justify-between"><CardTitle>รูปประกอบงาน (ตอนรับงาน)</CardTitle>{canUpdateActivity && !isViewOnly && (
+                <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" disabled={isAddingPhotos || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS} onClick={() => quickCameraRef.current?.click()}>
+                        {isAddingPhotos ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />} ถ่ายรูปเพิ่ม
+                        <input type="file" ref={quickCameraRef} className="hidden" accept="image/*" capture="environment" onChange={handleQuickPhotoUpload} />
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" disabled={isAddingPhotos || (job?.photos?.length || 0) >= MAX_TOTAL_PHOTOS} onClick={() => quickGalleryRef.current?.click()}>
+                        <ImageIcon className="mr-2 h-4 w-4" /> เลือกรูปถ่าย
+                        <input type="file" ref={quickGalleryRef} className="hidden" multiple accept="image/*" onChange={handleQuickPhotoUpload} />
+                    </Button>
+                </div>
+            )}</CardHeader>
+            <CardContent>{job.photos && job.photos.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">{job.photos.map((url, i) => (
+                    <div key={i} className="relative group aspect-square">
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full"><Image src={url} alt={`Job photo ${i+1}`} width={200} height={200} className="rounded-md border object-cover w-full h-full hover:opacity-80 transition-opacity" /></a>
+                        {isUserAdmin && !isViewOnly && <Button type="button" variant="destructive" size="icon" className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10" onClick={(e) => { e.preventDefault(); handleDeletePhoto(url); }} disabled={isAddingPhotos}><Trash2 className="h-3 w-3" /></Button>}
                     </div>
-                )}
-            </CardHeader>
-            <CardContent>
-                {job.photos && job.photos.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {job.photos.map((url, i) => (
-                            <div key={i} className="relative group aspect-square">
-                                <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full">
-                                    <Image 
-                                      src={url} 
-                                      alt={`Job photo ${i+1}`} 
-                                      width={200} 
-                                      height={200} 
-                                      className="rounded-md border object-cover w-full h-full hover:opacity-80 transition-opacity" 
-                                    />
-                                </a>
-                                {isUserAdmin && !isViewOnly && (
-                                    <Button 
-                                      type="button" 
-                                      variant="destructive" 
-                                      size="icon" 
-                                      className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        handleDeletePhoto(url);
-                                      }}
-                                      disabled={isAddingPhotos}
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                ) : <p className="text-muted-foreground text-sm">ยังไม่มีรูปตอนรับงาน</p>}
-            </CardContent>
+                ))}</div>
+            ) : <p className="text-muted-foreground text-sm">ยังไม่มีรูปตอนรับงาน</p>}</CardContent>
           </Card>
           
           <Card>
               <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <Textarea placeholder="พิมพ์บันทึกที่นี่..." value={newNote} onChange={e => setNewNote(e.target.value)} disabled={!canUpdateActivity || isViewOnly} />
-                {(photoPreviews.length > 0) && (
-                  <div className="grid grid-cols-4 gap-2">
-                    {photoPreviews.map((src, i) => (
-                      <div key={i} className="relative">
-                        <Image src={src} alt="preview" width={100} height={100} className="rounded-md object-cover w-full aspect-square" />
-                        <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-5 w-5" onClick={() => removeNewPhoto(i)}><X className="h-3 w-3" /></Button>
-                      </div>
-                    ))}
-                  </div>
+                {photoPreviews.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2">{photoPreviews.map((src, i) => (
+                    <div key={i} className="relative"><Image src={src} alt="preview" width={100} height={100} className="rounded-md object-cover w-full aspect-square" /><Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-5 w-5" onClick={() => { URL.revokeObjectURL(photoPreviews[i]); setNewPhotos(p=>p.filter((_,idx)=>idx!==i)); setPhotoPreviews(p=>p.filter((_,idx)=>idx!==i)); }}><X className="h-3 w-3" /></Button></div>
+                  ))}</div>
                 )}
                  <div className="flex flex-wrap gap-2">
                     <Button onClick={handleAddActivity} disabled={isSubmittingNote || isAddingPhotos || (!newNote.trim() && newPhotos.length === 0) || !canUpdateActivity || isViewOnly}>{isSubmittingNote ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2 h-4 w-4" />} อัปเดท</Button>
-                    <Button asChild variant="outline" disabled={!canUpdateActivity || isSubmittingNote || isAddingPhotos || isViewOnly}>
-                        <label className="cursor-pointer flex items-center">
-                            <Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม
-                            <input type="file" className="hidden" multiple accept="image/jpeg,image/png" capture="environment" onChange={handlePhotoChange} />
-                        </label>
-                    </Button>
+                    <Button asChild variant="outline" disabled={!canUpdateActivity || isSubmittingNote || isAddingPhotos || isViewOnly}><label className="cursor-pointer flex items-center"><Camera className="mr-2 h-4 w-4" /> เพิ่มรูปกิจกรรม<input type="file" className="hidden" multiple accept="image/*" capture="environment" onChange={handlePhotoChange} /></label></Button>
                     
-                    {/* Transfer / Forward Button */}
                     {!isSubTask && !isViewOnly && (
                         <Button variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setIsSubTransferDialogOpen(true)}>
                             <Forward className="mr-2 h-4 w-4" /> ส่งงานต่อ
                         </Button>
                     )}
 
-                    {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
-                    
-                    {job.status === 'WAITING_QUOTATION' && !hasQuotation && (
-                      <Button asChild={isOfficeOrAdminOrMgmt} variant="outline" className="border-primary text-primary hover:bg-primary/10" disabled={!isOfficeOrAdminOrMgmt}>
-                        {isOfficeOrAdminOrMgmt ? (
-                          <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}>
-                            <FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา
-                          </Link>
-                        ) : (
-                          <span className="flex items-center opacity-50"><FileText className="mr-2 h-4 w-4" /> สร้างใบเสนอราคา</span>
-                        )}
-                      </Button>
-                    )}
-                    {hasQuotation && (
-                      <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
-                        <Link href={`/app/office/documents/quotation/${job.salesDocId}`}>
-                          <Eye className="mr-2 h-4 w-4" /> ดูใบเสนอราคา {job.salesDocNo}
-                        </Link>
-                      </Button>
-                    )}
-
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
-                        <Button 
-                            onClick={isSubTask ? handleReturnToMain : handleMarkAsDone} 
-                            disabled={isSubmittingNote || isViewOnly} 
-                            className={isSubTask ? "bg-green-600 hover:bg-green-700 text-white" : ""}
-                            variant={isSubTask ? "default" : "outline"}
-                        >
-                            <CheckCircle className="mr-2 h-4 w-4" /> 
-                            {isSubTask ? "ส่งงานกลับแผนกหลัก" : "จบงาน"}
+                        <Button onClick={isSubTask ? handleReturnToMain : () => router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`)} disabled={isSubmittingNote || isViewOnly} className={isSubTask ? "bg-green-600 hover:bg-green-700 text-white" : ""} variant={isSubTask ? "default" : "outline"}>
+                            <CheckCircle className="mr-2 h-4 w-4" /> {isSubTask ? "ส่งงานกลับแผนกหลัก" : "จบงาน/ออกบิล"}
                         </Button>
-                    )}
-
-                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
-                      hasBillingDoc ? (
-                        <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
-                          <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
-                            <Eye className="mr-2 h-4 w-4" /> ดูบิล {job.salesDocNo}
-                          </Link>
-                        </Button>
-                      ) : (
-                        <Button onClick={() => setBillingJob(job)} disabled={isSubmittingNote || !isOfficeOrAdminOrMgmt} variant="outline" className={cn("border-primary text-primary hover:bg-primary/10", !isOfficeOrAdminOrMgmt && "opacity-50")}>
-                          <Receipt className="mr-2 h-4 w-4" /> ออกบิล
-                        </Button>
-                      )
                     )}
                 </div>
               </CardContent>
@@ -994,262 +586,49 @@ function JobDetailsPageContent() {
 
           <Card>
             <CardHeader><CardTitle>Activity Log</CardTitle></CardHeader>
-            <CardContent className="space-y-6">
-              {activitiesLoading ? <div className="flex items-center justify-center h-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div> : 
-               activitiesError ? <div className="text-destructive text-center p-4">Error loading activities.</div> : 
-               activities && activities.length > 0 ? (
+            <CardContent className="space-y-6">{activitiesLoading ? <div className="flex items-center justify-center h-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div> : activities && activities.length > 0 ? (
                 activities.map((activity) => (
                   <div key={activity.id} className="flex gap-4">
                       <User className="h-5 w-5 mt-1 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1">
-                          <p className="font-semibold text-sm">{activity.userName} <span className="text-[10px] font-normal text-muted-foreground ml-2">{safeFormat(activity.createdAt, 'PPpp')}</span></p>
-                          {activity.text && <p className="whitespace-pre-wrap text-sm my-1">{activity.text}</p>}
-                          {activity.photos && activity.photos.length > 0 && (
-                               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                                {activity.photos.map((url, i) => (
-                                    <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                                        <Image src={url} alt={`Activity photo ${i+1}`} width={100} height={100} className="rounded-md font-medium object-cover w-full aspect-square" />
-                                    </a>
-                                ))}
-                            </div>
-                          )}
-                      </div>
+                      <div className="flex-1"><p className="font-semibold text-sm">{activity.userName} <span className="text-[10px] font-normal text-muted-foreground ml-2">{safeFormat(activity.createdAt, 'PPpp')}</span></p>{activity.text && <p className="whitespace-pre-wrap text-sm my-1">{activity.text}</p>}{activity.photos && activity.photos.length > 0 && (<div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">{activity.photos.map((url, i) => (<a key={i} href={url} target="_blank" rel="noopener noreferrer"><Image src={url} alt="Activity" width={100} height={100} className="rounded-md object-cover w-full aspect-square" /></a>))}</div>)}</div>
                   </div>
-              ))
-              ) : <p className="text-muted-foreground text-sm text-center h-24 flex items-center justify-center">No activities yet.</p>}
+              ))) : <p className="text-muted-foreground text-sm text-center h-24 flex items-center justify-center">No activities yet.</p>}
             </CardContent>
           </Card>
         </div>
         
         <div className="space-y-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-base font-semibold">Status</CardTitle>
-              <Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge>
-            </CardHeader>
-          </Card>
-          <Card>
-              <CardHeader><CardTitle className="text-base font-semibold">Timestamps</CardTitle></CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  <p className="flex justify-between"><span>Created:</span> <span>{safeFormat(job.createdAt, 'PPp')}</span></p>
-                  <p className="flex justify-between"><span>Last Activity:</span> <span>{safeFormat(job.lastActivityAt, 'PPp')}</span></p>
-              </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><FileText className="h-4 w-4"/> เอกสารอ้างอิง</CardTitle></CardHeader>
-            <CardContent className="space-y-3 text-sm">
+          <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-base font-semibold">Status</CardTitle><Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge></CardHeader></Card>
+          <Card><CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><FileText className="h-4 w-4"/> เอกสารอ้างอิง</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">
               {loadingDocs ? <div className="flex justify-center"><Loader2 className="animate-spin"/></div> : (
                 (['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'] as DocType[]).map(docType => {
                     const label = { QUOTATION: 'ใบเสนอราคา', DELIVERY_NOTE: 'ใบส่งของชั่วคราว', TAX_INVOICE: 'ใบกำกับภาษี', RECEIPT: 'ใบเสร็จ' }[docType];
                     const latestDoc = relatedDocuments[docType]?.[0];
-                    return (
-                      <div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
-                        <span className="text-muted-foreground pt-1">{label}:</span>
-                        {latestDoc ? (
-                           <div className="flex flex-col items-end gap-1">
-                              <div className="flex items-center gap-2">
-                                <Button asChild variant="link" className="p-0 h-auto font-medium"><Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link></Button>
-                                <Badge variant="outline" className="text-[8px] px-1 h-4">{latestDoc.status}</Badge>
-                              </div>
-                           </div>
-                        ) : <span className="pt-1">— ไม่มี —</span>}
-                      </div>
-                    );
+                    return (<div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0"><span className="text-muted-foreground pt-1">{label}:</span>{latestDoc ? (<div className="flex flex-col items-end gap-1"><div className="flex items-center gap-2"><Button asChild variant="link" className="p-0 h-auto font-medium"><Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link></Button><Badge variant="outline" className="text-[8px] px-1 h-4">{latestDoc.status}</Badge></div></div>) : <span className="pt-1">— ไม่มี —</span>}</div>);
                 })
               )}
-            </CardContent>
-          </Card>
-          
-          {canEditDetails && ['WAITING_APPROVE', 'PENDING_PARTS'].includes(job.status) && (
-            <Card>
-              <CardHeader><CardTitle className="text-base font-semibold">การอนุมัติของลูกค้า</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {job.status === 'WAITING_APPROVE' && (
-                  <>
-                    <Button onClick={() => setIsApproveConfirmOpen(true)} className="w-full" variant="outline" disabled={isApprovalActionLoading}><Check className="mr-2 h-4 w-4 text-green-600"/> ลูกค้าอนุมัติ</Button>
-                    <Button onClick={() => setIsRejectChoiceOpen(true)} className="w-full" variant="destructive" disabled={isApprovalActionLoading}><Ban className="mr-2 h-4 w-4"/> ลูกค้าไม่อนุมัติ</Button>
-                  </>
-                )}
-                {job.status === 'PENDING_PARTS' && <Button onClick={() => setIsPartsReadyConfirmOpen(true)} className="w-full" variant="outline" disabled={isApprovalActionLoading}><PackageCheck className="mr-2 h-4 w-4"/> เตรียมอะไหล่เรียบร้อย</Button>}
-              </CardContent>
-            </Card>
-          )}
+            </CardContent></Card>
         </div>
       </div>
-      
-      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
-        <AlertDialogContent>
-            <AlertDialogHeader><AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle><AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมนี้</AlertDialogDescription></AlertDialogHeader>
-            <AlertDialogFooter>
-                <Button variant="outline" onClick={() => setBillingJob(null)}>ยกเลิก</Button>
-                <Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }}>ใบส่งของชั่วคราว</Button>
-                <Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }}>ใบกำกับภาษี</Button>
-            </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
-          <DialogContent>
-              <DialogHeader><DialogTitle>โอนย้ายแผนกหลัก</DialogTitle><DialogDescription>เลือกแผนกปลายทางที่จะรับผิดชอบงานนี้เป็นแผนกหลัก</DialogDescription></DialogHeader>
-              <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                      <Label htmlFor="department">แผนกใหม่</Label>
-                      <Select value={transferDepartment} onValueChange={(v) => setTransferDepartment(v as JobDepartment)}>
-                          <SelectTrigger><SelectValue placeholder="เลือกแผนก" /></SelectTrigger>
-                          <SelectContent>{JOB_DEPARTMENTS.filter(d => d !== job?.department).map(d => <SelectItem key={d} value={d}>{deptLabel(d)}</SelectItem>)}</SelectContent>
-                      </Select>
-                  </div>
-                  <div className="grid gap-2"><Label htmlFor="note">หมายเหตุ</Label><Textarea id="note" value={transferNote} onChange={(e) => setTransferNote(e.target.value)} /></div>
-              </div>
-              <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={isTransferring}>ยกเลิก</Button>
-                  <Button onClick={handleTransferJob} disabled={isTransferring || !transferDepartment}>{isTransferring && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยัน</Button>
-              </DialogFooter>
-          </DialogContent>
+          <DialogContent><DialogHeader><DialogTitle>โอนย้ายแผนกหลัก</DialogTitle></DialogHeader><div className="grid gap-4 py-4"><div className="grid gap-2"><Label>แผนกใหม่</Label><Select value={transferDepartment} onValueChange={(v) => setTransferDepartment(v as JobDepartment)}><SelectTrigger><SelectValue placeholder="เลือกแผนก" /></SelectTrigger><SelectContent>{JOB_DEPARTMENTS.filter(d => d !== job?.department).map(d => <SelectItem key={d} value={d}>{deptLabel(d)}</SelectItem>)}</SelectContent></Select></div><div className="grid gap-2"><Label>หมายเหตุ</Label><Textarea value={transferNote} onChange={(e) => setTransferNote(e.target.value)} /></div></div><DialogFooter><Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={isTransferring}>ยกเลิก</Button><Button onClick={handleTransferJob} disabled={isTransferring || !transferDepartment}>ยืนยัน</Button></DialogFooter></DialogContent>
       </Dialog>
 
       <Dialog open={isSubTransferDialogOpen} onOpenChange={setIsSubTransferDialogOpen}>
-          <DialogContent>
-              <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2"><Forward className="h-5 w-5 text-primary" /> ส่งงานต่อ (เปิดงานย่อย)</DialogTitle>
-                  <DialogDescription>เลือกแผนกที่ต้องการส่งต่อเพื่อดำเนินการในส่วนที่เกี่ยวข้อง</DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                      <Label>แผนกปลายทาง</Label>
-                      <Select value={subTransferDept} onValueChange={(v) => setSubTransferDept(v as JobDepartment)}>
-                          <SelectTrigger><SelectValue placeholder="เลือกแผนก..." /></SelectTrigger>
-                          <SelectContent>
-                              <SelectItem value="COMMONRAIL">แผนกคอมมอนเรล</SelectItem>
-                              <SelectItem value="MECHANIC">แผนกแมคคานิค</SelectItem>
-                              <SelectItem value="OUTSOURCE">ส่งงานนอก (Outsource)</SelectItem>
-                          </SelectContent>
-                      </Select>
-                  </div>
-                  <div className="p-3 bg-muted/50 rounded-md text-xs text-muted-foreground flex gap-2">
-                      <History className="h-4 w-4 shrink-0" />
-                      <p>เมื่อแผนกปลายทางดำเนินการเสร็จ จะมีปุ่มให้ "ส่งงานกลับ" เพื่อมาจบงานที่แผนกหลัก ({deptLabel(job.mainDepartment || job.department)}) ค่ะ</p>
-                  </div>
-              </div>
-              <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsSubTransferDialogOpen(false)}>ยกเลิก</Button>
-                  <Button onClick={handleSubTransfer} disabled={isTransferring || !subTransferDept}>
-                      {isTransferring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />} ยืนยันการส่งต่อ
-                  </Button>
-              </DialogFooter>
-          </DialogContent>
+          <DialogContent><DialogHeader><DialogTitle className="flex items-center gap-2"><Forward className="h-5 w-5 text-primary" /> ส่งงานต่อ (เปิดงานย่อย)</DialogTitle></DialogHeader><div className="grid gap-4 py-4"><div className="grid gap-2"><Label>แผนกปลายทาง</Label><Select value={subTransferDept} onValueChange={(v) => setSubTransferDept(v as JobDepartment)}><SelectTrigger><SelectValue placeholder="เลือกแผนก..." /></SelectTrigger><SelectContent><SelectItem value="COMMONRAIL">แผนกคอมมอนเรล</SelectItem><SelectItem value="MECHANIC">แผนกแมคคานิค</SelectItem><SelectItem value="OUTSOURCE">ส่งงานนอก (Outsource)</SelectItem></SelectContent></Select></div><div className="p-3 bg-muted/50 rounded-md text-xs text-muted-foreground flex gap-2"><History className="h-4 w-4 shrink-0" /><p>เมื่อแผนกปลายทางดำเนินการเสร็จ จะมีปุ่มให้ "ส่งงานกลับ" เพื่อมาจบงานที่แผนกหลัก ({deptLabel(job.mainDepartment || job.department)}) ค่ะ</p></div></div><DialogFooter><Button variant="outline" onClick={() => setIsSubTransferDialogOpen(false)}>ยกเลิก</Button><Button onClick={handleSubTransfer} disabled={isTransferring || !subTransferDept}>ยืนยันการส่งต่อ</Button></DialogFooter></DialogContent>
       </Dialog>
       
-      <Dialog open={isEditDescriptionDialogOpen} onOpenChange={setIsEditDescriptionDialogOpen}>
-        <DialogContent>
-            <DialogHeader><DialogTitle>แก้ไขรายการแจ้งซ่อม</DialogTitle></DialogHeader>
-            <div className="py-4"><Textarea value={descriptionToEdit} onChange={(e) => setDescriptionToEdit(e.target.value)} rows={8} /></div>
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEditDescriptionDialogOpen(false)} disabled={isUpdatingDescription}>ยกเลิก</Button>
-                <Button onClick={handleUpdateDescription} disabled={isUpdatingDescription}>{isUpdatingDescription && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}บันทึก</Button>
-            </DialogFooter>
-        </DialogContent>
-    </Dialog>
-
-    <Dialog open={isEditNotebookDialogOpen} onOpenChange={setIsEditNotebookDialogOpen}>
-        <DialogContent className="sm:max-w-xl">
-            <DialogHeader><DialogTitle>แก้ไขสมุดบันทึก</DialogTitle></DialogHeader>
-            <div className="py-4">
-              <Textarea placeholder="บันทึกรายละเอียดงาน ผลตรวจ หรือบันทึกข้อความที่นี่..." value={techReport} onChange={(e) => setTechReport(e.target.value)} rows={12} />
-            </div>
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEditNotebookDialogOpen(false)} disabled={isSavingTechReport}>ยกเลิก</Button>
-                <Button onClick={handleUpdateNotebook} disabled={isSavingTechReport}>{isSavingTechReport && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}บันทึกข้อมูล</Button>
-            </DialogFooter>
-        </DialogContent>
-    </Dialog>
-
-    <Dialog open={isEditVehicleDialogOpen} onOpenChange={setIsEditVehicleDialogOpen}>
-        <DialogContent>
-            <DialogHeader><DialogTitle>แก้ไขรายละเอียดรถ/ชิ้นส่วน</DialogTitle></DialogHeader>
-            <div className="grid gap-4 py-4">
+      <Dialog open={isEditDescriptionDialogOpen} onOpenChange={setIsEditDescriptionDialogOpen}><DialogContent><DialogHeader><DialogTitle>แก้ไขรายการแจ้งซ่อม</DialogTitle></DialogHeader><div className="py-4"><Textarea value={descriptionToEdit} onChange={(e) => setDescriptionToEdit(e.target.value)} rows={8} /></div><DialogFooter><Button variant="outline" onClick={() => setIsEditDescriptionDialogOpen(false)} disabled={isUpdatingDescription}>ยกเลิก</Button><Button onClick={handleUpdateDescription} disabled={isUpdatingDescription}>บันทึก</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={isEditNotebookDialogOpen} onOpenChange={setIsEditNotebookDialogOpen}><DialogContent><DialogHeader><DialogTitle>แก้ไขสมุดบันทึก</DialogTitle></DialogHeader><div className="py-4"><Textarea placeholder="บันทึกรายละเอียดงาน..." value={techReport} onChange={(e) => setTechReport(e.target.value)} rows={12} /></div><DialogFooter><Button variant="outline" onClick={() => setIsEditNotebookDialogOpen(false)} disabled={isSavingTechReport}>ยกเลิก</Button><Button onClick={handleUpdateNotebook} disabled={isSavingTechReport}>บันทึก</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={isEditVehicleDialogOpen} onOpenChange={setIsEditVehicleDialogOpen}><DialogContent><DialogHeader><DialogTitle>แก้ไขรายละเอียดรถ/ชิ้นส่วน</DialogTitle></DialogHeader><div className="grid gap-4 py-4">
                 {(job.carServiceDetails || job.department === 'CAR_SERVICE' || job.mainDepartment === 'CAR_SERVICE') ? (
-                    <>
-                        <div className="grid gap-2"><Label>ยี่ห้อรถ</Label><Input value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} /></div>
-                        <div className="grid gap-2"><Label>รุ่นรถ</Label><Input value={vehicleEditData.model || ""} onChange={e => setVehicleEditData({...vehicleEditData, model: e.target.value})} /></div>
-                        <div className="grid gap-2"><Label>ทะเบียนรถ</Label><Input value={vehicleEditData.licensePlate || ""} onChange={e => setVehicleEditData({...vehicleEditData, licensePlate: e.target.value})} /></div>
-                    </>
+                    <><div className="grid gap-2"><Label>ยี่ห้อรถ</Label><Input value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} /></div><div className="grid gap-2"><Label>รุ่นรถ</Label><Input value={vehicleEditData.model || ""} onChange={e => setVehicleEditData({...vehicleEditData, model: e.target.value})} /></div><div className="grid gap-2"><Label>ทะเบียนรถ</Label><Input value={vehicleEditData.licensePlate || ""} onChange={e => setVehicleEditData({...vehicleEditData, licensePlate: e.target.value})} /></div></>
                 ) : (
-                    <>
-                        <div className="grid gap-2"><Label>ยี่ห้อ</Label><Input value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} /></div>
-                        <div className="grid gap-2"><Label>เลขอะไหล่</Label><Input value={vehicleEditData.partNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, partNumber: e.target.value})} /></div>
-                        <div className="grid gap-2"><Label>เลขทะเบียนชิ้นส่วน</Label><Input value={vehicleEditData.registrationNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, registrationNumber: e.target.value})} /></div>
-                    </>
+                    <><div className="grid gap-2"><Label>ยี่ห้อ</Label><Input value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} /></div><div className="grid gap-2"><Label>เลขอะไหล่</Label><Input value={vehicleEditData.partNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, partNumber: e.target.value})} /></div><div className="grid gap-2"><Label>เลขทะเบียนชิ้นส่วน</Label><Input value={vehicleEditData.registrationNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, registrationNumber: e.target.value})} /></div></>
                 )}
-            </div>
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEditVehicleDialogOpen(false)} disabled={isUpdatingVehicle}>ยกเลิก</Button>
-                <Button onClick={handleUpdateVehicleDetails} disabled={isUpdatingVehicle}>{isUpdatingVehicle && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}บันทึก</Button>
-            </DialogFooter>
-        </DialogContent>
-    </Dialog>
-
-      <Dialog open={isReassignDialogOpen} onOpenChange={(open) => !open && setIsReassignDialogOpen(false)}>
-        <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{job.department === 'OUTSOURCE' ? 'มอบหมายงานนอก (Select Contractor)' : 'มอบหมายพนักงาน (Assign Worker)'}</DialogTitle>
-            </DialogHeader>
-            {isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (
-                <div className="py-4"><Label>{job.department === 'OUTSOURCE' ? 'เลือกร้านผู้รับเหมา' : 'พนักงาน'}</Label>
-                    <span className="block mt-2">
-                        <Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}>
-                            <SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger>
-                            <SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.id} value={w.id}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบรายการให้เลือก</div>}</SelectContent>
-                        </Select>
-                    </span>
-                </div>
-            )}
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setIsReassignDialogOpen(false)} disabled={isReassigning}>ยกเลิก</Button>
-                <Button onClick={handleReassignJob} disabled={isReassigning || isFetchingWorkers || !reassignWorkerId}>{isReassigning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยัน</Button>
-            </DialogFooter>
-        </DialogContent>
-    </Dialog>
-
-      <AlertDialog open={isApproveConfirmOpen} onOpenChange={setIsApproveConfirmOpen}>
-          <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>ยืนยันการอนุมัติ</AlertDialogTitle><AlertDialogDescription>ลูกค้าอนุมัติซ่อม ยืนยันเพื่อเปลี่ยนสถานะเป็น "กำลังจัดอะไหล่"?</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerApproval} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={isPartsReadyConfirmOpen} onOpenChange={setIsPartsReadyConfirmOpen}>
-          <AlertDialogContent>
-              <AlertDialogHeader>
-                  <AlertDialogTitle>ยืนยันอะไหล่พร้อมซ่อม?</AlertDialogTitle>
-                  <AlertDialogDescription>เมื่อยืนยัน ระบบจะแจ้งสถานะงานกลับไปเป็น "กำลังดำเนินการซ่อม" เพื่อให้ช่างเริ่มทำงานต่อได้ค่ะ</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                  <AlertDialogCancel disabled={isApprovalActionLoading}>ยกเลิก</AlertDialogCancel>
-                  <AlertDialogAction onClick={handlePartsReady} disabled={isApprovalActionLoading}>
-                      {isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "ยืนยัน"}
-                  </AlertDialogAction>
-              </AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={isRejectChoiceOpen} onOpenChange={setIsRejectChoiceOpen}>
-          <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>ลูกค้าไม่อนุมัติ</AlertDialogTitle><AlertDialogDescription>การปฏิเสธการซ่อมครั้งนี้ มีค่าใช้จ่ายในการตรวจเช็คหรือไม่?</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <Button variant="destructive" onClick={() => { setIsRejectChoiceOpen(false); setRejectionChoice('with_cost'); setIsRejectConfirmOpen(true); }}>มีค่าใช้จ่าย</Button>
-                  <Button variant="secondary" onClick={() => { setIsRejectChoiceOpen(false); setRejectionChoice('no_cost'); setIsRejectConfirmOpen(true); }}>ไม่มีค่าใช้จ่าย</Button>
-              </AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={isRejectConfirmOpen} onOpenChange={setIsRejectConfirmOpen}>
-          <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>ยืนยันการไม่อนุมัติ</AlertDialogTitle><AlertDialogDescription>{rejectionChoice === 'with_cost' ? 'ลูกค้าไม่อนุมัติ (มีค่าใช้จ่าย) → ส่งไปทำบิล.' : 'ลูกค้าไม่อนุมัติ (ไม่มีค่าใช้จ่าย) → ปิดงาน.'}</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel disabled={isApprovalActionLoading} onClick={() => setRejectionChoice(null)}>Cancel</AlertDialogCancel><AlertDialogAction onClick={handleCustomerRejection} disabled={isApprovalActionLoading}>{isApprovalActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Confirm"}</AlertDialogAction></AlertDialogFooter>
-          </AlertDialogContent>
-      </AlertDialog>
+            </div><DialogFooter><Button variant="outline" onClick={() => setIsEditVehicleDialogOpen(false)} disabled={isUpdatingVehicle}>ยกเลิก</Button><Button onClick={handleUpdateVehicleDetails} disabled={isUpdatingVehicle}>บันทึก</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}><DialogContent><DialogHeader><DialogTitle>{job.department === 'OUTSOURCE' ? 'มอบหมายงานนอก' : 'มอบหมายพนักงาน'}</DialogTitle></DialogHeader>{isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (<div className="py-4"><Label>{job.department === 'OUTSOURCE' ? 'เลือกร้านผู้รับเหมา' : 'พนักงาน'}</Label><span className="block mt-2"><Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger><SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.id} value={w.id}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบรายการให้เลือก</div>}</SelectContent></Select></span></div>)}<DialogFooter><Button variant="outline" onClick={() => setIsReassignDialogOpen(false)} disabled={isReassigning}>ยกเลิก</Button><Button onClick={handleReassignJob} disabled={isReassigning || isFetchingWorkers || !reassignWorkerId}>ยืนยัน</Button></DialogFooter></DialogContent></Dialog>
     </>
   );
 }
