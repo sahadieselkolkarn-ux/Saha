@@ -41,7 +41,8 @@ import {
   UserCheck,
   CheckCircle2,
   Users,
-  Eye
+  Eye,
+  RotateCcw
 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -341,15 +342,26 @@ export function JobList({
 
                 {/* Billing Logic */}
                 {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
-                  hasBillingDoc ? (
-                    <Button asChild={canDoBilling} className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling}>
-                      {canDoBilling ? <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</Link> : <span className="flex items-center"><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</span>}
-                    </Button>
-                  ) : (
-                    <Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling} onClick={() => setBillingJob(job)}>
-                      <Receipt className="mr-2 h-4 w-4" />ออกบิล
-                    </Button>
-                  )
+                  <div className="flex flex-col gap-2 w-full">
+                    {hasBillingDoc ? (
+                      <Button asChild={canDoBilling} className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling}>
+                        {canDoBilling ? <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</Link> : <span className="flex items-center"><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</span>}
+                      </Button>
+                    ) : (
+                      <Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling} onClick={() => setBillingJob(job)}>
+                        <Receipt className="mr-2 h-4 w-4" />ออกบิล
+                      </Button>
+                    )}
+                    
+                    {/* Office can send back for revision directly from list */}
+                    {canDoBilling && (
+                      <Button asChild variant="ghost" className="w-full h-8 text-destructive hover:text-destructive hover:bg-destructive/10 text-[10px] font-bold">
+                        <Link href={`/app/jobs/${job.id}`}>
+                          <RotateCcw className="mr-1 h-3 w-3" /> ส่งกลับแก้ไข
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
                 )}
               </CardFooter>
             </Card>

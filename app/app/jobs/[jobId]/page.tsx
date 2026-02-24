@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen, Eye, Trash2, Forward, History } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen, Eye, Trash2, Forward, History, RotateCcw } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile, Vendor } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -112,7 +112,6 @@ function JobDetailsPageContent() {
 
   const [techReport, setTechReport] = useState("");
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
-  const [isRequestingQuotation, setIsRequestingQuotation] = useState(false);
 
   const [relatedDocuments, setRelatedDocuments] = useState<Partial<Record<DocType, DocumentType[]>>>({});
   const [loadingDocs, setLoadingDocs] = useState(true);
@@ -126,6 +125,11 @@ function JobDetailsPageContent() {
   const [isEditVehicleDialogOpen, setIsEditVehicleDialogOpen] = useState(false);
   const [vehicleEditData, setVehicleEditData] = useState<any>({});
   const [isUpdatingVehicle, setIsUpdatingVehicle] = useState(false);
+
+  // New states for Reverting Job
+  const [isRevertDialogOpen, setIsRevertDialogOpen] = useState(false);
+  const [revertReason, setRevertReason] = useState("");
+  const [isReverting, setIsReverting] = useState(false);
 
   const isSubTask = useMemo(() => job?.mainDepartment && job.department !== job.mainDepartment, [job]);
 
@@ -142,8 +146,6 @@ function JobDetailsPageContent() {
 
   const isStaff = profile?.role !== 'VIEWER';
   const isUserAdmin = profile?.role === 'ADMIN';
-  const isManager = profile?.role === 'MANAGER';
-  const isOfficer = profile?.role === 'OFFICER';
   
   // Stricter check for office personnel who can issue bills
   const isOfficeDept = profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
@@ -155,6 +157,8 @@ function JobDetailsPageContent() {
   const isTechnicalDept = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
   const isJobInFinishedState = job?.status === 'DONE' || job?.status === 'WAITING_CUSTOMER_PICKUP' || job?.status === 'CLOSED';
 
+  // Technicians are locked out when status is DONE or above.
+  // Office/Admin are NOT locked out.
   const isViewOnly = job?.isArchived || 
                      profile?.role === 'VIEWER' || 
                      (job?.status === 'CLOSED' && !allowEditing) ||
@@ -478,6 +482,38 @@ function JobDetailsPageContent() {
     .finally(() => setIsSubmittingNote(false));
   };
 
+  const handleRevertJob = async () => {
+    if (!db || !profile || !job || !revertReason.trim()) return;
+    setIsReverting(true);
+    const jobDocRef = doc(db, "jobs", job.id);
+    const batch = writeBatch(db);
+    
+    // Update status back to repair process so technicians can edit again
+    batch.update(jobDocRef, {
+      status: 'IN_REPAIR_PROCESS',
+      lastActivityAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    batch.set(doc(collection(jobDocRef, "activities")), {
+      text: `ฝ่ายออฟฟิศส่งงานกลับไปแก้ไข: ${revertReason.trim()}`,
+      userName: profile.displayName,
+      userId: profile.uid,
+      createdAt: serverTimestamp()
+    });
+
+    try {
+      await batch.commit();
+      toast({ title: "ส่งกลับแก้ไขสำเร็จ", description: "งานถูกส่งกลับไปยังสถานะกำลังดำเนินการซ่อมแล้วค่ะ" });
+      setIsRevertDialogOpen(false);
+      setRevertReason("");
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'Error', description: e.message });
+    } finally {
+      setIsReverting(false);
+    }
+  };
+
   const handleOpenReassignDialog = async () => {
     if (!db || !job) return;
     setIsReassignDialogOpen(true);
@@ -593,7 +629,7 @@ function JobDetailsPageContent() {
                         </Button>
                     )}
 
-                    {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
+                    {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS', 'PENDING_PARTS'].includes(job.status) && (
                         <Button 
                           onClick={isSubTask ? handleReturnToMain : (canIssueBill ? () => router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`) : handleFinishJob)} 
                           disabled={isSubmittingNote || isViewOnly} 
@@ -603,6 +639,13 @@ function JobDetailsPageContent() {
                             <CheckCircle className="mr-2 h-4 w-4" /> 
                             {isSubTask ? "ส่งงานกลับแผนกหลัก" : (canIssueBill ? "จบงาน/ออกบิล" : "จบงาน (Finish Job)")}
                         </Button>
+                    )}
+
+                    {/* Send back for revision button - Only for Office/Admin when job is DONE */}
+                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canIssueBill && (
+                      <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" onClick={() => setIsRevertDialogOpen(true)}>
+                        <RotateCcw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
+                      </Button>
                     )}
                 </div>
               </CardContent>
@@ -653,13 +696,46 @@ function JobDetailsPageContent() {
                 )}
             </div><DialogFooter><Button variant="outline" onClick={() => setIsEditVehicleDialogOpen(false)} disabled={isUpdatingVehicle}>ยกเลิก</Button><Button onClick={handleUpdateVehicleDetails} disabled={isUpdatingVehicle}>บันทึก</Button></DialogFooter></DialogContent></Dialog>
       <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}><DialogContent><DialogHeader><DialogTitle>{job.department === 'OUTSOURCE' ? 'มอบหมายงานนอก' : 'มอบหมายพนักงาน'}</DialogTitle></DialogHeader>{isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (<div className="py-4"><Label>{job.department === 'OUTSOURCE' ? 'เลือกร้านผู้รับเหมา' : 'พนักงาน'}</Label><span className="block mt-2"><Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger><SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.id} value={w.id}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบรายการให้เลือก</div>}</SelectContent></Select></span></div>)}<DialogFooter><Button variant="outline" onClick={() => setIsReassignDialogOpen(false)} disabled={isReassigning}>ยกเลิก</Button><Button onClick={handleReassignJob} disabled={isReassigning || isFetchingWorkers || !reassignWorkerId}>ยืนยัน</Button></DialogFooter></DialogContent></Dialog>
+
+      {/* Dialog for Reverting to Repair Process */}
+      <Dialog open={isRevertDialogOpen} onOpenChange={setIsRevertDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-destructive" />
+              ส่งกลับไปแก้ไข (Revert to Repair)
+            </DialogTitle>
+            <DialogDescription>
+              ระบุเหตุผลที่ต้องการให้ช่างดำเนินการเพิ่มเติม เพื่อบันทึกลงในระบบและเปลี่ยนสถานะงาน
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label>เหตุผลการส่งกลับ</Label>
+              <Textarea 
+                placeholder="เช่น อะไหล่ยังใส่ไม่ครบ, ลูกค้าต้องการเพิ่มรายการซ่อม..." 
+                value={revertReason} 
+                onChange={(e) => setRevertReason(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRevertDialogOpen(false)} disabled={isReverting}>ยกเลิก</Button>
+            <Button variant="destructive" onClick={handleRevertJob} disabled={isReverting || !revertReason.trim()}>
+              {isReverting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+              ยืนยันส่งกลับแก้ไข
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
 export default function JobDetailsPage() {
   return (
-    <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>}>
+    <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>}>
       <JobDetailsPageContent />
     </Suspense>
   );
