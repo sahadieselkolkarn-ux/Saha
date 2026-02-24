@@ -156,6 +156,9 @@ export function JobList({
 
   const isOfficeOrAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.role === 'OFFICER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
   const isWorker = profile?.role === 'WORKER';
+  
+  // Stricter check for billing/quotation actions
+  const canDoBilling = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT';
 
   const fetchData = useCallback(async (pageIndex: number) => {
     if (!db) return;
@@ -325,11 +328,29 @@ export function JobList({
                 {job.status === 'RECEIVED' && isOfficeOrAdmin && (<Button onClick={() => handleOpenAssignQuick(job)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" variant="default"><UserCheck className="mr-2 h-4 w-4" />มอบหมายงาน</Button>)}
                 
                 {/* Quotation Logic */}
-                {job.status === 'WAITING_QUOTATION' && !hasQuotation && (<Button asChild={isOfficeOrAdmin} className={cn("w-full h-9 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} variant="default">{isOfficeOrAdmin ? <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link> : <span className="flex items-center"><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</span>}</Button>)}
-                {hasQuotation && (<Button asChild className="w-full h-9 font-bold" variant="outline"><Link href={`/app/office/documents/quotation/${job.salesDocId}`}><FileText className="mr-2 h-4 w-4" />ดูใบเสนอราคา {job.salesDocNo}</Link></Button>)}
+                {job.status === 'WAITING_QUOTATION' && !hasQuotation && (
+                  <Button asChild={canDoBilling} className={cn("w-full h-9 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="default" disabled={!canDoBilling}>
+                    {canDoBilling ? <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link> : <span className="flex items-center"><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</span>}
+                  </Button>
+                )}
+                {hasQuotation && (
+                  <Button asChild={canDoBilling} className={cn("w-full h-9 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling}>
+                    {canDoBilling ? <Link href={`/app/office/documents/quotation/${job.salesDocId}`}><FileText className="mr-2 h-4 w-4" />ดูใบเสนอราคา {job.salesDocNo}</Link> : <span className="flex items-center"><FileText className="mr-2 h-4 w-4" />ดูใบเสนอราคา {job.salesDocNo}</span>}
+                  </Button>
+                )}
 
                 {/* Billing Logic */}
-                {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (hasBillingDoc ? (<Button asChild className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline"><Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</Link></Button>) : (<Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !isOfficeOrAdmin && "opacity-50 grayscale")} variant="outline" disabled={!isOfficeOrAdmin} onClick={() => setBillingJob(job)}><Receipt className="mr-2 h-4 w-4" />ออกบิล</Button>))}
+                {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
+                  hasBillingDoc ? (
+                    <Button asChild={canDoBilling} className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling}>
+                      {canDoBilling ? <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</Link> : <span className="flex items-center"><Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}</span>}
+                    </Button>
+                  ) : (
+                    <Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling} onClick={() => setBillingJob(job)}>
+                      <Receipt className="mr-2 h-4 w-4" />ออกบิล
+                    </Button>
+                  )
+                )}
               </CardFooter>
             </Card>
           );

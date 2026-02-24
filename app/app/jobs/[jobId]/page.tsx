@@ -114,13 +114,6 @@ function JobDetailsPageContent() {
   const [isSavingTechReport, setIsSavingTechReport] = useState(false);
   const [isRequestingQuotation, setIsRequestingQuotation] = useState(false);
 
-  const [isApprovalActionLoading, setIsApprovalActionLoading] = useState(false);
-  const [isApproveConfirmOpen, setIsApproveConfirmOpen] = useState(false);
-  const [isPartsReadyConfirmOpen, setIsPartsReadyConfirmOpen] = useState(false);
-  const [isRejectChoiceOpen, setIsRejectChoiceOpen] = useState(false);
-  const [isRejectConfirmOpen, setIsRejectConfirmOpen] = useState(false);
-  const [rejectionChoice, setRejectionChoice] = useState<'with_cost' | 'no_cost' | null>(null);
-  
   const [relatedDocuments, setRelatedDocuments] = useState<Partial<Record<DocType, DocumentType[]>>>({});
   const [loadingDocs, setLoadingDocs] = useState(true);
 
@@ -134,8 +127,6 @@ function JobDetailsPageContent() {
   const [vehicleEditData, setVehicleEditData] = useState<any>({});
   const [isUpdatingVehicle, setIsUpdatingVehicle] = useState(false);
 
-  const [billingJob, setBillingJob] = useState<Job | null>(null);
-  
   const isSubTask = useMemo(() => job?.mainDepartment && job.department !== job.mainDepartment, [job]);
 
   const activitiesQuery = useMemo(() => {
@@ -153,7 +144,10 @@ function JobDetailsPageContent() {
   const isUserAdmin = profile?.role === 'ADMIN';
   const isManager = profile?.role === 'MANAGER';
   const isOfficer = profile?.role === 'OFFICER';
-  const isOfficeOrAdminOrMgmt = (isUserAdmin || isManager || isOfficer || profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT') && isStaff;
+  
+  // Stricter check for office personnel who can issue bills
+  const isOfficeDept = profile?.department === 'OFFICE' || profile?.department === 'MANAGEMENT' || profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
+  const canIssueBill = isOfficeDept && isStaff;
   
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
@@ -460,6 +454,18 @@ function JobDetailsPageContent() {
     .finally(() => setIsSubmittingNote(false));
   };
 
+  const handleFinishJob = async () => {
+    if (!db || !profile || !job) return;
+    setIsSubmittingNote(true);
+    const jobDocRef = doc(db, "jobs", job.id);
+    const batch = writeBatch(db);
+    batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `ช่างกดจบงานเรียบร้อยแล้ว รอดำเนินการออกบิลโดยแผนกออฟฟิศ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.commit().then(() => toast({ title: "บันทึกจบงานสำเร็จ", description: "ระบบแจ้งแผนกออฟฟิศเพื่อเตรียมออกบิลให้แล้วค่ะ" }))
+    .catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message }))
+    .finally(() => setIsSubmittingNote(false));
+  };
+
   const handleOpenReassignDialog = async () => {
     if (!db || !job) return;
     setIsReassignDialogOpen(true);
@@ -576,8 +582,14 @@ function JobDetailsPageContent() {
                     )}
 
                     {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
-                        <Button onClick={isSubTask ? handleReturnToMain : () => router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`)} disabled={isSubmittingNote || isViewOnly} className={isSubTask ? "bg-green-600 hover:bg-green-700 text-white" : ""} variant={isSubTask ? "default" : "outline"}>
-                            <CheckCircle className="mr-2 h-4 w-4" /> {isSubTask ? "ส่งงานกลับแผนกหลัก" : "จบงาน/ออกบิล"}
+                        <Button 
+                          onClick={isSubTask ? handleReturnToMain : (canIssueBill ? () => router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`) : handleFinishJob)} 
+                          disabled={isSubmittingNote || isViewOnly} 
+                          className={isSubTask || !canIssueBill ? "bg-green-600 hover:bg-green-700 text-white" : ""} 
+                          variant={isSubTask || !canIssueBill ? "default" : "outline"}
+                        >
+                            <CheckCircle className="mr-2 h-4 w-4" /> 
+                            {isSubTask ? "ส่งงานกลับแผนกหลัก" : (canIssueBill ? "จบงาน/ออกบิล" : "จบงาน (Finish Job)")}
                         </Button>
                     )}
                 </div>
