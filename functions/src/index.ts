@@ -12,7 +12,7 @@ export const closeJobAfterAccounting = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "User must be authenticated.");
 
-    const { jobId, paymentStatus } = request.data as { jobId: string; paymentStatus?: "PAID" | "UNPAID" };
+    const { jobId, paymentStatus } = (request.data || {}) as { jobId: string; paymentStatus?: "PAID" | "UNPAID" };
     if (!jobId) throw new HttpsError("invalid-argument", "Missing jobId.");
 
     try {
@@ -42,7 +42,7 @@ export const closeJobAfterAccounting = onCall(
         { merge: true }
       );
 
-      // Move activities subcollection
+      // Move activities subcollection (Simplified for MVP, assuming < 500 activities)
       const activitiesSnap = await jobRef.collection("activities").get();
       if (!activitiesSnap.empty) {
         const batch = db.batch();
@@ -53,7 +53,7 @@ export const closeJobAfterAccounting = onCall(
         await batch.commit();
       }
 
-      // Delete original job
+      // Delete original job recursively
       await db.recursiveDelete(jobRef);
       
       return { ok: true, jobId };
@@ -97,13 +97,19 @@ export const migrateClosedJobsToArchive2026 = onCall(
         let jobDate = jobData.closedDate || defaultClosedDate;
         if (!jobData.closedDate && jobData.updatedAt) {
             try {
-                jobDate = jobData.updatedAt.toDate().toISOString().split('T')[0];
+                // Handle both Firestore Timestamp and raw Date strings
+                const updatedVal = jobData.updatedAt;
+                const d = updatedVal.toDate ? updatedVal.toDate() : new Date(updatedVal);
+                jobDate = d.toISOString().split('T')[0];
             } catch (e) {
                 jobDate = defaultClosedDate;
             }
         }
         
-        const archiveYear = jobDate.startsWith('2026') ? 2026 : currentYear;
+        // Ensure year is numeric and safe
+        const rawYearStr = jobDate.split('-')[0];
+        const archiveYear = parseInt(rawYearStr) || currentYear;
+        
         const archiveRef = db.collection(`jobsArchive_${archiveYear}`).doc(jobId);
         const archiveSnap = await archiveRef.get();
 
@@ -135,7 +141,7 @@ export const migrateClosedJobsToArchive2026 = onCall(
           skipped++;
         }
 
-        // Use recursive delete to clean up original job and its subcollections
+        // Delete original job
         await db.recursiveDelete(jobDoc.ref);
       } catch (e: any) {
         console.error(`Migration error for job ${jobDoc.id}:`, e);
@@ -153,43 +159,48 @@ export const chatWithJimmy = onCall(
   async (request) => {
     if (!request.auth) throw new HttpsError("unauthenticated", "กรุณาเข้าสู่ระบบก่อนนะคะ");
 
+    // Check user role for management scope
     const userRef = db.collection("users").doc(request.auth.uid);
     const userSnap = await userRef.get();
     const userData = userSnap.data();
 
-    const { message, history = [], scope = 'TECHNICAL', contextData = {} } = request.data;
+    const data = request.data || {};
+    const message = (data.message || "").toString().trim();
+    const history = data.history || [];
+    const scope = data.scope || 'TECHNICAL';
+    const contextData = data.contextData || {};
     
     if (!message) throw new HttpsError("invalid-argument", "กรุณาพิมพ์ข้อความด้วยนะคะ");
 
-    // ใช้ API Key จาก Environment (Firebase Secret หรือ Config)
-    // หากไม่มีใน Env จะพยายามหาจาก Settings เป็นทางเลือกสุดท้าย
+    // Resolve API Key
     let apiKey = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY;
-    
     if (!apiKey) {
         const aiSettings = await db.collection("settings").doc("ai").get();
         apiKey = aiSettings.data()?.geminiApiKey;
     }
 
-    if (!apiKey) throw new HttpsError("failed-precondition", "ระบบ AI ยังไม่พร้อมใช้งาน (Missing API Key)");
+    if (!apiKey) {
+        throw new HttpsError("failed-precondition", "กรุณาตั้งค่า Gemini API Key ในหน้าแอปก่อนนะคะพี่โจ้");
+    }
 
     try {
       const isTechnical = scope === 'TECHNICAL';
       
       const systemInstruction = isTechnical 
-        ? `คุณคือ "น้องจิมมี่" (Technical Expert) ผู้ช่วยช่างอัจฉริยะประจำร้าน Sahadiesel
+        ? `คุณคือ "น้องจิมมี่" (Diagnostic Expert) ผู้ช่วยช่างอัจฉริยะประจำร้าน Sahadiesel
         
         **บุคลิกและเป้าหมาย:**
         - เป็นผู้หญิง เสียงหวาน ขี้เล่นนิดๆ แต่มีความรู้เรื่องเครื่องยนต์ดีเซลระดับวิศวกร
         - แทนตัวเองว่า "จิมมี่" และลงท้ายว่า "ค่ะพี่" หรือ "นะคะ" เสมอ
         
         **หน้าที่ของคุณ:**
-        1. วิเคราะห์อาการทันที: ใช้ความรู้ AI วิเคราะห์รหัส DTC หรืออาการรถที่พี่ช่างพิมพ์มา อธิบายสาเหตุและวิธีเช็คแบบมือโปร
+        1. วิเคราะห์อาการทันที: ใช้ความรู้ AI วิเคราะห์รหัส DTC หรืออาการรถที่พี่ช่างพิมพ์มา
         2. อ้างอิงข้อมูลร้าน: ใช้ข้อมูล 'บันทึกการซ่อม' ที่ได้รับมาบอกพี่ช่างว่า "ในร้านเราเคยแก้แบบนี้ค่ะ..."
-        3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์จากรายการคู่มือใน Drive ให้พี่กดดูทันที
+        3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์เพื่อให้พี่เปิดดูข้อมูลที่ถูกต้อง
         
         **ข้อมูลร้านที่จิมมี่เห็นตอนนี้:**
-        - บันทึกการซ่อม: ${JSON.stringify(contextData.experiences || [])}
-        - รายชื่อคู่มือใน Drive: ${JSON.stringify(contextData.manuals || [])}`
+        - บันทึกการซ่อมล่าสุด: ${JSON.stringify(contextData.experiences || [])}
+        - รายชื่อคู่มือในระบบ: ${JSON.stringify(contextData.manuals || [])}`
         
         : `คุณคือ "น้องจิมมี่" (Business Assistant) ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
         
@@ -201,7 +212,7 @@ export const chatWithJimmy = onCall(
         1. วิเคราะห์ธุรกิจ: สรุปภาพรวมงานซ่อมและบัญชีจากข้อมูลที่ได้รับ
         2. ให้คำแนะนำบริหาร: แจ้งเตือนหากพบงานค้างนาน หรือยอดใช้จ่ายผิดปกติ
         
-        **ข้อมูลธุรกิจที่ได้รับ:**
+        **ข้อมูลธุรกิจที่จิมมี่สรุปได้:**
         ${JSON.stringify(contextData.businessSummary || {})}`;
 
       const genAI = new GoogleGenerativeAI(apiKey);
@@ -210,19 +221,23 @@ export const chatWithJimmy = onCall(
         systemInstruction: systemInstruction,
       });
 
-      // จัดการประวัติแชทให้ตรงตามรูปแบบ SDK
+      // Prepare chat history for SDK format
       const chat = model.startChat({
         history: history.map((m: any) => ({
           role: m.role === 'model' ? 'model' : 'user',
-          parts: [{ text: m.content }],
+          parts: [{ text: m.content || "" }],
         })),
       });
 
       const result = await chat.sendMessage(message);
-      return { answer: result.response.text() };
+      const responseText = result.response.text();
+      
+      return { answer: responseText };
     } catch (e: any) {
-      console.error("Jimmy AI Error:", e);
-      throw new HttpsError("internal", "น้องจิมมี่สับสนนิดหน่อยค่ะ: " + (e?.message || "Unknown error"));
+      console.error("Jimmy AI Error Detail:", e);
+      // Construct a meaningful error message for the client
+      const errorMsg = e?.message || "Unknown AI error";
+      throw new HttpsError("internal", `น้องจิมมี่สับสนนิดหน่อยค่ะ: ${errorMsg}`);
     }
   }
 );

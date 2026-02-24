@@ -96,10 +96,18 @@ export default function AdminChatPage() {
         timestamp: new Date() 
       }]);
     } catch (error: any) {
-      toast({ variant: "destructive", title: "จิมมี่ขัดข้อง", description: error.message });
+      console.error("Chat Error:", error);
+      const errorDetail = error.message || "Unknown Error";
+      
+      toast({ 
+        variant: "destructive", 
+        title: "จิมมี่ขัดข้อง", 
+        description: errorDetail === 'internal' ? "ระบบประมวลผลล้มเหลว (Internal Error)" : errorDetail 
+      });
+
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้อง: ${error.message || "Unknown Error"}`, 
+        content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้อง: ${errorDetail === 'internal' ? "เซิร์ฟเวอร์ประมวลผลพลาด (Internal Error)" : errorDetail}\n\nหากอาการไม่ดีขึ้น รบกวนพี่ตรวจสอบ Gemini API Key ในหน้าตั้งค่า AI นะคะ`, 
         timestamp: new Date() 
       }]);
     } finally {
