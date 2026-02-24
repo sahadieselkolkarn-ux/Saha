@@ -104,6 +104,7 @@ export interface Job {
     taxBranchNo?: string;
   };
   department: JobDepartment;
+  mainDepartment?: JobDepartment; // Added to track owner department
   status: JobStatus;
   description: string;
   officeNote?: string;

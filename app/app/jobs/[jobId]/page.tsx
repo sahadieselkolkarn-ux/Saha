@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { JOB_DEPARTMENTS, type JobStatus } from "@/lib/constants";
-import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen, Eye, Trash2 } from "lucide-react";
+import { Loader2, User, Clock, Paperclip, X, Send, Save, AlertCircle, Camera, FileText, CheckCircle, ArrowLeft, Ban, PackageCheck, Check, UserCheck, Edit, Phone, Receipt, ImageIcon, BookOpen, Eye, Trash2, Forward, History } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobActivity, JobDepartment, Document as DocumentType, DocType, UserProfile, Vendor } from "@/lib/types";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -102,6 +102,9 @@ function JobDetailsPageContent() {
   const [transferDepartment, setTransferDepartment] = useState<JobDepartment | ''>('');
   const [transferNote, setTransferNote] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
+
+  const [isSubTransferDialogOpen, setIsSubTransferDialogOpen] = useState(false);
+  const [subTransferDept, setSubTransferDept] = useState<JobDepartment | ''>('');
   
   const [isReassignDialogOpen, setIsReassignDialogOpen] = useState(false);
   const [departmentWorkers, setDepartmentWorkers] = useState<WithId<UserProfile>[]>([]);
@@ -157,6 +160,8 @@ function JobDetailsPageContent() {
   const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
   const canUpdateActivity = isStaff;
   const canEditDetails = isStaff && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing);
+
+  const isSubTask = useMemo(() => job?.mainDepartment && job.department !== job.mainDepartment, [job]);
 
   const getJobRef = () => {
     if (!db || !job) return null;
@@ -512,7 +517,7 @@ function JobDetailsPageContent() {
     setIsTransferring(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
-    batch.update(jobDocRef, { department: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
+    batch.update(jobDocRef, { department: transferDepartment, mainDepartment: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
     batch.set(doc(collection(jobDocRef, "activities")), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${deptLabel(transferDepartment)}. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
@@ -526,6 +531,72 @@ function JobDetailsPageContent() {
       }));
     }).finally(() => {
       setIsTransferring(false);
+    });
+  };
+
+  const handleSubTransfer = async () => {
+    if (!db || !profile || !job || !subTransferDept) return;
+    setIsTransferring(true);
+    const jobDocRef = doc(db, "jobs", job.id);
+    const batch = writeBatch(db);
+    
+    const updateData = {
+        department: subTransferDept,
+        mainDepartment: job.mainDepartment || job.department, // Preserve main if already set, or set current as main
+        status: 'RECEIVED',
+        assigneeUid: null,
+        assigneeName: null,
+        lastActivityAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    };
+
+    batch.update(jobDocRef, updateData);
+    batch.set(doc(collection(jobDocRef, "activities")), {
+        text: `ส่งงานต่อให้แผนก: ${deptLabel(subTransferDept)} เพื่อดำเนินการย่อย`,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp()
+    });
+
+    batch.commit().then(() => {
+        toast({ title: `ส่งงานต่อไปยังแผนก ${deptLabel(subTransferDept)} เรียบร้อย` });
+        setIsSubTransferDialogOpen(false);
+    }).catch(e => {
+        toast({ variant: 'destructive', title: 'ส่งงานไม่สำเร็จ', description: e.message });
+    }).finally(() => {
+        setIsTransferring(false);
+    });
+  };
+
+  const handleReturnToMain = async () => {
+    if (!db || !profile || !job || !job.mainDepartment) return;
+    setIsSubmittingNote(true);
+    const jobDocRef = doc(db, "jobs", job.id);
+    const batch = writeBatch(db);
+
+    const updateData = {
+        department: job.mainDepartment,
+        status: 'IN_PROGRESS',
+        assigneeUid: null,
+        assigneeName: null,
+        lastActivityAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    };
+
+    batch.update(jobDocRef, updateData);
+    batch.set(doc(collection(jobDocRef, "activities")), {
+        text: `แผนกย่อย (${deptLabel(job.department)}) ดำเนินการเสร็จสิ้น ส่งงานกลับแผนกหลัก (${deptLabel(job.mainDepartment)})`,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp()
+    });
+
+    batch.commit().then(() => {
+        toast({ title: "ส่งงานกลับแผนกหลักเรียบร้อยแล้วค่ะ" });
+    }).catch(e => {
+        toast({ variant: 'destructive', title: 'ส่งงานกลับไม่สำเร็จ', description: e.message });
+    }).finally(() => {
+        setIsSubmittingNote(false);
     });
   };
 
@@ -706,7 +777,12 @@ function JobDetailsPageContent() {
                 <h4 className="font-semibold text-base">ลูกค้า</h4>
                 <p>{job.customerSnapshot.name} (<a href={`tel:${job.customerSnapshot.phone}`} className="text-primary hover:underline font-medium inline-flex items-center gap-1"><Phone className="h-3 w-3" />{job.customerSnapshot.phone}</a>)</p>
               </div>
-              <div><h4 className="font-semibold text-base">แผนก</h4><p>{deptLabel(job.department)}</p></div>
+              <div className="flex gap-8">
+                <div><h4 className="font-semibold text-base">แผนกที่ดูแล</h4><Badge variant="secondary" className="text-sm">{deptLabel(job.department)}</Badge></div>
+                {job.mainDepartment && job.mainDepartment !== job.department && (
+                    <div><h4 className="font-semibold text-base text-muted-foreground">แผนกหลัก (เจ้าของงาน)</h4><Badge variant="outline" className="text-sm">{deptLabel(job.mainDepartment)}</Badge></div>
+                )}
+              </div>
               {job.assigneeName && <div><h4 className="font-semibold text-base">{job.department === 'OUTSOURCE' ? 'ร้านที่รับทำ' : 'ผู้รับผิดชอบ'}</h4><p>{job.assigneeName}</p></div>}
               <div>
                 <div className="flex items-center gap-4">
@@ -723,7 +799,7 @@ function JobDetailsPageContent() {
                   <JobVehicleDetails job={job} />
               </div>
                <div className="flex gap-2 pt-4 border-t">
-                  {canEditDetails && <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>เปลี่ยนแปลงแผนก</Button>}
+                  {canEditDetails && <Button onClick={() => setIsTransferDialogOpen(true)} variant="outline" size="sm" disabled={isViewOnly}>เปลี่ยนแปลงแผนกหลัก</Button>}
                   {canEditDetails && (
                       <Button onClick={handleOpenReassignDialog} variant="outline" size="sm" disabled={isViewOnly}>
                           <UserCheck className="mr-2 h-4 w-4" /> 
@@ -858,7 +934,16 @@ function JobDetailsPageContent() {
                             <input type="file" className="hidden" multiple accept="image/jpeg,image/png" capture="environment" onChange={handlePhotoChange} />
                         </label>
                     </Button>
+                    
+                    {/* Transfer / Forward Button */}
+                    {!isSubTask && !isViewOnly && (
+                        <Button variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setIsSubTransferDialogOpen(true)}>
+                            <Forward className="mr-2 h-4 w-4" /> ส่งงานต่อ
+                        </Button>
+                    )}
+
                     {job.status === 'IN_PROGRESS' && <Button onClick={handleRequestQuotation} disabled={isRequestingQuotation || isSubmittingNote || isViewOnly} variant="outline"><FileText className="mr-2 h-4 w-4"/> แจ้งเสนอราคา</Button>}
+                    
                     {job.status === 'WAITING_QUOTATION' && !hasQuotation && (
                       <Button asChild={isOfficeOrAdminOrMgmt} variant="outline" className="border-primary text-primary hover:bg-primary/10" disabled={!isOfficeOrAdminOrMgmt}>
                         {isOfficeOrAdminOrMgmt ? (
@@ -877,7 +962,19 @@ function JobDetailsPageContent() {
                         </Link>
                       </Button>
                     )}
-                    {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && <Button onClick={handleMarkAsDone} disabled={isSubmittingNote || isViewOnly} variant="outline"><CheckCircle className="mr-2 h-4 w-4" /> จบงาน</Button>}
+
+                    {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS'].includes(job.status) && (
+                        <Button 
+                            onClick={isSubTask ? handleReturnToMain : handleMarkAsDone} 
+                            disabled={isSubmittingNote || isViewOnly} 
+                            className={isSubTask ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                            variant={isSubTask ? "default" : "outline"}
+                        >
+                            <CheckCircle className="mr-2 h-4 w-4" /> 
+                            {isSubTask ? "ส่งงานกลับแผนกหลัก" : "จบงาน"}
+                        </Button>
+                    )}
+
                     {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
                       hasBillingDoc ? (
                         <Button asChild variant="outline" className="border-primary text-primary hover:bg-primary/10">
@@ -993,13 +1090,13 @@ function JobDetailsPageContent() {
 
       <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
           <DialogContent>
-              <DialogHeader><DialogTitle>โอนย้ายแผนก</DialogTitle><DialogDescription>เลือกแผนกปลายทางและเพิ่มหมายเหตุ (ถ้ามี)</DialogDescription></DialogHeader>
+              <DialogHeader><DialogTitle>โอนย้ายแผนกหลัก</DialogTitle><DialogDescription>เลือกแผนกปลายทางที่จะรับผิดชอบงานนี้เป็นแผนกหลัก</DialogDescription></DialogHeader>
               <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
                       <Label htmlFor="department">แผนกใหม่</Label>
                       <Select value={transferDepartment} onValueChange={(v) => setTransferDepartment(v as JobDepartment)}>
                           <SelectTrigger><SelectValue placeholder="เลือกแผนก" /></SelectTrigger>
-                          <SelectContent>{JOB_DEPARTMENTS.filter(d => d !== job?.department).map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                          <SelectContent>{JOB_DEPARTMENTS.filter(d => d !== job?.department).map(d => <SelectItem key={d} value={d}>{deptLabel(d)}</SelectItem>)}</SelectContent>
                       </Select>
                   </div>
                   <div className="grid gap-2"><Label htmlFor="note">หมายเหตุ</Label><Textarea id="note" value={transferNote} onChange={(e) => setTransferNote(e.target.value)} /></div>
@@ -1007,6 +1104,38 @@ function JobDetailsPageContent() {
               <DialogFooter>
                   <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={isTransferring}>ยกเลิก</Button>
                   <Button onClick={handleTransferJob} disabled={isTransferring || !transferDepartment}>{isTransferring && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยัน</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSubTransferDialogOpen} onOpenChange={setIsSubTransferDialogOpen}>
+          <DialogContent>
+              <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2"><Forward className="h-5 w-5 text-primary" /> ส่งงานต่อ (เปิดงานย่อย)</DialogTitle>
+                  <DialogDescription>เลือกแผนกที่ต้องการส่งต่อเพื่อดำเนินการในส่วนที่เกี่ยวข้อง</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                      <Label>แผนกปลายทาง</Label>
+                      <Select value={subTransferDept} onValueChange={(v) => setSubTransferDept(v as JobDepartment)}>
+                          <SelectTrigger><SelectValue placeholder="เลือกแผนก..." /></SelectTrigger>
+                          <SelectContent>
+                              <SelectItem value="COMMONRAIL">แผนกคอมมอนเรล</SelectItem>
+                              <SelectItem value="MECHANIC">แผนกแมคคานิค</SelectItem>
+                              <SelectItem value="OUTSOURCE">ส่งงานนอก (Outsource)</SelectItem>
+                          </SelectContent>
+                      </Select>
+                  </div>
+                  <div className="p-3 bg-muted/50 rounded-md text-xs text-muted-foreground flex gap-2">
+                      <History className="h-4 w-4 shrink-0" />
+                      <p>เมื่อแผนกปลายทางดำเนินการเสร็จ จะมีปุ่มให้ "ส่งงานกลับ" เพื่อมาจบงานที่แผนกหลัก ({deptLabel(job.mainDepartment || job.department)}) ค่ะ</p>
+                  </div>
+              </div>
+              <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsSubTransferDialogOpen(false)}>ยกเลิก</Button>
+                  <Button onClick={handleSubTransfer} disabled={isTransferring || !subTransferDept}>
+                      {isTransferring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />} ยืนยันการส่งต่อ
+                  </Button>
               </DialogFooter>
           </DialogContent>
       </Dialog>
@@ -1039,7 +1168,7 @@ function JobDetailsPageContent() {
         <DialogContent>
             <DialogHeader><DialogTitle>แก้ไขรายละเอียดรถ/ชิ้นส่วน</DialogTitle></DialogHeader>
             <div className="grid gap-4 py-4">
-                {(job.carServiceDetails || job.department === 'CAR_SERVICE') ? (
+                {(job.carServiceDetails || job.department === 'CAR_SERVICE' || job.mainDepartment === 'CAR_SERVICE') ? (
                     <>
                         <div className="grid gap-2"><Label>ยี่ห้อรถ</Label><Input value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} /></div>
                         <div className="grid gap-2"><Label>รุ่นรถ</Label><Input value={vehicleEditData.model || ""} onChange={e => setVehicleEditData({...vehicleEditData, model: e.target.value})} /></div>

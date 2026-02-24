@@ -174,6 +174,7 @@ export default function IntakePage() {
             id: jobId,
             customerId: values.customerId,
             department: values.department,
+            mainDepartment: values.department, // Initialize main department
             description: values.description,
             customerSnapshot: { 
               name: selectedCustomer.name, 
@@ -463,7 +464,7 @@ export default function IntakePage() {
                         </Button>
                         
                         <Button 
-                          type="button"
+                          type="button" 
                           variant="outline" 
                           className="h-24 flex-col gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5" 
                           disabled={photos.length >= MAX_INTAKE_PHOTOS || isSubmitting}
