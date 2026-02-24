@@ -327,7 +327,7 @@ export default function ManagementHRLeavesPage() {
         } catch (e: any) {
             console.error("Failed to fetch summary extras:", e);
             if (e.message?.includes('requires an index')) {
-                const urlMatch = e.message.match(/https?:\/\/[^\s]+/);
+                const urlMatch = error.message.match(/https?:\/\/[^\s]+/);
                 if (urlMatch) setIndexCreationUrl(urlMatch[0]);
             }
         } finally {
