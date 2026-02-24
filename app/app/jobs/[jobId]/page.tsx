@@ -150,7 +150,16 @@ function JobDetailsPageContent() {
   const canIssueBill = isOfficeDept && isStaff;
   
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
-  const isViewOnly = (job?.status === 'CLOSED' && !allowEditing) || job?.isArchived || profile?.role === 'VIEWER';
+  
+  // Custom logic for view-only based on job status and department
+  const isTechnicalDept = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
+  const isJobInFinishedState = job?.status === 'DONE' || job?.status === 'WAITING_CUSTOMER_PICKUP' || job?.status === 'CLOSED';
+
+  const isViewOnly = job?.isArchived || 
+                     profile?.role === 'VIEWER' || 
+                     (job?.status === 'CLOSED' && !allowEditing) ||
+                     (isJobInFinishedState && !allowEditing && isTechnicalDept && !isOfficeDept);
+
   const canUpdateActivity = isStaff;
   
   // New strict permission for main details: only Office, Management, or Admins can edit
