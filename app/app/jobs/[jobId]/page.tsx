@@ -764,7 +764,25 @@ function JobDetailsPageContent() {
                 (['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'] as DocType[]).map(docType => {
                     const label = { QUOTATION: 'ใบเสนอราคา', DELIVERY_NOTE: 'ใบส่งของชั่วคราว', TAX_INVOICE: 'ใบกำกับภาษี', RECEIPT: 'ใบเสร็จ' }[docType];
                     const latestDoc = relatedDocuments[docType]?.[0];
-                    return (<div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0"><span className="text-muted-foreground pt-1">{label}:</span>{latestDoc ? (<div className="flex col items-end gap-1"><div className="flex items-center gap-2"><Button asChild variant="link" className="p-0 h-auto font-medium"><Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link></Button><Badge variant="outline" className="text-[8px] px-1 h-4">{latestDoc.status}</Badge></div></div>) : <span className="pt-1">— ไม่มี —</span>}</div>);
+                    return (
+                      <div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
+                        <span className="text-muted-foreground pt-1">{label}:</span>
+                        {latestDoc ? (
+                          <div className="flex col items-end gap-1">
+                            <div className="flex items-center gap-2">
+                              {isTechnicalDept ? (
+                                <span className="font-medium">{latestDoc.docNo}</span>
+                              ) : (
+                                <Button asChild variant="link" className="p-0 h-auto font-medium">
+                                  <Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link>
+                                </Button>
+                              )}
+                              <Badge variant="outline" className="text-[8px] px-1 h-4">{latestDoc.status}</Badge>
+                            </div>
+                          </div>
+                        ) : <span className="pt-1">— ไม่มี —</span>}
+                      </div>
+                    );
                 })
               )}
             </CardContent></Card>
