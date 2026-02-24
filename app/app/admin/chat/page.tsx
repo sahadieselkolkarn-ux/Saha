@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { collection, query, getDocs, limit, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -13,12 +12,12 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
-  Bot, Send, Loader2, Sparkles, User, 
-  ShieldAlert, Heart, Database, Info 
+  Bot, Send, Loader2, Heart, ShieldAlert 
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { askJimmy } from "@/ai/flows/jimmy-ai-flow";
 
 interface Message {
   role: 'user' | 'model';
@@ -27,14 +26,14 @@ interface Message {
 }
 
 export default function AdminChatPage() {
-  const { db, app: firebaseApp } = useFirebase();
+  const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: `สวัสดีค่ะพี่โจ้! น้องจิมมี่พร้อมช่วยพี่โจ้ดูแลร้านสหดีเซลแบบเต็มตัวแล้วค่ะ ตอนนี้น้องจิมมี่สามารถประมวลผลข้อมูลบัญชีและงานซ่อมที่พี่ดึงมาให้ดูได้แล้วนะคะ พี่โจ้อยากรู้อะไรพิมพ์ถามน้องจิมมี่ได้เลยนะคะ!`,
+      content: `สวัสดีค่ะพี่โจ้! น้องจิมมี่พร้อมช่วยพี่โจ้ดูแลร้านสหดีเซลแบบเต็มตัวแล้วค่ะ ตอนนี้น้องจิมมี่ทำงานผ่านระบบ AI ภายในของ Firebase แล้วนะคะ พี่โจ้อยากรู้อะไรพิมพ์ถามน้องจิมมี่ได้เลยนะคะ!`,
       timestamp: new Date()
     }
   ]);
@@ -54,7 +53,7 @@ export default function AdminChatPage() {
   }, [messages, isLoading]);
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading || !db || !firebaseApp) return;
+    if (!inputValue.trim() || isLoading || !db) return;
 
     const userMsg = inputValue.trim();
     setInputValue("");
@@ -77,37 +76,31 @@ export default function AdminChatPage() {
         }))
       };
 
-      // 2. Call Jimmy AI via Cloud Function
-      const functions = getFunctions(firebaseApp, 'us-central1');
-      const chatWithJimmy = httpsCallable(functions, 'chatWithJimmy');
-      
+      // 2. Call Jimmy AI via Genkit Flow (Firebase internal)
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const result = await chatWithJimmy({ 
+      const result = await askJimmy({ 
         message: userMsg, 
         scope: 'MANAGEMENT',
         history,
         contextData: { businessSummary }
       });
       
-      const data = result.data as any;
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: data?.answer || "ขอโทษทีค่ะพี่ จิมมี่ประมวลผลขัดข้อง รบกวนลองอีกรอบนะคะ", 
+        content: result.answer, 
         timestamp: new Date() 
       }]);
     } catch (error: any) {
       console.error("Chat Error:", error);
-      const errorDetail = error.message || "Unknown Error";
-      
       toast({ 
         variant: "destructive", 
         title: "จิมมี่ขัดข้อง", 
-        description: errorDetail === 'internal' ? "เซิร์ฟเวอร์ขัดข้อง (CORS/Auth) กรุณาลองใหม่อีกครั้งค่ะ" : errorDetail 
+        description: error.message || "เกิดข้อผิดพลาดในการประมวลผล AI"
       });
 
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้อง: ${errorDetail}\n\nหากพี่ใช้ Chrome รบกวนตรวจสอบว่าได้กด "Publish" หรือลองรีเฟรชหน้าจอใหม่อีกครั้งนะคะ หรือตรวจสอบ Gemini API Key ในหน้าตั้งค่า AI ค่ะ`, 
+        content: `ขอโทษทีค่ะพี่ ระบบจิมมี่ขัดข้อง: ${error.message}\n\nรบกวนพี่ตรวจสอบ Gemini API Key ในหน้าตั้งค่าโปรไฟล์นะคะ`, 
         timestamp: new Date() 
       }]);
     } finally {
@@ -152,10 +145,10 @@ export default function AdminChatPage() {
             <div className="bg-white/20 p-2 rounded-full ring-2 ring-white/30"><Bot className="h-6 w-6" /></div>
             <div>
               <h3 className="font-bold text-lg leading-none flex items-center gap-2">น้องจิมมี่ <Badge variant="secondary" className="bg-pink-500/80 text-white text-[10px] h-4">Manager Assistant</Badge></h3>
-              <p className="text-xs text-primary-foreground/70 mt-1">ผู้ช่วยคนเก่งประจำโต๊ะทำงานพี่โจ้</p>
+              <p className="text-xs text-primary-foreground/70 mt-1">ผู้ช่วยคนเก่งประจำโต๊ะทำงานพี่โจ้ (Powered by Firebase)</p>
             </div>
           </div>
-          <Badge variant="outline" className="text-[10px] border-white/40 text-white bg-white/10">SYSTEM AI CONNECTED</Badge>
+          <Badge variant="outline" className="text-[10px] border-white/40 text-white bg-white/10">FIREBASE AI CONNECTED</Badge>
         </div>
 
         <ScrollArea className="flex-1 p-4 bg-muted/5" ref={scrollRef}>

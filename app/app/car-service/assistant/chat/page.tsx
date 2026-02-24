@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { collection, query, getDocs, limit, orderBy } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -15,10 +14,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { 
   Bot, Send, Loader2, Sparkles, User, 
-  Database, Info, CheckCircle2 
+  Database 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { askJimmy } from "@/ai/flows/jimmy-ai-flow";
 
 interface Message {
   role: 'user' | 'model';
@@ -27,16 +27,16 @@ interface Message {
 }
 
 export default function CarRepairAIChatPage() {
-  const { db, app: firebaseApp } = useFirebase();
+  const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'model',
-      content: `สวัสดีค่ะพี่ๆ ช่าง! จิมมี่มารับหน้าที่ดูแลการวิเคราะห์อาการรถให้แล้วนะคะ
+      content: `สวัสดีค่ะพี่ๆ ช่าง! จิมมี่มารับหน้าที่ดูแลการวิเคราะห์อาการรถผ่านระบบ AI ของร้านแล้วนะคะ
 
-วันนี้พี่เจอรถคันไหนอาการหนัก หรือเจอโค้ด DTC อะไรมา พิมพ์บอกจิมมี่ได้เลยค่ะ จิมมี่จะช่วยวิเคราะห์สาเหตุ พร้อมกับค้นหาบันทึกการซ่อมในร้านและคู่มือให้พี่ลุยงานต่อได้ทันทีเลยค่ะ!`,
+วันนี้พี่เจอรถคันไหนอาการหนัก หรือเจอโค้ด DTC อะไรมา พิมพ์บอกจิมมี่ได้เลยค่ะ จิมมี่จะช่วยวิเคราะห์สาเหตุ พร้อมกับค้นหาบันทึกการซ่อมและคู่มือให้พี่ลุยงานต่อได้ทันทีเลยค่ะ!`,
       timestamp: new Date()
     }
   ]);
@@ -54,7 +54,7 @@ export default function CarRepairAIChatPage() {
   }, [messages, isLoading]);
 
   const handleSend = async () => {
-    if (!inputValue.trim() || isLoading || !db || !firebaseApp) return;
+    if (!inputValue.trim() || isLoading || !db) return;
 
     const userMsg = inputValue.trim();
     setInputValue("");
@@ -71,22 +71,18 @@ export default function CarRepairAIChatPage() {
       const experiences = expSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const manuals = manualsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-      // 2. Call Jimmy AI via Cloud Function
-      const functions = getFunctions(firebaseApp, 'us-central1');
-      const chatWithJimmy = httpsCallable(functions, 'chatWithJimmy');
-      
+      // 2. Call Jimmy AI via Genkit Flow
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const result = await chatWithJimmy({ 
+      const result = await askJimmy({ 
         message: userMsg, 
         scope: 'TECHNICAL',
         history,
         contextData: { experiences, manuals }
       });
       
-      const data = result.data as any;
       setMessages(prev => [...prev, { 
         role: 'model', 
-        content: data?.answer || "ขอโทษทีค่ะพี่ จิมมี่ประมวลผลขัดข้อง รบกวนลองอีกรอบนะคะ", 
+        content: result.answer, 
         timestamp: new Date() 
       }]);
     } catch (error: any) {
@@ -119,7 +115,7 @@ export default function CarRepairAIChatPage() {
                 <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                     <Database className="h-3 w-3" /> แหล่งข้อมูล: ประวัติซ่อม & คู่มือร้าน
                 </div>
-                <Badge variant="outline" className="text-[8px] h-4 border-green-200 text-green-600 bg-green-50">SYSTEM AI CONNECTED</Badge>
+                <Badge variant="outline" className="text-[8px] h-4 border-green-200 text-green-600 bg-green-50">FIREBASE AI CONNECTED</Badge>
             </div>
             <ScrollArea className="flex-1 p-3 md:p-5" ref={scrollRef}>
             <div className="space-y-5 max-w-4xl mx-auto">
@@ -188,17 +184,6 @@ export default function CarRepairAIChatPage() {
             </div>
             </div>
         </Card>
-
-        <div className="hidden lg:flex flex-col gap-4">
-            <Card className="bg-amber-50 border-amber-200">
-                <CardHeader className="pb-2"><CardTitle className="text-xs font-bold flex items-center gap-2 text-amber-800"><Info className="h-3 w-3" /> คำแนะนำการใช้งาน</CardTitle></CardHeader>
-                <CardContent className="text-[11px] text-amber-700 space-y-2">
-                    <p>• จิมมี่สามารถตอบรหัส DTC ได้ทันที</p>
-                    <p>• หากจิมมี่ตอบไม่ถูก ให้พี่ไปบันทึกวิธีแก้ที่ถูกต้องในเมนู <b>"แชร์ประสบการณ์"</b> ค่ะ</p>
-                    <p>• จิมมี่จะเรียนรู้ข้อมูลนั้นมาตอบคำถามครั้งต่อไปทันที</p>
-                </CardContent>
-            </Card>
-        </div>
       </div>
     </div>
   );

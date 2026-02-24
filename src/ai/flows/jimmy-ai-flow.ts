@@ -1,16 +1,24 @@
 'use server';
 /**
- * @fileOverview "น้องจิมมี่" Unified AI Flow - หนึ่งเดียวที่ดูแลทั้งบริหารและเทคนิค
- * ปรับปรุงโครงสร้างการเรียกใช้ ai.generate ให้ถูกต้องตามมาตรฐาน Genkit 1.x
+ * @fileOverview "น้องจิมมี่" Unified AI Flow - ระบบ AI ผู้ช่วยอัจฉริยะประจำร้าน Sahadiesel
+ * ใช้ Genkit 1.x และดึงข้อมูล API Key จาก Firestore โดยตรง
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { firebaseConfig } from '@/firebase/config';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+
+// Helper to get Firestore on server-side
+function getServerFirestore() {
+  const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  return getFirestore(app);
+}
 
 const JimmyAiInputSchema = z.object({
   message: z.string().describe('ข้อความจากผู้ใช้งาน'),
   scope: z.enum(['MANAGEMENT', 'TECHNICAL']).describe('ขอบเขตของคำถาม (บริหาร หรือ เทคนิค)'),
-  apiKey: z.string().describe('Gemini API Key ของร้าน'),
   history: z.array(z.object({
     role: z.enum(['user', 'model']),
     content: z.string()
@@ -27,20 +35,30 @@ const JimmyAiOutputSchema = z.object({
 });
 
 /**
- * askJimmy - ฟังก์ชันหลักสำหรับการเรียกใช้งานน้องจิมมี่จากหน้าจอต่างๆ
+ * askJimmy - ฟังก์ชันหลักสำหรับเรียกใช้งานน้องจิมมี่ผ่านระบบ Genkit Flow
  */
 export async function askJimmy(input: z.infer<typeof JimmyAiInputSchema>): Promise<z.infer<typeof JimmyAiOutputSchema>> {
-  // ตั้งค่า API Key สำหรับ Request ปัจจุบัน
-  process.env.GOOGLE_GENAI_API_KEY = input.apiKey;
-  
   try {
+    // 1. ดึง API Key จาก Firestore (Server-side)
+    const db = getServerFirestore();
+    const aiSettingsSnap = await getDoc(doc(db, "settings", "ai"));
+    const apiKey = aiSettingsSnap.data()?.geminiApiKey;
+
+    if (!apiKey) {
+      return { 
+        answer: "ขอโทษทีค่ะพี่โจ้ น้องจิมมี่ยังทำงานไม่ได้เพราะยังไม่ได้ตั้งค่า 'Gemini API Key' ค่ะ รบกวนพี่ไปที่หน้า 'ตั้งค่า' เพื่อระบุรหัสก่อนนะคะ" 
+      };
+    }
+
+    // ตั้งค่า API Key สำหรับ Genkit
+    process.env.GOOGLE_GENAI_API_KEY = apiKey;
+    
     const result = await jimmyAiFlow(input);
     return result || { answer: "ขอโทษทีค่ะพี่จ๋า จิมมี่สับสนนิดหน่อย รบกวนถามอีกรอบนะคะ" };
   } catch (e: any) {
     console.error("Jimmy Flow Error:", e);
-    // ส่งข้อความแจ้งเตือนกลับในรูปแบบที่ถูกต้องเพื่อป้องกันหน้าจอค้าง
     return { 
-      answer: `น้องจิมมี่ขัดข้องนิดหน่อยค่ะพี่: ${e.message || "ระบบประมวลผลล้มเหลว"}. รบกวนพี่เช็ค API Key อีกทีนะคะ` 
+      answer: `น้องจิมมี่ขัดข้องนิดหน่อยค่ะพี่: ${e.message || "ระบบประมวลผลล้มเหลว"}. ลองรีเฟรชหน้าจอหรือเช็ค API Key อีกทีนะคะ` 
     };
   }
 }
@@ -54,7 +72,6 @@ const jimmyAiFlow = ai.defineFlow(
   async (input) => {
     const isTechnical = input.scope === 'TECHNICAL';
     
-    // กำหนดคำสั่งระบบ (System Instruction)
     const systemInstruction = isTechnical 
       ? `คุณคือ "น้องจิมมี่" (Technical Expert) ผู้ช่วยช่างอัจฉริยะประจำร้าน Sahadiesel
       
@@ -65,11 +82,11 @@ const jimmyAiFlow = ai.defineFlow(
       **หน้าที่ของคุณ:**
       1. วิเคราะห์อาการทันที: ใช้ความรู้ AI วิเคราะห์รหัส DTC หรืออาการรถที่พี่ช่างพิมพ์มา
       2. อ้างอิงข้อมูลร้าน: ใช้ข้อมูล 'บันทึกการซ่อม' ที่ได้รับมาบอกพี่ช่างว่า "ในร้านเราเคยแก้แบบนี้ค่ะ..."
-      3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์จากรายการคู่มือใน Drive ให้พี่กดดูทันที
+      3. ส่งมอบคู่มือ: หากเจอคู่มือที่เกี่ยวข้อง ให้ส่งลิงก์เพื่อให้พี่กดดูสเปคที่ถูกต้อง
       
-      **ข้อมูลร้านที่จิมมี่เห็นตอนนี้:**
+      **ข้อมูลร้านปัจจุบัน:**
       - บันทึกการซ่อม: ${JSON.stringify(input.contextData?.experiences || [])}
-      - รายชื่อคู่มือใน Drive: ${JSON.stringify(input.contextData?.manuals || [])}`
+      - รายชื่อคู่มือ: ${JSON.stringify(input.contextData?.manuals || [])}`
       
       : `คุณคือ "น้องจิมมี่" (Business Assistant) ผู้ช่วยอัจฉริยะประจำร้าน "สหดีเซล" ของพี่โจ้
       
@@ -84,7 +101,6 @@ const jimmyAiFlow = ai.defineFlow(
       **ข้อมูลธุรกิจที่ได้รับ:**
       ${JSON.stringify(input.contextData?.businessSummary || {})}`;
 
-    // เรียกใช้งาน AI โดยใช้โครงสร้างมาตรฐานของ Genkit 1.x
     const response = await ai.generate({
       model: 'googleai/gemini-1.5-flash',
       system: systemInstruction,
