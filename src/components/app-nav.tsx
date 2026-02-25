@@ -143,8 +143,6 @@ const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/admin/users" label="จัดการผู้ใช้ / Maintenance" onClick={onLinkClick} />
-                <SubNavLink href="/app/admin/chat" label="คุยกับจิมมี่ (AI)" onClick={onLinkClick} />
-                <SubNavLink href="/app/admin/manuals" label="คลังคู่มือ PDF / Drive" icon={BookOpen} onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );
@@ -234,36 +232,6 @@ const CarServiceByWorkerNav = ({ onLinkClick }: { onLinkClick?: () => void }) =>
     </Collapsible>
   );
 };
-
-const CarAssistantNav = ({ onLinkClick }: { onLinkClick?: () => void }) => {
-    const { profile } = useAuth();
-    const pathname = usePathname();
-    const isOpen = pathname.startsWith('/app/car-service/assistant');
-
-    // Strictly show only for Car Service department as requested
-    const isAllowed = profile?.department === 'CAR_SERVICE';
-    
-    if (!isAllowed) return null;
-
-    return (
-        <Collapsible defaultOpen={isOpen} className="mt-1">
-            <CollapsibleTrigger asChild>
-                <Button variant={isOpen ? "secondary" : "ghost"} className="w-full justify-between">
-                    <span className="flex items-center gap-2">
-                        <Sparkles className="h-4 w-4 text-primary" />
-                        ผู้ช่วยซ่อมรถยนต์
-                    </span>
-                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="py-1 pl-6 space-y-1">
-                <SubNavLink href="/app/car-service/assistant/chat" label="สอบถาม AI (น้องจอนห์)" icon={Bot} onClick={onLinkClick} />
-                <SubNavLink href="/app/car-service/assistant/share" label="แชร์ประสบการณ์" icon={Share2} onClick={onLinkClick} />
-            </CollapsibleContent>
-        </Collapsible>
-    );
-};
-
 
 const DepartmentMenu = ({ department, onLinkClick }: { department: Department, onLinkClick?: () => void }) => {
     const pathname = usePathname();
@@ -365,8 +333,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                        ) : (
                             profile?.role === 'WORKER' && <SubNavLink href="/app/car-service/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                        )}
-                       {/* Nested Car Assistant for this department only */}
-                       <CarAssistantNav onLinkClick={onLinkClick} />
                     </>
                 )}
                 {department === 'COMMONRAIL' && (

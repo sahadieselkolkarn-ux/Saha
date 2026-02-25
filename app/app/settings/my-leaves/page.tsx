@@ -30,8 +30,8 @@ import {
   AlertDialogDescription, 
   AlertDialogFooter, 
   AlertDialogHeader, 
-  AlertDialogTitle, 
-  AlertDialogTrigger 
+  AlertDialogTitle,
+  AlertDialogTrigger
 } from '@/components/ui/alert-dialog';
 import { Loader2, Send, Trash2, AlertCircle, ExternalLink, CalendarDays } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
@@ -180,14 +180,6 @@ export default function MyLeavesPage() {
     }
   };
   
-  const handleConfirmOverLimit = async () => {
-    if (pendingLeaveData) {
-      await submitToFirestore(pendingLeaveData);
-    }
-    setIsOverLimitConfirmOpen(false);
-    setPendingLeaveData(null);
-  };
-
   async function handleCancel(leaveId: string) {
     if (!db) return;
     setCancellingId(leaveId);

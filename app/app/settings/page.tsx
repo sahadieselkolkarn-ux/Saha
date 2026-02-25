@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { doc, updateDoc, setDoc, serverTimestamp, collection, query, onSnapshot, orderBy } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 
 import { PageHeader } from "@/components/page-header";
@@ -16,13 +16,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, LogOut, Edit, X, Key, ShieldCheck } from "lucide-react";
+import { Loader2, LogOut, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Separator } from "@/components/ui/separator";
-import { PAY_TYPES } from "@/lib/constants";
-import type { SSOHospital, GenAISettings } from "@/lib/types";
-import type { WithId } from "@/firebase/firestore/use-collection";
-import { useDoc } from "@/firebase/firestore/use-doc";
 
 const profileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -43,10 +38,6 @@ const profileSchema = z.object({
   }).optional(),
 });
 
-const aiSettingsSchema = z.object({
-  geminiApiKey: z.string().min(1, "API Key is required"),
-});
-
 const InfoRow = ({ label, value }: { label: string, value: React.ReactNode }) => (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between py-2">
         <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -60,12 +51,6 @@ export default function SettingsPage() {
     const router = useRouter();
     const { toast } = useToast();
     const [isEditing, setIsEditing] = useState(false);
-    const [isSavingAI, setIsSavingAI] = useState(false);
-
-    const isManagerOrAdmin = profile?.role === 'MANAGER' || profile?.role === 'ADMIN';
-
-    const aiSettingsRef = useMemo(() => (db ? doc(db, "settings", "ai") : null), [db]);
-    const { data: aiSettings } = useDoc<GenAISettings>(aiSettingsRef);
 
     const form = useForm<z.infer<typeof profileSchema>>({
         resolver: zodResolver(profileSchema),
@@ -73,11 +58,6 @@ export default function SettingsPage() {
             displayName: '',
             phone: '',
         },
-    });
-
-    const aiForm = useForm<z.infer<typeof aiSettingsSchema>>({
-        resolver: zodResolver(aiSettingsSchema),
-        defaultValues: { geminiApiKey: "" },
     });
 
     useEffect(() => {
@@ -103,12 +83,6 @@ export default function SettingsPage() {
         }
     }, [profile, form, isEditing]);
 
-    useEffect(() => {
-        if (aiSettings?.geminiApiKey) {
-            aiForm.setValue("geminiApiKey", aiSettings.geminiApiKey);
-        }
-    }, [aiSettings, aiForm]);
-
     const onSubmitProfile = async (values: z.infer<typeof profileSchema>) => {
         if (!db || !profile) return;
         try {
@@ -133,24 +107,6 @@ export default function SettingsPage() {
         }
     };
 
-    const onSaveAISettings = async (values: z.infer<typeof aiSettingsSchema>) => {
-        if (!db || !profile) return;
-        setIsSavingAI(true);
-        try {
-            await setDoc(doc(db, "settings", "ai"), {
-                geminiApiKey: values.geminiApiKey.trim(),
-                updatedAt: serverTimestamp(),
-                updatedByUid: profile.uid,
-                updatedByName: profile.displayName
-            }, { merge: true });
-            toast({ title: "บันทึก API Key สำหรับระบบ AI สำเร็จ" });
-        } catch (e: any) {
-            toast({ variant: "destructive", title: "บันทึกไม่สำเร็จ", description: e.message });
-        } finally {
-            setIsSavingAI(false);
-        }
-    };
-
     const handleLogout = async () => {
         try {
             await signOut();
@@ -164,7 +120,7 @@ export default function SettingsPage() {
 
     return (
         <div className="space-y-8 max-w-4xl mx-auto pb-12">
-            <PageHeader title="โปรไฟล์และการตั้งค่า" description="จัดการข้อมูลส่วนตัวและระบบ AI ของร้าน" />
+            <PageHeader title="โปรไฟล์และการตั้งค่า" description="จัดการข้อมูลส่วนตัวของคุณ" />
 
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -203,41 +159,6 @@ export default function SettingsPage() {
                     )}
                 </CardContent>
             </Card>
-
-            {isManagerOrAdmin && (
-                <Card className="border-primary/20 bg-primary/5">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-primary">
-                            <ShieldCheck className="h-5 w-5" />
-                            การตั้งค่าระบบ AI (Internal AI System)
-                        </CardTitle>
-                        <CardDescription>จัดการรหัสสมองของน้องจิมมี่เพื่อให้ทำงานร่วมกับฐานข้อมูล Firebase ได้</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Form {...aiForm}>
-                            <form onSubmit={aiForm.handleSubmit(onSaveAISettings)} className="space-y-4">
-                                <FormField control={aiForm.control} name="geminiApiKey" render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel className="flex items-center gap-2"><Key className="h-3 w-3" /> Gemini API Key</FormLabel>
-                                        <FormControl>
-                                            <div className="flex gap-2">
-                                                <Input type="password" placeholder="ระบุ API Key เพื่อให้ระบบ AI ทำงาน..." {...field} className="bg-background" />
-                                                <Button type="submit" disabled={isSavingAI}>
-                                                    {isSavingAI ? <Loader2 className="h-4 w-4 animate-spin" /> : "บันทึก"}
-                                                </Button>
-                                            </div>
-                                        </FormControl>
-                                        <FormDescription className="text-[10px]">
-                                            รหัสนี้จะถูกเก็บเป็นความลับบน Server ของร้าน เพื่อให้น้องจิมมี่วิเคราะห์ข้อมูลธุรกิจได้ค่ะ
-                                        </FormDescription>
-                                        <FormMessage />
-                                    </FormItem>
-                                )} />
-                            </form>
-                        </Form>
-                    </CardContent>
-                </Card>
-            )}
 
             <Card>
                 <CardHeader><CardTitle>การดำเนินการ</CardTitle></CardHeader>
