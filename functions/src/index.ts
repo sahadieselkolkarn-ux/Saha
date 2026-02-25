@@ -151,10 +151,11 @@ export const migrateClosedJobsToArchive2026 = onCall(
   }
 );
 
-// --- 3. ฟังก์ชัน น้องจิมมี่ (DISABLED - High Cost API) ---
+// --- 3. ฟังก์ชัน น้องจิมมี่ (DISABLED - API Cost Control) ---
 export const chatWithJimmy = onCall(
   { region: "us-central1", cors: true },
   async (request) => {
-    throw new HttpsError("failed-precondition", "ฟีเจอร์ AI นี้ถูกปิดการใช้งานชั่วคราวเพื่อลดค่าใช้จ่ายค่ะ");
+    // Completely disable logic to prevent any billing
+    throw new HttpsError("failed-precondition", "ฟีเจอร์ AI นี้ถูกยกเลิกการใช้งานอย่างถาวรเพื่อลดค่าใช้จ่ายค่ะ");
   }
 );

@@ -18,7 +18,7 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      hideHead // ตัดชื่อวัน (Su, Mo, Tu...) ออกถาวรเพื่อจบปัญหาการจัดเรียงไม่ตรงคอลัมน์
+      hideHead // ตัดแถวชื่อวัน (Su, Mo, Tu...) ออกถาวรเพื่อให้จบปัญหาคอลัมน์ไม่ตรง
       className={cn("p-3", className)}
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
@@ -33,9 +33,9 @@ function Calendar({
         nav_button_previous: "absolute left-1",
         nav_button_next: "absolute right-1",
         table: "w-full border-collapse",
-        head_row: "hidden", // ซ่อนแถวหัวตาราง (ชื่อวัน) ถาวร
+        head_row: "hidden", // ซ่อนแถวหัวตารางถาวร
         head_cell: "hidden",
-        row: "grid grid-cols-7 w-full mt-2 gap-1 justify-items-center", // ใช้ Grid 7 คอลัมน์เพื่อให้ตัวเลขตรงกันเป๊ะ
+        row: "grid grid-cols-7 w-full mt-2 gap-1 justify-items-center", // ใช้ Grid 7 คอลัมน์เพื่อให้วันที่เรียงตรงกันเป๊ะ
         cell: "h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
         day: cn(
           buttonVariants({ variant: "ghost" }),
