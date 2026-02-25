@@ -84,7 +84,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         ? 'สำนักงานใหญ่' 
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
-    // Signature Label Logic based on User Request
+    // Signature Label Logic
     const isQuotation = document.docType === 'QUOTATION';
     const labelSender = isQuotation ? 'ผู้เสนอราคา' : 'ผู้ส่งสินค้า/บริการ';
     const labelReceiver = isQuotation ? 'ลูกค้า' : 'ผู้รับสินค้า/บริการ';
@@ -178,7 +178,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                 </div>
             </div>
             
-            {/* Signature Section - Pushed to bottom by flex-1 or mt-auto */}
+            {/* Signature Section */}
             <div className="grid grid-cols-2 gap-12 mt-auto text-center text-xs pb-4">
                 <div className="space-y-8">
                     <p>.................................................</p>
@@ -197,12 +197,22 @@ function DocumentPageContent() {
     const { docId } = useParams();
     const router = useRouter();
     const { db } = useFirebase();
+    const searchParams = useSearchParams();
 
     const [isPrintOptionsOpen, setIsPrintOptionsOpen] = useState(false);
     const [printCopies, setPrintCopies] = useState<1 | 2>(1);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
+
+    useEffect(() => {
+        if (document && searchParams.get('autoprint') === '1') {
+            const timer = setTimeout(() => {
+                window.print();
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [document, searchParams]);
 
     const handleBack = () => {
         if (!document) {
@@ -242,31 +252,37 @@ function DocumentPageContent() {
     return (
         <div className="min-h-screen bg-muted/20 py-8 print:p-0 print:bg-white overflow-x-hidden">
             <div className="max-w-[210mm] mx-auto space-y-6 print:m-0 print:max-w-none">
-                <div className="flex justify-between items-center bg-background p-4 rounded-lg border shadow-sm print:hidden">
+                {/* Toolbar */}
+                <div className="flex justify-between items-center bg-background p-4 rounded-lg border shadow-sm print:hidden mx-4 md:mx-0">
                     <Button variant="outline" onClick={handleBack}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
                     <div className="flex gap-2">
                         <Button onClick={handlePrintRequest}><Printer className="mr-2 h-4 w-4"/> สั่งพิมพ์ (Ctrl+P)</Button>
                     </div>
                 </div>
 
-                <div className="print:m-0">
-                    {document.docType === 'TAX_INVOICE' && printCopies === 2 ? (
-                        <div className="space-y-8 print:space-y-0">
-                            <DocumentView document={document} taxCopyLabel="ORIGINAL" />
-                            <div className="print:page-break-after-always" />
-                            <DocumentView document={document} taxCopyLabel="COPY" />
-                            <div className="print:page-break-after-always" />
-                            <DocumentView document={document} taxCopyLabel="COPY" />
-                        </div>
-                    ) : document.docType === 'TAX_INVOICE' ? (
-                        <div className="space-y-8 print:space-y-0">
-                            <DocumentView document={document} taxCopyLabel="ORIGINAL" />
-                            <div className="print:page-break-after-always" />
-                            <DocumentView document={document} taxCopyLabel="COPY" />
-                        </div>
-                    ) : (
-                        <DocumentView document={document} />
-                    )}
+                {/* Document Container with Horizontal Scroll for mobile */}
+                <div className="w-full overflow-x-auto pb-10 print:overflow-visible print:pb-0">
+                    <div className="min-w-[210mm] print:min-w-0 print:m-0">
+                        {document.docType === 'TAX_INVOICE' ? (
+                            <div className="space-y-8 print:space-y-0">
+                                {/* Original Copy */}
+                                <DocumentView document={document} taxCopyLabel="ORIGINAL" />
+                                
+                                {/* Page Breaks for Copies - only if not the only page */}
+                                <div className="hidden print:block break-before-page" />
+                                <DocumentView document={document} taxCopyLabel="COPY" />
+                                
+                                {printCopies === 2 && (
+                                    <>
+                                        <div className="hidden print:block break-before-page" />
+                                        <DocumentView document={document} taxCopyLabel="COPY" />
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            <DocumentView document={document} />
+                        )}
+                    </div>
                 </div>
             </div>
 
