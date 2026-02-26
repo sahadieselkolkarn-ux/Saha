@@ -351,7 +351,6 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                     <>
                         {profile?.role === 'WORKER' ? (
                             <>
-                                <SubNavLink href="/app/outsource/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
                                 <SubNavLink href="/app/outsource/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
                             </>
                         ) : (
