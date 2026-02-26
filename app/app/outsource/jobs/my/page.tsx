@@ -1,0 +1,40 @@
+
+"use client";
+
+import { PageHeader } from "@/components/page-header";
+import { JobList } from "@/components/job-list";
+import { useAuth } from "@/context/auth-context";
+import { Loader2 } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+export default function OutsourceMyJobsPage() {
+  const { profile, loading } = useAuth();
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-64"><Loader2 className="animate-spin h-8 w-8" /></div>;
+  }
+  
+  if (!profile) {
+     return (
+        <Card className="text-center py-12">
+            <CardHeader>
+                <CardTitle>ไม่สามารถโหลดข้อมูลผู้ใช้ได้</CardTitle>
+                <CardDescription>กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง</CardDescription>
+            </CardHeader>
+        </Card>
+     );
+  }
+
+  return (
+    <>
+      <PageHeader title="งานของฉัน (งานนอก)" description="งานที่ส่งออกร้านนอกที่คุณเป็นผู้ดูแลรับผิดชอบ" />
+      <JobList 
+        department="OUTSOURCE" 
+        status={['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'PENDING_PARTS', 'IN_REPAIR_PROCESS']}
+        assigneeUid={profile.uid}
+        emptyTitle="คุณยังไม่มีงานที่กำลังทำ"
+        emptyDescription="ไปที่หน้า 'งานทั้งหมด' เพื่อรับงานใหม่"
+      />
+    </>
+  );
+}

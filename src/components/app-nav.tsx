@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -348,21 +349,30 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 )}
                  {department === 'OUTSOURCE' && (
                     <>
-                        <SubNavLink href="/app/outsource/export/new" label="สร้างรายการส่งออก" onClick={onLinkClick} />
-                        <SubNavLink href="/app/outsource/import" label="รับกลับเข้าระบบ" onClick={onLinkClick} />
-                        <Collapsible defaultOpen={pathname.startsWith('/app/outsource/tracking')}>
-                            <CollapsibleTrigger asChild>
-                                <Button variant={pathname.startsWith('/app/outsource/tracking') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9">
-                                    ติดตาม
-                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                                </Button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="py-1 pl-4 space-y-1">
-                                <SubNavLink href="/app/outsource/tracking/pending" label="รอส่ง" onClick={onLinkClick} />
-                                <SubNavLink href="/app/outsource/tracking/away" label="อยู่ร้านนอก" onClick={onLinkClick} />
-                                <SubNavLink href="/app/outsource/tracking/returned" label="รับกลับแล้ว" onClick={onLinkClick} />
-                            </CollapsibleContent>
-                        </Collapsible>
+                        {profile?.role === 'WORKER' ? (
+                            <>
+                                <SubNavLink href="/app/outsource/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
+                                <SubNavLink href="/app/outsource/jobs/my" label="งานของฉัน" onClick={onLinkClick} />
+                            </>
+                        ) : (
+                            <>
+                                <SubNavLink href="/app/outsource/export/new" label="สร้างรายการส่งออก" onClick={onLinkClick} />
+                                <SubNavLink href="/app/outsource/import" label="รับกลับเข้าระบบ" onClick={onLinkClick} />
+                                <Collapsible defaultOpen={pathname.startsWith('/app/outsource/tracking')}>
+                                    <CollapsibleTrigger asChild>
+                                        <Button variant={pathname.startsWith('/app/outsource/tracking') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9">
+                                            ติดตาม
+                                            <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
+                                        </Button>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent className="py-1 pl-4 space-y-1">
+                                        <SubNavLink href="/app/outsource/tracking/pending" label="รอส่ง" onClick={onLinkClick} />
+                                        <SubNavLink href="/app/outsource/tracking/away" label="อยู่ร้านนอก" onClick={onLinkClick} />
+                                        <SubNavLink href="/app/outsource/tracking/returned" label="รับกลับแล้ว" onClick={onLinkClick} />
+                                    </CollapsibleContent>
+                                </Collapsible>
+                            </>
+                        )}
                     </>
                 )}
             </CollapsibleContent>

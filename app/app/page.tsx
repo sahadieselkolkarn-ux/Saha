@@ -50,7 +50,11 @@ export default function AppHomePage() {
         router.replace('/app/mechanic/jobs/all');
         break;
       case 'OUTSOURCE':
-        router.replace('/app/outsource/tracking/pending');
+        if (role === 'WORKER') {
+          router.replace('/app/outsource/jobs/my');
+        } else {
+          router.replace('/app/outsource/tracking/pending');
+        }
         break;
       default:
         // Fallback for roles without specific landing pages

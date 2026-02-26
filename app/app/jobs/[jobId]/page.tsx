@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, Suspense, useRef } from "react";
@@ -150,7 +151,7 @@ function JobDetailsPageContent() {
   
   const allowEditing = searchParams.get('edit') === 'true' && isUserAdmin;
   
-  const isTechnicalDept = profile?.department === 'CAR_SERVICE' || profile?.department === 'COMMONRAIL' || profile?.department === 'MECHANIC';
+  const isTechnicalDept = ['CAR_SERVICE', 'COMMONRAIL', 'MECHANIC', 'OUTSOURCE'].includes(profile?.department || '');
   const isJobInFinishedState = job?.status === 'DONE' || job?.status === 'WAITING_CUSTOMER_PICKUP' || job?.status === 'CLOSED';
 
   const isViewOnly = job?.isArchived || 
