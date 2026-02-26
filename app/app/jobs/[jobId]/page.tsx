@@ -287,7 +287,7 @@ function JobDetailsPageContent() {
     setIsSavingTechReport(true);
     const batch = writeBatch(db);
     batch.update(jobDocRef, { technicalReport: techReport, officeNote: deleteField(), lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `อัปเดตสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `แก้ไขสมุดบันทึก`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     
     batch.commit().then(() => {
       toast({ title: "บันทึกสมุดบันทึกสำเร็จ" });
@@ -367,7 +367,7 @@ function JobDetailsPageContent() {
         batch.update(jobDocRef, updateData);
         await batch.commit();
         setNewNote(""); setNewPhotos([]); setPhotoPreviews([]);
-        toast({title: "อัปเดตกิจกรรมสำเร็จแล้วค่ะ"});
+        toast({title: "อัปเดตกีจกรรมสำเร็จแล้วค่ะ"});
     } catch (error: any) {
         toast({variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message});
     } finally {
@@ -485,6 +485,29 @@ function JobDetailsPageContent() {
     batch.set(doc(collection(jobDocRef, "activities")), { text: `ช่างกดจบงานเรียบร้อยแล้ว รอดำเนินการออกบิลโดยแผนกออฟฟิศ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     batch.commit().then(() => {
         toast({ title: "บันทึกจบงานสำเร็จ", description: "สถานะงานเปลี่ยนเป็น 'DONE' แล้วค่ะ กรุณาแจ้งแผนกออฟฟิศเพื่อออกบิลนะคะ" });
+    })
+    .catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message }))
+    .finally(() => setIsSubmittingNote(false));
+  };
+
+  const handleRequestQuotation = async () => {
+    if (!db || !profile || !job) return;
+    setIsSubmittingNote(true);
+    const jobDocRef = doc(db, "jobs", job.id);
+    const batch = writeBatch(db);
+    batch.update(jobDocRef, { 
+      status: 'WAITING_QUOTATION', 
+      lastActivityAt: serverTimestamp(), 
+      updatedAt: serverTimestamp() 
+    });
+    batch.set(doc(collection(jobDocRef, "activities")), { 
+      text: `แจ้งฝ่ายออฟฟิศเพื่อขอใบเสนอราคา (Request Quotation)`, 
+      userName: profile.displayName, 
+      userId: profile.uid, 
+      createdAt: serverTimestamp() 
+    });
+    batch.commit().then(() => {
+        toast({ title: "ส่งคำขอเสนอราคาแล้ว", description: "ฝ่ายออฟฟิศจะได้รับแจ้งเพื่อดำเนินการออกใบเสนอราคาค่ะ" });
     })
     .catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message }))
     .finally(() => setIsSubmittingNote(false));
@@ -702,6 +725,18 @@ function JobDetailsPageContent() {
                           </Button>
                       )}
 
+                      {['IN_PROGRESS', 'IN_REPAIR_PROCESS'].includes(job.status) && (
+                          <Button 
+                            variant="outline"
+                            onClick={handleRequestQuotation} 
+                            disabled={isSubmittingNote || isViewOnly} 
+                            className="border-blue-600 text-blue-600 hover:bg-blue-50 font-bold"
+                          >
+                              <FileText className="mr-2 h-4 w-4" /> 
+                              แจ้งเสนอราคา
+                          </Button>
+                      )}
+
                       {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS', 'PENDING_PARTS'].includes(job.status) && (
                           <Button 
                             onClick={isSubTask ? handleReturnToMain : handleFinishJob} 
@@ -730,19 +765,19 @@ function JobDetailsPageContent() {
 
           <Card>
             <CardHeader><CardTitle>Activity Log</CardTitle></CardHeader>
-            <CardContent className="space-y-6">{activitiesLoading ? <div className="flex items-center justify-center h-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div> : activities && activities.length > 0 ? (
+            <CardContent className="space-y-6">{activitiesLoading ? <div className="flex items-center justify-center h-24"><Loader2 className="h-66 w-6 animate-spin text-muted-foreground" /></div> : activities && activities.length > 0 ? (
                 activities.map((activity) => (
                   <div key={activity.id} className="flex gap-4">
                       <User className="h-5 w-5 mt-1 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1"><p className="font-semibold text-sm">{activity.userName} <span className="text-[10px] font-normal text-muted-foreground ml-2">{safeFormat(activity.createdAt, 'PPpp')}</span></p>{activity.text && <p className="whitespace-pre-wrap text-sm my-1">{activity.text}</p>}{activity.photos && activity.photos.length > 0 && (<div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">{activity.photos.map((url, i) => (<a key={i} href={url} target="_blank" rel="noopener noreferrer"><Image src={url} alt="Activity" width={100} height={100} className="rounded-md object-cover w-full aspect-square" /></a>))}</div>)}</div>
                   </div>
-              ))) : <p className="text-muted-foreground text-sm text-center h-24 flex items-center justify-center">No activities yet.</p>}
+              ))) : <p className="text-muted-foreground text-sm text-center h-24 flex items-center justify-center">ยังไม่มีประวัติกิจกรรม</p>}
             </CardContent>
           </Card>
         </div>
         
         <div className="space-y-6">
-          <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-base font-semibold">Status</CardTitle><Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge></CardHeader></Card>
+          <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-base font-semibold">สถานะงาน (Status)</CardTitle><Badge variant={getStatusVariant(job.status)}>{jobStatusLabel(job.status)}</Badge></CardHeader></Card>
           
           {(job.status === 'WAITING_APPROVE' || job.status === 'PENDING_PARTS') && canEditDetails && (
             <Card className="border-primary/50 bg-primary/5 shadow-md animate-in fade-in zoom-in-95 duration-300">
