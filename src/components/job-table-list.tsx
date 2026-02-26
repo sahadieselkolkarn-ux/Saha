@@ -101,7 +101,7 @@ export function JobTableList({
         qConstraints.push(where('status', 'in', filterConfig.inStatus));
       }
       qConstraints.push(orderBy(orderByField, orderByDirection));
-      qConstraints.push(limit(500)); // Large limit to show all in one page
+      qConstraints.push(limit(500)); 
 
       const q = query(collection(db, collectionName), ...qConstraints);
       const snapshot = await getDocs(q);
@@ -115,7 +115,11 @@ export function JobTableList({
           (j.description || "").toLowerCase().includes(term) ||
           (j.id && j.id.toLowerCase().includes(term)) ||
           (j.carServiceDetails?.licensePlate || "").toLowerCase().includes(term) ||
-          (j.carSnapshot?.licensePlate || "").toLowerCase().includes(term)
+          (j.carSnapshot?.licensePlate || "").toLowerCase().includes(term) ||
+          (j.commonrailDetails?.partNumber || "").toLowerCase().includes(term) ||
+          (j.mechanicDetails?.partNumber || "").toLowerCase().includes(term) ||
+          (j.commonrailDetails?.registrationNumber || "").toLowerCase().includes(term) ||
+          (j.mechanicDetails?.registrationNumber || "").toLowerCase().includes(term)
         );
       }
       

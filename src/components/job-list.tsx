@@ -38,7 +38,6 @@ import {
   Ban,
   PackageCheck
 } from "lucide-react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -161,7 +160,7 @@ export function JobList({
       }
       
       qConstraints.push(orderBy('lastActivityAt', 'desc'));
-      qConstraints.push(limit(500)); // Show all work in one go
+      qConstraints.push(limit(500)); 
 
       const q = query(collection(db, "jobs"), ...qConstraints);
       const snapshot = await getDocs(q);
@@ -175,7 +174,11 @@ export function JobList({
           (j.description || "").toLowerCase().includes(term) ||
           (j.id && j.id.toLowerCase().includes(term)) ||
           (j.carServiceDetails?.licensePlate || "").toLowerCase().includes(term) ||
-          (j.carSnapshot?.licensePlate || "").toLowerCase().includes(term)
+          (j.carSnapshot?.licensePlate || "").toLowerCase().includes(term) ||
+          (j.commonrailDetails?.partNumber || "").toLowerCase().includes(term) ||
+          (j.mechanicDetails?.partNumber || "").toLowerCase().includes(term) ||
+          (j.commonrailDetails?.registrationNumber || "").toLowerCase().includes(term) ||
+          (j.mechanicDetails?.registrationNumber || "").toLowerCase().includes(term)
         );
       }
       
