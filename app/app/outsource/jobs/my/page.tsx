@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -25,15 +24,23 @@ export default function OutsourceMyJobsPage() {
      );
   }
 
+  // Determine which ID to use for filtering. 
+  // If this user is linked to a specific shop (vendor), use that shop's ID.
+  // Otherwise, use the user's personal UID.
+  const assigneeUid = profile.linkedVendorId || profile.uid;
+
   return (
     <>
-      <PageHeader title="งานของฉัน (งานนอก)" description="งานที่ส่งออกร้านนอกที่คุณเป็นผู้ดูแลรับผิดชอบ" />
+      <PageHeader 
+        title="งานของฉัน (งานนอก)" 
+        description={profile.linkedVendorName ? `รายการงานที่มอบหมายให้ร้าน: ${profile.linkedVendorName}` : "งานที่ส่งออกร้านนอกที่คุณเป็นผู้ดูแลรับผิดชอบ"} 
+      />
       <JobList 
         department="OUTSOURCE" 
         status={['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'PENDING_PARTS', 'IN_REPAIR_PROCESS']}
-        assigneeUid={profile.uid}
-        emptyTitle="คุณยังไม่มีงานที่กำลังทำ"
-        emptyDescription="ไปที่หน้า 'งานทั้งหมด' เพื่อรับงานใหม่"
+        assigneeUid={assigneeUid}
+        emptyTitle="ยังไม่มีงานที่มอบหมายให้ท่าน"
+        emptyDescription={profile.linkedVendorName ? `ขณะนี้ยังไม่มีงานใหม่ที่มอบหมายให้ร้าน ${profile.linkedVendorName} ค่ะ` : "ไปที่หน้า 'งานทั้งหมด' เพื่อรับงานใหม่ (หากมีสิทธิ์)"}
       />
     </>
   );

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { useState, useEffect, useMemo } from "react";
+import { collection, onSnapshot, query, orderBy, updateDoc, deleteDoc, doc, serverTimestamp, where } from "firebase/firestore";
 import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -17,10 +17,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MoreHorizontal, PlusCircle } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Link as LinkIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEPARTMENTS, USER_ROLES, USER_STATUSES, PAY_TYPES } from "@/lib/constants";
-import type { UserProfile, SSOHospital, PayType } from "@/lib/types";
+import type { UserProfile, SSOHospital, PayType, Vendor } from "@/lib/types";
 import { payTypeLabel, deptLabel } from "@/lib/ui-labels";
 import {
   AlertDialog,
@@ -40,6 +40,7 @@ const userProfileSchema = z.object({
   department: z.enum(DEPARTMENTS).optional(),
   role: z.enum(USER_ROLES),
   status: z.enum(USER_STATUSES),
+  linkedVendorId: z.string().nullable().optional(),
   personal: z.object({
     idCardNo: z.string().optional().default(''),
     address: z.string().optional().default(''),
@@ -104,6 +105,12 @@ const UserCard = ({ user, onEdit, onDelete, isManagerOrAdmin }: { user: UserWith
                 <span className="text-muted-foreground">สถานะ</span>
                 <span className="font-medium">{user.status}</span>
             </div>
+            {user.linkedVendorName && (
+                <div className="flex justify-between items-center border-t pt-2 text-primary font-bold">
+                    <span className="flex items-center gap-1"><LinkIcon className="h-3 w-3"/> ร้านที่ผูก:</span>
+                    <span>{user.linkedVendorName}</span>
+                </div>
+            )}
         </CardContent>
     </Card>
 );
@@ -121,6 +128,7 @@ export default function ManagementHREmployeesPage() {
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   
   const [ssoHospitals, setSsoHospitals] = useState<WithId<SSOHospital>[]>([]);
+  const [contractorVendors, setContractorVendors] = useState<WithId<Vendor>[]>([]);
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(true);
 
   const isManagerOrAdmin = loggedInUser?.role === 'MANAGER' || loggedInUser?.role === 'ADMIN';
@@ -132,6 +140,7 @@ export default function ManagementHREmployeesPage() {
       phone: '',
       role: 'WORKER',
       status: 'PENDING',
+      linkedVendorId: null,
       personal: {
         idCardNo: '',
         address: '',
@@ -157,6 +166,8 @@ export default function ManagementHREmployeesPage() {
     },
   });
 
+  const selectedDepartment = form.watch("department");
+
   useEffect(() => {
     if (!db) return;
     const q = query(collection(db, "users"), orderBy("displayName", "asc"));
@@ -175,12 +186,18 @@ export default function ManagementHREmployeesPage() {
   useEffect(() => {
     if (!db) return;
     setIsLoadingHospitals(true);
-    const q = query(collection(db, "ssoHospitals"), orderBy("name", "asc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const qHospitals = query(collection(db, "ssoHospitals"), orderBy("name", "asc"));
+    const unsubHospitals = onSnapshot(qHospitals, (snapshot) => {
         setSsoHospitals(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<SSOHospital>)));
         setIsLoadingHospitals(false);
     });
-    return () => unsubscribe();
+
+    const qContractors = query(collection(db, "vendors"), where("vendorType", "==", "CONTRACTOR"), where("isActive", "==", true));
+    const unsubContractors = onSnapshot(qContractors, (snapshot) => {
+        setContractorVendors(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<Vendor>)));
+    });
+
+    return () => { unsubHospitals(); unsubContractors(); };
   }, [db]);
   
   useEffect(() => {
@@ -192,6 +209,7 @@ export default function ManagementHREmployeesPage() {
           department: editingUser.department || undefined,
           role: editingUser.role,
           status: editingUser.status,
+          linkedVendorId: editingUser.linkedVendorId || null,
           personal: {
             idCardNo: editingUser.personal?.idCardNo || '',
             address: editingUser.personal?.address || '',
@@ -220,7 +238,13 @@ export default function ManagementHREmployeesPage() {
       }
     } else {
         setEditingUser(null);
-        form.reset({});
+        form.reset({
+            displayName: '',
+            phone: '',
+            role: 'WORKER',
+            status: 'PENDING',
+            linkedVendorId: null,
+        });
     }
   }, [isDialogOpen, editingUser, form]);
 
@@ -235,12 +259,16 @@ export default function ManagementHREmployeesPage() {
     setIsSubmitting(true);
     
     try {
+        const linkedVendor = contractorVendors.find(v => v.id === formValues.linkedVendorId);
+
         const finalUpdate: {[key: string]: any} = {
             displayName: formValues.displayName,
             phone: formValues.phone,
             department: formValues.department || null,
             role: formValues.role,
             status: formValues.status,
+            linkedVendorId: formValues.department === 'OUTSOURCE' ? formValues.linkedVendorId || null : null,
+            linkedVendorName: formValues.department === 'OUTSOURCE' ? linkedVendor?.companyName || null : null,
             'personal.idCardNo': formValues.personal?.idCardNo || null,
             'personal.address': formValues.personal?.address || null,
             'personal.bank.bankName': formValues.personal?.bank?.bankName || null,
@@ -338,7 +366,10 @@ export default function ManagementHREmployeesPage() {
               {users.length > 0 ? (
                 users.map(user => (
                     <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.displayName}</TableCell>
+                    <TableCell className="font-medium">
+                        {user.displayName}
+                        {user.linkedVendorName && <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5"><LinkIcon className="h-2 w-2"/> {user.linkedVendorName}</p>}
+                    </TableCell>
                     <TableCell>{user.phone}</TableCell>
                     <TableCell>{deptLabel(user.department) || 'N/A'}</TableCell>
                     <TableCell>{user.role}</TableCell>
@@ -406,6 +437,26 @@ export default function ManagementHREmployeesPage() {
                                 <FormField name="role" control={form.control} render={({ field }) => (<FormItem><FormLabel>ตำแหน่ง</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl><SelectContent>{USER_ROLES.map(r=><SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                                 <FormField name="status" control={form.control} render={({ field }) => (<FormItem><FormLabel>สถานะ</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก" /></SelectTrigger></FormControl><SelectContent>{USER_STATUSES.map(s=><SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem>)} />
                             </div>
+
+                            {/* --- Linked Vendor for OUTSOURCE --- */}
+                            {selectedDepartment === 'OUTSOURCE' && (
+                                <FormField name="linkedVendorId" control={form.control} render={({ field }) => (
+                                    <FormItem className="bg-primary/5 p-4 rounded-md border border-primary/20 animate-in fade-in slide-in-from-top-1">
+                                        <FormLabel className="flex items-center gap-2 text-primary font-bold"><LinkIcon className="h-4 w-4"/> เชื่อมโยงกับร้านผู้รับเหมา</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value ?? ''}>
+                                            <FormControl><SelectTrigger><SelectValue placeholder="เลือกชื่อร้าน..." /></SelectTrigger></FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="none">--- ไม่เชื่อมโยง ---</SelectItem>
+                                                {contractorVendors.map(v => (
+                                                    <SelectItem key={v.id} value={v.id}>{v.companyName} ({v.shortName})</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormDescription className="text-[10px]">เมื่อเชื่อมโยงแล้ว พนักงานจะเห็นเฉพาะงานที่ส่งมอบให้ร้านนี้ในหน้า "งานของฉัน" ค่ะ</FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )} />
+                            )}
                         </CardContent>
                     </Card>
 

@@ -9,6 +9,8 @@ export interface UserProfile {
   role: Role;
   department?: Department;
   status: UserStatus;
+  linkedVendorId?: string | null; // For OUTSOURCE department users to link to a shop
+  linkedVendorName?: string | null;
   personal?: {
     idCardNo?: string;
     address?: string;
