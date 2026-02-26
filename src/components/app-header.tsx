@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from "react"
@@ -27,6 +28,8 @@ export function AppHeader() {
     if (!name) return "?";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
+
+  const isOutsourceWorker = profile?.department === 'OUTSOURCE' && profile?.role === 'WORKER';
 
   return (
     <header className="sm:hidden flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6 sticky top-0 z-30 print:hidden">
@@ -69,15 +72,19 @@ export function AppHeader() {
             <DropdownMenuItem asChild>
               <Link href="/settings"><Settings className="mr-2 h-4 w-4"/> โปรไฟล์และการตั้งค่า</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings/my-leaves"><FileText className="mr-2 h-4 w-4"/> ใบลาของฉัน</Link>
-            </DropdownMenuItem>
+            {!isOutsourceWorker && (
+                <DropdownMenuItem asChild>
+                    <Link href="/settings/my-leaves"><FileText className="mr-2 h-4 w-4"/> ใบลาของฉัน</Link>
+                </DropdownMenuItem>
+            )}
              <DropdownMenuItem asChild>
               <Link href="/settings/holidays"><CalendarDays className="mr-2 h-4 w-4"/> ปฏิทินวันหยุด</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-                <Link href="/settings/my-payslips"><Receipt className="mr-2 h-4 w-4"/> ใบเงินเดือนของฉัน</Link>
-            </DropdownMenuItem>
+            {!isOutsourceWorker && (
+                <DropdownMenuItem asChild>
+                    <Link href="/settings/my-payslips"><Receipt className="mr-2 h-4 w-4"/> ใบเงินเดือนของฉัน</Link>
+                </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={signOut}>
               <LogOut className="mr-2 h-4 w-4" />

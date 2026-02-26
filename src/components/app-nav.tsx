@@ -389,6 +389,10 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         return profile.department === "MANAGEMENT" || ["ADMIN", "MANAGER"].includes(profile.role);
     }, [profile]);
 
+    const isOutsourceWorker = useMemo(() => {
+        return profile?.department === 'OUTSOURCE' && profile?.role === 'WORKER';
+    }, [profile]);
+
     const departmentsToShow = useMemo(() => {
         if (!profile) {
             return [];
@@ -416,7 +420,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             <nav 
                 className="grid items-start px-2 text-sm font-medium"
             >
-                {!isManagementUser && (
+                {(!isManagementUser && !isOutsourceWorker) && (
                     <>
                         <Collapsible defaultOpen={isAttendanceOpen}>
                             <CollapsibleTrigger asChild>

@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -25,6 +26,8 @@ export function AppSidebar() {
     if (!name) return "?";
     return name.split(' ').map(n => n[0]).join('').toUpperCase();
   }
+
+  const isOutsourceWorker = profile?.department === 'OUTSOURCE' && profile?.role === 'WORKER';
   
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r bg-background sm:flex print:hidden">
@@ -60,15 +63,19 @@ export function AppSidebar() {
                         <DropdownMenuItem asChild>
                             <Link href="/settings"><Settings className="mr-2 h-4 w-4"/> โปรไฟล์และการตั้งค่า</Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                            <Link href="/settings/my-leaves"><FileText className="mr-2 h-4 w-4"/> ใบลาของฉัน</Link>
-                        </DropdownMenuItem>
+                        {!isOutsourceWorker && (
+                            <DropdownMenuItem asChild>
+                                <Link href="/settings/my-leaves"><FileText className="mr-2 h-4 w-4"/> ใบลาของฉัน</Link>
+                            </DropdownMenuItem>
+                        )}
                          <DropdownMenuItem asChild>
                             <Link href="/settings/holidays"><CalendarDays className="mr-2 h-4 w-4"/> ปฏิทินวันหยุด</Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                            <Link href="/settings/my-payslips"><Receipt className="mr-2 h-4 w-4"/> ใบเงินเดือนของฉัน</Link>
-                        </DropdownMenuItem>
+                        {!isOutsourceWorker && (
+                            <DropdownMenuItem asChild>
+                                <Link href="/settings/my-payslips"><Receipt className="mr-2 h-4 w-4"/> ใบเงินเดือนของฉัน</Link>
+                            </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={signOut}>
                             <LogOut className="mr-2 h-4 w-4" />
