@@ -9,6 +9,7 @@ import {
   onSnapshot, 
   addDoc, 
   doc, 
+  setDoc,
   updateDoc, 
   serverTimestamp, 
   writeBatch, 
@@ -426,7 +427,7 @@ export default function OfficeCashDrawerPage() {
               <FormField name="openingAmount" render={({ field }) => (
                 <FormItem><FormLabel>จำนวนเงินทอนเริ่มต้น (บาท)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
-              <DialogFooter><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันเปิดรอบ</Button></DialogFooter>
+              <DialogFooter><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยันเปิดรอบ</Button></DialogFooter>
             </form>
           </Form>
         </DialogContent>
@@ -493,7 +494,7 @@ export default function OfficeCashDrawerPage() {
                 </div>
               </div>
 
-              <DialogFooter><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}บันทึกรายการ</Button></DialogFooter>
+              <DialogFooter><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}บันทึกรายการ</Button></DialogFooter>
             </form>
           </Form>
         </DialogContent>
@@ -515,7 +516,7 @@ export default function OfficeCashDrawerPage() {
                 <FormItem><FormLabel>จำนวนเงินที่นับได้จริง (บาท)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <FormField name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุการปิดรอบ</FormLabel><FormControl><Textarea {...field} placeholder="เช่น สาเหตุที่เงินขาดหรือเกิน..." /></FormControl></FormItem>)} />
-              <DialogFooter><Button type="submit" variant="destructive" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันการปิดรอบ</Button></DialogFooter>
+              <DialogFooter><Button type="submit" variant="destructive" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยันการปิดรอบ</Button></DialogFooter>
             </form>
           </Form>
         </DialogContent>
