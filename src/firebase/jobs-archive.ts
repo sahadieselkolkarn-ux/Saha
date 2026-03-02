@@ -8,6 +8,7 @@ import {
   serverTimestamp,
   getDocs,
   writeBatch,
+  deleteField,
 } from 'firebase/firestore';
 import { archiveCollectionNameByYear } from '@/lib/archive-utils';
 import type { UserProfile, Job } from '@/lib/types';
@@ -69,6 +70,64 @@ export async function archiveAndCloseJob(
   await moveJobActivities(db, jobId, archiveColName);
   
   return { archiveCollection: archiveColName, archiveJobId: jobId };
+}
+
+/**
+ * Restores a job from the archive back to the active jobs collection.
+ */
+export async function restoreJobFromArchive(
+  db: Firestore,
+  jobId: string,
+  year: number,
+  userProfile: UserProfile
+) {
+  const archiveColName = archiveCollectionNameByYear(year);
+  const archiveRef = doc(db, archiveColName, jobId);
+  const jobRef = doc(db, 'jobs', jobId);
+
+  await runTransaction(db, async (transaction) => {
+    const archiveSnap = await transaction.get(archiveRef);
+    if (!archiveSnap.exists()) {
+      throw new Error("ไม่พบข้อมูลงานซ่อมในประวัติปีที่ระบุ");
+    }
+
+    const archiveData = archiveSnap.data() as Job;
+    
+    // Remove archive-specific fields and reset status
+    const { 
+      isArchived, archivedAt, archivedAtDate, archivedByUid, archivedByName,
+      paymentStatusAtClose, closedByName, closedByUid, originalJobId,
+      ...restOfData 
+    } = archiveData as any;
+
+    const restoredData = {
+      ...restOfData,
+      status: 'WAITING_CUSTOMER_PICKUP', // Restore to the state before closing
+      isArchived: false,
+      updatedAt: serverTimestamp(),
+      lastActivityAt: serverTimestamp(),
+    };
+
+    transaction.set(jobRef, sanitizeForFirestore(restoredData));
+    transaction.delete(archiveRef);
+  });
+
+  // Move activities back
+  const archiveActivitiesRef = collection(db, archiveColName, jobId, 'activities');
+  const activeActivitiesRef = collection(db, 'jobs', jobId, 'activities');
+  
+  const activitiesSnap = await getDocs(archiveActivitiesRef);
+  if (!activitiesSnap.empty) {
+    const batch = writeBatch(db);
+    activitiesSnap.docs.forEach(actDoc => {
+      const newActRef = doc(activeActivitiesRef, actDoc.id);
+      batch.set(newActRef, actDoc.data());
+      batch.delete(actDoc.ref);
+    });
+    await batch.commit();
+  }
+
+  return { jobId };
 }
 
 export async function moveJobActivities(db: Firestore, jobId: string, targetCollectionName: string) {

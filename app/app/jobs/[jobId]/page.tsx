@@ -13,7 +13,7 @@ import { safeFormat } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 
 import { PageHeader } from "@/components/page-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,6 +39,7 @@ import { JobVehicleDetails } from "@/components/job-details/job-vehicle-details"
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 import { cn, sanitizeForFirestore } from "@/lib/utils";
+import { restoreJobFromArchive } from "@/firebase/jobs-archive";
 
 const MAX_TOTAL_PHOTOS = 12;
 
@@ -125,6 +126,9 @@ function JobDetailsPageContent() {
   const [isRevertDialogOpen, setIsRevertDialogOpen] = useState(false);
   const [revertReason, setRevertReason] = useState("");
   const [isReverting, setIsReverting] = useState(false);
+
+  const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // New state for document type selection
   const [isBillingSelectionOpen, setIsBillingSelectionOpen] = useState(false);
@@ -540,6 +544,22 @@ function JobDetailsPageContent() {
     }
   };
 
+  const handleRestoreJob = async () => {
+    if (!db || !profile || !job || !job.isArchived) return;
+    setIsRestoring(true);
+    try {
+      const year = parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
+      await restoreJobFromArchive(db, job.id, year, profile);
+      toast({ title: "กู้คืนงานสำเร็จ", description: "งานถูกย้ายกลับมาเป็นงานที่กำลังดำเนินการ (Active) เรียบร้อยแล้วค่ะ" });
+      setIsRestoreDialogOpen(false);
+      // Data will refresh via onSnapshot automatically
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: 'กู้คืนไม่สำเร็จ', description: e.message });
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   const handleApproveJob = async () => {
     if (!db || !profile || !job) return;
     setIsSubmittingNote(true);
@@ -641,6 +661,31 @@ function JobDetailsPageContent() {
       
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
+          {job.isArchived && isUserAdmin && (
+            <Card className="border-amber-500 bg-amber-50 shadow-md">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-amber-700 flex items-center gap-2 text-base">
+                  <RotateCcw className="h-5 w-5" />
+                  เครื่องมือ Admin: กู้คืนงานจากประวัติ
+                </CardTitle>
+                <CardDescription className="text-amber-600 text-xs">
+                  หากงานนี้ถูกปิดโดยผิดพลาด หรือยังไม่ได้ออกใบเสร็จรับเงินจริง สามารถกู้คืนเพื่อให้ฝ่ายออฟฟิศจัดการต่อได้ค่ะ
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  variant="outline" 
+                  className="border-amber-600 text-amber-700 hover:bg-amber-100 w-full font-bold"
+                  onClick={() => setIsRestoreDialogOpen(true)}
+                  disabled={isRestoring}
+                >
+                  {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                  กู้คืนกลับเป็นงานที่กำลังทำ (Restore to Active)
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader><CardTitle>รายละเอียดใบงาน</CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
@@ -885,6 +930,31 @@ function JobDetailsPageContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-amber-600" />
+              ยืนยันการกู้คืนงานจากประวัติ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ระบบจะย้ายงานซ่อมชิ้นนี้จากประวัติกลับมาเป็นงานที่กำลังดำเนินการ (Active) ในสถานะ <b>"รอลูกค้ารับสินค้า"</b> เพื่อให้คุณสามารถไปออกใบเสร็จและปิดงานอย่างถูกต้องได้อีกครั้งค่ะ
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRestoring}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleRestoreJob} 
+              disabled={isRestoring}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+              ยืนยันกู้คืน
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Select Document Type Dialog */}
       <AlertDialog open={isBillingSelectionOpen} onOpenChange={setIsBillingSelectionOpen}>
