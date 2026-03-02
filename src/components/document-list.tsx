@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronLeft, ChevronRight, ExternalLink, RotateCcw } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -77,11 +77,12 @@ export function DocumentList({
   const [docToAction, setDocToAction] = useState<Document | null>(null);
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
+  const [isRevertAlertOpen, setIsRevertAlertOpen] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   
   const [currentPage, setCurrentPage] = useState(0);
 
-  const isUserAdmin = profile?.role === 'ADMIN';
+  const isUserAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
 
   const stableQuery = useMemo(() => {
     if (!db) return null;
@@ -151,7 +152,6 @@ export function DocumentList({
 
   const uniqueStatuses = useMemo(() => {
     const allStatuses = new Set(allDocuments.map(doc => getDocDisplayStatus(doc).key));
-    // Ensure DRAFT is always an option even if not currently in the set
     allStatuses.add("DRAFT");
     return ["ALL", ...Array.from(allStatuses)];
   }, [allDocuments]);
@@ -177,24 +177,21 @@ export function DocumentList({
       const batch = writeBatch(db);
       const docRef = doc(db, 'documents', docToAction.id);
       
-      // 1. Update document status
       batch.update(docRef, {
         status: 'CANCELLED',
         updatedAt: serverTimestamp(),
         notes: (docToAction.notes || "") + `\n[System] ยกเลิกเมื่อ ${safeFormat(new Date(), 'dd/MM/yy HH:mm')} โดย ${profile.displayName}`
       });
 
-      // 2. Clear Job reference and Revert status
       if (docToAction.jobId) {
         const jobRef = doc(db, 'jobs', docToAction.jobId);
         const jobSnap = await getDoc(jobRef);
         
         if (jobSnap.exists()) {
           const jobData = jobSnap.data();
-          // Only clear if this document is actually the one currently linked
           if (jobData.salesDocId === docToAction.id) {
             batch.update(jobRef, {
-              status: 'DONE', // Revert to finished state so it can be re-billed
+              status: 'DONE',
               salesDocId: deleteField(),
               salesDocNo: deleteField(),
               salesDocType: deleteField(),
@@ -220,6 +217,46 @@ export function DocumentList({
     } finally {
       setIsActionLoading(false);
       setIsCancelAlertOpen(false);
+      setDocToAction(null);
+    }
+  };
+
+  // ✅ New Fix: Admin Revert Payment (Delete old CASH_IN and return to APPROVED)
+  const confirmRevertPayment = async () => {
+    if (!db || !docToAction || !profile) return;
+    setIsActionLoading(true);
+    
+    try {
+      const batch = writeBatch(db);
+      const docRef = doc(db, 'documents', docToAction.id);
+      
+      // 1. Delete associated entry if exists
+      if (docToAction.accountingEntryId) {
+        const entryRef = doc(db, 'accountingEntries', docToAction.accountingEntryId);
+        batch.delete(entryRef);
+      }
+
+      // 2. Revert document status
+      batch.update(docRef, {
+        status: 'APPROVED', // Back to the state where they can create a receipt
+        paymentSummary: {
+            paidTotal: 0,
+            balance: docToAction.grandTotal,
+            paymentStatus: 'UNPAID'
+        },
+        receiptStatus: deleteField(),
+        accountingEntryId: deleteField(),
+        updatedAt: serverTimestamp(),
+        notes: (docToAction.notes || "") + `\n[Fix] กู้คืนสถานะเพื่อรอออกใบเสร็จ โดย ${profile.displayName} เมื่อ ${safeFormat(new Date(), 'dd/MM/yy HH:mm')}`
+      });
+
+      await batch.commit();
+      toast({ title: "กู้คืนสถานะสำเร็จ", description: "บิลนี้กลับไปรอออกใบเสร็จ และลบยอดเงินซ้ำออกจากสมุดบัญชีแล้วค่ะ" });
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: "กู้คืนไม่สำเร็จ", description: err.message });
+    } finally {
+      setIsActionLoading(false);
+      setIsRevertAlertOpen(false);
       setDocToAction(null);
     }
   };
@@ -300,6 +337,14 @@ export function DocumentList({
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onSelect={() => router.push(viewPath)}><Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด</DropdownMenuItem>
                               {editPath && <DropdownMenuItem onSelect={() => router.push(editPath)} disabled={docItem.status === 'PAID' && !isUserAdmin}> <Edit className="mr-2 h-4 w-4"/> แก้ไข</DropdownMenuItem>}
+                              
+                              {/* ✅ Admin Fix Option */}
+                              {isUserAdmin && docItem.status === 'PAID' && !docItem.receiptDocId && (
+                                <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setDocToAction(docItem); setIsRevertAlertOpen(true); }} className="text-amber-600 focus:text-amber-600 font-bold">
+                                    <RotateCcw className="mr-2 h-4 w-4" /> กู้คืนเพื่อออกใบเสร็จ
+                                </DropdownMenuItem>
+                              )}
+
                               <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setDocToAction(docItem); setIsCancelAlertOpen(true); }} disabled={docItem.status === 'CANCELLED' || (docItem.status === 'PAID' && !isUserAdmin)}> <XCircle className="mr-2 h-4 w-4"/> ยกเลิก</DropdownMenuItem>
                               {isUserAdmin && <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setDocToAction(docItem); setIsDeleteAlertOpen(true); }} className="text-destructive focus:text-destructive"> <Trash2 className="mr-2 h-4 w-4" /> ลบ</DropdownMenuItem>}
                             </DropdownMenuContent>
@@ -337,6 +382,31 @@ export function DocumentList({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
             <AlertDialogAction onClick={confirmCancel} disabled={isActionLoading}>{isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการยกเลิก'}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isRevertAlertOpen} onOpenChange={setIsRevertAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2"><RotateCcw className="h-5 w-5 text-amber-500"/> กู้คืนสถานะเพื่อรอออกใบเสร็จ?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>ระบบตรวจพบว่าบิลเลขที่ <span className="font-bold">{docToAction?.docNo}</span> ถูกบันทึกรับเงินเข้าบัญชีไปแล้วโดยข้ามขั้นตอนใบเสร็จ</p>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded text-amber-800 text-xs">
+                <strong>การดำเนินการนี้จะ:</strong>
+                <ul className="list-disc pl-4 mt-1">
+                    <li>ลบรายการเงินเข้าในสมุดบัญชี (Cashbook) ของบิลใบนี้ออก</li>
+                    <li>เปลี่ยนสถานะบิลกลับเป็น "รอออกใบเสร็จ"</li>
+                    <li>เพื่อให้คุณสามารถไปออกใบเสร็จและยืนยันรับเงินตามระบบใหม่ได้ถูกต้องค่ะ</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isActionLoading}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRevertPayment} disabled={isActionLoading} className="bg-amber-600 hover:bg-amber-700">
+                {isActionLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : 'ยืนยันการกู้คืน'}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
