@@ -22,11 +22,11 @@ import {
 import { 
   Form, 
   FormControl, 
+  FormDescription, 
   FormField, 
   FormItem, 
   FormLabel, 
-  FormMessage, 
-  FormDescription 
+  FormMessage 
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -180,7 +180,7 @@ export default function OfficeCustomersNewPage() {
                                 name="acquisitionSource"
                                 render={({ field }) => (
                                     <FormItem className="space-y-3">
-                                    <FormLabel>ลูกค้ารู้จักร้านจากช่องทางไหน?</FormLabel>
+                                    <FormLabel className="flex items-center gap-1 font-bold">ลูกค้ารู้จักร้านจากช่องทางไหน? <span className="text-destructive">*</span></FormLabel>
                                     <FormControl>
                                         <RadioGroup
                                         onValueChange={field.onChange}
