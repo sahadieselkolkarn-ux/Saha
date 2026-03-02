@@ -35,7 +35,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-import { createDocument } from "@/firebase/documents";
+import { createDocument, getNextAvailableDocNo } from "@/firebase/documents";
 import type { Job, StoreSettings, Customer, Document as DocumentType, AccountingAccount, DocType } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
 
@@ -96,6 +96,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   const [existingActiveDoc, setExistingActiveDoc] = useState<DocumentType | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
+  const [previewDocNo, setPreviewDocNo] = useState<string>("");
 
   const [suggestedPayments, setSuggestedPayments] = useState<{method: 'CASH' | 'TRANSFER', accountId: string, amount: number}[]>([{method: 'CASH', accountId: '', amount: 0}]);
   const [recordRemainingAsCredit, setRecordRemainingAsCredit] = useState(false);
@@ -138,10 +139,26 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
   });
 
   const selectedCustomerId = form.watch('customerId');
+  const watchedIssueDate = form.watch('issueDate');
   const currentCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
   const grandTotal = form.watch('grandTotal');
   
   const isLocked = isEditing && (docToEdit?.status === 'PAID' || docToEdit?.status === 'PENDING_REVIEW') && profile?.role !== 'ADMIN' && profile?.role !== 'MANAGER';
+
+  // Preview Document Number
+  useEffect(() => {
+    if (!db || isEditing || !watchedIssueDate) return;
+    
+    const fetchPreview = async () => {
+      try {
+        const nextNo = await getNextAvailableDocNo(db, 'DELIVERY_NOTE', watchedIssueDate);
+        setPreviewDocNo(nextNo);
+      } catch (e) {
+        console.error("Failed to fetch doc no preview", e);
+      }
+    };
+    fetchPreview();
+  }, [db, isEditing, watchedIssueDate]);
 
   useEffect(() => {
     if (!db) return;
@@ -377,7 +394,15 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             </div>
             <div className="space-y-4">
               <h1 className="text-2xl font-bold text-right text-primary">ใบส่งของชั่วคราว</h1>
-              {isEditing && <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>}
+              {isEditing ? (
+                <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>
+              ) : (
+                <div className="text-right">
+                  <Badge variant="outline" className="font-mono text-lg py-1 px-3 border-primary/30 text-primary bg-primary/5">
+                    {previewDocNo || "กำลังโหลดเลขที่..."}
+                  </Badge>
+                </div>
+              )}
               <FormField control={form.control} name="issueDate" render={({ field }) => (
                 <FormItem>
                   <FormLabel>วันที่ออกเอกสาร</FormLabel>

@@ -26,7 +26,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
-import { createDocument } from "@/firebase/documents";
+import { createDocument, getNextAvailableDocNo } from "@/firebase/documents";
 import type { Job, StoreSettings, Customer, Document as DocumentType, QuotationTemplate } from "@/lib/types";
 
 const lineItemSchema = z.object({
@@ -75,6 +75,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const [existingActiveDoc, setExistingActiveDoc] = useState<DocumentType | null>(null);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<QuotationFormData | null>(null);
+  const [previewDocNo, setPreviewDocNo] = useState<string>("");
 
   const jobDocRef = useMemo(() => (db && jobId ? doc(db, "jobs", jobId) : null), [db, jobId]);
   const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
@@ -104,9 +105,25 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   });
 
   const selectedCustomerId = form.watch('customerId');
+  const watchedIssueDate = form.watch('issueDate');
   const currentCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId), [customers, selectedCustomerId]);
   const isCustomerSelectionDisabled = !!jobId || (isEditing && !!docToEdit?.customerId);
   const isCancelled = docToEdit?.status === 'CANCELLED';
+
+  // Preview Document Number
+  useEffect(() => {
+    if (!db || isEditing || !watchedIssueDate) return;
+    
+    const fetchPreview = async () => {
+      try {
+        const nextNo = await getNextAvailableDocNo(db, 'QUOTATION', watchedIssueDate);
+        setPreviewDocNo(nextNo);
+      } catch (e) {
+        console.error("Failed to fetch doc no preview", e);
+      }
+    };
+    fetchPreview();
+  }, [db, isEditing, watchedIssueDate]);
 
   useEffect(() => {
     if (!db) return;
@@ -319,7 +336,15 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             </div>
             <div className="space-y-4">
               <h1 className="text-2xl font-bold text-right text-primary">ใบเสนอราคา</h1>
-              {isEditing && <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>}
+              {isEditing ? (
+                <p className="text-right text-sm font-mono">{docToEdit?.docNo}</p>
+              ) : (
+                <div className="text-right">
+                  <Badge variant="outline" className="font-mono text-lg py-1 px-3 border-primary/30 text-primary bg-primary/5">
+                    {previewDocNo || "กำลังโหลดเลขที่..."}
+                  </Badge>
+                </div>
+              )}
               <FormField control={form.control} name="issueDate" render={({ field }) => (
                 <FormItem><FormLabel>วันที่ออกเอกสาร</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl></FormItem>
               )} />
@@ -401,7 +426,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         </div>
 
         <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
-          <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle className="flex items-center gap-2 text-destructive"><AlertCircle className="h-5 w-5" />พบใบเสนอราคาเดิม</DialogTitle><DialogDescription>งานซ่อมนี้มีการออกใบเสนอราคาไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingActiveDoc?.docNo}</span></DialogDescription></DialogHeader><DialogFooter className="flex flex-col sm:flex-row gap-2"><Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push(`/app/office/documents/quotation/${existingActiveDoc?.id}`)}><Eye className="mr-2 h-4 w-4" /> ดูใบเดิม</Button><Button variant="destructive" className="w-full sm:w-auto" onClick={handleCancelExistingAndSave} disabled={isProcessing}>{isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />} ยกเลิกใบเดิมและสร้างใหม่</Button></DialogFooter></DialogContent>
+          <DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle className="flex items-center gap-2 text-destructive"><AlertCircle className="h-5 w-5" />พบใบเสนอราคาเดิม</DialogTitle><DialogDescription>งานซ่อมนี้มีการออกใบเสนอราคาไปแล้วคือเลขที่ <span className="font-bold text-primary">{existingActiveDoc?.docNo}</span></DialogDescription></DialogHeader><DialogFooter className="flex flex-col sm:flex-row gap-2"><Button variant="outline" className="w-full sm:w-auto" onClick={() => router.push(`/app/office/documents/quotation/${existingActiveDoc?.id}`)}><Eye className="mr-2 h-4 w-4" /> ดูใบเดิม</Button><Button variant="destructive" className="w-full sm:w-auto" onClick={handleCancelExistingAndSave} disabled={isProcessing}>{isProcessing ? <Loader2 className="animate-spin mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />} ยกเลิกใบเดิมและสร้างใหม่</Button></DialogFooter></DialogContent>
         </Dialog>
       </form>
     </Form>

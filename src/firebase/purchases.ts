@@ -16,7 +16,7 @@ import {
 import type { DocumentSettings, PurchaseDoc, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
 
-function normalizeYear(year: number): number {
+export function normalizeYear(year: number): number {
   return year > 2400 ? year - 543 : year;
 }
 
@@ -31,7 +31,7 @@ function extractSequence(docNo: string): number {
 /**
  * Finds the next available sequence for PurchaseDocs.
  */
-async function findNextAvailablePurchaseSequence(db: Firestore, prefixYear: string): Promise<number> {
+export async function findNextAvailablePurchaseSequence(db: Firestore, prefixYear: string): Promise<number> {
   const q = query(
     collection(db, "purchaseDocs"),
     where("docNo", ">=", prefixYear),
@@ -47,6 +47,24 @@ async function findNextAvailablePurchaseSequence(db: Firestore, prefixYear: stri
     candidate++;
   }
   return candidate;
+}
+
+/**
+ * Pre-calculates the next available purchase document number for UI preview.
+ */
+export async function getNextAvailablePurchaseDocNo(
+  db: Firestore,
+  docDate: string
+): Promise<string> {
+  const dateObj = new Date(docDate || new Date());
+  const year = normalizeYear(dateObj.getFullYear());
+  
+  const docSettingsSnap = await getDoc(doc(db, 'settings', 'documents'));
+  const prefix = (docSettingsSnap.exists() ? (docSettingsSnap.data() as DocumentSettings).purchasePrefix : 'PUR') || 'PUR';
+
+  const prefixSearch = `${prefix}${year}-`;
+  const nextSeq = await findNextAvailablePurchaseSequence(db, prefixSearch);
+  return `${prefix}${year}-${String(nextSeq).padStart(4, '0')}`;
 }
 
 export async function createPurchaseDoc(

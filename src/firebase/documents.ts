@@ -19,7 +19,7 @@ import { sanitizeForFirestore } from '@/lib/utils';
 /**
  * Normalizes year to Gregorian (CE).
  */
-function normalizeYear(year: number): number {
+export function normalizeYear(year: number): number {
   return year > 2400 ? year - 543 : year;
 }
 
@@ -38,7 +38,7 @@ function extractSequence(docNo: string): number {
  * Finds the next available sequence number for a given prefix/year.
  * It fetches existing doc numbers and finds the smallest gap.
  */
-async function findNextAvailableSequence(db: Firestore, docType: string, prefixYear: string): Promise<number> {
+export async function findNextAvailableSequence(db: Firestore, docType: string, prefixYear: string): Promise<number> {
   const q = query(
     collection(db, "documents"),
     where("docType", "==", docType),
@@ -55,6 +55,53 @@ async function findNextAvailableSequence(db: Firestore, docType: string, prefixY
     candidate++;
   }
   return candidate;
+}
+
+/**
+ * Pre-calculates the next available document number for UI preview.
+ */
+export async function getNextAvailableDocNo(
+  db: Firestore,
+  docType: DocType,
+  docDate: string
+): Promise<string> {
+  let year = new Date().getFullYear();
+  if (docDate) {
+    const dateObj = new Date(docDate);
+    if (!isNaN(dateObj.getTime())) {
+      year = normalizeYear(dateObj.getFullYear());
+    }
+  }
+
+  const docSettingsSnap = await getDoc(doc(db, 'settings', 'documents'));
+  
+  const prefixes: Record<DocType, keyof DocumentSettings> = {
+    QUOTATION: 'quotationPrefix',
+    DELIVERY_NOTE: 'deliveryNotePrefix',
+    TAX_INVOICE: 'taxInvoicePrefix',
+    RECEIPT: 'receiptPrefix',
+    BILLING_NOTE: 'billingNotePrefix',
+    CREDIT_NOTE: 'creditNotePrefix',
+    WITHHOLDING_TAX: 'withholdingTaxPrefix',
+  };
+
+  const defaultPrefixMap: Record<DocType, string> = {
+    QUOTATION: 'QT',
+    DELIVERY_NOTE: 'DN',
+    TAX_INVOICE: 'INV',
+    RECEIPT: 'RE',
+    BILLING_NOTE: 'BN',
+    CREDIT_NOTE: 'CN',
+    WITHHOLDING_TAX: 'WHT',
+  };
+
+  const prefix = (docSettingsSnap.exists() 
+    ? (docSettingsSnap.data()[prefixes[docType]] || defaultPrefixMap[docType]) 
+    : defaultPrefixMap[docType]).toUpperCase();
+
+  const prefixSearch = `${prefix}${year}-`;
+  const nextSeq = await findNextAvailableSequence(db, docType, prefixSearch);
+  return `${prefix}${year}-${String(nextSeq).padStart(4, '0')}`;
 }
 
 export async function createDocument(

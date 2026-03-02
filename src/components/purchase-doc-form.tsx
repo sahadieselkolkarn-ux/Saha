@@ -28,8 +28,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import Image from "next/image";
+import { Badge } from "@/components/ui/badge";
 
-import { createPurchaseDoc } from "@/firebase/purchases";
+import { createPurchaseDoc, getNextAvailablePurchaseDocNo } from "@/firebase/purchases";
 import { VENDOR_TYPES } from "@/lib/constants";
 import { vendorTypeLabel } from "@/lib/ui-labels";
 import type { PurchaseDoc, Vendor, AccountingAccount } from "@/lib/types";
@@ -79,6 +80,7 @@ export function PurchaseDocForm() {
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [previewDocNo, setPreviewDocNo] = useState<string>("");
 
   const [creationId] = useState(() => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -117,6 +119,22 @@ export function PurchaseDocForm() {
   const watchedDiscount = useWatch({ control: form.control, name: "discountAmount" });
   const watchedIsVat = useWatch({ control: form.control, name: "withTax" });
   const watchedPaymentMode = form.watch("paymentMode");
+  const watchedDocDate = form.watch("docDate");
+
+  // Preview Purchase Doc Number
+  useEffect(() => {
+    if (!db || editDocId || !watchedDocDate) return;
+    
+    const fetchPreview = async () => {
+      try {
+        const nextNo = await getNextAvailablePurchaseDocNo(db, watchedDocDate);
+        setPreviewDocNo(nextNo);
+      } catch (e) {
+        console.error("Failed to fetch purchase doc no preview", e);
+      }
+    };
+    fetchPreview();
+  }, [db, editDocId, watchedDocDate]);
 
   useEffect(() => {
     if (!db) return;
@@ -322,7 +340,18 @@ export function PurchaseDocForm() {
 
         <div className="grid md:grid-cols-2 gap-6">
             <Card>
-                <CardHeader><CardTitle className="text-base">1. ข้อมูลผู้ขาย</CardTitle></CardHeader>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-base">1. ข้อมูลผู้ขาย</CardTitle>
+                    {editDocId ? (
+                      <Badge variant="outline" className="font-mono">{docToEdit?.docNo}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="font-mono text-primary bg-primary/5 border-primary/30">
+                        {previewDocNo || "Loading..."}
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormItem>
