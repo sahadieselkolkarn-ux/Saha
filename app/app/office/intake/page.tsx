@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -225,10 +226,7 @@ export default function IntakePage() {
             mainDepartment: values.department, 
             description: values.description,
             customerSnapshot: { 
-              name: selectedCustomer.name, 
-              phone: selectedCustomer.phone, 
-              useTax: selectedCustomer.useTax,
-              id: selectedCustomer.id 
+              ...selectedCustomer // Capture FULL customer details for future documents
             },
             status: "RECEIVED",
             customerType: isActuallyNew ? 'NEW' : 'EXISTING',

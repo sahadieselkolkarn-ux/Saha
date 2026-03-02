@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -81,7 +82,7 @@ export function ReceiptForm() {
     if (!db) return;
     const q = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-        setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AccountingAccount)));
+        setAccounts(snap => snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AccountingAccount)));
     });
     return unsubscribe;
   }, [db]);
@@ -152,7 +153,7 @@ export function ReceiptForm() {
       const docData = {
         docDate: data.paymentDate,
         customerId: data.customerId,
-        customerSnapshot: { ...customer }, // Always take full latest snapshot
+        customerSnapshot: { ...customer }, // Capture FULL latest snapshot from management
         storeSnapshot: { ...storeSettings },
         items,
         subtotal: amount2dec,

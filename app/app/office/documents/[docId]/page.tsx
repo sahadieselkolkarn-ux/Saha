@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -77,20 +78,18 @@ function DocumentView({
         }
     }
 
-    const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
     const isTaxDoc = ['TAX_INVOICE', 'RECEIPT', 'BILLING_NOTE', 'CREDIT_NOTE', 'WITHHOLDING_TAX'].includes(document.docType);
     
-    // Priority: Tax Name > Name
-    const displayCustomerName = (isTaxDoc || document.customerSnapshot.useTax)
+    // PRIORITY LOGIC: For official docs, strictly use tax info if available
+    const displayCustomerName = isTaxDoc 
         ? (document.customerSnapshot.taxName || document.customerSnapshot.name) 
-        : document.customerSnapshot.name;
+        : (document.customerSnapshot.name);
         
-    // Priority: Tax Address > Detail > Fallback
-    const displayCustomerAddress = (isTaxDoc || document.customerSnapshot.useTax)
+    const displayCustomerAddress = isTaxDoc 
         ? (document.customerSnapshot.taxAddress || document.customerSnapshot.detail || 'ไม่มีข้อมูลที่อยู่') 
         : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีข้อมูลที่อยู่');
         
-    const displayCustomerPhone = (isTaxDoc || document.customerSnapshot.useTax)
+    const displayCustomerPhone = isTaxDoc 
         ? (document.customerSnapshot.taxPhone || document.customerSnapshot.phone) 
         : document.customerSnapshot.phone;
 
@@ -120,7 +119,7 @@ function DocumentView({
                 <div className="grid grid-cols-2 gap-8 mb-4">
                     <div className="space-y-1">
                         <h2 className="text-base font-bold">
-                            {(isDeliveryNote ? (document.storeSnapshot.informalName || document.storeSnapshot.taxName) : document.storeSnapshot.taxName) || 'Sahadiesel Service'}
+                            {(document.storeSnapshot.taxName || document.storeSnapshot.informalName) || 'Sahadiesel Service'}
                             {storeBranchLabel && <span className="font-bold"> ({storeBranchLabel})</span>}
                         </h2>
                         <p className="text-[11px] whitespace-pre-wrap leading-relaxed">
@@ -128,7 +127,7 @@ function DocumentView({
                         </p>
                         <p className="text-[11px]">
                             โทร {document.storeSnapshot.phone}
-                            {!isDeliveryNote && document.storeSnapshot.taxId && (
+                            {document.storeSnapshot.taxId && (
                                 <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.storeSnapshot.taxId}</span>
                             )}
                         </p>

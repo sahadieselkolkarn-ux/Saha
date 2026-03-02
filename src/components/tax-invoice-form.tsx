@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -161,7 +162,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
           setPreviewDocNo(result.docNo);
         }
       } catch (e: any) {
-        // Silently handle other errors to avoid overlay
+        // Silently handle
       }
     };
     fetchPreview();
@@ -205,7 +206,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         form.setValue('jobId', jobId || undefined);
         form.setValue('customerId', job.customerId);
         form.setValue('items', [{ description: job.description, quantity: 1, unitPrice: 0, total: 0 }]);
-        form.setValue('receiverName', job.customerSnapshot?.name || '');
+        form.setValue('receiverName', job.customerSnapshot?.taxName || job.customerSnapshot?.name || '');
     }
     if (profile) form.setValue('senderName', profile.displayName || '');
   }, [job, docToEdit, profile, form, jobId]);
@@ -346,7 +347,7 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
     if (sourceDoc.docType === 'QUOTATION') setReferencedQuotationId(sourceDoc.id);
     form.setValue('discountAmount', Number(sourceDoc.discountAmount ?? 0));
     form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
-    form.setValue('receiverName', sourceDoc.customerSnapshot?.name || "");
+    form.setValue('receiverName', sourceDoc.customerSnapshot?.taxName || sourceDoc.customerSnapshot?.name || "");
     setIsQtSearchOpen(false);
   };
 
