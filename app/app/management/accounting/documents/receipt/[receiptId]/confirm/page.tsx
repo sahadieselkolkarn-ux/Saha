@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Save, ArrowLeft, Calculator, Info } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { Document as DocumentType, AccountingAccount, AccountingObligation } from "@/lib/types";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { safeFormat } from "@/lib/date-utils";
@@ -34,6 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 
 const allocationSchema = z.object({
   invoiceId: z.string(),
@@ -185,7 +187,6 @@ function ConfirmReceiptPageContent() {
     fetchData();
   }, [db, receiptId, form]);
   
-  // Adjusted Auto Allocation Logic
   const handleAutoAllocate = useCallback(() => {
     const netTotal = form.getValues('netReceivedTotal');
     let remainingToAllocate = netTotal;
@@ -199,14 +200,6 @@ function ConfirmReceiptPageContent() {
 
     const newAllocations = sortedAllocations.map(alloc => {
       const { grossRemaining, withTax, withholdingPercent = 0 } = alloc;
-      
-      // Calculate how much gross we CAN settle with the remaining cash
-      // Formulas based on Gross -> Net
-      // Base = Gross / 1.07 (if tax)
-      // WHT = Base * rate
-      // Net = Gross - WHT
-      // So Net = Gross - (Gross / 1.07 * rate) = Gross * (1 - rate/1.07)
-      // Gross = Net / (1 - rate/1.07)
       
       const rate = withholdingPercent / 100;
       const divisor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
@@ -244,7 +237,6 @@ function ConfirmReceiptPageContent() {
     }
   }, [form, invoices, toast, update]);
 
-  // Real-time calculation watcher with VAT-aware WHT logic
   useEffect(() => {
     const subscription = form.watch((value, { name, type }) => {
       if (name && name.startsWith('allocations')) {
@@ -259,21 +251,13 @@ function ConfirmReceiptPageContent() {
           withholdingPercent = Number(withholdingPercent) || 0;
           const rate = withholdingPercent / 100;
 
-          // If changing Net Cash Applied or WHT %
           if (parts[2] === 'netCashApplied' || parts[2] === 'withholdingPercent') {
-             // Formula: Net = Gross - (Base * Rate)
-             // If Tax: Net = Gross - (Gross / 1.07 * Rate) = Gross * (1 - Rate/1.07)
-             // Gross = Net / (1 - Rate/1.07)
-             
              const divisor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
              grossApplied = Math.round((netCashApplied / divisor) * 100) / 100;
              const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
              withholdingAmount = Math.round((baseAmount * rate) * 100) / 100;
-             
-             // Recalculate net to ensure rounding consistency
              netCashApplied = Math.round((grossApplied - withholdingAmount) * 100) / 100;
           } 
-          // If changing WHT Amount directly
           else if (parts[2] === 'withholdingAmount') {
              grossApplied = Math.round((netCashApplied + withholdingAmount) * 100) / 100;
              const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
