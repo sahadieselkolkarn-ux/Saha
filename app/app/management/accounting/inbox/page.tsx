@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit } from "firebase/firestore";
+import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit, deleteField } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
@@ -67,7 +67,6 @@ function AccountingInboxPageContent() {
 
   const hasPermission = useMemo(() => {
     if (!profile) return false;
-    // สิทธิ์ให้ admin และ manager แผนกบริหาร รวมถึงออฟฟิศที่ต้องตรวจบิล
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
   }, [profile]);
 
@@ -159,7 +158,7 @@ function AccountingInboxPageContent() {
     try {
       const result: any = await closeJob({ jobId, paymentStatus });
       if (result.data?.ok) {
-        toast({ title: "ปิดงานสำเร็จ", description: "ใบงานถูกย้ายเข้าประวัติเรียบร้อยแล้ว" });
+        toast({ title: "ย้ายงานเข้าประวัติสำเร็จ", description: "ใบงานถูกปิดและเก็บลงประวัติเรียบร้อยแล้วค่ะ" });
       }
     } catch (e: any) {
       toast({ 
@@ -194,88 +193,73 @@ function AccountingInboxPageContent() {
       setSuggestedPayments(newPayments);
   };
 
-  const handleConfirmCashPayment = async () => {
+  // ✅ New Logic: Just approve the doc, do NOT create cash entries.
+  // The cash entry will be created when a RECEIPT is confirmed.
+  const handleApproveSaleDocument = async () => {
     if (!db || !profile || !confirmingDoc) return;
     setConfirmError(null);
     setIsSubmitting(true);
     const jobId = confirmingDoc.jobId;
-    const totalSuggested = suggestedPayments.reduce((sum, p) => sum + p.amount, 0);
-    const remaining = Math.max(0, confirmingDoc.grandTotal - totalSuggested);
-    const isPartialCredit = remaining > 0.01;
 
     try {
       await runTransaction(db, async (transaction) => {
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
-        if (docSnap.data().status === 'PAID' || docSnap.data().accountingEntryId) {
-          throw new Error("รายการนี้ถูกดำเนินการไปก่อนหน้านี้แล้ว");
+        
+        // Prevent double approval if status already changed
+        if (docSnap.data().status === 'APPROVED' || docSnap.data().status === 'PAID') {
+          throw new Error("รายการนี้ถูกตรวจสอบไปก่อนหน้านี้แล้ว");
         }
+
         const arId = `AR_${confirmingDoc.id}`;
         const arRef = doc(db, 'accountingObligations', arId);
         const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
 
-        suggestedPayments.forEach((p, index) => {
-            if (p.amount <= 0 || !p.accountId) return;
-            const entryId = `SALE_${confirmingDoc.id}_${index}`;
-            const entryRef = doc(db, 'accountingEntries', entryId);
-            const accountName = accounts.find(a=>a.id===p.accountId)?.name || 'N/A';
-            transaction.set(entryRef, {
-                id: entryId,
-                entryType: 'CASH_IN', 
-                entryDate: selectedPaymentDate, 
-                amount: p.amount, 
-                accountId: p.accountId,
-                paymentMethod: p.method, 
-                description: `รับเงิน${p.method === 'CASH' ? 'สด' : 'โอน'} (${accountName}) จาก ${customerName} (บิล: ${confirmingDoc.docNo})`,
-                sourceDocId: confirmingDoc.id, 
-                sourceDocNo: confirmingDoc.docNo, 
-                sourceDocType: confirmingDoc.docType,
-                customerNameSnapshot: customerName, 
-                jobId: jobId || null,
-                createdAt: serverTimestamp(),
-            });
+        // NOTE: We do NOT create any 'accountingEntries' here.
+        // We just mark the document as APPROVED and create an UNPAID obligation.
+
+        // Update Sale Document
+        transaction.update(docRef, { 
+            status: 'APPROVED', // Change status to APPROVED
+            arStatus: 'UNPAID', // Set as UNPAID until Receipt is confirmed
+            paymentSummary: {
+                paidTotal: 0,
+                balance: confirmingDoc.grandTotal,
+                paymentStatus: 'UNPAID'
+            },
+            // Keep original office suggestions for Receipt pre-fill
+            suggestedPayments: suggestedPayments,
+            paymentDate: selectedPaymentDate,
+            updatedAt: serverTimestamp()
         });
 
-        const finalStatus = isPartialCredit ? 'PARTIAL' : 'PAID';
+        // Set AR Obligation as UNPAID
         transaction.set(arRef, {
           id: arId,
           type: 'AR', 
-          status: finalStatus, 
+          status: 'UNPAID', 
           sourceDocType: confirmingDoc.docType, 
           sourceDocId: confirmingDoc.id, 
           sourceDocNo: confirmingDoc.docNo,
           amountTotal: confirmingDoc.grandTotal, 
-          amountPaid: totalSuggested, 
-          balance: remaining,
+          amountPaid: 0, 
+          balance: confirmingDoc.grandTotal,
           createdAt: serverTimestamp(), 
           updatedAt: serverTimestamp(), 
-          paidOffDate: finalStatus === 'PAID' ? selectedPaymentDate : null,
-          lastPaymentDate: selectedPaymentDate,
           customerNameSnapshot: customerName,
           jobId: jobId || null,
           dueDate: confirmingDoc.dueDate || null,
         });
-
-        transaction.update(docRef, { 
-            status: finalStatus,
-            arStatus: finalStatus,
-            paymentSummary: {
-                paidTotal: totalSuggested,
-                balance: remaining,
-                paymentStatus: finalStatus
-            },
-            accountingEntryId: `SALE_${confirmingDoc.id}_0`,
-            arObligationId: arId,
-            receivedAccountId: suggestedPayments[0]?.accountId || null,
-            paymentMethod: suggestedPayments[0]?.method || null,
-            paymentDate: selectedPaymentDate,
-            suggestedPayments: suggestedPayments,
-            updatedAt: serverTimestamp()
-        });
       });
-      toast({ title: "ลงบัญชีรายรับสำเร็จ" });
-      if (jobId) callCloseJobFunction(jobId, isPartialCredit ? 'UNPAID' : 'PAID');
+
+      toast({ 
+        title: "ตรวจสอบความถูกต้องสำเร็จ", 
+        description: "กรุณาออกใบเสร็จรับเงินเพื่อบันทึกการรับเงินเข้าบัญชีจริงค่ะ" 
+      });
+      
+      // Still close the job if applicable
+      if (jobId) callCloseJobFunction(jobId, 'UNPAID');
       setConfirmingDoc(null);
     } catch(e: any) {
       if (e.code === 'permission-denied') {
@@ -371,7 +355,7 @@ function AccountingInboxPageContent() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลเพื่อลงสมุดบัญชีรายวัน" />
+      <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลก่อนลงสมุดบัญชีรายวัน" />
       
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
@@ -539,9 +523,9 @@ function AccountingInboxPageContent() {
       <Dialog open={!!confirmingDoc} onOpenChange={(open) => !open && !isSubmitting && setConfirmingDoc(null)}>
         <DialogContent onInteractOutside={(e) => isSubmitting && e.preventDefault()} className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="p-6 pb-0">
-            <DialogTitle>ยืนยันตรวจสอบรายการขาย</DialogTitle>
-            <DialogDescription className="text-destructive font-bold">
-                ตรวจสอบความถูกต้องของช่องทางการรับเงินและบัญชี
+            <DialogTitle>ตรวจสอบรายการขาย</DialogTitle>
+            <DialogDescription>
+                ตรวจสอบความถูกต้องของบิลและช่องทางการรับเงิน ก่อนส่งไปขั้นตอนออกใบเสร็จ
             </DialogDescription>
           </DialogHeader>
           
@@ -563,13 +547,13 @@ function AccountingInboxPageContent() {
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                    <Label className="flex items-center gap-2"><Calendar className="h-4 w-4"/> วันที่ลงบัญชี</Label>
+                    <Label className="flex items-center gap-2"><Calendar className="h-4 w-4"/> วันที่ออกเอกสาร</Label>
                     <Input type="date" className="w-40" value={selectedPaymentDate} onChange={(e) => setSelectedPaymentDate(e.target.value)} disabled={isSubmitting} />
                 </div>
 
                 <div className="space-y-3">
                     <Label className="flex items-center gap-2"><Wallet className="h-4 w-4" /> รายการรับเงิน (ตามที่ออฟฟิศระบุ)</Label>
-                    <div className="border rounded-md">
+                    <div className="border rounded-md overflow-hidden">
                         <Table>
                             <TableHeader className="bg-muted/50">
                                 <TableRow>
@@ -614,27 +598,21 @@ function AccountingInboxPageContent() {
                     </div>
                 </div>
 
-                {confirmingDoc?.paymentTerms === 'CREDIT' || (confirmingDoc?.grandTotal || 0) > suggestedPayments.reduce((s, p) => s + p.amount, 0) + 0.01 ? (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-bold text-amber-800">ยอดคงเหลือบันทึกเป็นลูกหนี้ (Credit):</span>
-                            <span className="text-xl font-black text-amber-600">฿{formatCurrency(Math.max(0, (confirmingDoc?.grandTotal || 0) - suggestedPayments.reduce((s, p) => s + p.amount, 0)))}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-amber-700">
-                            <Info className="h-3 w-3" /> ยอดนี้จะถูกนำไปตั้งเป็นยอดค้างชำระในระบบลูกหนี้
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-start gap-2 text-xs text-amber-800">
+                        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                        <div className="space-y-1">
+                            <p className="font-bold">ขั้นตอนการบันทึกบัญชี</p>
+                            <p>เมื่อกดปุ่มด้านล่าง ระบบจะบันทึกสถานะบิลว่า "ตรวจสอบแล้ว" และเปิดให้ไปออกใบเสร็จรับเงินได้</p>
+                            <p className="text-destructive font-bold">เงินจะยังไม่เข้าบัญชีจริง จนกว่าใบเสร็จจะถูกสร้างและยืนยันรับเงินในภายหลังค่ะ</p>
                         </div>
                     </div>
-                ) : (
-                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
-                        <CheckCircle className="h-5 w-5" />
-                        <span className="font-bold">รายการนี้ชำระครบถ้วน (Cash Sale)</span>
-                    </div>
-                )}
+                </div>
               </div>
           </div>
           <DialogFooter className="gap-2 bg-muted/20 p-6 border-t">
             <Button variant="outline" onClick={() => setConfirmingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
-            <Button onClick={handleConfirmCashPayment} disabled={isSubmitting || suggestedPayments.some(p => p.amount > 0 && !p.accountId)} className="bg-green-600 hover:bg-green-700 text-white min-w-[200px]">
+            <Button onClick={handleApproveSaleDocument} disabled={isSubmitting || suggestedPayments.some(p => p.amount > 0 && !p.accountId)} className="bg-green-600 hover:bg-green-700 text-white min-w-[200px]">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 animate-spin h-4 w-4" />
@@ -643,7 +621,7 @@ function AccountingInboxPageContent() {
                 ) : (
                   <>
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    ยืนยันตรวจสอบและลงบัญชี
+                    ยืนยันความถูกต้องของรายการ
                   </>
                 )}
             </Button>
