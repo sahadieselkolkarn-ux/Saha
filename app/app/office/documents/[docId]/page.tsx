@@ -104,8 +104,11 @@ function DocumentView({ document, labelSuffix }: { document: Document, labelSuff
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
     const isQuotation = document.docType === 'QUOTATION';
-    const labelSender = isQuotation ? 'ผู้เสนอราคา' : (document.docType === 'BILLING_NOTE' ? 'ผู้วางบิล' : 'ผู้ส่งสินค้า/บริการ');
-    const labelReceiver = isQuotation ? 'ลูกค้า / ผู้รับข้อเสนอ' : (document.docType === 'BILLING_NOTE' ? 'ผู้รับวางบิล' : 'ผู้รับสินค้า/บริการ');
+    const isBilling = document.docType === 'BILLING_NOTE';
+    
+    // Refined Labels based on user request: Tax Invoice and Delivery Note use "ผู้ส่งสินค้า" and "ผู้รับสินค้า"
+    const labelSender = isQuotation ? 'ผู้เสนอราคา' : (isBilling ? 'ผู้วางบิล' : 'ผู้ส่งสินค้า');
+    const labelReceiver = isQuotation ? 'ลูกค้า / ผู้รับข้อเสนอ' : (isBilling ? 'ผู้รับวางบิล' : 'ผู้รับสินค้า');
 
     return (
         <div className="printable-document border bg-white shadow-sm w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full box-border flex flex-col">
@@ -191,14 +194,17 @@ function DocumentView({ document, labelSuffix }: { document: Document, labelSuff
                 </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-12 mt-auto text-center text-xs pb-4 pt-10">
-                <div className="space-y-8">
-                    <p>.................................................</p>
-                    <p>({document.senderName || labelSender})</p>
+            {/* Signature Section - Enhanced Layout with 3 lines */}
+            <div className="grid grid-cols-2 gap-12 mt-auto text-center text-[11px] pb-4 pt-10">
+                <div className="flex flex-col items-center">
+                    <p className="mb-6">.................................................</p>
+                    <p className="mb-1">{document.senderName ? `(${document.senderName})` : '(\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0)'}</p>
+                    <p className="font-bold">{labelSender}</p>
                 </div>
-                <div className="space-y-8">
-                    <p>.................................................</p>
-                    <p>({document.receiverName || labelReceiver})</p>
+                <div className="flex flex-col items-center">
+                    <p className="mb-6">.................................................</p>
+                    <p className="mb-1">{document.receiverName ? `(${document.receiverName})` : '(\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0)'}</p>
+                    <p className="font-bold">{labelReceiver}</p>
                 </div>
             </div>
         </div>
