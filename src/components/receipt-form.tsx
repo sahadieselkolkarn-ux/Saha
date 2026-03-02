@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -23,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 
 import { createDocument } from "@/firebase/documents";
 import type { StoreSettings, Customer, Document as DocumentType, AccountingAccount } from "@/lib/types";
@@ -111,7 +111,6 @@ export function ReceiptForm() {
           if (doc.status === 'CANCELLED' || doc.status === 'PAID') return false;
           if (doc.receiptStatus === 'CONFIRMED') return false;
           
-          // บิลที่ระบุว่าต้องวางบิล จะต้องผ่านการวางบิลก่อน (ยกเว้นเรากำลังออกบิลจากใบวางบิลโดยตรง)
           if (doc.docType === 'TAX_INVOICE' && doc.billingRequired && !doc.billingNoteId) {
               return false;
           }
@@ -123,13 +122,11 @@ export function ReceiptForm() {
     return unsubscribe;
   }, [db, selectedCustomerId]);
   
-  // Calculate total amount whenever selection changes
   useEffect(() => {
     const selected = sourceDocs.filter(d => watchedSourceDocIds.includes(d.id));
     const total = selected.reduce((sum, d) => sum + (d.paymentSummary?.balance ?? d.grandTotal), 0);
     form.setValue('amount', Math.round(total * 100) / 100);
     
-    // Auto-set account if the first selected doc has a suggested one
     if (selected.length > 0 && selected[0].suggestedAccountId && !form.getValues('accountId')) {
         form.setValue('accountId', selected[0].suggestedAccountId);
     }
@@ -157,7 +154,6 @@ export function ReceiptForm() {
     setIsSubmitting(true);
     const amount2dec = Math.round(data.amount * 100) / 100;
     
-    // Create detailed items list for the receipt
     const items = selectedDocs.map(doc => ({
       description: `ชำระค่าสินค้า/บริการ ตาม${doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : doc.docType === 'BILLING_NOTE' ? 'ใบวางบิล' : 'ใบส่งของชั่วคราว'} เลขที่ ${doc.docNo}`,
       quantity: 1,
@@ -175,7 +171,6 @@ export function ReceiptForm() {
         subtotal: amount2dec,
         discountAmount: 0,
         net: amount2dec,
-        // Using withTax logic: if any selected doc has tax, mark receipt as withTax for calculations
         withTax: selectedDocs.some(d => d.withTax),
         vatAmount: selectedDocs.some(d => d.withTax) ? Math.round(((amount2dec / 1.07) * 0.07) * 100) / 100 : 0,
         grandTotal: amount2dec,
@@ -188,7 +183,6 @@ export function ReceiptForm() {
 
       const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile, undefined, { initialStatus: status });
 
-      // Update all source documents status
       const batch = writeBatch(db);
       selectedDocs.forEach(sourceDoc => {
           batch.update(doc(db, 'documents', sourceDoc.id), {
