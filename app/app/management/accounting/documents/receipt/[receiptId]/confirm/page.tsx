@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ArrowLeft, Calculator } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Calculator, Info } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Document as DocumentType, AccountingAccount, AccountingObligation } from "@/lib/types";
@@ -39,6 +39,7 @@ const allocationSchema = z.object({
   invoiceId: z.string(),
   invoiceDocNo: z.string(),
   grossRemaining: z.coerce.number(),
+  withTax: z.boolean().default(false),
   netCashApplied: z.coerce.number().min(0, "ยอดเงินห้ามติดลบ"),
   withholdingPercent: z.coerce.number().min(0).max(100).optional(),
   withholdingAmount: z.coerce.number().min(0).optional(),
@@ -126,6 +127,7 @@ function ConfirmReceiptPageContent() {
         let fetchedObligations: Record<string, WithId<AccountingObligation>> = {};
 
         if (invoiceIds.length > 0) {
+            // First check if any reference is a Billing Note
             const firstRefId = invoiceIds[0];
             const sourceDocSnap = await getDoc(doc(db, 'documents', firstRefId));
             if (sourceDocSnap.exists() && sourceDocSnap.data().docType === 'BILLING_NOTE') {
@@ -165,8 +167,10 @@ function ConfirmReceiptPageContent() {
                     invoiceId: inv.id,
                     invoiceDocNo: inv.docNo,
                     grossRemaining,
+                    withTax: inv.withTax ?? false,
                     netCashApplied: 0,
                     withholdingAmount: 0,
+                    withholdingPercent: inv.docType === 'TAX_INVOICE' ? 3 : 0,
                     grossApplied: 0,
                 };
             })
@@ -181,6 +185,7 @@ function ConfirmReceiptPageContent() {
     fetchData();
   }, [db, receiptId, form]);
   
+  // Adjusted Auto Allocation Logic
   const handleAutoAllocate = useCallback(() => {
     const netTotal = form.getValues('netReceivedTotal');
     let remainingToAllocate = netTotal;
@@ -193,10 +198,34 @@ function ConfirmReceiptPageContent() {
     });
 
     const newAllocations = sortedAllocations.map(alloc => {
-      const grossRemaining = alloc.grossRemaining;
-      const amountToApply = Math.round(Math.min(remainingToAllocate, grossRemaining) * 100) / 100;
-      remainingToAllocate = Math.round((remainingToAllocate - amountToApply) * 100) / 100;
-      return { ...alloc, netCashApplied: amountToApply, withholdingAmount: 0, withholdingPercent: 0, grossApplied: amountToApply };
+      const { grossRemaining, withTax, withholdingPercent = 0 } = alloc;
+      
+      // Calculate how much gross we CAN settle with the remaining cash
+      // Formulas based on Gross -> Net
+      // Base = Gross / 1.07 (if tax)
+      // WHT = Base * rate
+      // Net = Gross - WHT
+      // So Net = Gross - (Gross / 1.07 * rate) = Gross * (1 - rate/1.07)
+      // Gross = Net / (1 - rate/1.07)
+      
+      const rate = withholdingPercent / 100;
+      const divisor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
+      
+      let amountToApplyNet = Math.round(Math.min(remainingToAllocate, grossRemaining * (withTax ? (1 - (rate / 1.07)) : (1 - rate))) * 100) / 100;
+      
+      const grossApplied = Math.round((amountToApplyNet / divisor) * 100) / 100;
+      const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
+      const whtAmount = Math.round((baseAmount * rate) * 100) / 100;
+      const finalNetApplied = Math.round((grossApplied - whtAmount) * 100) / 100;
+
+      remainingToAllocate = Math.round((remainingToAllocate - finalNetApplied) * 100) / 100;
+      
+      return { 
+        ...alloc, 
+        netCashApplied: finalNetApplied, 
+        withholdingAmount: whtAmount, 
+        grossApplied: grossApplied 
+      };
     });
 
     newAllocations.forEach(newAlloc => {
@@ -215,6 +244,7 @@ function ConfirmReceiptPageContent() {
     }
   }, [form, invoices, toast, update]);
 
+  // Real-time calculation watcher with VAT-aware WHT logic
   useEffect(() => {
     const subscription = form.watch((value, { name, type }) => {
       if (name && name.startsWith('allocations')) {
@@ -224,25 +254,31 @@ function ConfirmReceiptPageContent() {
           const currentAlloc = form.getValues(`allocations.${index}`);
           if (!currentAlloc) return;
           
-          let { netCashApplied, withholdingPercent, withholdingAmount, grossApplied } = currentAlloc;
-          netCashApplied = netCashApplied || 0;
-          withholdingPercent = withholdingPercent || 0;
-          withholdingAmount = withholdingAmount || 0;
+          let { netCashApplied, withholdingPercent, withholdingAmount, grossApplied, withTax } = currentAlloc;
+          netCashApplied = Number(netCashApplied) || 0;
+          withholdingPercent = Number(withholdingPercent) || 0;
+          const rate = withholdingPercent / 100;
 
-          if(parts[2] === 'netCashApplied') {
-             if(withholdingPercent > 0) {
-                 grossApplied = Math.round((netCashApplied / (1 - (withholdingPercent / 100))) * 100) / 100;
-                 withholdingAmount = Math.round((grossApplied - netCashApplied) * 100) / 100;
-             } else {
-                 grossApplied = Math.round((netCashApplied + withholdingAmount) * 100) / 100;
-             }
-          } else if (parts[2] === 'withholdingPercent') {
-             grossApplied = Math.round((netCashApplied / (1 - (withholdingPercent / 100))) * 100) / 100;
-             withholdingAmount = Math.round((grossApplied - netCashApplied) * 100) / 100;
-          } else if (parts[2] === 'withholdingAmount') {
+          // If changing Net Cash Applied or WHT %
+          if (parts[2] === 'netCashApplied' || parts[2] === 'withholdingPercent') {
+             // Formula: Net = Gross - (Base * Rate)
+             // If Tax: Net = Gross - (Gross / 1.07 * Rate) = Gross * (1 - Rate/1.07)
+             // Gross = Net / (1 - Rate/1.07)
+             
+             const divisor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
+             grossApplied = Math.round((netCashApplied / divisor) * 100) / 100;
+             const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
+             withholdingAmount = Math.round((baseAmount * rate) * 100) / 100;
+             
+             // Recalculate net to ensure rounding consistency
+             netCashApplied = Math.round((grossApplied - withholdingAmount) * 100) / 100;
+          } 
+          // If changing WHT Amount directly
+          else if (parts[2] === 'withholdingAmount') {
              grossApplied = Math.round((netCashApplied + withholdingAmount) * 100) / 100;
-             if (grossApplied > 0) {
-                withholdingPercent = Math.round(((withholdingAmount / grossApplied) * 100) * 10000) / 10000;
+             const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
+             if (baseAmount > 0) {
+                withholdingPercent = Math.round(((withholdingAmount / baseAmount) * 100) * 10000) / 10000;
              } else {
                 withholdingPercent = 0;
              }
@@ -250,6 +286,7 @@ function ConfirmReceiptPageContent() {
 
           update(index, {
             ...currentAlloc,
+            netCashApplied: Number(netCashApplied),
             withholdingPercent: Number(Number(withholdingPercent).toFixed(4)),
             withholdingAmount: Number(Number(withholdingAmount).toFixed(2)),
             grossApplied: Number(Number(grossApplied).toFixed(2)),
@@ -376,7 +413,6 @@ function ConfirmReceiptPageContent() {
                             updatedAt: serverTimestamp(),
                         });
 
-                        // TRACK JOBS TO ARCHIVE
                         if (newStatus === 'PAID' && ob.jobId) {
                             jobsToArchive.push(ob.jobId);
                         }
@@ -385,7 +421,6 @@ function ConfirmReceiptPageContent() {
             }
         });
         
-        // ARCHIVE JOBS AFTER TRANSACTION
         if (jobsToArchive.length > 0) {
             const uniqueJobs = Array.from(new Set(jobsToArchive));
             for (const jId of uniqueJobs) {
@@ -418,7 +453,9 @@ function ConfirmReceiptPageContent() {
             <form onSubmit={form.handleSubmit(handlePreSubmit)} className="space-y-6">
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
-                    <Button type="submit" disabled={isLoading}><Save className="mr-2 h-4 w-4"/> ยืนยันข้อมูล</Button>
+                    <Button type="submit" disabled={isLoading} className="bg-green-600 hover:bg-green-700">
+                        <Save className="mr-2 h-4 w-4"/> ยืนยันข้อมูล
+                    </Button>
                 </div>
                 
                 <Card>
@@ -436,7 +473,7 @@ function ConfirmReceiptPageContent() {
                           </FormItem>
                         )} />
                         <div className="md:col-span-2">
-                            <FormField name="netReceivedTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดรับสุทธิ (Net)</FormLabel><FormControl><Input type="number" {...field} className="text-lg font-bold" /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="netReceivedTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดรับสุทธิ (Net Received)</FormLabel><FormControl><Input type="number" {...field} className="text-lg font-bold" /></FormControl><FormMessage /></FormItem>)} />
                         </div>
                     </CardContent>
                 </Card>
@@ -446,28 +483,57 @@ function ConfirmReceiptPageContent() {
                         <CardTitle className="text-base">2. จัดสรรยอดเงินตามบิล</CardTitle>
                         <Button type="button" variant="secondary" onClick={handleAutoAllocate}><Calculator className="mr-2 h-4 w-4"/> จัดสรรอัตโนมัติ</Button>
                     </CardHeader>
-                    <CardContent>
-                        <Table>
-                            <TableHeader><TableRow><TableHead>เลขที่ Invoice</TableHead><TableHead className="text-right">ยอดค้าง</TableHead><TableHead className="w-40 text-right">ยอดรับครั้งนี้ (Net)</TableHead><TableHead className="w-28 text-right">หัก WHT (%)</TableHead><TableHead className="w-36 text-right">ยอด WHT (บาท)</TableHead><TableHead className="w-40 text-right">ยอดตัดหนี้รวม (Gross)</TableHead></TableRow></TableHeader>
-                            <TableBody>
-                                {fields.map((field, index) => (
-                                    <TableRow key={field.id}>
-                                        <TableCell className="font-medium">{field.invoiceDocNo}</TableCell>
-                                        <TableCell className="text-right">{formatCurrency(field.grossRemaining)}</TableCell>
-                                        <TableCell><FormField control={form.control} name={`allocations.${index}.netCashApplied`} render={({ field }) => (<Input type="number" className="text-right h-8" {...field} />)} /></TableCell>
-                                        <TableCell><FormField control={form.control} name={`allocations.${index}.withholdingPercent`} render={({ field }) => (<Input type="number" className="text-right h-8" {...field} placeholder="เช่น 3"/>)} /></TableCell>
-                                        <TableCell><FormField control={form.control} name={`allocations.${index}.withholdingAmount`} render={({ field }) => (<Input type="number" className="text-right h-8" {...field} />)} /></TableCell>
-                                        <TableCell className="text-right font-semibold">{formatCurrency(field.grossApplied)}</TableCell>
+                    <CardContent className="space-y-4">
+                        <Alert variant="secondary" className="bg-blue-50 border-blue-200">
+                            <Info className="h-4 w-4 text-blue-600" />
+                            <AlertTitle className="text-blue-800">คำแนะนำการคำนวณหัก ณ ที่จ่าย</AlertTitle>
+                            <AlertDescription className="text-blue-700 text-xs">
+                                สำหรับบิลใบกำกับภาษี (VAT 7%) ระบบจะคำนวณภาษีหัก ณ ที่จ่ายจาก **ยอดก่อน VAT** ให้อัตโนมัติค่ะ 
+                                (ยอดเงินรับจริง = ยอดรวมบิล - ยอดหัก ณ ที่จ่าย)
+                            </AlertDescription>
+                        </Alert>
+
+                        <div className="border rounded-md overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/50">
+                                        <TableHead className="min-w-[150px]">เลขที่ Invoice</TableHead>
+                                        <TableHead className="text-right">ยอดค้าง</TableHead>
+                                        <TableHead className="w-32 text-right">รับจริง (Net)</TableHead>
+                                        <TableHead className="w-20 text-right">หัก (%)</TableHead>
+                                        <TableHead className="w-32 text-right">ยอด WHT</TableHead>
+                                        <TableHead className="w-32 text-right">ตัดหนี้รวม (Gross)</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                            <TableFooter>
-                                <TableRow>
-                                    <TableCell colSpan={4} className="text-sm">ยอดเงินคงเหลือที่ยังไม่ได้จัดสรร:</TableCell>
-                                    <TableCell colSpan={2} className={cn("text-right font-bold text-lg", Math.abs(totals.remainingToAllocate) > 0.01 ? 'text-destructive' : 'text-green-600')}>{formatCurrency(totals.remainingToAllocate)}</TableCell>
-                                </TableRow>
-                            </TableFooter>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {fields.map((field, index) => (
+                                        <TableRow key={field.id} className="hover:bg-transparent">
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-sm">{field.invoiceDocNo}</span>
+                                                    {field.withTax && <Badge variant="outline" className="w-fit text-[8px] h-3 px-1 border-blue-200 text-blue-600">VAT 7%</Badge>}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right text-xs font-mono">{formatCurrency(field.grossRemaining)}</TableCell>
+                                            <TableCell><FormField control={form.control} name={`allocations.${index}.netCashApplied`} render={({ field }) => (<Input type="number" className="text-right h-8 font-bold" {...field} />)} /></TableCell>
+                                            <TableCell><FormField control={form.control} name={`allocations.${index}.withholdingPercent`} render={({ field }) => (<Input type="number" className="text-right h-8" {...field} placeholder="3"/>)} /></TableCell>
+                                            <TableCell className="text-right text-xs text-destructive font-medium">-{formatCurrency(watchedAllocations[index]?.withholdingAmount || 0)}</TableCell>
+                                            <TableCell className="text-right font-bold text-primary">{formatCurrency(watchedAllocations[index]?.grossApplied || 0)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                                <TableFooter>
+                                    <TableRow className="bg-muted/20">
+                                        <TableCell colSpan={4} className="text-xs text-muted-foreground italic">
+                                            ยอดเงินคงเหลือที่ยังไม่ได้จัดสรร:
+                                        </TableCell>
+                                        <TableCell colSpan={2} className={cn("text-right font-black text-lg", Math.abs(totals.remainingToAllocate) > 0.01 ? 'text-destructive' : 'text-green-600')}>
+                                            ฿{formatCurrency(totals.remainingToAllocate)}
+                                        </TableCell>
+                                    </TableRow>
+                                </TableFooter>
+                            </Table>
+                        </div>
                     </CardContent>
                 </Card>
             </form>
