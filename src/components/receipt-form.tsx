@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, writeBatch, deleteField, getDoc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -13,12 +13,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ChevronsUpDown, AlertCircle, Info, Send, FileText, CheckCircle2 } from "lucide-react";
+import { Loader2, Save, ChevronsUpDown, AlertCircle, Info, Send, Trash2, XCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -72,33 +72,30 @@ export function ReceiptForm() {
       amount: 0,
       customerId: searchParams.get('customerId') || "",
       sourceDocIds: searchParams.get('sourceDocId') ? [searchParams.get('sourceDocId')!] : [],
+      accountId: "",
+      notes: "",
     },
   });
 
   const selectedCustomerId = form.watch('customerId');
   const watchedSourceDocIds = form.watch('sourceDocIds');
 
+  // Master Data Loading
   useEffect(() => {
     if (!db) return;
-    const q = query(collection(db, "customers"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+    const unsubCustomers = onSnapshot(collection(db, "customers"), (snap) => {
+      setCustomers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setIsLoading(false);
-    }, () => setIsLoading(false));
-    return unsubscribe;
-  }, [db]);
-  
-  useEffect(() => {
-    if (!db) return;
-    const q = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-        setAccounts(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AccountingAccount)));
     });
-    return unsubscribe;
+    const unsubAccounts = onSnapshot(query(collection(db, "accountingAccounts"), where("isActive", "==", true)), (snap) => {
+        setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingAccount)));
+    });
+    return () => { unsubCustomers(); unsubAccounts(); };
   }, [db]);
 
+  // Handle Edit Data Population
   useEffect(() => {
-    if (docToEdit) {
+    if (docToEdit && !isSubmitting) {
       form.reset({
         customerId: docToEdit.customerId || docToEdit.customerSnapshot?.id || "",
         sourceDocIds: docToEdit.referencesDocIds || [],
@@ -108,8 +105,9 @@ export function ReceiptForm() {
         notes: docToEdit.notes || "",
       });
     }
-  }, [docToEdit, form]);
+  }, [docToEdit, form, isSubmitting]);
 
+  // Fetch candidate source documents for selection
   useEffect(() => {
     if (!db || !selectedCustomerId) {
       setSourceDocs([]);
@@ -142,11 +140,13 @@ export function ReceiptForm() {
     return unsubscribe;
   }, [db, selectedCustomerId, editDocId]);
   
+  // Auto-calculate Total Amount when selection changes
   useEffect(() => {
     const selected = sourceDocs.filter(d => watchedSourceDocIds.includes(d.id));
     const total = selected.reduce((sum, d) => sum + (d.paymentSummary?.balance ?? d.grandTotal), 0);
     form.setValue('amount', Math.round(total * 100) / 100);
     
+    // Suggested account for new receipts
     if (selected.length > 0 && selected[0].suggestedAccountId && !form.getValues('accountId') && !editDocId) {
         form.setValue('accountId', selected[0].suggestedAccountId);
     }
@@ -155,9 +155,9 @@ export function ReceiptForm() {
   const handleToggleDoc = (docId: string) => {
     const currentIds = form.getValues('sourceDocIds');
     if (currentIds.includes(docId)) {
-      form.setValue('sourceDocIds', currentIds.filter(id => id !== docId));
+      form.setValue('sourceDocIds', currentIds.filter(id => id !== docId), { shouldValidate: true });
     } else {
-      form.setValue('sourceDocIds', [...currentIds, docId]);
+      form.setValue('sourceDocIds', [...currentIds, docId], { shouldValidate: true });
     }
   };
 
@@ -220,7 +220,7 @@ export function ReceiptForm() {
 
       const batch = writeBatch(db);
       
-      // If editing, we should reset status of docs that were removed from the selection
+      // If editing, reset status of docs that were removed from the selection
       if (editDocId && docToEdit?.referencesDocIds) {
           const removedDocIds = docToEdit.referencesDocIds.filter(id => !data.sourceDocIds.includes(id));
           removedDocIds.forEach(id => {
