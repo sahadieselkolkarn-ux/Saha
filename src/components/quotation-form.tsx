@@ -188,11 +188,11 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const watchedIsVat = useWatch({ control: form.control, name: "isVat" });
 
   useEffect(() => {
-    const subtotal = watchedItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+    const subtotal = Math.round(watchedItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0) * 100) / 100;
     const discount = Number(watchedDiscount) || 0;
-    const net = Math.max(0, subtotal - discount);
-    const vatAmount = watchedIsVat ? net * 0.07 : 0;
-    const grandTotal = net + vatAmount;
+    const net = Math.round(Math.max(0, subtotal - discount) * 100) / 100;
+    const vatAmount = Math.round((watchedIsVat ? net * 0.07 : 0) * 100) / 100;
+    const grandTotal = Math.round((net + vatAmount) * 100) / 100;
 
     form.setValue("subtotal", subtotal);
     form.setValue("net", net);
@@ -431,7 +431,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 <Table>
                   <TableHeader><TableRow><TableHead className="w-12 text-center">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"></TableHead></TableRow></TableHeader>
                   <TableBody>{fields.map((field, index) => (
-                      <TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} disabled={isCancelled} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`)); }} disabled={isCancelled} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`)); }} disabled={isCancelled} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isCancelled}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>
+                      <TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} disabled={isCancelled} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.unitPrice`)) * 100) / 100); }} disabled={isCancelled} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.quantity`)) * 100) / 100); }} disabled={isCancelled} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isCancelled}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>
                     ))}</TableBody>
                 </Table>
               </div>

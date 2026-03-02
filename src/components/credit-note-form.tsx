@@ -133,11 +133,11 @@ export function CreditNoteForm() {
   const watchedWithTax = useWatch({ control: form.control, name: "withTax" });
 
   useEffect(() => {
-    const subtotal = watchedItems.reduce((sum, item) => sum + (item.total || 0), 0);
+    const subtotal = Math.round(watchedItems.reduce((sum, item) => sum + (item.total || 0), 0) * 100) / 100;
     const discount = watchedDiscount || 0;
-    const net = Math.max(0, subtotal - discount);
-    const vatAmount = watchedWithTax ? net * 0.07 : 0;
-    const grandTotal = net + vatAmount;
+    const net = Math.round(Math.max(0, subtotal - discount) * 100) / 100;
+    const vatAmount = watchedWithTax ? Math.round((net * 0.07) * 100) / 100 : 0;
+    const grandTotal = Math.round((net + vatAmount) * 100) / 100;
 
     form.setValue("subtotal", subtotal);
     form.setValue("net", net);
@@ -357,7 +357,7 @@ export function CreditNoteForm() {
                                                     onChange={e => {
                                                         const v = parseFloat(e.target.value) || 0;
                                                         field.onChange(v);
-                                                        form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`));
+                                                        form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.unitPrice`)) * 100) / 100);
                                                     }}
                                                 />
                                             )} />
@@ -370,7 +370,7 @@ export function CreditNoteForm() {
                                                     onChange={e => {
                                                         const v = parseFloat(e.target.value) || 0;
                                                         field.onChange(v);
-                                                        form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.quantity`));
+                                                        form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.quantity`)) * 100) / 100);
                                                     }}
                                                 />
                                             )} />

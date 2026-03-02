@@ -117,7 +117,9 @@ export function ReceiptForm() {
   useEffect(() => {
     const selectedDoc = sourceDocs.find(d => d.id === selectedSourceDocId);
     if (selectedDoc) {
-      const balance = selectedDoc.paymentSummary?.balance ?? selectedDoc.grandTotal;
+      const rawBalance = selectedDoc.paymentSummary?.balance ?? selectedDoc.grandTotal;
+      // Round to 2 decimal places to fix floating point precision issues
+      const balance = Math.round(rawBalance * 100) / 100;
       form.setValue('amount', balance);
       
       // Auto-suggest account if it was already reviewed
@@ -155,7 +157,7 @@ export function ReceiptForm() {
         discountAmount: 0,
         net: data.amount,
         withTax: sourceDoc.withTax,
-        vatAmount: sourceDoc.withTax ? (data.amount / 1.07) * 0.07 : 0,
+        vatAmount: sourceDoc.withTax ? Math.round(((data.amount / 1.07) * 0.07) * 100) / 100 : 0,
         grandTotal: data.amount,
         notes: data.notes,
         referencesDocIds: [data.sourceDocId],
@@ -250,7 +252,7 @@ export function ReceiptForm() {
                         <SelectContent>
                             {sourceDocs.length > 0 ? sourceDocs.map(doc => (
                             <SelectItem key={doc.id} value={doc.id}>
-                                [{doc.docNo}] {doc.docType === 'BILLING_NOTE' ? '(ใบวางบิล)' : ''} วันที่: {safeFormat(new Date(doc.docDate), "dd/MM/yy")} - ยอดคงค้าง: {(doc.paymentSummary?.balance ?? doc.grandTotal).toLocaleString()} บาท
+                                [{doc.docNo}] {doc.docType === 'BILLING_NOTE' ? '(ใบวางบิล)' : ''} วันที่: {safeFormat(new Date(doc.docDate), "dd/MM/yy")} - ยอดคงค้าง: {(doc.paymentSummary?.balance ?? doc.grandTotal).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท
                             </SelectItem>
                             )) : <div className="p-4 text-sm text-muted-foreground text-center">ไม่พบเอกสารค้างชำระที่ออกใบเสร็จรายใบได้</div>}
                         </SelectContent>

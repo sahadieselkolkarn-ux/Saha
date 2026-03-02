@@ -160,10 +160,10 @@ function ConfirmReceiptPageContent() {
         form.reset({
             accountId: receiptData.receivedAccountId || accountsSnap.docs[0]?.id || "",
             paymentDate: receiptData.paymentDate || format(new Date(), "yyyy-MM-dd"),
-            netReceivedTotal: receiptData.grandTotal,
-            allocations: invoices.map(inv => {
-                const ob = obligations[inv.id];
-                const grossRemaining = ob?.balance ?? inv.paymentSummary?.balance ?? inv.grandTotal;
+            netReceivedTotal: Math.round(receiptData.grandTotal * 100) / 100,
+            allocations: fetchedInvoices.map(inv => {
+                const ob = fetchedObligations[inv.id];
+                const grossRemaining = Math.round((ob?.balance ?? inv.paymentSummary?.balance ?? inv.grandTotal) * 100) / 100;
                 return {
                     invoiceId: inv.id,
                     invoiceDocNo: inv.docNo,
@@ -197,8 +197,8 @@ function ConfirmReceiptPageContent() {
 
     const newAllocations = sortedAllocations.map(alloc => {
       const grossRemaining = alloc.grossRemaining;
-      const amountToApply = Math.min(remainingToAllocate, grossRemaining);
-      remainingToAllocate -= amountToApply;
+      const amountToApply = Math.round(Math.min(remainingToAllocate, grossRemaining) * 100) / 100;
+      remainingToAllocate = Math.round((remainingToAllocate - amountToApply) * 100) / 100;
       return { ...alloc, netCashApplied: amountToApply, withholdingAmount: 0, withholdingPercent: 0, grossApplied: amountToApply };
     });
 
@@ -234,18 +234,18 @@ function ConfirmReceiptPageContent() {
 
           if(parts[2] === 'netCashApplied') {
              if(withholdingPercent > 0) {
-                 grossApplied = netCashApplied / (1 - (withholdingPercent / 100));
-                 withholdingAmount = grossApplied - netCashApplied;
+                 grossApplied = Math.round((netCashApplied / (1 - (withholdingPercent / 100))) * 100) / 100;
+                 withholdingAmount = Math.round((grossApplied - netCashApplied) * 100) / 100;
              } else {
-                 grossApplied = netCashApplied + withholdingAmount;
+                 grossApplied = Math.round((netCashApplied + withholdingAmount) * 100) / 100;
              }
           } else if (parts[2] === 'withholdingPercent') {
-             grossApplied = netCashApplied / (1 - (withholdingPercent / 100));
-             withholdingAmount = grossApplied - netCashApplied;
+             grossApplied = Math.round((netCashApplied / (1 - (withholdingPercent / 100))) * 100) / 100;
+             withholdingAmount = Math.round((grossApplied - netCashApplied) * 100) / 100;
           } else if (parts[2] === 'withholdingAmount') {
-             grossApplied = netCashApplied + withholdingAmount;
+             grossApplied = Math.round((netCashApplied + withholdingAmount) * 100) / 100;
              if (grossApplied > 0) {
-                withholdingPercent = (withholdingAmount / grossApplied) * 100;
+                withholdingPercent = Math.round(((withholdingAmount / grossApplied) * 100) * 10000) / 10000;
              } else {
                 withholdingPercent = 0;
              }
@@ -264,10 +264,10 @@ function ConfirmReceiptPageContent() {
   }, [form, update]);
   
   const totals = useMemo(() => {
-    const totalNetApplied = watchedAllocations.reduce((sum, a) => sum + (a.netCashApplied || 0), 0);
-    const totalWht = watchedAllocations.reduce((sum, a) => sum + (a.withholdingAmount || 0), 0);
-    const totalGrossApplied = watchedAllocations.reduce((sum, a) => sum + (a.grossApplied || 0), 0);
-    const remainingToAllocate = (form.getValues('netReceivedTotal') || 0) - totalNetApplied;
+    const totalNetApplied = Math.round(watchedAllocations.reduce((sum, a) => sum + (a.netCashApplied || 0), 0) * 100) / 100;
+    const totalWht = Math.round(watchedAllocations.reduce((sum, a) => sum + (a.withholdingAmount || 0), 0) * 100) / 100;
+    const totalGrossApplied = Math.round(watchedAllocations.reduce((sum, a) => sum + (a.grossApplied || 0), 0) * 100) / 100;
+    const remainingToAllocate = Math.round(((form.getValues('netReceivedTotal') || 0) - totalNetApplied) * 100) / 100;
     return { totalNetApplied, totalWht, totalGrossApplied, remainingToAllocate };
   }, [watchedAllocations, form]);
 
@@ -356,11 +356,11 @@ function ConfirmReceiptPageContent() {
                 if (alloc.grossApplied > 0) {
                     const ob = obligations[alloc.invoiceId];
                     if (ob) {
-                        const newBalance = Math.max(0, ob.balance - alloc.grossApplied);
+                        const newBalance = Math.max(0, Math.round((ob.balance - alloc.grossApplied) * 100) / 100);
                         const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
                         
                         transaction.update(doc(db, 'accountingObligations', ob.id), {
-                            amountPaid: (ob.amountPaid || 0) + alloc.grossApplied,
+                            amountPaid: Math.round(((ob.amountPaid || 0) + alloc.grossApplied) * 100) / 100,
                             balance: newBalance,
                             status: newStatus,
                             lastPaymentDate: data.paymentDate,
@@ -372,7 +372,7 @@ function ConfirmReceiptPageContent() {
                             status: newStatus,
                             arStatus: newStatus,
                             paymentSummary: {
-                                paidTotal: (ob.amountPaid || 0) + alloc.grossApplied,
+                                paidTotal: Math.round(((ob.amountPaid || 0) + alloc.grossApplied) * 100) / 100,
                                 balance: newBalance,
                                 paymentStatus: newStatus
                             },
