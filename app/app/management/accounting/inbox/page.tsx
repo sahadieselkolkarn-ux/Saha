@@ -97,7 +97,7 @@ function AccountingInboxPageContent() {
           errorEmitter.emit('permission-error', permissionError);
         } else if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-            if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+            if (urlMatch) setIndexErrorUrl(urlMatch[0]);
         }
         setLoading(false); 
       }
@@ -222,6 +222,7 @@ function AccountingInboxPageContent() {
         });
 
         // Update Sale Document
+        // NEW LOGIC: Just approve, do not close job yet for cash sales
         transaction.update(docRef, { 
             status: 'APPROVED', 
             arStatus: 'UNPAID', 
@@ -256,10 +257,10 @@ function AccountingInboxPageContent() {
 
       toast({ 
         title: "ตรวจสอบความถูกต้องสำเร็จ", 
-        description: "กรุณาออกใบเสร็จรับเงินเพื่อบันทึกการรับเงินเข้าบัญชีจริงค่ะ" 
+        description: "กรุณาออกใบเสร็จรับเงินเพื่อบันทึกการรับเงินเข้าบัญชีจริง และงานจะปิดเมื่อยืนยันรับเงินค่ะ" 
       });
       
-      if (jobId) callCloseJobFunction(jobId, 'UNPAID');
+      // Removed: if (jobId) callCloseJobFunction(jobId, 'UNPAID');
       setConfirmingDoc(null);
     } catch(e: any) {
       if (e.code === 'permission-denied') {

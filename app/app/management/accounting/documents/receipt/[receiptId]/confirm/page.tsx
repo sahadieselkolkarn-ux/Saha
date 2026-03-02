@@ -6,6 +6,7 @@ import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { doc, collection, query, where, writeBatch, serverTimestamp, getDocs, getDoc, runTransaction } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -73,7 +74,7 @@ const formatCurrency = (value: number) => value.toLocaleString('th-TH', { minimu
 function ConfirmReceiptPageContent() {
   const { receiptId } = useParams();
   const router = useRouter();
-  const { db } = useFirebase();
+  const { db, app: firebaseApp } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
 
@@ -270,9 +271,22 @@ function ConfirmReceiptPageContent() {
     return { totalNetApplied, totalWht, totalGrossApplied, remainingToAllocate };
   }, [watchedAllocations, form]);
 
+  const callCloseJobFunction = async (jobId: string, paymentStatus: 'PAID' | 'UNPAID' = 'PAID') => {
+    if (!firebaseApp) return;
+    const functions = getFunctions(firebaseApp, 'us-central1');
+    const closeJob = httpsCallable(functions, "closeJobAfterAccounting");
+    try {
+      await closeJob({ jobId, paymentStatus });
+    } catch (e) {
+      console.error("Failed to archive job:", jobId, e);
+    }
+  };
+
   const executeSubmit = async (data: ConfirmReceiptFormData) => {
     if (!db || !profile || !receipt) return;
     setIsLoading(true);
+    const jobsToArchive: string[] = [];
+
     try {
         await runTransaction(db, async (transaction) => {
             const receiptRef = doc(db, 'documents', receipt.id);
@@ -364,12 +378,25 @@ function ConfirmReceiptPageContent() {
                             },
                             updatedAt: serverTimestamp(),
                         });
+
+                        // TRACK JOBS TO ARCHIVE
+                        if (newStatus === 'PAID' && ob.jobId) {
+                            jobsToArchive.push(ob.jobId);
+                        }
                     }
                 }
             }
         });
         
-        toast({ title: "ยืนยันการรับเงินสำเร็จ" });
+        // ARCHIVE JOBS AFTER TRANSACTION
+        if (jobsToArchive.length > 0) {
+            const uniqueJobs = Array.from(new Set(jobsToArchive));
+            for (const jId of uniqueJobs) {
+                await callCloseJobFunction(jId, 'PAID');
+            }
+        }
+
+        toast({ title: "ยืนยันการรับเงินสำเร็จ", description: jobsToArchive.length > 0 ? `ปิดงานซ่อมที่เกี่ยวข้อง ${jobsToArchive.length} รายการเรียบร้อยค่ะ` : "" });
         router.push('/app/management/accounting/inbox');
 
     } catch (err: any) {
@@ -454,7 +481,7 @@ function ConfirmReceiptPageContent() {
                 <AlertDialogHeader>
                     <AlertDialogTitle>ยืนยันข้อมูลการรับเงินและจัดสรรหนี้?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        เมื่อยืนยันแล้ว ระบบจะ <span className="font-bold text-destructive">ลงบัญชีรายรับและปรับยอดลูกหนี้ทันที</span> โดยไม่สามารถแก้ไขได้อีก
+                        เมื่อยืนยันแล้ว ระบบจะ <span className="font-bold text-destructive">ลงบัญชีรายรับ ปรับยอดลูกหนี้ และปิดงานซ่อมที่เกี่ยวข้องทันที</span> โดยไม่สามารถแก้ไขได้อีก
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
