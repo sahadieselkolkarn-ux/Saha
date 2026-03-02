@@ -320,7 +320,7 @@ export function JobList({
                         <Button className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px]" onClick={() => handleUpdateStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติการซ่อมแล้ว (ผ่านรายการสรุป)')} disabled={isProcessing === job.id}>
                           <Check className="mr-1 h-3 w-3" />อนุมัติ
                         </Button>
-                        <Button variant="outline" className="h-9 border-destructive text-destructive hover:bg-destructive/10 text-[10px] font-bold" onClick={() => handleUpdateStatus(job.id, 'CLOSED', 'ลูกค้าไม่อนุมัติ (ผ่านรายการสรุป)')} disabled={isProcessing === job.id}>
+                        <Button variant="outline" className="h-9 border-destructive text-destructive hover:bg-destructive/10 text-[10px] font-bold" onClick={() => handleUpdateStatus(job.id, 'DONE', 'ลูกค้าไม่อนุมัติการซ่อม - ส่งไปรอทำบิล (ผ่านรายการสรุป)')} disabled={isProcessing === job.id}>
                           <Ban className="mr-1 h-3 w-3" />ไม่อนุมัติ
                         </Button>
                       </div>

@@ -561,22 +561,22 @@ function JobDetailsPageContent() {
 
   const handleRejectJob = async () => {
     if (!db || !profile || !job) return;
-    if (!confirm("ยืนยันลูกค้าไม่อนุมัติงานนี้? งานจะถูกปิดทันที")) return;
+    if (!confirm("ยืนยันลูกค้าไม่อนุมัติงานนี้? งานจะถูกเปลี่ยนสถานะเป็นจบงานเพื่อรอทำบิลค่าบริการ")) return;
     setIsSubmittingNote(true);
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
     batch.update(jobDocRef, { 
-      status: 'CLOSED', 
+      status: 'DONE', // Changed from CLOSED to DONE
       lastActivityAt: serverTimestamp(), 
       updatedAt: serverTimestamp() 
     });
     batch.set(doc(collection(jobDocRef, "activities")), { 
-      text: `ลูกค้าไม่อนุมัติการซ่อม / ยกเลิกงาน`, 
+      text: `ลูกค้าไม่อนุมัติการซ่อม / ยกเลิกงาน - ปรับสถานะเป็นจบงานเพื่อให้ฝ่ายออฟฟิศออกบิลค่าบริการ`, 
       userName: profile.displayName, 
       userId: profile.uid, 
       createdAt: serverTimestamp() 
     });
-    batch.commit().then(() => toast({ title: "ปิดงานเรียบร้อย" })).finally(() => setIsSubmittingNote(false));
+    batch.commit().then(() => toast({ title: "เปลี่ยนสถานะเป็นจบงานเรียบร้อย" })).finally(() => setIsSubmittingNote(false));
   };
 
   const handlePartsReady = async () => {
