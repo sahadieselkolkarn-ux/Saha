@@ -122,43 +122,40 @@ function ConfirmReceiptPageContent() {
         setReceipt(receiptData);
 
         let invoiceIds = receiptData.referencesDocIds || [];
-        if (invoiceIds.length === 0) {
-            setInvoices([]);
-            setObligations({});
-            return;
+        let fetchedInvoices: WithId<DocumentType>[] = [];
+        let fetchedObligations: Record<string, WithId<AccountingObligation>> = {};
+
+        if (invoiceIds.length > 0) {
+            const firstRefId = invoiceIds[0];
+            const sourceDocSnap = await getDoc(doc(db, 'documents', firstRefId));
+            if (sourceDocSnap.exists() && sourceDocSnap.data().docType === 'BILLING_NOTE') {
+                invoiceIds = sourceDocSnap.data().invoiceIds || [];
+            }
+
+            if (invoiceIds.length > 0) {
+                const invoicesQuery = query(collection(db, "documents"), where("__name__", "in", invoiceIds));
+                const obligationsQuery = query(collection(db, 'accountingObligations'), where('sourceDocId', 'in', invoiceIds));
+                
+                const [invoicesSnap, obligationsSnap] = await Promise.all([
+                    getDocs(invoicesQuery),
+                    getDocs(obligationsQuery),
+                ]);
+
+                fetchedInvoices = invoicesSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<DocumentType>);
+                fetchedObligations = Object.fromEntries(obligationsSnap.docs.map(d => [d.data().sourceDocId, {id: d.id, ...d.data()} as WithId<AccountingObligation>]));
+            }
         }
 
-        const firstRefId = invoiceIds[0];
-        const sourceDocSnap = await getDoc(doc(db, 'documents', firstRefId));
-        if (sourceDocSnap.exists() && sourceDocSnap.data().docType === 'BILLING_NOTE') {
-            invoiceIds = sourceDocSnap.data().invoiceIds || [];
-        }
-
-        if (invoiceIds.length === 0) {
-            setInvoices([]);
-            setObligations({});
-        } else {
-            const invoicesQuery = query(collection(db, "documents"), where("__name__", "in", invoiceIds));
-            const obligationsQuery = query(collection(db, 'accountingObligations'), where('sourceDocId', 'in', invoiceIds));
-            
-            const [invoicesSnap, obligationsSnap] = await Promise.all([
-                getDocs(invoicesQuery),
-                getDocs(obligationsQuery),
-            ]);
-
-            const fetchedInvoices = invoicesSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<DocumentType>);
-            const fetchedObligations = Object.fromEntries(obligationsSnap.docs.map(d => [d.data().sourceDocId, {id: d.id, ...d.data()} as WithId<AccountingObligation>]));
-            
-            setInvoices(fetchedInvoices);
-            setObligations(fetchedObligations);
-        }
+        setInvoices(fetchedInvoices);
+        setObligations(fetchedObligations);
 
         const accountsQuery = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
         const accountsSnap = await getDocs(accountsQuery);
-        setAccounts(accountsSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<AccountingAccount>));
+        const accountsData = accountsSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<AccountingAccount>);
+        setAccounts(accountsData);
         
         form.reset({
-            accountId: receiptData.receivedAccountId || accountsSnap.docs[0]?.id || "",
+            accountId: receiptData.receivedAccountId || accountsData[0]?.id || "",
             paymentDate: receiptData.paymentDate || format(new Date(), "yyyy-MM-dd"),
             netReceivedTotal: Math.round(receiptData.grandTotal * 100) / 100,
             allocations: fetchedInvoices.map(inv => {
