@@ -46,6 +46,7 @@ const formatCurrency = (value: number | null | undefined) => {
 export function ReceiptForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const editDocId = searchParams.get("editDocId");
   const { db } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -60,6 +61,9 @@ export function ReceiptForm() {
 
   const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
   const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
+
+  const docToEditRef = useMemo(() => (db && editDocId ? doc(db, "documents", editDocId) : null), [db, editDocId]);
+  const { data: docToEdit, isLoading: isLoadingDoc } = useDoc<DocumentType>(docToEditRef);
 
   const form = useForm<ReceiptFormData>({
     resolver: zodResolver(receiptFormSchema),
@@ -94,6 +98,19 @@ export function ReceiptForm() {
   }, [db]);
 
   useEffect(() => {
+    if (docToEdit) {
+      form.reset({
+        customerId: docToEdit.customerId || docToEdit.customerSnapshot?.id || "",
+        sourceDocIds: docToEdit.referencesDocIds || [],
+        paymentDate: docToEdit.paymentDate || docToEdit.docDate || new Date().toISOString().split("T")[0],
+        accountId: docToEdit.receivedAccountId || "",
+        amount: docToEdit.grandTotal,
+        notes: docToEdit.notes || "",
+      });
+    }
+  }, [docToEdit, form]);
+
+  useEffect(() => {
     if (!db || !selectedCustomerId) {
       setSourceDocs([]);
       return;
@@ -109,7 +126,10 @@ export function ReceiptForm() {
       
       const filtered = allDocs.filter(doc => {
           if (doc.status === 'CANCELLED' || doc.status === 'PAID') return false;
+          
+          // Allow documents that are already in this receipt if we are editing
           if (doc.receiptStatus === 'CONFIRMED') return false;
+          if (doc.receiptDocId && doc.receiptDocId !== editDocId) return false;
           
           if (doc.docType === 'TAX_INVOICE' && doc.billingRequired && !doc.billingNoteId) {
               return false;
@@ -120,17 +140,17 @@ export function ReceiptForm() {
       setSourceDocs(filtered);
     });
     return unsubscribe;
-  }, [db, selectedCustomerId]);
+  }, [db, selectedCustomerId, editDocId]);
   
   useEffect(() => {
     const selected = sourceDocs.filter(d => watchedSourceDocIds.includes(d.id));
     const total = selected.reduce((sum, d) => sum + (d.paymentSummary?.balance ?? d.grandTotal), 0);
     form.setValue('amount', Math.round(total * 100) / 100);
     
-    if (selected.length > 0 && selected[0].suggestedAccountId && !form.getValues('accountId')) {
+    if (selected.length > 0 && selected[0].suggestedAccountId && !form.getValues('accountId') && !editDocId) {
         form.setValue('accountId', selected[0].suggestedAccountId);
     }
-  }, [watchedSourceDocIds, sourceDocs, form]);
+  }, [watchedSourceDocIds, sourceDocs, form, editDocId]);
 
   const handleToggleDoc = (docId: string) => {
     const currentIds = form.getValues('sourceDocIds');
@@ -181,23 +201,53 @@ export function ReceiptForm() {
         receivedAccountId: data.accountId,
       };
 
-      const { docId, docNo } = await createDocument(db, 'RECEIPT', docData, profile, undefined, { initialStatus: status });
+      let finalDocId: string;
+      let finalDocNo: string;
+
+      if (editDocId) {
+          await updateDoc(doc(db, 'documents', editDocId), sanitizeForFirestore({
+              ...docData,
+              status,
+              updatedAt: serverTimestamp(),
+          }));
+          finalDocId = editDocId;
+          finalDocNo = docToEdit?.docNo || "";
+      } else {
+          const result = await createDocument(db, 'RECEIPT', docData, profile, undefined, { initialStatus: status });
+          finalDocId = result.docId;
+          finalDocNo = result.docNo;
+      }
 
       const batch = writeBatch(db);
+      
+      // If editing, we should reset status of docs that were removed from the selection
+      if (editDocId && docToEdit?.referencesDocIds) {
+          const removedDocIds = docToEdit.referencesDocIds.filter(id => !data.sourceDocIds.includes(id));
+          removedDocIds.forEach(id => {
+              batch.update(doc(db, 'documents', id), {
+                  receiptStatus: deleteField(),
+                  receiptDocId: deleteField(),
+                  receiptDocNo: deleteField(),
+                  updatedAt: serverTimestamp()
+              });
+          });
+      }
+
+      // Update status of all currently selected source docs
       selectedDocs.forEach(sourceDoc => {
           batch.update(doc(db, 'documents', sourceDoc.id), {
               receiptStatus: 'ISSUED_NOT_CONFIRMED',
-              receiptDocId: docId,
-              receiptDocNo: docNo,
+              receiptDocId: finalDocId,
+              receiptDocNo: finalDocNo,
               updatedAt: serverTimestamp()
           });
       });
       await batch.commit();
 
-      toast({ title: status === 'DRAFT' ? "บันทึกร่างสำเร็จ" : "ส่งตรวจสอบสำเร็จ", description: `เลขที่ใบเสร็จ: ${docNo}` });
+      toast({ title: status === 'DRAFT' ? "บันทึกร่างสำเร็จ" : "ส่งตรวจสอบสำเร็จ", description: `เลขที่ใบเสร็จ: ${finalDocNo}` });
       
       if (status === 'DRAFT') {
-          router.push(`/app/office/documents/${docId}`);
+          router.push(`/app/office/documents/${finalDocId}`);
       } else {
           router.push(`/app/management/accounting/inbox`);
       }
@@ -213,13 +263,18 @@ export function ReceiptForm() {
     return customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch));
   }, [customers, customerSearch]);
 
-  if (isLoading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+  const isFormLoading = isLoading || (editDocId && isLoadingDoc);
+
+  if (isFormLoading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
 
   return (
     <Form {...form}>
       <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2 text-primary"><Info className="h-5 w-5" /> เลือกบิลที่ลูกค้าต้องการรวมใบเสร็จ</h2>
+            <h2 className="text-lg font-semibold flex items-center gap-2 text-primary">
+                <Info className="h-5 w-5" /> 
+                {editDocId ? `แก้ไขใบเสร็จ ${docToEdit?.docNo}` : "เลือกบิลที่ลูกค้าต้องการรวมใบเสร็จ"}
+            </h2>
             <div className="flex gap-2 w-full sm:w-auto">
                 <Button 
                     variant="secondary" 
@@ -250,7 +305,7 @@ export function ReceiptForm() {
                     <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                     <PopoverTrigger asChild>
                         <FormControl>
-                        <Button variant="outline" role="combobox" className="w-full md:w-[400px] justify-between font-normal">
+                        <Button variant="outline" role="combobox" className="w-full md:w-[400px] justify-between font-normal" disabled={!!editDocId}>
                             <span className="truncate">{field.value ? (customers.find(c => c.id === field.value)?.name || "กำลังโหลด...") : "ค้นหาชื่อลูกค้า..."}</span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>

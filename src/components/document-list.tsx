@@ -111,7 +111,7 @@ export function DocumentList({
         setError(err);
         if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-            if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+            if (urlMatch) setIndexErrorUrl(urlMatch[0]);
         }
         setLoading(false);
     });
@@ -315,7 +315,12 @@ export function DocumentList({
                     {paginatedDocuments.length > 0 ? paginatedDocuments.map(docItem => {
                       const displayStatus = getDocDisplayStatus(docItem);
                       const viewPath = docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : (docItem.docType === 'TAX_INVOICE' ? `/app/office/documents/tax-invoice/${docItem.id}` : `/app/documents/${docItem.id}`);
-                      const editPath = baseContext === 'office' && ['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docItem.docType) ? `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}` : null;
+                      
+                      const editPath = (['TAX_INVOICE', 'DELIVERY_NOTE', 'QUOTATION'].includes(docItem.docType) && baseContext === 'office')
+                        ? `/app/office/documents/${docItem.docType.toLowerCase().replace('_', '-')}/new?editDocId=${docItem.id}`
+                        : (docItem.docType === 'RECEIPT' 
+                            ? `/app/management/accounting/documents/receipt?tab=new&editDocId=${docItem.id}` 
+                            : null);
 
                       return (
                       <TableRow key={docItem.id}>
