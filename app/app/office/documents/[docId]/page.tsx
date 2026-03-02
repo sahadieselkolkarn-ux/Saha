@@ -45,7 +45,7 @@ function VehicleInfo({ doc }: { doc: Document }) {
     );
 }
 
-function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyLabel?: 'ORIGINAL' | 'COPY' }) {
+function DocumentView({ document, labelSuffix }: { document: Document, labelSuffix?: 'ORIGINAL' | 'COPY' }) {
     const docTypeDisplay: Record<string, string> = {
         QUOTATION: "ใบเสนอราคา / Quotation",
         DELIVERY_NOTE: "ใบส่งของชั่วคราว",
@@ -57,20 +57,41 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
     };
     
     let finalDocTitle = docTypeDisplay[document.docType] || document.docType;
-    if (document.docType === 'TAX_INVOICE') {
-        if (taxCopyLabel === 'ORIGINAL') finalDocTitle = "ใบกำกับภาษี ต้นฉบับ / Tax Invoice";
-        else if (taxCopyLabel === 'COPY') finalDocTitle = "ใบกำกับภาษี สำเนา / Tax Invoice";
+    
+    // Add Suffix for Tax Invoices or Billing Notes if provided
+    if (labelSuffix) {
+        const suffixThai = labelSuffix === 'ORIGINAL' ? 'ต้นฉบับ' : 'สำเนา';
+        if (document.docType === 'TAX_INVOICE') {
+            finalDocTitle = `ใบกำกับภาษี ${suffixThai} / Tax Invoice`;
+        } else if (document.docType === 'BILLING_NOTE') {
+            finalDocTitle = `ใบวางบิล ${suffixThai} / Billing Note`;
+        }
     }
 
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
-    const isTaxDoc = document.docType === 'TAX_INVOICE' || document.docType === 'CREDIT_NOTE' || (document.docType === 'RECEIPT' && !!document.customerSnapshot.useTax);
+    // Billing Note should also show Tax Info if customer uses Tax
+    const isTaxDoc = document.docType === 'TAX_INVOICE' || 
+                      document.docType === 'CREDIT_NOTE' || 
+                      document.docType === 'BILLING_NOTE' ||
+                      (document.docType === 'RECEIPT' && !!document.customerSnapshot.useTax);
 
-    const displayCustomerName = isTaxDoc ? (document.customerSnapshot.taxName || document.customerSnapshot.name) : document.customerSnapshot.name;
-    const displayCustomerAddress = isTaxDoc ? (document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่') : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่');
-    const displayCustomerPhone = isTaxDoc ? (document.customerSnapshot.taxPhone || document.customerSnapshot.phone) : document.customerSnapshot.phone;
+    // Use Tax fields only if useTax is enabled for this customer
+    const useTaxInfo = isTaxDoc && document.customerSnapshot.useTax;
+
+    const displayCustomerName = useTaxInfo
+        ? (document.customerSnapshot.taxName || document.customerSnapshot.name) 
+        : document.customerSnapshot.name;
+        
+    const displayCustomerAddress = useTaxInfo
+        ? (document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่') 
+        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่');
+        
+    const displayCustomerPhone = useTaxInfo
+        ? (document.customerSnapshot.taxPhone || document.customerSnapshot.phone) 
+        : document.customerSnapshot.phone;
 
     let branchLabel = "";
-    if (isTaxDoc) {
+    if (useTaxInfo) {
         if (document.customerSnapshot.taxBranchType === 'HEAD_OFFICE') {
             branchLabel = "สำนักงานใหญ่";
         } else if (document.customerSnapshot.taxBranchType === 'BRANCH') {
@@ -83,8 +104,8 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
     const isQuotation = document.docType === 'QUOTATION';
-    const labelSender = isQuotation ? 'ผู้เสนอราคา' : 'ผู้ส่งสินค้า/บริการ';
-    const labelReceiver = isQuotation ? 'ลูกค้า / ผู้รับข้อเสนอ' : 'ผู้รับสินค้า/บริการ';
+    const labelSender = isQuotation ? 'ผู้เสนอราคา' : (document.docType === 'BILLING_NOTE' ? 'ผู้วางบิล' : 'ผู้ส่งสินค้า/บริการ');
+    const labelReceiver = isQuotation ? 'ลูกค้า / ผู้รับข้อเสนอ' : (document.docType === 'BILLING_NOTE' ? 'ผู้รับวางบิล' : 'ผู้รับสินค้า/บริการ');
 
     return (
         <div className="printable-document border bg-white shadow-sm w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full box-border flex flex-col">
@@ -124,7 +145,7 @@ function DocumentView({ document, taxCopyLabel }: { document: Document, taxCopyL
                         </p>
                         <p className="text-[11px]">
                             โทร {displayCustomerPhone}
-                            {isTaxDoc && document.customerSnapshot.taxId && (
+                            {useTaxInfo && document.customerSnapshot.taxId && (
                                 <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.customerSnapshot.taxId}</span>
                             )}
                         </p>
@@ -233,12 +254,14 @@ function DocumentPageContent() {
     };
 
     const handlePrintRequest = () => {
-        if (document?.docType === 'TAX_INVOICE') setIsPrintOptionsOpen(true);
+        if (document?.docType === 'TAX_INVOICE' || document?.docType === 'BILLING_NOTE') setIsPrintOptionsOpen(true);
         else window.print();
     };
 
     if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
     if (error || !document) return <div className="p-12 text-center space-y-4"><AlertCircle className="mx-auto h-12 w-12 text-destructive"/><h2 className="text-xl font-bold">ไม่พบเอกสาร</h2><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button></div>;
+
+    const showMultiCopy = document.docType === 'TAX_INVOICE' || document.docType === 'BILLING_NOTE';
 
     return (
         <div className="min-h-screen bg-muted/20 py-8 print:p-0 print:bg-white overflow-x-hidden">
@@ -252,16 +275,16 @@ function DocumentPageContent() {
 
                 <div className="w-full overflow-x-auto pb-10 print:overflow-visible print:pb-0">
                     <div className="min-w-[210mm] print:min-w-0 print:m-0">
-                        {document.docType === 'TAX_INVOICE' ? (
+                        {showMultiCopy ? (
                             <div className="space-y-8 print:space-y-0">
-                                <DocumentView document={document} taxCopyLabel="ORIGINAL" />
+                                <DocumentView document={document} labelSuffix="ORIGINAL" />
                                 <div className="hidden print:block break-before-page" />
-                                <DocumentView document={document} taxCopyLabel="COPY" />
+                                <DocumentView document={document} labelSuffix="COPY" />
                                 
                                 {printCopies === 2 && (
                                     <>
                                         <div className="hidden print:block break-before-page" />
-                                        <DocumentView document={document} taxCopyLabel="COPY" />
+                                        <DocumentView document={document} labelSuffix="COPY" />
                                     </>
                                 )}
                             </div>
@@ -274,7 +297,10 @@ function DocumentPageContent() {
 
             <AlertDialog open={isPrintOptionsOpen} onOpenChange={setIsPrintOptionsOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>พิมพ์ใบกำกับภาษี</AlertDialogTitle><AlertDialogDescription>เลือกจำนวนสำเนาที่ต้องการพิมพ์</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>พิมพ์{document.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบวางบิล'}</AlertDialogTitle>
+                        <AlertDialogDescription>เลือกจำนวนสำเนาที่ต้องการพิมพ์</AlertDialogDescription>
+                    </AlertDialogHeader>
                     <div className="py-4">
                         <RadioGroup value={String(printCopies)} onValueChange={(v) => setPrintCopies(Number(v) as 1 | 2)}>
                             <div className="flex items-center space-x-2"><RadioGroupItem value="1" id="c1" /><Label htmlFor="c1" className="cursor-pointer">ต้นฉบับ 1 + สำเนา 1</Label></div>
