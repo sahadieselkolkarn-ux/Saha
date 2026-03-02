@@ -15,7 +15,7 @@ import { AlertCircle, ArrowLeft, Printer, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import { cn, thaiBahtText } from "@/lib/utils";
-import type { Document, AccountingAccount } from "@/lib/types";
+import type { Document, AccountingAccount, Customer } from "@/lib/types";
 
 import {
   AlertDialog,
@@ -48,10 +48,12 @@ function VehicleInfo({ doc }: { doc: Document }) {
 
 function DocumentView({ 
     document, 
+    customer,
     labelSuffix,
     accountName
 }: { 
     document: Document, 
+    customer: any,
     labelSuffix?: 'ORIGINAL' | 'COPY',
     accountName?: string
 }) {
@@ -80,25 +82,25 @@ function DocumentView({
 
     const isTaxDoc = ['TAX_INVOICE', 'RECEIPT', 'BILLING_NOTE', 'CREDIT_NOTE', 'WITHHOLDING_TAX'].includes(document.docType);
     
-    // PRIORITY LOGIC: For official docs, strictly use tax info if available
+    // PRIORITY LOGIC: Strictly use data from Customer Management if available
     const displayCustomerName = isTaxDoc 
-        ? (document.customerSnapshot.taxName || document.customerSnapshot.name) 
-        : (document.customerSnapshot.name);
+        ? (customer.taxName || customer.name) 
+        : (customer.name);
         
     const displayCustomerAddress = isTaxDoc 
-        ? (document.customerSnapshot.taxAddress || document.customerSnapshot.detail || 'ไม่มีข้อมูลที่อยู่') 
-        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีข้อมูลที่อยู่');
+        ? (customer.taxAddress || customer.detail || '---') 
+        : (customer.detail || customer.taxAddress || '---');
         
     const displayCustomerPhone = isTaxDoc 
-        ? (document.customerSnapshot.taxPhone || document.customerSnapshot.phone) 
-        : document.customerSnapshot.phone;
+        ? (customer.taxPhone || customer.phone) 
+        : customer.phone;
 
     let branchLabel = "";
-    if (isTaxDoc || document.customerSnapshot.useTax) {
-        if (document.customerSnapshot.taxBranchType === 'HEAD_OFFICE') {
+    if (isTaxDoc || customer.useTax) {
+        if (customer.taxBranchType === 'HEAD_OFFICE') {
             branchLabel = "สำนักงานใหญ่";
-        } else if (document.customerSnapshot.taxBranchType === 'BRANCH') {
-            branchLabel = `สาขา ${document.customerSnapshot.taxBranchNo || '-----'}`;
+        } else if (customer.taxBranchType === 'BRANCH') {
+            branchLabel = `สาขา ${customer.taxBranchNo || '-----'}`;
         }
     }
 
@@ -144,15 +146,15 @@ function DocumentView({
                         <h4 className="font-bold text-[10px] text-primary uppercase tracking-wider mb-1">ข้อมูลลูกค้า</h4>
                         <p className="text-sm">
                             <span className="font-bold">{displayCustomerName}</span>
-                            {branchLabel && <span className="font-bold"> ({branchLabel})</span>}
+                            {branchLabel && <span className="font-bold text-primary ml-2">({branchLabel})</span>}
                         </p>
                         <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
                             {displayCustomerAddress}
                         </p>
                         <div className="text-[11px] space-y-0.5">
                             <p>โทร: {displayCustomerPhone}</p>
-                            {(isTaxDoc || document.customerSnapshot.useTax) && document.customerSnapshot.taxId && (
-                                <p className="font-bold">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId}</p>
+                            {(isTaxDoc || customer.useTax) && customer.taxId && (
+                                <p className="font-bold">เลขประจำตัวผู้เสียภาษี: {customer.taxId}</p>
                             )}
                         </div>
                     </div>
@@ -245,6 +247,19 @@ function DocumentPageContent() {
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
+    // Fetch live customer data to ensure latest address is used
+    const customerRef = useMemo(() => (db && document?.customerId ? doc(db, 'customers', document.customerId) : null), [db, document?.customerId]);
+    const { data: liveCustomer } = useDoc<Customer>(customerRef);
+
+    const effectiveCustomer = useMemo(() => {
+        if (!document) return null;
+        // Merge live customer data over the snapshot to fix stale data issues
+        return {
+            ...document.customerSnapshot,
+            ...(liveCustomer || {})
+        };
+    }, [document, liveCustomer]);
+
     useEffect(() => {
         if (document && searchParams.get('autoprint') === '1') {
             const timer = setTimeout(() => {
@@ -298,7 +313,7 @@ function DocumentPageContent() {
     };
 
     if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
-    if (error || !document) return <div className="p-12 text-center space-y-4"><AlertCircle className="mx-auto h-12 w-12 text-destructive"/><h2 className="text-xl font-bold">ไม่พบเอกสาร</h2><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button></div>;
+    if (error || !document || !effectiveCustomer) return <div className="p-12 text-center space-y-4"><AlertCircle className="mx-auto h-12 w-12 text-destructive"/><h2 className="text-xl font-bold">ไม่พบเอกสาร</h2><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button></div>;
 
     const showMultiCopy = ['TAX_INVOICE', 'BILLING_NOTE', 'RECEIPT'].includes(document.docType);
 
@@ -316,19 +331,19 @@ function DocumentPageContent() {
                     <div className="min-w-[210mm] print:min-w-0 print:m-0">
                         {showMultiCopy ? (
                             <div className="space-y-8 print:space-y-0">
-                                <DocumentView document={document} labelSuffix="ORIGINAL" accountName={accountName} />
+                                <DocumentView document={document} customer={effectiveCustomer} labelSuffix="ORIGINAL" accountName={accountName} />
                                 <div className="hidden print:block break-before-page" />
-                                <DocumentView document={document} labelSuffix="COPY" accountName={accountName} />
+                                <DocumentView document={document} customer={effectiveCustomer} labelSuffix="COPY" accountName={accountName} />
                                 
                                 {printCopies === 2 && (
                                     <>
                                         <div className="hidden print:block break-before-page" />
-                                        <DocumentView document={document} labelSuffix="COPY" accountName={accountName} />
+                                        <DocumentView document={document} customer={effectiveCustomer} labelSuffix="COPY" accountName={accountName} />
                                     </>
                                 )}
                             </div>
                         ) : (
-                            <DocumentView document={document} accountName={accountName} />
+                            <DocumentView document={document} customer={effectiveCustomer} accountName={accountName} />
                         )}
                     </div>
                 </div>
