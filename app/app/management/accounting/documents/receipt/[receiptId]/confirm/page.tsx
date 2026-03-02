@@ -14,10 +14,10 @@ import { format } from "date-fns";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ArrowLeft, Calculator, Info } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Calculator, Info, AlertCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -59,13 +59,13 @@ const confirmReceiptSchema = z.object({
     return Math.abs(totalNetApplied - data.netReceivedTotal) < 0.01;
   },
   {
-    message: "ยอดเงินที่จัดสรรรวมต้องเท่ากับยอดรับสุทธิ",
+    message: "ยอดเงินที่จัดสรรรวมต้องเท่ากับยอดรับโอนจริง",
     path: ["netReceivedTotal"],
   }
 ).refine(
-    (data) => data.allocations.every(alloc => alloc.grossApplied <= alloc.grossRemaining + 0.01), 
+    (data) => data.allocations.every(alloc => alloc.grossApplied <= alloc.grossRemaining + 0.05), 
     {
-        message: "มียอดจัดสรรเกินยอดค้างชำระของบิลอ้างอิง",
+        message: "มียอดจัดสรรรวม (เงินสด+WHT) เกินยอดค้างชำระของบิลอ้างอิง",
         path: ["allocations"],
     }
 );
@@ -97,6 +97,7 @@ function ConfirmReceiptPageContent() {
     defaultValues: {
       allocations: [],
       paymentDate: format(new Date(), 'yyyy-MM-dd'),
+      netReceivedTotal: 0,
     },
   });
 
@@ -158,10 +159,20 @@ function ConfirmReceiptPageContent() {
         const accountsData = accountsSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<AccountingAccount>);
         setAccounts(accountsData);
         
+        // Calculate Estimated Net Cash (Gross - 3% WHT on pre-vat)
+        const estimatedNetTotal = fetchedInvoices.reduce((sum, inv) => {
+            const ob = fetchedObligations[inv.id];
+            const grossRemaining = Math.round((ob?.balance ?? inv.paymentSummary?.balance ?? inv.grandTotal) * 100) / 100;
+            const whtRate = inv.docType === 'TAX_INVOICE' ? 0.03 : 0;
+            const whtBase = inv.withTax ? (grossRemaining / 1.07) : grossRemaining;
+            const whtAmount = Math.round(whtBase * whtRate * 100) / 100;
+            return sum + (grossRemaining - whtAmount);
+        }, 0);
+
         form.reset({
             accountId: receiptData.receivedAccountId || accountsData[0]?.id || "",
             paymentDate: receiptData.paymentDate || format(new Date(), "yyyy-MM-dd"),
-            netReceivedTotal: Math.round(receiptData.grandTotal * 100) / 100,
+            netReceivedTotal: Math.round(estimatedNetTotal * 100) / 100,
             allocations: fetchedInvoices.map(inv => {
                 const ob = fetchedObligations[inv.id];
                 const grossRemaining = Math.round((ob?.balance ?? inv.paymentSummary?.balance ?? inv.grandTotal) * 100) / 100;
@@ -188,10 +199,11 @@ function ConfirmReceiptPageContent() {
   }, [db, receiptId, form]);
   
   const handleAutoAllocate = useCallback(() => {
-    const netTotal = form.getValues('netReceivedTotal');
-    let remainingToAllocate = netTotal;
+    const totalCashToReceive = form.getValues('netReceivedTotal');
+    let remainingCashToAllocate = totalCashToReceive;
     const currentAllocations = form.getValues('allocations');
     
+    // Sort by date to pay oldest first
     const sortedAllocations = [...currentAllocations].sort((a,b) => {
         const invA = invoices.find(i => i.id === a.invoiceId);
         const invB = invoices.find(i => i.id === b.invoiceId);
@@ -202,20 +214,20 @@ function ConfirmReceiptPageContent() {
       const { grossRemaining, withTax, withholdingPercent = 0 } = alloc;
       
       const rate = withholdingPercent / 100;
-      const divisor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
+      const factor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
       
-      let amountToApplyNet = Math.round(Math.min(remainingToAllocate, grossRemaining * (withTax ? (1 - (rate / 1.07)) : (1 - rate))) * 100) / 100;
+      const maxCashForThisInv = Math.round((grossRemaining * factor) * 100) / 100;
+      const cashForThisInv = Math.min(remainingCashToAllocate, maxCashForThisInv);
       
-      const grossApplied = Math.round((amountToApplyNet / divisor) * 100) / 100;
-      const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
-      const whtAmount = Math.round((baseAmount * rate) * 100) / 100;
-      const finalNetApplied = Math.round((grossApplied - whtAmount) * 100) / 100;
-
-      remainingToAllocate = Math.round((remainingToAllocate - finalNetApplied) * 100) / 100;
+      const grossApplied = Math.round((cashForThisInv / factor) * 100) / 100;
+      const whtBase = withTax ? (grossApplied / 1.07) : grossApplied;
+      const whtAmount = Math.round((whtBase * rate) * 100) / 100;
+      
+      remainingCashToAllocate = Math.round((remainingCashToAllocate - cashForThisInv) * 100) / 100;
       
       return { 
         ...alloc, 
-        netCashApplied: finalNetApplied, 
+        netCashApplied: cashForThisInv, 
         withholdingAmount: whtAmount, 
         grossApplied: grossApplied 
       };
@@ -228,11 +240,10 @@ function ConfirmReceiptPageContent() {
         }
     });
 
-    if (remainingToAllocate > 0.01) {
+    if (remainingCashToAllocate > 0.01) {
         toast({
-            variant: "default",
-            title: "ยอดเงินคงเหลือ",
-            description: `มีเงินคงเหลือ ${formatCurrency(remainingToAllocate)} บาท ที่ยังไม่ได้จัดสรร`,
+            title: "มียอดจัดสรรไม่ครบ",
+            description: `ยังมีเงินเหลือ ${formatCurrency(remainingCashToAllocate)} บาท ที่ยังไม่ได้ระบุลงในบิล`,
         });
     }
   }, [form, invoices, toast, update]);
@@ -252,17 +263,18 @@ function ConfirmReceiptPageContent() {
           const rate = withholdingPercent / 100;
 
           if (parts[2] === 'netCashApplied' || parts[2] === 'withholdingPercent') {
-             const divisor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
-             grossApplied = Math.round((netCashApplied / divisor) * 100) / 100;
-             const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
-             withholdingAmount = Math.round((baseAmount * rate) * 100) / 100;
+             const factor = withTax ? (1 - (rate / 1.07)) : (1 - rate);
+             grossApplied = Math.round((netCashApplied / factor) * 100) / 100;
+             const whtBase = withTax ? (grossApplied / 1.07) : grossApplied;
+             withholdingAmount = Math.round((whtBase * rate) * 100) / 100;
+             // Sync net back to ensure precision
              netCashApplied = Math.round((grossApplied - withholdingAmount) * 100) / 100;
           } 
           else if (parts[2] === 'withholdingAmount') {
              grossApplied = Math.round((netCashApplied + withholdingAmount) * 100) / 100;
-             const baseAmount = withTax ? Math.round((grossApplied / 1.07) * 100) / 100 : grossApplied;
-             if (baseAmount > 0) {
-                withholdingPercent = Math.round(((withholdingAmount / baseAmount) * 100) * 10000) / 10000;
+             const whtBase = withTax ? (grossApplied / 1.07) : grossApplied;
+             if (whtBase > 0) {
+                withholdingPercent = Math.round(((withholdingAmount / whtBase) * 100) * 10000) / 10000;
              } else {
                 withholdingPercent = 0;
              }
@@ -346,7 +358,7 @@ function ConfirmReceiptPageContent() {
             transaction.set(entryRef, {
                 entryType: 'RECEIPT',
                 entryDate: data.paymentDate,
-                amount: data.netReceivedTotal,
+                amount: data.netReceivedTotal, // ACTUAL CASH RECEIVED
                 accountId: data.accountId,
                 paymentMethod: paymentMethod,
                 sourceDocType: 'RECEIPT',
@@ -374,11 +386,12 @@ function ConfirmReceiptPageContent() {
                 if (alloc.grossApplied > 0) {
                     const ob = obligations[alloc.invoiceId];
                     if (ob) {
-                        const newBalance = Math.max(0, Math.round((ob.balance - alloc.grossApplied) * 100) / 100);
-                        const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+                        const newAmountPaid = Math.round(((ob.amountPaid || 0) + alloc.grossApplied) * 100) / 100;
+                        const newBalance = Math.max(0, Math.round((ob.amountTotal - newAmountPaid) * 100) / 100);
+                        const newStatus = newBalance <= 0.05 ? 'PAID' : 'PARTIAL';
                         
                         transaction.update(doc(db, 'accountingObligations', ob.id), {
-                            amountPaid: Math.round(((ob.amountPaid || 0) + alloc.grossApplied) * 100) / 100,
+                            amountPaid: newAmountPaid,
                             balance: newBalance,
                             status: newStatus,
                             lastPaymentDate: data.paymentDate,
@@ -390,7 +403,7 @@ function ConfirmReceiptPageContent() {
                             status: newStatus,
                             arStatus: newStatus,
                             paymentSummary: {
-                                paidTotal: Math.round(((ob.amountPaid || 0) + alloc.grossApplied) * 100) / 100,
+                                paidTotal: newAmountPaid,
                                 balance: newBalance,
                                 paymentStatus: newStatus
                             },
@@ -457,7 +470,14 @@ function ConfirmReceiptPageContent() {
                           </FormItem>
                         )} />
                         <div className="md:col-span-2">
-                            <FormField name="netReceivedTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดรับสุทธิ (Net Received)</FormLabel><FormControl><Input type="number" {...field} className="text-lg font-bold" /></FormControl><FormMessage /></FormItem>)} />
+                            <FormField name="netReceivedTotal" control={form.control} render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="text-primary font-bold">ยอดเงินที่ได้รับจริง (ยอดโอน / เงินสด)</FormLabel>
+                                    <FormControl><Input type="number" {...field} className="text-lg font-black border-primary/50" /></FormControl>
+                                    <FormDescription className="text-xs text-muted-foreground">คือยอด "รวมบิล - ภาษีหัก ณ ที่จ่าย" (WHT) ที่ลูกค้าไม่ได้จ่ายเป็นเงินสดมาให้เราค่ะ</FormDescription>
+                                    <FormMessage />
+                                </FormItem>
+                            )} />
                         </div>
                     </CardContent>
                 </Card>
@@ -482,7 +502,7 @@ function ConfirmReceiptPageContent() {
                                 <TableHeader>
                                     <TableRow className="bg-muted/50">
                                         <TableHead className="min-w-[150px]">เลขที่ Invoice</TableHead>
-                                        <TableHead className="text-right">ยอดค้าง</TableHead>
+                                        <TableHead className="text-right">ยอดค้างบิล</TableHead>
                                         <TableHead className="w-32 text-right">รับจริง (Net)</TableHead>
                                         <TableHead className="w-20 text-right">หัก (%)</TableHead>
                                         <TableHead className="w-32 text-right">ยอด WHT</TableHead>
@@ -509,9 +529,9 @@ function ConfirmReceiptPageContent() {
                                 <TableFooter>
                                     <TableRow className="bg-muted/20">
                                         <TableCell colSpan={4} className="text-xs text-muted-foreground italic">
-                                            ยอดเงินคงเหลือที่ยังไม่ได้จัดสรร:
+                                            ยอดเงินที่ยังไม่ได้ระบุลงในบิล (Unallocated Cash):
                                         </TableCell>
-                                        <TableCell colSpan={2} className={cn("text-right font-black text-lg", Math.abs(totals.remainingToAllocate) > 0.01 ? 'text-destructive' : 'text-green-600')}>
+                                        <TableCell colSpan={2} className={cn("text-right font-black text-lg", Math.abs(totals.remainingToAllocate) > 0.05 ? 'text-destructive' : 'text-green-600')}>
                                             ฿{formatCurrency(totals.remainingToAllocate)}
                                         </TableCell>
                                     </TableRow>
@@ -527,8 +547,16 @@ function ConfirmReceiptPageContent() {
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>ยืนยันข้อมูลการรับเงินและจัดสรรหนี้?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        เมื่อยืนยันแล้ว ระบบจะ <span className="font-bold text-destructive">ลงบัญชีรายรับ ปรับยอดลูกหนี้ และปิดงานซ่อมที่เกี่ยวข้องทันที</span> โดยไม่สามารถแก้ไขได้อีก
+                    <AlertDialogDescription asChild>
+                        <div className="space-y-3">
+                            <p>เมื่อยืนยันแล้ว ระบบจะดำเนินการดังนี้:</p>
+                            <ul className="list-disc pl-5 text-sm space-y-1">
+                                <li>บันทึกรายรับเข้าสมุดบัญชีจำนวน <span className="font-bold text-primary">{formatCurrency(pendingFormData?.netReceivedTotal || 0)} บาท</span></li>
+                                <li>ปรับยอดค้างชำระของลูกหนี้ (AR)</li>
+                                <li>เปลี่ยนสถานะใบงานซ่อมเป็น "ปิดงาน" (CLOSED) ทันที</li>
+                            </ul>
+                            <p className="font-bold text-destructive">หมายเหตุ: รายการนี้ไม่สามารถแก้ไขได้อีกหลังจากยืนยันค่ะ</p>
+                        </div>
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
