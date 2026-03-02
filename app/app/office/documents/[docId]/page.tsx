@@ -78,26 +78,24 @@ function DocumentView({
     }
 
     const isDeliveryNote = document.docType === 'DELIVERY_NOTE';
-    const isReceipt = document.docType === 'RECEIPT';
-    const isTaxInvoice = document.docType === 'TAX_INVOICE';
+    const isTaxDoc = ['TAX_INVOICE', 'RECEIPT', 'BILLING_NOTE', 'CREDIT_NOTE', 'WITHHOLDING_TAX'].includes(document.docType);
     
-    // STRICTURE: For Receipt and Tax Invoice, we must use Tax Info fields.
-    const useTaxFields = isReceipt || isTaxInvoice || !!document.customerSnapshot.useTax;
-
-    const displayCustomerName = useTaxFields
+    // Priority: Tax Name > Name
+    const displayCustomerName = (isTaxDoc || document.customerSnapshot.useTax)
         ? (document.customerSnapshot.taxName || document.customerSnapshot.name) 
         : document.customerSnapshot.name;
         
-    const displayCustomerAddress = useTaxFields
-        ? (document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่') 
-        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีที่อยู่');
+    // Priority: Tax Address > Detail > Fallback
+    const displayCustomerAddress = (isTaxDoc || document.customerSnapshot.useTax)
+        ? (document.customerSnapshot.taxAddress || document.customerSnapshot.detail || 'ไม่มีข้อมูลที่อยู่') 
+        : (document.customerSnapshot.detail || document.customerSnapshot.taxAddress || 'ไม่มีข้อมูลที่อยู่');
         
-    const displayCustomerPhone = useTaxFields
+    const displayCustomerPhone = (isTaxDoc || document.customerSnapshot.useTax)
         ? (document.customerSnapshot.taxPhone || document.customerSnapshot.phone) 
         : document.customerSnapshot.phone;
 
     let branchLabel = "";
-    if (useTaxFields) {
+    if (isTaxDoc || document.customerSnapshot.useTax) {
         if (document.customerSnapshot.taxBranchType === 'HEAD_OFFICE') {
             branchLabel = "สำนักงานใหญ่";
         } else if (document.customerSnapshot.taxBranchType === 'BRANCH') {
@@ -111,6 +109,7 @@ function DocumentView({
 
     const isQuotation = document.docType === 'QUOTATION';
     const isBilling = document.docType === 'BILLING_NOTE';
+    const isReceipt = document.docType === 'RECEIPT';
     
     const labelSender = isQuotation ? 'ผู้เสนอราคา' : (isBilling ? 'ผู้วางบิล' : (isReceipt ? 'ผู้รับเงิน' : 'ผู้ส่งสินค้า'));
     const labelReceiver = isQuotation ? 'ลูกค้า / ผู้รับข้อเสนอ' : (isBilling ? 'ผู้รับวางบิล' : (isReceipt ? 'ลูกค้า / ผู้จ่ายเงิน' : 'ผู้รับสินค้า'));
@@ -151,12 +150,12 @@ function DocumentView({
                         <p className="text-[11px] leading-relaxed whitespace-pre-wrap">
                             {displayCustomerAddress}
                         </p>
-                        <p className="text-[11px]">
-                            โทร {displayCustomerPhone}
-                            {useTaxFields && document.customerSnapshot.taxId && (
-                                <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.customerSnapshot.taxId}</span>
+                        <div className="text-[11px] space-y-0.5">
+                            <p>โทร: {displayCustomerPhone}</p>
+                            {(isTaxDoc || document.customerSnapshot.useTax) && document.customerSnapshot.taxId && (
+                                <p className="font-bold">เลขประจำตัวผู้เสียภาษี: {document.customerSnapshot.taxId}</p>
                             )}
-                        </p>
+                        </div>
                     </div>
                     <VehicleInfo doc={document} />
                 </div>

@@ -81,7 +81,7 @@ export function ReceiptForm() {
     if (!db) return;
     const q = query(collection(db, "accountingAccounts"), where("isActive", "==", true));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AccountingAccount)));
+        setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AccountingAccount)));
     });
     return unsubscribe;
   }, [db]);
@@ -119,7 +119,6 @@ export function ReceiptForm() {
     const selectedDoc = sourceDocs.find(d => d.id === selectedSourceDocId);
     if (selectedDoc) {
       const rawBalance = selectedDoc.paymentSummary?.balance ?? selectedDoc.grandTotal;
-      // Round to 2 decimal places strictly
       const balance = Math.round(rawBalance * 100) / 100;
       form.setValue('amount', balance);
       
@@ -153,7 +152,7 @@ export function ReceiptForm() {
       const docData = {
         docDate: data.paymentDate,
         customerId: data.customerId,
-        customerSnapshot: { ...customer },
+        customerSnapshot: { ...customer }, // Always take full latest snapshot
         storeSnapshot: { ...storeSettings },
         items,
         subtotal: amount2dec,
@@ -174,7 +173,7 @@ export function ReceiptForm() {
       const sourceDocRef = doc(db, 'documents', data.sourceDocId);
       const batch = writeBatch(db);
       batch.update(sourceDocRef, {
-          receiptStatus: status === 'DRAFT' ? 'ISSUED_NOT_CONFIRMED' : 'ISSUED_NOT_CONFIRMED', // Keep same for now, but UI tracks status
+          receiptStatus: 'ISSUED_NOT_CONFIRMED',
           receiptDocId: docId,
           receiptDocNo: docNo,
           updatedAt: serverTimestamp()
