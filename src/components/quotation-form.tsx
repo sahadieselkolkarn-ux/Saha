@@ -245,7 +245,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         }
     } catch (e: any) {
         toast({ variant: "destructive", title: "Error", description: e.message });
-    } finally { setIsProcessing(false); }
+        setIsProcessing(false);
+    }
   };
 
   const checkUniqueness = async (jobIdVal: string) => {
@@ -270,7 +271,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   };
 
   const onSubmit = async (data: QuotationFormData) => {
-    if (isCancelled) return;
+    if (isCancelled || isProcessing) return; // ล็อคป้องกันกดเบิ้ล
     if (data.jobId) {
       const ok = await checkUniqueness(data.jobId);
       if (!ok) {
@@ -283,7 +284,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   };
 
   const handleCancelExistingAndSave = async () => {
-    if (!db || !existingActiveDoc || !profile || !pendingFormData) return;
+    if (!db || !existingActiveDoc || !profile || !pendingFormData || isProcessing) return;
     setIsProcessing(true);
     try {
         await updateDoc(doc(db, 'documents', existingActiveDoc.id), { 
@@ -293,7 +294,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         });
         await executeSave(pendingFormData);
         setShowDuplicateDialog(false);
-    } catch(e: any) { toast({ variant: 'destructive', title: "Error", description: e.message }); } finally { setIsProcessing(false); }
+    } catch(e: any) { toast({ variant: 'destructive', title: "Error", description: e.message }); setIsProcessing(false); }
   };
 
   const applyTemplate = (template: QuotationTemplate) => {
@@ -306,7 +307,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   };
 
   const handleSaveAsTemplate = async () => {
-    if (!db || !profile) return;
+    if (!db || !profile || isProcessing) return;
     const items = form.getValues('items');
     if (items.length === 0 || (items.length === 1 && !items[0].description)) {
       toast({ variant: 'destructive', title: "ไม่สามารถบันทึกได้", description: "กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการก่อนค่ะ" });
@@ -376,10 +377,10 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                   </div>
                 )}
                 <FormField control={form.control} name="issueDate" render={({ field }) => (
-                  <FormItem><FormLabel>วันที่ออกเอกสาร</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl></FormItem>
+                  <FormItem><FormLabel>วันที่ออกเอกสาร</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled || isProcessing} /></FormControl></FormItem>
                 )} />
                 <FormField control={form.control} name="expiryDate" render={({ field }) => (
-                  <FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled} /></FormControl></FormItem>
+                  <FormItem><FormLabel>ยืนราคาถึงวันที่</FormLabel><FormControl><Input type="date" {...field} disabled={isCancelled || isProcessing} /></FormControl></FormItem>
                 )} />
               </div>
           </div>
@@ -393,7 +394,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                   <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                     <PopoverTrigger asChild>
                       <FormControl>
-                        <Button variant="outline" className={cn("w-full max-w-sm justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled}>
+                        <Button variant="outline" className={cn("w-full max-w-sm justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isCustomerSelectionDisabled || isProcessing}>
                           <span className="truncate">{currentCustomer ? `${currentCustomer.name} (${currentCustomer.phone})` : "เลือกลูกค้า..."}</span>
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
@@ -417,7 +418,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             <CardHeader className="flex flex-row items-center justify-between py-3">
               <CardTitle className="text-base">รายการสินค้า/บริการ</CardTitle>
               <Popover open={isTemplatePopoverOpen} onOpenChange={setIsTemplatePopoverOpen}>
-                  <PopoverTrigger asChild><Button type="button" variant="outline" size="sm" disabled={isCancelled}><LayoutTemplate className="mr-2 h-4 w-4"/>เลือกจาก Template</Button></PopoverTrigger>
+                  <PopoverTrigger asChild><Button type="button" variant="outline" size="sm" disabled={isCancelled || isProcessing}><LayoutTemplate className="mr-2 h-4 w-4"/>เลือกจาก Template</Button></PopoverTrigger>
                   <PopoverContent className="w-80 p-0" align="end"><ScrollArea className="h-64">{templates?.map(t => (
                         <Button key={t.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b text-left flex flex-col items-start" onClick={() => applyTemplate(t)}>
                           <span className="font-medium text-sm">{t.name}</span>
@@ -431,11 +432,11 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 <Table>
                   <TableHeader><TableRow><TableHead className="w-12 text-center">#</TableHead><TableHead>รายละเอียด</TableHead><TableHead className="w-32 text-right">จำนวน</TableHead><TableHead className="w-40 text-right">ราคา/หน่วย</TableHead><TableHead className="w-40 text-right">ยอดรวม</TableHead><TableHead className="w-12"></TableHead></TableRow></TableHeader>
                   <TableBody>{fields.map((field, index) => (
-                      <TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} disabled={isCancelled} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.unitPrice`)) * 100) / 100); }} disabled={isCancelled} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.quantity`)) * 100) / 100); }} disabled={isCancelled} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isCancelled}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>
+                      <TableRow key={field.id}><TableCell className="text-center">{index + 1}</TableCell><TableCell><FormField control={form.control} name={`items.${index}.description`} render={({ field }) => (<Input {...field} disabled={isCancelled || isProcessing} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.quantity`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.unitPrice`)) * 100) / 100); }} disabled={isCancelled || isProcessing} />)}/></TableCell><TableCell><FormField control={form.control} name={`items.${index}.unitPrice`} render={({ field }) => (<Input type="number" step="any" className="text-right" value={field.value || ''} onChange={(e) => { const v = parseFloat(e.target.value) || 0; field.onChange(v); form.setValue(`items.${index}.total`, Math.round((v * form.getValues(`items.${index}.quantity`)) * 100) / 100); }} disabled={isCancelled || isProcessing} />)}/></TableCell><TableCell className="text-right font-medium">{formatCurrency(form.watch(`items.${index}.total`))}</TableCell><TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isCancelled || isProcessing}><Trash2 className="text-destructive h-4 w-4"/></Button></TableCell></TableRow>
                     ))}</TableBody>
                 </Table>
               </div>
-              {!isCancelled && <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isCancelled}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>}
+              {!isCancelled && <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => append({description: '', quantity: 1, unitPrice: 0, total: 0})} disabled={isCancelled || isProcessing}><PlusCircle className="mr-2 h-4 w-4"/> เพิ่มรายการ</Button>}
             </CardContent>
           </Card>
 
@@ -444,7 +445,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
               <CardHeader><CardTitle className="text-base">หมายเหตุ</CardTitle></CardHeader>
               <CardContent>
                 <FormField control={form.control} name="notes" render={({ field }) => (
-                  <Textarea {...field} value={field.value || ""} rows={5} disabled={isCancelled} />
+                  <Textarea {...field} value={field.value || ""} rows={5} disabled={isCancelled || isProcessing} />
                 )} />
               </CardContent>
             </Card>
@@ -457,13 +458,13 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">ส่วนลด (บาท)</span>
                   <FormField control={form.control} name="discountAmount" render={({ field }) => (
-                    <Input type="number" step="any" className="w-32 text-right bg-background h-8" {...field} disabled={isCancelled} />
+                    <Input type="number" step="any" className="w-32 text-right bg-background h-8" {...field} disabled={isCancelled || isProcessing} />
                   )}/>
                 </div>
                 <div className="flex justify-between items-center py-2">
                   <FormField control={form.control} name="isVat" render={({ field }) => (
                     <div className="flex items-center space-x-2">
-                      <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isCancelled}/>
+                      <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isCancelled || isProcessing}/>
                       <Label className="text-sm font-normal cursor-pointer">ภาษีมูลค่าเพิ่ม 7%</Label>
                     </div>
                   )} />
@@ -479,7 +480,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
           </div>
 
           <div className="flex justify-end gap-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
+            <Button type="button" variant="outline" onClick={() => router.back()} disabled={isProcessing}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
             <Button type="button" variant="outline" onClick={handleSaveAsTemplate} disabled={isFormLoading || isCancelled} className="border-primary text-primary hover:bg-primary/5"><LayoutTemplate className="mr-2 h-4 w-4" />บันทึกเป็น Template</Button>
             <Button type="submit" onClick={form.handleSubmit(onSubmit)} disabled={isFormLoading || isCancelled}>
               {isFormLoading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}

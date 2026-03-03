@@ -14,7 +14,7 @@ export const JOB_STATUS_LABELS: Record<string, string> = {
     WAITING_APPROVE: "รออนุมัติ",
     PENDING_PARTS: "กำลังจัดเตรียมอะไหล่",
     IN_REPAIR_PROCESS: "กำลังดำเนินการซ่อม",
-    DONE: "ทำเสร็จ",
+    DONE: "ทำเสร็จรอทำบิล",
     WAITING_CUSTOMER_PICKUP: "รอลูกค้ารับสินค้า",
     CLOSED: "ปิดงาน",
 };

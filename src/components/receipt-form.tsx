@@ -110,8 +110,6 @@ export function ReceiptForm() {
       setSourceDocs([]);
       return;
     }
-    // STRICT FILTER: Only TAX_INVOICE and BILLING_NOTE can issue a receipt.
-    // DELIVERY_NOTE is explicitly excluded per business requirements.
     const q = query(
       collection(db, "documents"),
       where("customerId", "==", selectedCustomerId),
@@ -157,6 +155,8 @@ export function ReceiptForm() {
   };
 
   const handleProcessSubmission = async (data: ReceiptFormData, status: 'DRAFT' | 'PENDING_REVIEW') => {
+    if (isSubmitting) return; // ล็อคป้องกันการส่งซ้ำ
+    
     const customer = customers.find(c => c.id === data.customerId);
     const selectedDocs = sourceDocs.filter(d => data.sourceDocIds.includes(d.id));
     const account = accounts.find(a => a.id === data.accountId);
@@ -246,7 +246,6 @@ export function ReceiptForm() {
       }
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -298,7 +297,7 @@ export function ReceiptForm() {
                     <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                     <PopoverTrigger asChild>
                         <FormControl>
-                        <Button variant="outline" role="combobox" className="w-full md:w-[400px] justify-between font-normal" disabled={!!editDocId}>
+                        <Button variant="outline" role="combobox" className="w-full md:w-[400px] justify-between font-normal" disabled={!!editDocId || isSubmitting}>
                             <span className="truncate">{field.value ? (customers.find(c => c.id === field.value)?.name || "กำลังโหลด...") : "ค้นหาชื่อลูกค้า..."}</span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
@@ -341,11 +340,12 @@ export function ReceiptForm() {
                             </TableHeader>
                             <TableBody>
                                 {sourceDocs.length > 0 ? sourceDocs.map(doc => (
-                                    <TableRow key={doc.id} className={cn("hover:bg-muted/30 cursor-pointer", watchedSourceDocIds.includes(doc.id) && "bg-primary/5")} onClick={() => handleToggleDoc(doc.id)}>
+                                    <TableRow key={doc.id} className={cn("hover:bg-muted/30 cursor-pointer", watchedSourceDocIds.includes(doc.id) && "bg-primary/5")} onClick={() => !isSubmitting && handleToggleDoc(doc.id)}>
                                         <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                                             <Checkbox 
                                                 checked={watchedSourceDocIds.includes(doc.id)} 
-                                                onCheckedChange={() => handleToggleDoc(doc.id)} 
+                                                onCheckedChange={() => !isSubmitting && handleToggleDoc(doc.id)} 
+                                                disabled={isSubmitting}
                                             />
                                         </TableCell>
                                         <TableCell>
@@ -369,17 +369,6 @@ export function ReceiptForm() {
                             </TableBody>
                         </Table>
                     </div>
-                    
-                    <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-md text-xs text-amber-800">
-                        <AlertCircle className="h-4 w-4 shrink-0" />
-                        <div>
-                            <strong>คำแนะนำ:</strong>
-                            <ul className="list-disc pl-4 mt-1">
-                                <li><b>ใบส่งของชั่วคราว (DN):</b> จบในขั้นตอนตรวจสอบรับเงินหน้า Inbox โดยไม่ต้องออกใบเสร็จค่ะ</li>
-                                <li><b>ใบกำกับภาษี (TI):</b> ที่ระบุ "ต้องวางบิล" จะต้องทำใบวางบิลก่อนถึงจะขึ้นที่นี่ค่ะ</li>
-                            </ul>
-                        </div>
-                    </div>
                 </div>
             )}
             </CardContent>
@@ -393,7 +382,7 @@ export function ReceiptForm() {
                 <FormField name="paymentDate" render={({ field }) => (
                     <FormItem>
                         <FormLabel>วันที่ออกใบเสร็จ</FormLabel>
-                        <FormControl><Input type="date" {...field} /></FormControl>
+                        <FormControl><Input type="date" {...field} disabled={isSubmitting} /></FormControl>
                         <FormMessage />
                     </FormItem>
                 )} />
@@ -410,7 +399,7 @@ export function ReceiptForm() {
                 <FormField name="accountId" render={({ field }) => (
                     <FormItem>
                         <FormLabel>เข้าบัญชี (คาดการณ์)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                             <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชีที่จะนำเงินเข้า..." /></SelectTrigger></FormControl>
                             <SelectContent>
                                 {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.type === 'CASH' ? 'เงินสด' : 'ธนาคาร'})</SelectItem>)}
@@ -420,7 +409,7 @@ export function ReceiptForm() {
                     </FormItem>
                 )} />
             </div>
-            <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>บันทึกเพิ่มเติม</FormLabel><FormControl><Textarea {...field} placeholder="ระบุรายละเอียดเพิ่มเติม (ถ้ามี)..." /></FormControl></FormItem>)} />
+            <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>บันทึกเพิ่มเติม</FormLabel><FormControl><Textarea {...field} placeholder="ระบุรายละเอียดเพิ่มเติม (ถ้ามี)..." disabled={isSubmitting} /></FormControl></FormItem>)} />
             </CardContent>
         </Card>
         )}

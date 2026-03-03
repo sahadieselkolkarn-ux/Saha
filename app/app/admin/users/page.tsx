@@ -9,11 +9,11 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle, RefreshCw, Trash2, Wrench, Search, FileText, CheckCircle, RotateCcw, Ban } from "lucide-react";
+import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle, RefreshCw, Trash2, Wrench, Search, FileText, CheckCircle, RotateCcw, Ban, Link as LinkIcon, Sparkles } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { docStatusLabel } from "@/lib/ui-labels";
-import type { Document as DocumentType } from "@/lib/types";
+import type { Document as DocumentType, Job } from "@/lib/types";
 
 export default function AdminUsersPage() {
   const { db, app: firebaseApp } = useFirebase();
@@ -33,6 +33,8 @@ export default function AdminUsersPage() {
   const [isSearchingStuck, setIsSearchingStuck] = useState(false);
   const [stuckDocs, setStuckDocs] = useState<DocumentType[]>([]);
   const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
+  
+  const [isRepairingLinks, setIsRepairingLinks] = useState(false);
 
   const isUserAdmin = profile?.role === 'ADMIN';
 
@@ -85,12 +87,59 @@ export default function AdminUsersPage() {
 
       await batch.commit();
       toast({ title: "แก้ไขสถานะสำเร็จ", description: `บิล ${docObj.docNo} เปลี่ยนเป็น ${newStatus} แล้วค่ะ` });
-      // Remove from list
       setStuckDocs(prev => prev.filter(d => d.id !== docObj.id));
     } catch (e: any) {
       toast({ variant: 'destructive', title: "แก้ไขไม่สำเร็จ", description: e.message });
     } finally {
       setIsActionLoading(null);
+    }
+  };
+
+  const handleRepairMissingLinks = async () => {
+    if (!db || !isUserAdmin) return;
+    setIsRepairingLinks(true);
+    let repairCount = 0;
+    try {
+        // 1. Get all active jobs
+        const jobsSnap = await getDocs(query(collection(db, "jobs"), where("status", "!=", "CLOSED"), limit(200)));
+        const batch = writeBatch(db);
+        
+        for (const jobDoc of jobsSnap.docs) {
+            const jobId = jobDoc.id;
+            const jobData = jobDoc.data() as Job;
+            
+            // 2. If job has no salesDocId, search for a document pointing to this job
+            if (!jobData.salesDocId) {
+                const docsQuery = query(collection(db, "documents"), where("jobId", "==", jobId), limit(1));
+                const docsSnap = await getDocs(docsQuery);
+                
+                if (!docsSnap.empty) {
+                    const docData = docsSnap.docs[0].data() as DocumentType;
+                    const docId = docsSnap.docs[0].id;
+                    
+                    // Found a lost link! Repair it.
+                    batch.update(jobDoc.ref, {
+                        salesDocId: docId,
+                        salesDocNo: docData.docNo,
+                        salesDocType: docData.docType,
+                        status: 'WAITING_CUSTOMER_PICKUP',
+                        updatedAt: serverTimestamp()
+                    });
+                    repairCount++;
+                }
+            }
+        }
+        
+        if (repairCount > 0) {
+            await batch.commit();
+            toast({ title: `กู้คืนลิงก์สำเร็จ ${repairCount} รายการ`, description: "ปุ่ม 'ดูบิล' ควรจะกลับมาแสดงผลที่จ๊อบแล้วค่ะ" });
+        } else {
+            toast({ title: "ไม่พบรายการที่ลิงก์หาย" });
+        }
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "กู้คืนล้มเหลว", description: e.message });
+    } finally {
+        setIsRepairingLinks(false);
     }
   };
 
@@ -162,14 +211,21 @@ export default function AdminUsersPage() {
               <CardTitle className="text-lg">แก้ไขสถานะเอกสารรายใบ (Manual Data Repair)</CardTitle>
             </div>
             <CardDescription>
-              ใช้สำหรับค้นหาใบส่งของชั่วคราวที่ติดสถานะ "Approved" (ที่ผิดพลาด) และเลือกเปลี่ยนสถานะให้ถูกต้องด้วยตัวเองทีละใบค่ะ
+              ใช้สำหรับค้นหาใบส่งของชั่วคราวที่ติดสถานะ "Approved" และเลือกเปลี่ยนสถานะให้ถูกต้องด้วยตัวเองทีละใบค่ะ
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Button onClick={handleSearchStuckDNs} disabled={isSearchingStuck} className="bg-blue-600 hover:bg-blue-700">
-              {isSearchingStuck ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-              ค้นหาใบส่งของที่ติดสถานะ Approved
-            </Button>
+            <div className="flex flex-wrap gap-3">
+                <Button onClick={handleSearchStuckDNs} disabled={isSearchingStuck} className="bg-blue-600 hover:bg-blue-700">
+                {isSearchingStuck ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                ค้นหาใบส่งของที่ติดสถานะ Approved
+                </Button>
+
+                <Button onClick={handleRepairMissingLinks} disabled={isRepairingLinks} variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50">
+                    {isRepairingLinks ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LinkIcon className="mr-2 h-4 w-4" />}
+                    กู้คืนลิงก์เอกสารที่หายไปในจ๊อบ (Lost Links)
+                </Button>
+            </div>
 
             {stuckDocs.length > 0 && (
               <div className="border rounded-lg bg-background overflow-hidden animate-in fade-in slide-in-from-top-2">
