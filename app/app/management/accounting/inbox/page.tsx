@@ -231,7 +231,7 @@ function AccountingInboxPageContent() {
         });
 
         if (isDeliveryNote) {
-            // DELIVERY NOTE: Complete immediately (One-stop)
+            // DELIVERY NOTE (Cash): Complete immediately and CLOSE JOB
             const entryId = `AUTO_CASH_${confirmingDoc.id}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
             const firstPayment = finalPayments[0];
@@ -260,7 +260,7 @@ function AccountingInboxPageContent() {
                 updatedAt: serverTimestamp()
             });
 
-            // SYNC: Close job immediately in active collection
+            // CRITICAL: Close job immediately
             if (jobId) {
                 transaction.update(doc(db, 'jobs', jobId), {
                     status: 'CLOSED',
@@ -351,14 +351,14 @@ function AccountingInboxPageContent() {
           dueDate: docObj.dueDate || null,
         });
         transaction.update(docRef, {
-          status: isDeliveryNote ? 'UNPAID' : 'APPROVED', // DN goes to UNPAID (Credit), TI goes to APPROVED
+          status: isDeliveryNote ? 'UNPAID' : 'APPROVED', 
           arStatus: 'UNPAID',
           paymentSummary: { paidTotal: 0, balance: docObj.grandTotal, paymentStatus: 'UNPAID' },
           arObligationId: arId,
           updatedAt: serverTimestamp()
         });
 
-        // SYNC: If DN, close job immediately
+        // CRITICAL: If DN (Credit), close job immediately
         if (isDeliveryNote && docObj.jobId) {
             transaction.update(doc(db, 'jobs', docObj.jobId), {
                 status: 'CLOSED',
@@ -734,7 +734,7 @@ function AccountingInboxPageContent() {
             <Textarea id="reason" placeholder="เช่น ยอดเงินไม่ตรง, เลือกประเภทลูกค้าผิด..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDisputingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
+            <Button variant="outline" onClick={setDisputingDoc.bind(null, null)} disabled={isSubmitting}>ยกเลิก</Button>
             <Button variant="destructive" onClick={handleDispute} disabled={isSubmitting || !disputeReason}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันตีกลับ</Button>
           </DialogFooter>
         </DialogContent>

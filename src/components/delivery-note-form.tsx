@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -253,15 +254,18 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
         if (isEditing && editDocId) {
             const batch = writeBatch(db);
             const docRef = doc(db, 'documents', editDocId);
+            const finalDocNo = docToEdit?.docNo || "Unknown";
+            
             batch.update(docRef, sanitizeForFirestore({ ...payload, status: targetStatus, updatedAt: serverTimestamp(), dispute: { isDisputed: false, reason: "" } }));
             
-            // SYNC: Ensure Job is always linked and status updated when editing a draft/rejected doc
-            if (data.jobId) {
-                const jobRef = doc(db, 'jobs', data.jobId);
+            // CRITICAL SYNC: Ensure Job record always has the latest doc info
+            const linkedJobId = data.jobId || docToEdit?.jobId;
+            if (linkedJobId) {
+                const jobRef = doc(db, 'jobs', linkedJobId);
                 batch.update(jobRef, {
                     status: 'WAITING_CUSTOMER_PICKUP',
                     salesDocId: editDocId,
-                    salesDocNo: docToEdit?.docNo || "",
+                    salesDocNo: finalDocNo,
                     salesDocType: 'DELIVERY_NOTE',
                     lastActivityAt: serverTimestamp(),
                     updatedAt: serverTimestamp()
@@ -542,7 +546,7 @@ export default function DeliveryNoteForm({ jobId, editDocId }: { jobId: string |
             <Alert variant="secondary" className="bg-amber-50 border-amber-200">
               <Info className="h-4 w-4 text-amber-600" />
               <AlertTitle className="text-amber-800">นโยบายระบบ</AlertTitle>
-              <AlertDescription className="text-amber-700 text-xs">หนึ่งงานซ่อมสามารถผูกใบส่งของได้เพียงฉบับเดียวเท่านั้นค่ะ</AlertDescription>
+              <AlertDescription className="text-amber-700 text-xs">หนึ่งงานซสามารถผูกใบส่งของได้เพียงฉบับเดียวเท่านั้นค่ะ</AlertDescription>
             </Alert>
           </div>
           <DialogFooter className="gap-2">

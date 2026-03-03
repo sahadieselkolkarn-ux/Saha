@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -260,15 +261,18 @@ export function TaxInvoiceForm({ jobId, editDocId }: { jobId: string | null, edi
         if (isEditing && editDocId) {
             const batch = writeBatch(db);
             const docRef = doc(db, 'documents', editDocId);
+            const finalDocNo = docToEdit?.docNo || "Unknown";
+
             batch.update(docRef, sanitizeForFirestore({ ...payload, status: targetStatus, updatedAt: serverTimestamp(), dispute: { isDisputed: false, reason: "" } }));
             
-            // SYNC: Ensure Job is always linked and status updated when editing a draft/rejected doc
-            if (data.jobId) {
-                const jobRef = doc(db, 'jobs', data.jobId);
+            // CRITICAL SYNC: Ensure Job record always has the latest doc info
+            const linkedJobId = data.jobId || docToEdit?.jobId;
+            if (linkedJobId) {
+                const jobRef = doc(db, 'jobs', linkedJobId);
                 batch.update(jobRef, {
                     status: 'WAITING_CUSTOMER_PICKUP',
                     salesDocId: editDocId,
-                    salesDocNo: docToEdit?.docNo || "",
+                    salesDocNo: finalDocNo,
                     salesDocType: 'TAX_INVOICE',
                     lastActivityAt: serverTimestamp(),
                     updatedAt: serverTimestamp()

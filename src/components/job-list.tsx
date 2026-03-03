@@ -339,9 +339,12 @@ export function JobList({
                   {['DONE', 'WAITING_CUSTOMER_PICKUP', 'CLOSED'].includes(job.status) && (
                     <div className="flex flex-col gap-2 w-full">
                       {(hasBill || isPickupStatus) ? (
-                        <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold">
+                        <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold overflow-hidden">
                           <Link href={job.salesDocId ? `/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}` : `/app/jobs/${job.id}`}>
-                            <Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo || ""}
+                            <div className="flex items-center justify-center truncate">
+                                <Eye className="mr-2 h-4 w-4 shrink-0" />
+                                <span className="truncate">ดูบิล {job.salesDocNo || ""}</span>
+                            </div>
                           </Link>
                         </Button>
                       ) : (

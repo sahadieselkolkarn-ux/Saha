@@ -244,7 +244,7 @@ function ReceivePaymentDialog({
         </Form>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
-          <Button type="submit" form="payment-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin"/>}บันทึกการรับชำระ</Button>
+          <Button type="submit" form="payment-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}บันทึกการรับชำระ</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -606,7 +606,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             form="ap-payment-form" 
             disabled={isSubmitting || isBlocked}
           >
-            {isSubmitting ? <Loader2 className="mr-2 animate-spin"/> : <HandCoins className="mr-2 h-4 w-4"/>}
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <HandCoins className="mr-2 h-4 w-4"/>}
             บันทึกการจ่าย
           </Button>
         </DialogFooter>
@@ -725,7 +725,7 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                  </Form>
                  <DialogFooter>
                     <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
-                    <Button type="submit" form="add-creditor-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 animate-spin"/>}บันทึก</Button>
+                    <Button type="submit" form="add-creditor-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}บันทึก</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
