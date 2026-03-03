@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowRight, Loader2, PlusCircle, Search, FileImage, LayoutGrid, Table as TableIcon, Eye } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobStatus } from "@/lib/types";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_FORMAT, APP_DATE_TIME_FORMAT } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
@@ -83,7 +83,7 @@ function JobCard({ job }: { job: Job }) {
         <CardDescription className="text-xs">
           {deptLabel(job.department)}
           <br />
-          อัปเดต: {safeFormat(job.lastActivityAt, 'PP')}
+          อัปเดต: {safeFormat(job.lastActivityAt, APP_DATE_FORMAT)}
         </CardDescription>
       </CardHeader>
       <CardContent className="px-4 pb-4 flex-grow">
@@ -183,7 +183,7 @@ function JobsTable({ jobs }: { jobs: Job[] }) {
       <CardContent className="p-0">
         <div className="border rounded-lg bg-card overflow-hidden">
             <Table>
-            <TableHeader className="bg-muted/50">
+            <TableHeader>
                 <TableRow>
                 <TableHead className="pl-6">ลูกค้า (Customer)</TableHead>
                 <TableHead className="hidden md:table-cell">แผนก</TableHead>
@@ -203,7 +203,7 @@ function JobsTable({ jobs }: { jobs: Job[] }) {
                     <TableCell className="hidden md:table-cell"><Badge variant="outline" className="font-normal">{deptLabel(job.department)}</Badge></TableCell>
                     <TableCell className="max-w-[200px] truncate hidden lg:table-cell text-sm text-muted-foreground">{job.description}</TableCell>
                     <TableCell><Badge className={cn("border", getStatusStyles(job.status), job.status === 'RECEIVED' && "animate-blink")}>{jobStatusLabel(job.status)}</Badge></TableCell>
-                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{safeFormat(job.lastActivityAt, 'dd MMM yy HH:mm')}</TableCell>
+                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{safeFormat(job.lastActivityAt, APP_DATE_TIME_FORMAT)}</TableCell>
                     <TableCell className="text-right pr-6">
                     <Button asChild variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-sm">
                         <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>

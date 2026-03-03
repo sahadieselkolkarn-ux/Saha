@@ -9,7 +9,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { safeFormat } from '@/lib/date-utils';
+import { safeFormat, APP_DATE_FORMAT, APP_DATE_TIME_FORMAT } from '@/lib/date-utils';
 import { jobStatusLabel, deptLabel, docStatusLabel } from "@/lib/ui-labels";
 
 import { PageHeader } from "@/components/page-header";
@@ -825,7 +825,7 @@ function JobDetailsPageContent() {
                 activities.map((activity) => (
                   <div key={activity.id} className="flex gap-4">
                       <User className="h-5 w-5 mt-1 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1"><p className="font-semibold text-sm">{activity.userName} <span className="text-[10px] font-normal text-muted-foreground ml-2">{safeFormat(activity.createdAt, 'PPpp')}</span></p>{activity.text && <p className="whitespace-pre-wrap text-sm my-1">{activity.text}</p>}{activity.photos && activity.photos.length > 0 && (<div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">{activity.photos.map((url, i) => (<a key={i} href={url} target="_blank" rel="noopener noreferrer"><Image src={url} alt="Activity" width={100} height={100} className="rounded-md object-cover w-full aspect-square" /></a>))}</div>)}</div>
+                      <div className="flex-1"><p className="font-semibold text-sm">{activity.userName} <span className="text-[10px] font-normal text-muted-foreground ml-2">{safeFormat(activity.createdAt, APP_DATE_TIME_FORMAT)}</span></p>{activity.text && <p className="whitespace-pre-wrap text-sm my-1">{activity.text}</p>}{activity.photos && activity.photos.length > 0 && (<div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">{activity.photos.map((url, i) => (<a key={i} href={url} target="_blank" rel="noopener noreferrer"><Image src={url} alt="Activity" width={100} height={100} className="rounded-md object-cover w-full aspect-square" /></a>))}</div>)}</div>
                   </div>
               ))) : <p className="text-muted-foreground text-sm text-center h-24 flex items-center justify-center">ยังไม่มีประวัติกิจกรรม</p>}
             </CardContent>

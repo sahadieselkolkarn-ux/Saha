@@ -16,7 +16,7 @@ import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Ey
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { safeFormat } from '@/lib/date-utils';
+import { safeFormat, APP_DATE_FORMAT } from '@/lib/date-utils';
 import type { Document, DocType } from "@/lib/types";
 import { docStatusLabel } from "@/lib/ui-labels";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -337,7 +337,7 @@ export function DocumentList({
                       return (
                       <TableRow key={docItem.id}>
                         <TableCell className="font-medium">{docItem.docNo}</TableCell>
-                        <TableCell>{safeFormat(new Date(docItem.docDate), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell>{safeFormat(new Date(docItem.docDate), APP_DATE_FORMAT)}</TableCell>
                         <TableCell>{docItem.customerSnapshot?.name || "ไม่ทราบชื่อ"}</TableCell>
                         <TableCell><Tooltip><TooltipTrigger asChild><Badge variant={displayStatus.variant} className="cursor-help">{displayStatus.label}</Badge></TooltipTrigger><TooltipContent><p>{displayStatus.description}</p></TooltipContent></Tooltip></TableCell>
                         <TableCell className="text-right">{docItem.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>

@@ -2,13 +2,20 @@ import { Timestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 /**
+ * Standard Date Formats for the application
+ */
+export const APP_DATE_FORMAT = 'dd/MM/yy';
+export const APP_DATE_TIME_FORMAT = 'dd/MM/yy HH:mm';
+export const APP_FULL_DATE_FORMAT = 'dd/MM/yyyy';
+
+/**
  * Safely formats a Firestore Timestamp or a JS Date object into a string.
  * Returns 'N/A' if the input is null, undefined, or not a recognizable date type.
  * @param timestamp The Firestore Timestamp or Date object (or null/undefined).
  * @param formatString The date-fns format string.
  * @returns The formatted date string or 'N/A'.
  */
-export function safeFormat(timestamp: Timestamp | Date | null | undefined, formatString: string): string {
+export function safeFormat(timestamp: Timestamp | Date | null | undefined, formatString: string = APP_DATE_FORMAT): string {
   if (!timestamp) {
     return 'N/A';
   }

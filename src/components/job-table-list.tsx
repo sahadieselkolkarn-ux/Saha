@@ -22,7 +22,7 @@ import { Loader2, Eye, AlertCircle, ExternalLink } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Job, JobStatus, JobDepartment } from "@/lib/types";
 import { JOB_STATUSES } from "@/lib/constants";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_TIME_FORMAT } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
 
@@ -200,7 +200,7 @@ export function JobTableList({
                   <TableCell className="hidden md:table-cell"><Badge variant="outline" className="font-normal">{deptLabel(job.department)}</Badge></TableCell>
                   <TableCell className="max-w-[200px] truncate hidden lg:table-cell text-sm text-muted-foreground">{job.description}</TableCell>
                   <TableCell><Badge className={cn(getStatusStyles(job.status))}>{jobStatusLabel(job.status)}</Badge></TableCell>
-                  <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{safeFormat(job.lastActivityAt, 'dd MMM yy HH:mm')}</TableCell>
+                  <TableCell className="hidden md:table-cell text-xs text-muted-foreground">{safeFormat(job.lastActivityAt, APP_DATE_TIME_FORMAT)}</TableCell>
                   <TableCell className="text-right pr-6">
                     <Button asChild variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-sm">
                       <Link href={`/app/jobs/${job.id}`}><Eye className="h-4 w-4" /></Link>

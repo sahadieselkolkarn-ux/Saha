@@ -19,7 +19,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, ArrowLeft, CalendarIcon, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { safeFormat } from '@/lib/date-utils';
+import { safeFormat, APP_DATE_FORMAT } from '@/lib/date-utils';
 import type { AccountingAccount, AccountingEntry } from '@/lib/types';
 
 const formatCurrency = (value: number) => {
@@ -209,7 +209,7 @@ export default function AccountLedgerPage() {
                     <div className="flex flex-col md:flex-row justify-between gap-4">
                         <div className="space-y-1">
                             <CardTitle>ยอดยกมา: {formatCurrency(account.openingBalance ?? 0)} บาท</CardTitle>
-                            <CardDescription>ณ วันที่: {safeFormat(account.openingBalanceDate ? parseISO(account.openingBalanceDate) : null, 'dd MMM yyyy')}</CardDescription>
+                            <CardDescription>ณ วันที่: {safeFormat(account.openingBalanceDate ? parseISO(account.openingBalanceDate) : null, APP_DATE_FORMAT)}</CardDescription>
                         </div>
                         <div className="flex flex-col md:flex-row gap-2">
                              <Popover>
@@ -222,10 +222,10 @@ export default function AccountLedgerPage() {
                                     {dateRange?.from ? (
                                     dateRange.to ? (
                                         <>
-                                        {format(dateRange.from, "dd MMM yyyy")} - {format(dateRange.to, "dd MMM yyyy")}
+                                        {format(dateRange.from, APP_DATE_FORMAT)} - {format(dateRange.to, APP_DATE_FORMAT)}
                                         </>
                                     ) : (
-                                        format(dateRange.from, "dd MMM yyyy")
+                                        format(dateRange.from, APP_DATE_FORMAT)
                                     )
                                     ) : (
                                     <span>เลือกช่วงวันที่</span>
@@ -262,13 +262,13 @@ export default function AccountLedgerPage() {
                         </TableHeader>
                         <TableBody>
                             <TableRow className="font-semibold bg-muted/20">
-                                <TableCell colSpan={5} className="pl-6">ยอดยกมาสะสม (ณ วันที่ {dateRange?.from ? format(dateRange.from, 'dd/MM/yyyy') : '...'})</TableCell>
+                                <TableCell colSpan={5} className="pl-6">ยอดยกมาสะสม (ณ วันที่ {dateRange?.from ? format(dateRange.from, APP_DATE_FORMAT) : '...'})</TableCell>
                                 <TableCell className="text-right pr-6">{formatCurrency(processedData.periodStartingBalance)}</TableCell>
                             </TableRow>
                             {processedData.items.length > 0 ? (
                                 processedData.items.map(item => (
                                     <TableRow key={item.id} className="hover:bg-muted/10">
-                                        <TableCell className="pl-6 text-muted-foreground text-xs">{safeFormat(parseISO(item.entryDate), 'dd/MM/yy')}</TableCell>
+                                        <TableCell className="pl-6 text-muted-foreground text-xs">{safeFormat(parseISO(item.entryDate), APP_DATE_FORMAT)}</TableCell>
                                         <TableCell className="text-sm">{item.displayDescription}</TableCell>
                                         <TableCell className="text-xs font-mono">{item.sourceDocNo || '-'}</TableCell>
                                         <TableCell className="text-right text-green-600 font-medium">{item.income > 0 ? formatCurrency(item.income) : ''}</TableCell>
