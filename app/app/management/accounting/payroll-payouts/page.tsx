@@ -26,11 +26,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, HandCoins } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, HandCoins, AlertCircle, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { PayslipNew, AccountingAccount } from "@/lib/types";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { newPayslipStatusLabel } from "@/lib/ui-labels";
@@ -122,6 +123,7 @@ export default function PayrollPayoutsPage() {
   const [payslips, setPayslips] = useState<WithId<PayslipNew>[]>([]);
   const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
   
   const [payingPayslip, setPayingPayslip] = useState<WithId<PayslipNew> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -135,6 +137,7 @@ export default function PayrollPayoutsPage() {
     }
     
     setLoading(true);
+    setIndexErrorUrl(null);
     const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
     const payslipsQuery = query(
       collection(db, "payrollBatches", payrollBatchId, "payslips"),
@@ -162,7 +165,11 @@ export default function PayrollPayoutsPage() {
     const unsubAccounts = onSnapshot(accountsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>));
       setAccounts(data);
-    }, (err) => {
+    }, (err: any) => {
+      if (err.message?.includes('requires an index')) {
+        const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) setIndexErrorUrl(urlMatch[0]);
+      }
       toast({ variant: 'destructive', title: 'ไม่สามารถโหลดบัญชี', description: err.message });
     });
     
@@ -245,6 +252,23 @@ export default function PayrollPayoutsPage() {
   return (
     <>
       <PageHeader title="จ่ายเงินเดือน" description="ตรวจสอบและยืนยันการจ่ายเงินเดือนที่พนักงานอนุมัติแล้ว" />
+      
+      {indexErrorUrl && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>ต้องสร้างดัชนี (Index) สำหรับรายการบัญชี</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2">
+            <span>ฐานข้อมูลต้องการดัชนีเพื่อจัดเรียงรายชื่อบัญชีธนาคาร กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
+            <Button asChild variant="outline" size="sm" className="w-fit bg-white text-destructive">
+              <a href={indexErrorUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                สร้าง Index (Firebase Console)
+              </a>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
