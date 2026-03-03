@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -291,7 +290,6 @@ export function JobList({
               </CardHeader>
               <CardContent className="px-4 pb-4 flex-grow"><p className="text-sm line-clamp-2 text-muted-foreground">{job.description}</p></CardContent>
               <CardFooter className="px-4 pb-4 pt-0 flex flex-col gap-2">
-                {/* 1. Primary Action: Always show View Details as the top button for consistency */}
                 <Button asChild className="w-full h-9" variant="secondary">
                   <Link href={`/app/jobs/${job.id}`}>
                     ดูรายละเอียด
@@ -299,16 +297,13 @@ export function JobList({
                   </Link>
                 </Button>
                 
-                {/* 2. Secondary Contextual Action: Ensure this area always has a consistent layout */}
                 <div className="w-full flex flex-col gap-2">
-                  {/* Case A: Assignment (Mgmt/Officer) */}
                   {canAssignWork && job.status === 'RECEIVED' && (
                     <Button onClick={() => handleOpenAssignQuick(job)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" variant="default">
                       <UserCheck className="mr-2 h-4 w-4" />มอบหมายงาน
                     </Button>
                   )}
                   
-                  {/* Case B: Quick Decisions (Waiting Approval / Parts) */}
                   {isMgmtOrOffice && job.status === 'WAITING_APPROVE' && (
                     <div className="grid grid-cols-2 gap-2">
                       <Button className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px]" onClick={() => handleUpdateStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติการซ่อมแล้ว (ผ่านรายการสรุป)')} disabled={isProcessing === job.id}>
@@ -326,33 +321,34 @@ export function JobList({
                     </Button>
                   )}
 
-                  {/* Case C: Worker taking job */}
                   {isWorker && isOwnDept && job.status === 'RECEIVED' && (
                     <Button onClick={() => handleAcceptJob(job)} disabled={isProcessing === job.id} className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold">
                       {isProcessing === job.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}รับงานนี้
                     </Button>
                   )}
                   
-                  {/* Case D: Quotation issuance */}
                   {job.status === 'WAITING_QUOTATION' && !job.salesDocId && (
                     <Button asChild={canDoBilling} className={cn("w-full h-9 font-bold", !canDoBilling && "hidden")} variant="default" disabled={!canDoBilling}>
                       {canDoBilling ? <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link> : null}
                     </Button>
                   )}
 
-                  {/* Case E: Billing & Pickup (DONE / WAITING_CUSTOMER_PICKUP) - ALWAYS SHOW SECOND BUTTON HERE */}
-                  {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
+                  {/* STATED-BASED BUTTON LOGIC: If already in Pickup state, it means it's ALREADY billed. Never show Issue Bill here. */}
+                  {['DONE', 'WAITING_CUSTOMER_PICKUP', 'CLOSED'].includes(job.status) && (
                     <div className="flex flex-col gap-2 w-full">
-                      {job.salesDocId ? (
+                      {(job.salesDocId || job.status === 'WAITING_CUSTOMER_PICKUP') ? (
                         <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold">
-                          <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
-                            <Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}
+                          <Link href={job.salesDocId ? `/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}` : `/app/jobs/${job.id}`}>
+                            <Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo || ""}
                           </Link>
                         </Button>
                       ) : (
-                        <Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "hidden")} variant="outline" disabled={!canDoBilling} onClick={() => setBillingJob(job)}>
-                          <Receipt className="mr-2 h-4 w-4" />ออกบิล
-                        </Button>
+                        /* ONLY status DONE that has NO salesDocId can see "Issue Bill" */
+                        job.status === 'DONE' && canDoBilling && (
+                          <Button className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline" onClick={() => setBillingJob(job)}>
+                            <Receipt className="mr-2 h-4 w-4" />ออกบิล
+                          </Button>
+                        )
                       )}
                       
                       {canDoBilling && job.status === 'DONE' && (
@@ -371,7 +367,6 @@ export function JobList({
         })}
       </div>
       
-      {/* Quick Assign Dialog */}
       <Dialog open={!!assigningJob} onOpenChange={(open) => !open && setAssigningJob(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -423,8 +418,19 @@ export function JobList({
         </DialogContent>
       </Dialog>
 
-      {/* Select Document Type Dialog */}
-      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle><AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription></AlertDialogHeader><AlertDialogFooter className="flex flex-col sm:flex-row gap-2"><Button variant="outline" onClick={() => setBillingJob(null)} className="w-full sm:w-auto">ยกเลิก</Button><Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button><Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button></AlertDialogFooter></AlertDialogContent></AlertDialog>
+      <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
+            <AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setBillingJob(null)} className="w-full sm:w-auto">ยกเลิก</Button>
+            <Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button>
+            <Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

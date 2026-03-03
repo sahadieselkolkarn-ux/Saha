@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, Suspense, useRef } from "react";
@@ -165,7 +164,7 @@ function JobDetailsPageContent() {
 
   const canUpdateActivity = isStaff && !isJobInFinishedState;
   
-  const isLockedForBilled = job?.status === 'WAITING_CUSTOMER_PICKUP' && !allowEditing;
+  const isLockedForBilled = (job?.status === 'WAITING_CUSTOMER_PICKUP' || !!job?.salesDocId) && !allowEditing;
   const canEditDetails = isStaff && canManageWork && !job?.isArchived && (job?.status !== 'CLOSED' || allowEditing) && !isLockedForBilled;
 
   // STRICT CHECK: Is the job already billed?
@@ -557,7 +556,7 @@ function JobDetailsPageContent() {
       setRevertReason("");
       router.replace(`/app/jobs/${jobId}`, { scroll: false });
     } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Error', description: e.message });
+      toast({ variant: 'destructive', title: "Error", description: e.message });
     } finally {
       setIsReverting(false);
     }

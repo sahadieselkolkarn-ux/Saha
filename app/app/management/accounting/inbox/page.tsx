@@ -100,7 +100,7 @@ function AccountingInboxPageContent() {
           errorEmitter.emit('permission-error', permissionError);
         } else if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-            if (urlMatch) setIndexErrorUrl(urlMatch[0]);
+            if (urlMatch) setIndexCreationUrl(urlMatch[0]);
         }
         setLoading(false); 
       }
