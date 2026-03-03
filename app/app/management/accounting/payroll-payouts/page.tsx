@@ -27,7 +27,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, HandCoins, AlertCircle, ExternalLink } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, HandCoins, AlertCircle, ExternalLink, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -36,8 +36,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { PayslipNew, AccountingAccount } from "@/lib/types";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { newPayslipStatusLabel } from "@/lib/ui-labels";
+import { safeFormat } from "@/lib/date-utils";
 
-const formatCurrency = (value: number) => {
+const formatCurrency = (value: number | undefined) => {
   return (value ?? 0).toLocaleString("th-TH", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
@@ -85,7 +86,7 @@ function PayDialog({
         </DialogHeader>
         <Form {...form}>
           <form id="payment-form" onSubmit={form.handleSubmit(onConfirm)} className="space-y-4 py-4">
-            <div className="p-4 border rounded-md font-bold text-center text-xl">
+            <div className="p-4 border rounded-md font-bold text-center text-xl bg-primary/5 border-primary/20">
               ยอดจ่ายสุทธิ: {formatCurrency(payslip.snapshot?.netPay ?? 0)} บาท
             </div>
             <FormField control={form.control} name="paidDate" render={({ field }) => (<FormItem><FormLabel>วันที่จ่ายเงิน</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>)} />
@@ -140,9 +141,11 @@ export default function PayrollPayoutsPage() {
     setLoading(true);
     setIndexErrorUrl(null);
     const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
+    
+    // Change query to include both READY_TO_PAY and PAID for tracking
     const payslipsQuery = query(
       collection(db, "payrollBatches", payrollBatchId, "payslips"),
-      where("status", "==", "READY_TO_PAY")
+      where("status", "in", ["READY_TO_PAY", "PAID"])
     );
     
     const accountsQuery = query(
@@ -153,6 +156,11 @@ export default function PayrollPayoutsPage() {
 
     const unsubPayslips = onSnapshot(payslipsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as WithId<PayslipNew>));
+      // Sort: Ready to pay first, then paid
+      data.sort((a, b) => {
+          if (a.status === b.status) return a.userName.localeCompare(b.userName, 'th');
+          return a.status === 'READY_TO_PAY' ? -1 : 1;
+      });
       setPayslips(data);
       setLoading(false);
     }, (err) => {
@@ -273,7 +281,7 @@ export default function PayrollPayoutsPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <CardTitle>รายการที่พร้อมจ่าย</CardTitle>
+            <CardTitle>รายการสลิปในงวดนี้</CardTitle>
             <div className="flex items-center gap-2 self-end sm:self-center">
               <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft /></Button>
               <span className="font-semibold text-lg text-center w-32">{format(currentMonth, 'MMMM yyyy')}</span>
@@ -292,7 +300,7 @@ export default function PayrollPayoutsPage() {
           {loading ? (
             <div className="flex justify-center p-8"><Loader2 className="animate-spin h-8 w-8" /></div>
           ) : payslips.length === 0 ? (
-            <div className="text-center text-muted-foreground p-8">ไม่มีรายการที่พร้อมจ่ายในงวดนี้</div>
+            <div className="text-center text-muted-foreground p-8">ไม่มีรายการที่พร้อมจ่ายหรือจ่ายแล้วในงวดนี้</div>
           ) : (
             <Table>
               <TableHeader>
@@ -307,14 +315,27 @@ export default function PayrollPayoutsPage() {
               <TableBody>
                 {payslips.map(p => (
                   <TableRow key={p.id}>
-                    <TableCell>{p.userName}</TableCell>
-                    <TableCell>{p.batchId}</TableCell>
-                    <TableCell><Badge variant="outline">{newPayslipStatusLabel(p.status)}</Badge></TableCell>
+                    <TableCell className="font-medium">{p.userName}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground font-mono">{p.batchId}</TableCell>
+                    <TableCell>
+                        <Badge variant={p.status === 'PAID' ? 'default' : 'outline'} className={p.status === 'PAID' ? 'bg-green-600' : ''}>
+                            {newPayslipStatusLabel(p.status)}
+                        </Badge>
+                    </TableCell>
                     <TableCell className="text-right font-bold">{formatCurrency(p.snapshot?.netPay ?? 0)}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" onClick={() => setPayingPayslip(p)} disabled={p.snapshot.netPay <= 0}>
-                        <HandCoins className="mr-2"/> บันทึกการจ่าย
-                      </Button>
+                      {p.status === 'READY_TO_PAY' ? (
+                        <Button size="sm" onClick={() => setPayingPayslip(p)} disabled={p.snapshot.netPay <= 0} className="bg-green-700 hover:bg-green-800">
+                          <HandCoins className="mr-2 h-4 w-4"/> บันทึกการจ่าย
+                        </Button>
+                      ) : (
+                        <div className="flex flex-col items-end gap-0.5">
+                            <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 text-[10px]">
+                                <CheckCircle2 className="mr-1 h-3 w-3" /> จ่ายเรียบร้อย
+                            </Badge>
+                            {p.paidAt && <p className="text-[9px] text-muted-foreground">{safeFormat(p.paidAt, 'dd/MM/yy HH:mm')}</p>}
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
