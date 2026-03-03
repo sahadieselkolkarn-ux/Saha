@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -104,9 +105,9 @@ function ReceivePaymentDialog({
       const batch = writeBatch(db);
 
       const obligationRef = doc(db, 'accountingObligations', obligation.id);
-      const newAmountPaid = (obligation.amountPaid || 0) + data.amount;
-      const newBalance = obligation.amountTotal - newAmountPaid;
-      const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+      const newAmountPaid = Math.round(((obligation.amountPaid || 0) + data.amount) * 100) / 100;
+      const newBalance = Math.max(0, Math.round((obligation.amountTotal - newAmountPaid) * 100) / 100);
+      const newStatus = newBalance <= 0.05 ? 'PAID' : 'PARTIAL';
       
       batch.update(obligationRef, {
         amountPaid: newAmountPaid,
@@ -140,9 +141,9 @@ function ReceivePaymentDialog({
         if (sourceDocSnap.exists()) {
             const sourceDoc = sourceDocSnap.data() as DocumentType;
             const currentPaidTotal = sourceDoc.paymentSummary?.paidTotal || 0;
-            const updatedPaidTotal = currentPaidTotal + data.amount;
-            const updatedBalance = sourceDoc.grandTotal - updatedPaidTotal;
-            const updatedStatus = updatedBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+            const updatedPaidTotal = Math.round((currentPaidTotal + data.amount) * 100) / 100;
+            const updatedBalance = Math.max(0, Math.round((sourceDoc.grandTotal - updatedPaidTotal) * 100) / 100);
+            const updatedStatus = updatedBalance <= 0.05 ? 'PAID' : 'PARTIAL';
 
             batch.update(sourceDocRef, {
                 status: updatedStatus,
@@ -163,8 +164,18 @@ function ReceivePaymentDialog({
         }
       }
 
+      // SYNC: If payment is complete, CLOSE the associated job immediately
+      if (newStatus === 'PAID' && obligation.jobId) {
+          const jobRef = doc(db, 'jobs', obligation.jobId);
+          batch.update(jobRef, {
+              status: 'CLOSED',
+              updatedAt: serverTimestamp(),
+              lastActivityAt: serverTimestamp()
+          });
+      }
+
       await batch.commit();
-      toast({ title: "บันทึกการรับชำระสำเร็จ" });
+      toast({ title: "บันทึกการรับชำระสำเร็จ", description: newStatus === 'PAID' ? "ปิดงานซ่อมเรียบร้อยแล้วค่ะ" : "" });
       onClose();
 
     } catch (e: any) {
@@ -443,7 +454,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             sourceDocId: obligation.sourceDocId,
             withholdingEnabled: data.withholdingEnabled,
             withholdingPercent: data.withholdingPercent,
-            withholdingAmount: whtInfo.whtAmount,
+            withholdingAmount: whtInfo.withholdingAmount,
             withholdingTaxDocId: whtDocId,
             vatAmount: sourceDoc?.vatAmount || 0,
             netAmount: sourceDoc?.subtotal || data.amount,
@@ -451,9 +462,9 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
         }));
 
         const obligationRef = doc(db, 'accountingObligations', obligation.id);
-        const newAmountPaid = (obligation.amountPaid || 0) + data.amount;
-        const newBalance = Math.max(0, obligation.amountTotal - newAmountPaid);
-        const newStatus = newBalance <= 0.01 ? 'PAID' : 'PARTIAL';
+        const newAmountPaid = Math.round(((obligation.amountPaid || 0) + data.amount) * 100) / 100;
+        const newBalance = Math.max(0, Math.round((obligation.amountTotal - newAmountPaid) * 100) / 100);
+        const newStatus = newBalance <= 0.05 ? 'PAID' : 'PARTIAL';
 
         transaction.update(obligationRef, {
             amountPaid: newAmountPaid,

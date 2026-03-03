@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -277,6 +278,8 @@ export function JobList({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {jobs.map((job) => {
           const isOwnDept = profile?.department === job.department;
+          const hasBill = !!job.salesDocId;
+          const isPickupStatus = job.status === 'WAITING_CUSTOMER_PICKUP';
           
           return (
             <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
@@ -327,23 +330,21 @@ export function JobList({
                     </Button>
                   )}
                   
-                  {job.status === 'WAITING_QUOTATION' && !job.salesDocId && (
+                  {job.status === 'WAITING_QUOTATION' && !hasBill && (
                     <Button asChild={canDoBilling} className={cn("w-full h-9 font-bold", !canDoBilling && "hidden")} variant="default" disabled={!canDoBilling}>
                       {canDoBilling ? <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link> : null}
                     </Button>
                   )}
 
-                  {/* STATED-BASED BUTTON LOGIC: If already in Pickup state, it means it's ALREADY billed. Never show Issue Bill here. */}
                   {['DONE', 'WAITING_CUSTOMER_PICKUP', 'CLOSED'].includes(job.status) && (
                     <div className="flex flex-col gap-2 w-full">
-                      {(job.salesDocId || job.status === 'WAITING_CUSTOMER_PICKUP') ? (
+                      {(hasBill || isPickupStatus) ? (
                         <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold">
                           <Link href={job.salesDocId ? `/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}` : `/app/jobs/${job.id}`}>
                             <Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo || ""}
                           </Link>
                         </Button>
                       ) : (
-                        /* ONLY status DONE that has NO salesDocId can see "Issue Bill" */
                         job.status === 'DONE' && canDoBilling && (
                           <Button className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline" onClick={() => setBillingJob(job)}>
                             <Receipt className="mr-2 h-4 w-4" />ออกบิล
