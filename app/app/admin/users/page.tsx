@@ -2,19 +2,18 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { collection, query, where, getDocs, writeBatch, limit, getCountFromServer, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, writeBatch, limit, getCountFromServer, doc, getDoc, updateDoc, serverTimestamp, deleteField } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle, RefreshCw, Trash2, Wrench } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+import { Loader2, Database, AlertTriangle, CheckCircle2, XCircle, RefreshCw, Trash2, Wrench, Search, FileText, CheckCircle, RotateCcw, Ban } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { docStatusLabel } from "@/lib/ui-labels";
+import type { Document as DocumentType } from "@/lib/types";
 
 export default function AdminUsersPage() {
   const { db, app: firebaseApp } = useFirebase();
@@ -31,10 +30,69 @@ export default function AdminUsersPage() {
   const [isLoadingCount, setIsLoadingCount] = useState(false);
 
   // Data Repair States
-  const [isRepairing, setIsRepairing] = useState(false);
+  const [isSearchingStuck, setIsSearchingStuck] = useState(false);
+  const [stuckDocs, setStuckDocs] = useState<DocumentType[]>([]);
+  const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
 
-  const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
   const isUserAdmin = profile?.role === 'ADMIN';
+
+  const handleSearchStuckDNs = async () => {
+    if (!db || !isUserAdmin) return;
+    setIsSearchingStuck(true);
+    try {
+      const q = query(
+        collection(db, "documents"), 
+        where("docType", "==", "DELIVERY_NOTE"), 
+        where("status", "==", "APPROVED"),
+        limit(100)
+      );
+      const snap = await getDocs(q);
+      setStuckDocs(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)));
+      if (snap.empty) {
+        toast({ title: "ไม่พบใบส่งของที่ติดสถานะ Approved" });
+      }
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "ค้นหาล้มเหลว", description: e.message });
+    } finally {
+      setIsSearchingStuck(false);
+    }
+  };
+
+  const handleFixDocStatus = async (docObj: DocumentType, newStatus: string) => {
+    if (!db || !isUserAdmin || isActionLoading) return;
+    setIsActionLoading(docObj.id);
+    try {
+      const batch = writeBatch(db);
+      const docRef = doc(db, "documents", docObj.id);
+      
+      const updatePayload: any = { 
+        status: newStatus, 
+        updatedAt: serverTimestamp(),
+        notes: (docObj.notes || "") + `\n[Admin Fix] เปลี่ยนสถานะเป็น ${newStatus} โดย ${profile?.displayName}`
+      };
+
+      batch.update(docRef, updatePayload);
+
+      // If set to PAID, we should also close the linked job if it exists
+      if (newStatus === 'PAID' && docObj.jobId) {
+        const jobRef = doc(db, "jobs", docObj.jobId);
+        batch.update(jobRef, { 
+          status: 'CLOSED', 
+          updatedAt: serverTimestamp(),
+          lastActivityAt: serverTimestamp() 
+        });
+      }
+
+      await batch.commit();
+      toast({ title: "แก้ไขสถานะสำเร็จ", description: `บิล ${docObj.docNo} เปลี่ยนเป็น ${newStatus} แล้วค่ะ` });
+      // Remove from list
+      setStuckDocs(prev => prev.filter(d => d.id !== docObj.id));
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "แก้ไขไม่สำเร็จ", description: e.message });
+    } finally {
+      setIsActionLoading(null);
+    }
+  };
 
   const handleMigrate = async () => {
     if (!firebaseApp) {
@@ -52,66 +110,6 @@ export default function AdminUsersPage() {
       toast({ variant: 'destructive', title: "ล้มเหลว", description: e.message });
     } finally {
       setIsMigrating(false);
-    }
-  };
-
-  const handleRepairData = async () => {
-    if (!db || !isUserAdmin) return;
-    setIsRepairing(true);
-    let repairedCount = 0;
-    let closedCount = 0;
-
-    try {
-      const jobsSnap = await getDocs(query(collection(db, "jobs"), limit(500)));
-      const batch = writeBatch(db);
-      let batchSize = 0;
-
-      for (const jobDoc of jobsSnap.docs) {
-        const jobData = jobDoc.data();
-        let needsUpdate = false;
-        const updatePayload: any = {};
-
-        // 1. Sync missing salesDocNo
-        if (jobData.salesDocId && !jobData.salesDocNo) {
-          const docSnap = await getDoc(doc(db, "documents", jobData.salesDocId));
-          if (docSnap.exists()) {
-            updatePayload.salesDocNo = docSnap.data().docNo;
-            needsUpdate = true;
-            repairedCount++;
-          }
-        }
-
-        // 2. Auto-close PAID jobs
-        if (jobData.salesDocId && jobData.status !== 'CLOSED') {
-          const docSnap = await getDoc(doc(db, "documents", jobData.salesDocId));
-          if (docSnap.exists() && docSnap.data().status === 'PAID') {
-            updatePayload.status = 'CLOSED';
-            updatePayload.updatedAt = serverTimestamp();
-            needsUpdate = true;
-            closedCount++;
-          }
-        }
-
-        if (needsUpdate) {
-          batch.update(jobDoc.ref, updatePayload);
-          batchSize++;
-          if (batchSize >= 400) {
-            await batch.commit();
-            batchSize = 0;
-          }
-        }
-      }
-
-      if (batchSize > 0) await batch.commit();
-      
-      toast({ 
-        title: "ซ่อมแซมข้อมูลสำเร็จ", 
-        description: `ซิงค์เลขบิล ${repairedCount} รายการ และปิดจ๊อบที่รับเงินแล้ว ${closedCount} รายการค่ะ` 
-      });
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: "เกิดข้อผิดพลาด", description: e.message });
-    } finally {
-      setIsRepairing(false);
     }
   };
 
@@ -153,7 +151,7 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       <PageHeader title="การดูแลรักษาระบบ" description="เครื่องมือสำหรับ Admin เพื่อจัดการข้อมูลและประสิทธิภาพ" />
       
       {isUserAdmin && (
@@ -161,22 +159,82 @@ export default function AdminUsersPage() {
           <CardHeader>
             <div className="flex items-center gap-2 text-blue-700">
               <Wrench className="h-5 w-5" />
-              <CardTitle className="text-lg">ซ่อมแซมและซิงค์ข้อมูล (Data Repair)</CardTitle>
+              <CardTitle className="text-lg">แก้ไขสถานะเอกสารรายใบ (Manual Data Repair)</CardTitle>
             </div>
             <CardDescription>
-              ใช้สำหรับแก้ไขปัญหาจ๊อบไม่ยอมปิดทั้งที่รับเงินแล้ว หรือแก้ปัญหาปุ่ม "ดูบิล" ไม่แสดงเลขที่เอกสารให้เป็นระเบียบเหมือนกันทุกใบค่ะ
+              ใช้สำหรับค้นหาใบส่งของชั่วคราวที่ติดสถานะ "Approved" (ที่ผิดพลาด) และเลือกเปลี่ยนสถานะให้ถูกต้องด้วยตัวเองทีละใบค่ะ
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button onClick={handleRepairData} disabled={isRepairing} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
-              {isRepairing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              ตรวจสอบและซ่อมแซมข้อมูลงานซ่อม
+          <CardContent className="space-y-6">
+            <Button onClick={handleSearchStuckDNs} disabled={isSearchingStuck} className="bg-blue-600 hover:bg-blue-700">
+              {isSearchingStuck ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+              ค้นหาใบส่งของที่ติดสถานะ Approved
             </Button>
+
+            {stuckDocs.length > 0 && (
+              <div className="border rounded-lg bg-background overflow-hidden animate-in fade-in slide-in-from-top-2">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <TableHead>เลขที่เอกสาร</TableHead>
+                      <TableHead>สถานะใน DB</TableHead>
+                      <TableHead>สถานะที่ UI แสดง</TableHead>
+                      <TableHead className="text-right">จัดการแก้ไขสถานะ</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stuckDocs.map(docItem => (
+                      <TableRow key={docItem.id}>
+                        <TableCell className="font-mono font-bold text-sm">
+                          {docItem.docNo}
+                          <p className="text-[10px] text-muted-foreground font-sans font-normal">{docItem.customerSnapshot?.name}</p>
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className="font-mono text-[10px]">APPROVED</Badge></TableCell>
+                        <TableCell><Badge variant="secondary">{docStatusLabel(docItem.status, docItem.docType)}</Badge></TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="text-[10px] h-8 border-amber-500 text-amber-700 hover:bg-amber-50"
+                              disabled={!!isActionLoading}
+                              onClick={() => handleFixDocStatus(docItem, 'PENDING_REVIEW')}
+                            >
+                              {isActionLoading === docItem.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3 mr-1" />}
+                              ย้อนกลับไปรอตรวจ
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              className="text-[10px] h-8 bg-green-600 hover:bg-green-700"
+                              disabled={!!isActionLoading}
+                              onClick={() => handleFixDocStatus(docItem, 'PAID')}
+                            >
+                              {isActionLoading === docItem.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3 mr-1" />}
+                              เปลี่ยนเป็นรับเงินแล้ว
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              className="text-[10px] h-8 text-destructive hover:bg-destructive/10"
+                              disabled={!!isActionLoading}
+                              onClick={() => handleFixDocStatus(docItem, 'CANCELLED')}
+                            >
+                              <Ban className="h-3 w-3 mr-1" />
+                              ยกเลิก
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {isAdmin && (
+      {isUserAdmin && (
         <Card className="border-amber-200 bg-amber-50/30">
           <CardHeader>
             <div className="flex items-center gap-2 text-amber-700">
