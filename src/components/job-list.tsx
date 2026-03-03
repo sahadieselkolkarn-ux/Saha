@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -276,7 +277,6 @@ export function JobList({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {jobs.map((job) => {
           const hasQuotation = job.salesDocId && job.salesDocType === 'QUOTATION';
-          // STRICT CHECK: A job is billed if it has a doc link OR if status is WAITING_CUSTOMER_PICKUP
           const hasBillingDoc = (job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE')) || job.status === 'WAITING_CUSTOMER_PICKUP';
           const isOwnDept = profile?.department === job.department;
           
@@ -335,22 +335,19 @@ export function JobList({
 
                 {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && (
                   <div className="flex flex-col gap-2 w-full">
-                    {hasBillingDoc ? (
-                      <Button asChild={canDoBilling && !!job.salesDocId} className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", (!canDoBilling || !job.salesDocId) && "opacity-50 cursor-not-allowed")} variant="outline" disabled={!canDoBilling || !job.salesDocId}>
-                        {(canDoBilling && job.salesDocId) ? (
-                          <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
-                            <Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}
-                          </Link>
-                        ) : (
-                          <span className="flex items-center">
-                            <CheckCircle2 className="mr-2 h-4 w-4 text-green-600" /> ออกบิลแล้ว
-                          </span>
-                        )}
+                    {/* RESTORED: Show View Bill button if doc exists, otherwise hide Issue Bill if already billed */}
+                    {job.salesDocId ? (
+                      <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold">
+                        <Link href={`/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}`}>
+                          <Eye className="mr-2 h-4 w-4" />ดูบิล {job.salesDocNo}
+                        </Link>
                       </Button>
                     ) : (
-                      <Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "hidden")} variant="outline" disabled={!canDoBilling} onClick={() => setBillingJob(job)}>
-                        <Receipt className="mr-2 h-4 w-4" />ออกบิล
-                      </Button>
+                      !hasBillingDoc && (
+                        <Button className={cn("w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold", !canDoBilling && "hidden")} variant="outline" disabled={!canDoBilling} onClick={() => setBillingJob(job)}>
+                          <Receipt className="mr-2 h-4 w-4" />ออกบิล
+                        </Button>
+                      )
                     )}
                     
                     {canDoBilling && job.status === 'DONE' && (
