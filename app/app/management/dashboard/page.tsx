@@ -46,7 +46,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2, PieChart as PieIcon, Landmark } from "lucide-react";
 
-import type { Job, Document, AccountingEntry, JobDepartment, AccountingObligation, PurchaseDoc } from "@/lib/types";
+import type { Job, Document, AccountingEntry, JobDepartment, AccountingObligation, PurchaseDoc, Customer } from "@/lib/types";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
@@ -95,6 +95,7 @@ function AppDashboardPage() {
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [obligations, setObligations] = useState<AccountingObligation[]>([]);
   const [purchaseDocs, setPurchaseDocs] = useState<PurchaseDoc[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -121,11 +122,14 @@ function AppDashboardPage() {
     });
     const unsubPurchases = onSnapshot(collection(db, "purchaseDocs"), (snap) => {
       setPurchaseDocs(snap.docs.map(d => ({ id: d.id, ...d.data() } as PurchaseDoc)));
+    });
+    const unsubCustomers = onSnapshot(collection(db, "customers"), (snap) => {
+      setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer)));
       setLoading(false);
     });
 
     return () => {
-      unsubJobs(); unsubDocs(); unsubEntries(); unsubObligations(); unsubPurchases();
+      unsubJobs(); unsubDocs(); unsubEntries(); unsubObligations(); unsubPurchases(); unsubCustomers();
     };
   }, [db]);
 
@@ -168,7 +172,7 @@ function AppDashboardPage() {
       const outf = jobs.filter(j => isOutflow(j) && isWithinInterval(toDateSafe(j.lastActivityAt)!, interval)).length;
       
       return { 
-        name: format(mStart, "MMM yy"), 
+        name: format(mStart, "MM/yy"), 
         Inflow: inf, 
         Outflow: outf,
         net: inf - outf
@@ -202,7 +206,7 @@ function AppDashboardPage() {
       const cin = entries.filter(e => (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') && isWithinInterval(toDateSafe(e.entryDate)!, interval)).reduce((s, e) => s + e.amount, 0);
       const cout = entries.filter(e => e.entryType === 'CASH_OUT' && isWithinInterval(toDateSafe(e.entryDate)!, interval)).reduce((s, e) => s + e.amount, 0);
       
-      return { name: format(mStart, "MMM yy"), "เงินรับเข้า": cin, "เงินจ่ายออก": cout, Net: cin - cout };
+      return { name: format(mStart, "MM/yy"), "เงินรับเข้า": cin, "เงินจ่ายออก": cout, Net: cin - cout };
     });
 
     // 5. VAT Trend (6 Months)
@@ -220,14 +224,14 @@ function AppDashboardPage() {
         .reduce((sum, p) => sum + (p.vatAmount || 0), 0);
 
       return {
-        name: format(mStart, "MMM yy"),
+        name: format(mStart, "MM/yy"),
         "ภาษีขาย": salesVat,
         "ภาษีซื้อ": purchaseVat,
         Net: salesVat - purchaseVat
       };
     });
 
-    // 6. Customer Acquisition Stats
+    // 6. Customer Acquisition Stats - UPDATED LOGIC
     const acqCounts = {
       EXISTING: 0,
       REFERRAL: 0,
@@ -239,17 +243,27 @@ function AppDashboardPage() {
     };
 
     currentInflow.forEach(j => {
-      const src = j.customerAcquisitionSource;
-      if (src && src !== 'EXISTING' && src !== 'NONE') {
-        if (src === 'REFERRAL') acqCounts.REFERRAL++;
-        else if (src === 'GOOGLE') acqCounts.GOOGLE++;
-        else if (src === 'FACEBOOK') acqCounts.FACEBOOK++;
-        else if (src === 'TIKTOK') acqCounts.TIKTOK++;
-        else if (src === 'YOUTUBE') acqCounts.YOUTUBE++;
-        else if (src === 'OTHER') acqCounts.OTHER++;
-        else acqCounts.OTHER++;
-      } else {
+      // Find the actual customer record to check their registration date
+      const customer = customers.find(c => c.id === j.customerId);
+      const customerCreatedAt = toDateSafe(customer?.createdAt);
+
+      // CRITICAL: If customer was created BEFORE the selected period, count as EXISTING
+      if (customerCreatedAt && isBefore(customerCreatedAt, from)) {
         acqCounts.EXISTING++;
+      } else {
+        // Customer was created DURING this period, use their specific source
+        const src = j.customerAcquisitionSource;
+        if (src && src !== 'EXISTING' && src !== 'NONE') {
+          if (src === 'REFERRAL') acqCounts.REFERRAL++;
+          else if (src === 'GOOGLE') acqCounts.GOOGLE++;
+          else if (src === 'FACEBOOK') acqCounts.FACEBOOK++;
+          else if (src === 'TIKTOK') acqCounts.TIKTOK++;
+          else if (src === 'YOUTUBE') acqCounts.YOUTUBE++;
+          else if (src === 'OTHER') acqCounts.OTHER++;
+          else acqCounts.OTHER++;
+        } else {
+          acqCounts.EXISTING++;
+        }
       }
     });
 
@@ -313,7 +327,7 @@ function AppDashboardPage() {
       acquisitionData,
       alerts
     };
-  }, [jobs, documents, entries, obligations, purchaseDocs, dateRange]);
+  }, [jobs, documents, entries, obligations, purchaseDocs, customers, dateRange]);
 
   const handleDatePreset = (preset: string) => {
     const today = startOfToday();
@@ -339,9 +353,9 @@ function AppDashboardPage() {
         <div className="flex flex-wrap gap-2">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="justify-start text-left font-normal min-w-[240px]">
+              <Button variant="outline" className="justify-start text-left font-normal min-w-[220px]">
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateRange?.from ? (dateRange.to ? <>{format(dateRange.from, "dd MMM yy")} - {format(dateRange.to, "dd MMM yy")}</> : format(dateRange.from, "dd MMM yy")) : <span>เลือกช่วงเวลา</span>}
+                {dateRange?.from ? (dateRange.to ? <>{format(dateRange.from, "dd/MM/yy")} - {format(dateRange.to, "dd/MM/yy")}</> : format(dateRange.from, "dd/MM/yy")) : <span>เลือกช่วงเวลา</span>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
