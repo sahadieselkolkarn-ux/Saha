@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -309,17 +308,17 @@ export function JobList({
                   
                   {isMgmtOrOffice && job.status === 'WAITING_APPROVE' && (
                     <div className="grid grid-cols-2 gap-2">
-                      <Button className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px]" onClick={() => handleUpdateStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติการซ่อมแล้ว (ผ่านรายการสรุป)')} disabled={isProcessing === job.id}>
+                      <Button className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px]" onClick={() => handleUpdateStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติการซ่อมแล้ว')} disabled={isProcessing === job.id}>
                         <Check className="mr-1 h-3 w-3" />อนุมัติ
                       </Button>
-                      <Button variant="outline" className="h-9 border-destructive text-destructive hover:bg-destructive/10 text-[10px] font-bold" onClick={() => handleUpdateStatus(job.id, 'DONE', 'ลูกค้าไม่อนุมัติการซ่อม - ส่งไปรอทำบิล (ผ่านรายการสรุป)')} disabled={isProcessing === job.id}>
+                      <Button variant="outline" className="h-9 border-destructive text-destructive hover:bg-destructive/10 text-[10px] font-bold" onClick={() => handleUpdateStatus(job.id, 'DONE', 'ลูกค้าไม่อนุมัติการซ่อม - ส่งไปรอทำบิล')} disabled={isProcessing === job.id}>
                         <Ban className="mr-1 h-3 w-3" />ไม่อนุมัติ
                       </Button>
                     </div>
                   )}
 
                   {isMgmtOrOffice && job.status === 'PENDING_PARTS' && (
-                    <Button className="w-full h-9 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px]" onClick={() => handleUpdateStatus(job.id, 'IN_REPAIR_PROCESS', 'อะไหล่มาครบแล้ว เริ่มดำเนินการซ่อม (ผ่านรายการสรุป)')} disabled={isProcessing === job.id}>
+                    <Button className="w-full h-9 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px]" onClick={() => handleUpdateStatus(job.id, 'IN_REPAIR_PROCESS', 'อะไหล่มาครบแล้ว เริ่มดำเนินการซ่อม')} disabled={isProcessing === job.id}>
                       <PackageCheck className="mr-2 h-4 w-4" />อะไหล่มาครบแล้ว
                     </Button>
                   )}
@@ -429,7 +428,7 @@ export function JobList({
             <AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setBillingJob(null)} className="w-full sm:w-auto">ยกเลิก</Button>
+            <Button variant="outline" onClick={setBillingJob.bind(null, null)} className="w-full sm:w-auto">ยกเลิก</Button>
             <Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button>
             <Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button>
           </AlertDialogFooter>

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -25,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Search, AlertCircle, HandCoins, ExternalLink, PlusCircle, ChevronsUpDown, Receipt, Wallet, ArrowDownCircle, Info, FileStack } from "lucide-react";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
@@ -164,7 +163,7 @@ function ReceivePaymentDialog({
         }
       }
 
-      // SYNC: If payment is complete, CLOSE the associated job immediately
+      // CRITICAL: Close associated job if fully paid
       if (newStatus === 'PAID' && obligation.jobId) {
           const jobRef = doc(db, 'jobs', obligation.jobId);
           batch.update(jobRef, {
@@ -204,7 +203,7 @@ function ReceivePaymentDialog({
                   <FormItem>
                       <FormLabel>เข้าบัญชี</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชีที่จะนำเงินเข้า..." /></SelectTrigger></FormControl>
+                          <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
                           <SelectContent>
                               {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.type === 'CASH' ? 'เงินสด' : 'โอน'})</SelectItem>)}
                           </SelectContent>
@@ -454,7 +453,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
             sourceDocId: obligation.sourceDocId,
             withholdingEnabled: data.withholdingEnabled,
             withholdingPercent: data.withholdingPercent,
-            withholdingAmount: whtInfo.withholdingAmount,
+            withholdingAmount: whtInfo.whtAmount,
             withholdingTaxDocId: whtDocId,
             vatAmount: sourceDoc?.vatAmount || 0,
             netAmount: sourceDoc?.subtotal || data.amount,
