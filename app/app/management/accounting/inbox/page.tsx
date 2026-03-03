@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, Suspense } from "react";
@@ -79,16 +78,23 @@ function AccountingInboxPageContent() {
       return;
     }
 
-    // Docs needing review
+    // Docs needing review (Includes both PENDING and those wrongly set to APPROVED for DNs)
     const docsQuery = query(
       collection(db, "documents"), 
-      where("status", "==", "PENDING_REVIEW"),
+      where("status", "in", ["PENDING_REVIEW", "APPROVED"]),
       limit(200)
     );
 
     const unsubDocs = onSnapshot(docsQuery, 
       (snap) => { 
-        setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>))); 
+        const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>));
+        // Filter: Keep DNs that are PENDING or APPROVED, Keep TIs that are PENDING only
+        const needingReview = all.filter(d => {
+            if (d.docType === 'DELIVERY_NOTE') return d.status === 'PENDING_REVIEW' || d.status === 'APPROVED';
+            if (d.docType === 'TAX_INVOICE') return d.status === 'PENDING_REVIEW';
+            return false;
+        });
+        setDocuments(needingReview); 
         setLoading(false);
         setIndexCreationUrl(null);
       },
@@ -146,10 +152,10 @@ function AccountingInboxPageContent() {
   const filteredDocs = useMemo(() => {
     const filteredByTab = documents.filter(doc => {
       if (activeTab === 'receive') {
-        return (doc.docType === 'DELIVERY_NOTE' || doc.docType === 'TAX_INVOICE') && (doc.paymentTerms === 'CASH' || !doc.paymentTerms);
+        return (doc.paymentTerms === 'CASH' || !doc.paymentTerms);
       }
       if (activeTab === 'ar') {
-        return (doc.docType === 'DELIVERY_NOTE' || doc.docType === 'TAX_INVOICE') && doc.paymentTerms === 'CREDIT';
+        return doc.paymentTerms === 'CREDIT';
       }
       if (activeTab === 'receipts') {
         return doc.docType === 'RECEIPT';
@@ -220,8 +226,12 @@ function AccountingInboxPageContent() {
         const docSnap = await transaction.get(docRef);
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         
-        if (docSnap.data().status === 'APPROVED' || docSnap.data().status === 'PAID') {
-          throw new Error("รายการนี้ถูกตรวจสอบไปก่อนหน้านี้แล้ว");
+        // Block redundant approvals only for TI (DN can move from APPROVED to PAID)
+        if (confirmingDoc.docType === 'TAX_INVOICE' && docSnap.data().status === 'APPROVED') {
+          throw new Error("ใบกำกับภาษีนี้ตรวจสอบแล้ว รอออกใบเสร็จค่ะ");
+        }
+        if (docSnap.data().status === 'PAID') {
+          throw new Error("รายการนี้ได้รับเงินเรียบร้อยแล้วค่ะ");
         }
 
         const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
@@ -260,7 +270,6 @@ function AccountingInboxPageContent() {
                 updatedAt: serverTimestamp()
             });
 
-            // CRITICAL: Close job immediately
             if (jobId) {
                 transaction.update(doc(db, 'jobs', jobId), {
                     status: 'CLOSED',
@@ -358,7 +367,6 @@ function AccountingInboxPageContent() {
           updatedAt: serverTimestamp()
         });
 
-        // CRITICAL: If DN (Credit), close job immediately
         if (isDeliveryNote && docObj.jobId) {
             transaction.update(doc(db, 'jobs', docObj.jobId), {
                 status: 'CLOSED',
@@ -420,7 +428,7 @@ function AccountingInboxPageContent() {
           <TabsList>
             <TabsTrigger value="receive">รอตรวจสอบ (Cash/Mixed)</TabsTrigger>
             <TabsTrigger value="ar">รอตั้งลูกหนี้ (Credit)</TabsTrigger>
-            <TabsTrigger value="receipts">รอยืนยันใบเสร็จ</TabsTrigger>
+            <TabsTrigger value="receipts">ขั้นตอนใบเสร็จ</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -445,19 +453,19 @@ function AccountingInboxPageContent() {
                     <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   ) : filteredDocs.length === 0 ? (
                     <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic">ไม่มีรายการรอตรวจสอบ (Cash)</TableCell></TableRow>
-                  ) : filteredDocs.map(doc => (
-                    <TableRow key={doc.id}>
-                      <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                      <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
+                  ) : filteredDocs.map(docItem => (
+                    <TableRow key={docItem.id}>
+                      <TableCell>{safeFormat(docItem.docDate)}</TableCell>
+                      <TableCell>{docItem.customerSnapshot?.name || '--'}</TableCell>
                       <TableCell>
-                        <div className="font-medium">{doc.docNo}</div>
-                        <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
-                        {doc.jobId && <Badge variant="outline" className="text-[8px] h-4 mt-1 bg-blue-50">มี Job ผูกอยู่</Badge>}
+                        <div className="font-medium">{docItem.docNo}</div>
+                        <div className="text-xs text-muted-foreground">{docItem.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
+                        {docItem.jobId && <Badge variant="outline" className="text-[8px] h-4 mt-1 bg-blue-50">มี Job ผูกอยู่</Badge>}
                       </TableCell>
-                      <TableCell className="font-bold text-primary">{formatCurrency(doc.grandTotal)}</TableCell>
+                      <TableCell className="font-bold text-primary">{formatCurrency(docItem.grandTotal)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          {closingJobId === doc.jobId ? (
+                          {closingJobId === docItem.jobId ? (
                             <Badge variant="outline" className="animate-pulse"><Loader2 className="h-3 w-3 mr-1 animate-spin"/> ปิดจ๊อบ...</Badge>
                           ) : (
                             <DropdownMenu>
@@ -465,13 +473,15 @@ function AccountingInboxPageContent() {
                                 <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => router.push(doc.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${doc.id}` : `/app/office/documents/tax-invoice/${doc.id}`)}>
-                                  <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
+                                <DropdownMenuItem asChild>
+                                  <Link href={docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : `/app/office/documents/tax-invoice/${docItem.id}`}>
+                                    <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
+                                  </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(doc)} className="text-green-600 focus:text-green-600 font-bold">
+                                <DropdownMenuItem onSelect={() => handleOpenConfirmDialog(docItem)} className="text-green-600 focus:text-green-600 font-bold">
                                   <CheckCircle className="mr-2 h-4 w-4"/> ยืนยันตรวจสอบและรับเงิน
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                <DropdownMenuItem onSelect={() => setDisputingDoc(docItem)} className="text-destructive focus:text-destructive">
                                   <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -500,19 +510,19 @@ function AccountingInboxPageContent() {
                     <TableRow><TableCell colSpan={5} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
                   ) : filteredDocs.length === 0 ? (
                     <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic">ไม่มีรายการรอตั้งลูกหนี้ (Credit)</TableCell></TableRow>
-                  ) : filteredDocs.map(doc => (
-                    <TableRow key={doc.id}>
-                      <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                      <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
+                  ) : filteredDocs.map(docItem => (
+                    <TableRow key={docItem.id}>
+                      <TableCell>{safeFormat(docItem.docDate)}</TableCell>
+                      <TableCell>{docItem.customerSnapshot?.name || '--'}</TableCell>
                       <TableCell>
-                        <div className="font-medium">{doc.docNo}</div>
-                        <div className="text-xs text-muted-foreground">{doc.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
-                        {doc.jobId && <Badge variant="outline" className="text-[8px] h-4 mt-1 bg-blue-50">มี Job ผูกอยู่</Badge>}
+                        <div className="font-medium">{docItem.docNo}</div>
+                        <div className="text-xs text-muted-foreground">{docItem.docType === 'TAX_INVOICE' ? 'ใบกำกับภาษี' : 'ใบส่งของชั่วคราว'}</div>
+                        {docItem.jobId && <Badge variant="outline" className="text-[8px] h-4 mt-1 bg-blue-50">มี Job ผูกอยู่</Badge>}
                       </TableCell>
-                      <TableCell className="font-bold text-amber-600">{formatCurrency(doc.grandTotal)}</TableCell>
+                      <TableCell className="font-bold text-amber-600">{formatCurrency(docItem.grandTotal)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          {closingJobId === doc.jobId ? (
+                          {closingJobId === docItem.jobId ? (
                             <Badge variant="outline" className="animate-pulse"><Loader2 className="h-3 w-3 mr-1 animate-spin"/> ปิดจ๊อบ...</Badge>
                           ) : (
                             <DropdownMenu>
@@ -520,13 +530,15 @@ function AccountingInboxPageContent() {
                                 <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onSelect={() => router.push(doc.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${doc.id}` : `/app/office/documents/tax-invoice/${doc.id}`)}>
-                                  <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
+                                <DropdownMenuItem asChild>
+                                  <Link href={docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : `/app/office/documents/tax-invoice/${docItem.id}`}>
+                                    <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
+                                  </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setArDocToConfirm(doc)} disabled={isSubmitting} className="font-bold text-amber-600 focus:text-amber-600">
+                                <DropdownMenuItem onSelect={() => setArDocToConfirm(docItem)} disabled={isSubmitting} className="font-bold text-amber-600 focus:text-amber-600">
                                   <HandCoins className="mr-2 h-4 w-4"/> ยืนยันตั้งลูกหนี้
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setDisputingDoc(doc)} className="text-destructive focus:text-destructive">
+                                <DropdownMenuItem onSelect={() => setDisputingDoc(docItem)} className="text-destructive focus:text-destructive">
                                   <Ban className="mr-2 h-4 w-4"/> ตีกลับให้แก้ไข
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -555,14 +567,14 @@ function AccountingInboxPageContent() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {approvedDocs.length > 0 ? approvedDocs.map(doc => (
-                            <TableRow key={doc.id}>
-                                <TableCell className="font-mono text-xs">{doc.docNo}</TableCell>
-                                <TableCell className="text-sm">{doc.customerSnapshot?.name}</TableCell>
-                                <TableCell className="text-right font-bold">{formatCurrency(doc.grandTotal)}</TableCell>
+                        {approvedDocs.length > 0 ? approvedDocs.map(docItem => (
+                            <TableRow key={docItem.id}>
+                                <TableCell className="font-mono text-xs">{docItem.docNo}</TableCell>
+                                <TableCell className="text-sm">{docItem.customerSnapshot?.name}</TableCell>
+                                <TableCell className="text-right font-bold">{formatCurrency(docItem.grandTotal)}</TableCell>
                                 <TableCell className="text-right">
                                     <Button asChild size="sm" variant="default" className="h-8">
-                                        <Link href={`/app/management/accounting/documents/receipt?customerId=${doc.customerId}&sourceDocId=${doc.id}`}>
+                                        <Link href={`/app/management/accounting/documents/receipt?customerId=${docItem.customerId}&sourceDocId=${docItem.id}`}>
                                             <PlusCircle className="mr-2 h-4 w-4"/> ออกใบเสร็จ
                                         </Link>
                                     </Button>
@@ -592,17 +604,17 @@ function AccountingInboxPageContent() {
                     <TableBody>
                     {filteredDocs.length === 0 ? (
                         <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground italic">ไม่มีใบเสร็จที่รอยืนยันเงินเข้า</TableCell></TableRow>
-                    ) : filteredDocs.map(doc => (
-                        <TableRow key={doc.id}>
-                        <TableCell>{safeFormat(new Date(doc.docDate), "dd/MM/yy")}</TableCell>
-                        <TableCell>{doc.customerSnapshot?.name || '--'}</TableCell>
+                    ) : filteredDocs.map(docItem => (
+                        <TableRow key={docItem.id}>
+                        <TableCell>{safeFormat(docItem.docDate)}</TableCell>
+                        <TableCell>{docItem.customerSnapshot?.name || '--'}</TableCell>
                         <TableCell>
-                            <div className="font-medium">{doc.docNo}</div>
-                            <div className="text-xs text-muted-foreground">อ้างอิง: {doc.referencesDocIds?.[0] || '-'}</div>
+                            <div className="font-medium">{docItem.docNo}</div>
+                            <div className="text-xs text-muted-foreground">อ้างอิง: {docItem.referencesDocIds?.[0] || '-'}</div>
                         </TableCell>
-                        <TableCell className="font-bold text-green-600">{formatCurrency(doc.grandTotal)}</TableCell>
+                        <TableCell className="font-bold text-green-600">{formatCurrency(docItem.grandTotal)}</TableCell>
                         <TableCell className="text-right">
-                            <Button variant="outline" size="sm" onClick={() => router.push(`/app/management/accounting/documents/receipt/${doc.id}/confirm`)}>
+                            <Button variant="outline" size="sm" onClick={() => router.push(`/app/management/accounting/documents/receipt/${docItem.id}/confirm`)}>
                             <CheckCircle className="mr-2 h-4 w-4 text-green-600"/> ยืนยันรับเงินจริง
                             </Button>
                         </TableCell>
@@ -734,7 +746,7 @@ function AccountingInboxPageContent() {
             <Textarea id="reason" placeholder="เช่น ยอดเงินไม่ตรง, เลือกประเภทลูกค้าผิด..." value={disputeReason} onChange={e => setDisputeReason(e.target.value)} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={setDisputingDoc.bind(null, null)} disabled={isSubmitting}>ยกเลิก</Button>
+            <Button variant="outline" onClick={() => setDisputingDoc(null)} disabled={isSubmitting}>ยกเลิก</Button>
             <Button variant="destructive" onClick={handleDispute} disabled={isSubmitting || !disputeReason}>{isSubmitting && <Loader2 className="mr-2 animate-spin" />}ยืนยันตีกลับ</Button>
           </DialogFooter>
         </DialogContent>

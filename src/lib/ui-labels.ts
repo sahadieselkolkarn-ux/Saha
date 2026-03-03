@@ -35,7 +35,7 @@ export const DOC_STATUS_LABELS: Record<string, string> = {
     CANCELLED: 'ยกเลิก',
     WAITING_CUSTOMER_PICKUP: 'รอลูกค้ารับ',
     SUBMITTED: 'ส่งแล้ว',
-    APPROVED: 'ตรวจสอบแล้ว',
+    APPROVED: 'ตรวจสอบแล้ว (รอใบเสร็จ)',
     UNPAID: 'ยังไม่จ่าย (เครดิต)',
     PENDING_REVIEW: "รอบัญชีตรวจสอบ",
     REJECTED: "ตีกลับเพื่อแก้ไข",
@@ -115,13 +115,6 @@ export function docTypeLabel(docType: string | undefined): string {
 export function docStatusLabel(status: string | undefined, docType?: string): string {
     if (!status) return '';
     const s = status.toUpperCase();
-    
-    // DN-specific mapping: DN should never be "Approved" (ตรวจสอบแล้ว)
-    // If it is, it means it's waiting for payment/credit confirmation in the old or mixed flow
-    if (docType === 'DELIVERY_NOTE' && s === 'APPROVED') {
-        return DOC_STATUS_LABELS['PENDING_REVIEW'];
-    }
-    
     return DOC_STATUS_LABELS[s] || status;
 }
 

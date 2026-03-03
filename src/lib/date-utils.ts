@@ -2,7 +2,7 @@ import { Timestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 /**
- * Standard Date Formats for the application
+ * Standard Date Formats for the application (Thai Standard)
  */
 export const APP_DATE_FORMAT = 'dd/MM/yy';
 export const APP_DATE_TIME_FORMAT = 'dd/MM/yy HH:mm';
@@ -30,8 +30,13 @@ export function safeFormat(timestamp: Timestamp | Date | null | undefined, forma
     if (timestamp instanceof Date && !isNaN(timestamp.getTime())) {
         return format(timestamp, formatString);
     }
+    
+    // If it's a string, try to parse it
+    if (typeof timestamp === 'string') {
+      const d = new Date(timestamp);
+      if (!isNaN(d.getTime())) return format(d, formatString);
+    }
   } catch (error) {
-    // In case of any unexpected error during conversion/formatting
     console.error("Error formatting timestamp:", error);
     return 'N/A';
   }
