@@ -22,14 +22,6 @@ import { docStatusLabel } from "@/lib/ui-labels";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-interface DocumentListProps {
-  docType: DocType;
-  limit?: number;
-  orderByField?: string;
-  orderByDirection?: OrderByDirection;
-  baseContext?: 'office' | 'accounting';
-}
-
 const getDocDisplayStatus = (doc: Document): { key: string; label: string; description: string; variant: "default" | "secondary" | "destructive" | "outline" } => {
     const status = String(doc.status ?? "").toUpperCase();
     const label = docStatusLabel(status) || status;
@@ -37,9 +29,9 @@ const getDocDisplayStatus = (doc: Document): { key: string; label: string; descr
     let description = "สถานะเอกสารปกติ";
     switch(status) {
         case "DRAFT": description = "ออฟฟิศกำลังจัดทำ ยังไม่ได้ส่งให้บัญชีตรวจสอบ"; break;
-        case "PENDING_REVIEW": description = "ส่งเรื่องให้ฝ่ายบัญชีตรวจสอบรายการขายแล้ว"; break;
+        case "PENDING_REVIEW": description = "ส่งเรื่องให้ฝ่ายบัญชีตรวจสอบแล้ว"; break;
         case "REJECTED": description = "ฝ่ายบัญชีพบจุดที่ต้องแก้ไขและส่งกลับมาให้ออฟฟิศ"; break;
-        case "APPROVED": description = "ฝ่ายบัญชีตรวจสอบข้อมูลเบื้องต้นถูกต้องแล้ว"; break;
+        case "APPROVED": description = "ฝ่ายบัญชีตรวจสอบข้อมูลเบื้องต้นถูกต้องแล้ว (รอออกใบเสร็จ)"; break;
         case "PAID": description = "บันทึกรับเงินเข้าสมุดบัญชีเรียบร้อยแล้ว"; break;
         case "CANCELLED": description = "เอกสารนี้ถูกยกเลิกการใช้งานแล้ว"; break;
         case "UNPAID": description = "เป็นรายการขายเชื่อ ยอดเงินยังคงค้างชำระในระบบ"; break;

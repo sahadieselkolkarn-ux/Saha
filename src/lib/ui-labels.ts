@@ -37,7 +37,7 @@ export const DOC_STATUS_LABELS: Record<string, string> = {
     SUBMITTED: 'ส่งแล้ว',
     APPROVED: 'ตรวจสอบแล้ว',
     UNPAID: 'ยังไม่จ่าย (เครดิต)',
-    PENDING_REVIEW: "รอตรวจสอบโดยฝ่ายบัญชี",
+    PENDING_REVIEW: "รอบัญชีตรวจสอบ",
     REJECTED: "ตีกลับเพื่อแก้ไข",
     PARTIAL: "รับเงินบางส่วน",
 };
