@@ -7,6 +7,7 @@ import { collection, query, onSnapshot, where, doc, serverTimestamp, type Firest
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { format } from "date-fns";
 
 import { PageHeader } from "@/components/page-header";
