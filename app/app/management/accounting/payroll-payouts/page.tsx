@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback } from "react";
@@ -38,8 +39,8 @@ import { newPayslipStatusLabel } from "@/lib/ui-labels";
 
 const formatCurrency = (value: number) => {
   return (value ?? 0).toLocaleString("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
 };
 
@@ -199,7 +200,7 @@ export default function PayrollPayoutsPage() {
         transaction.set(entryRef, {
           entryType: 'CASH_OUT',
           entryDate: formData.paidDate,
-          amount: payingPayslip.snapshot?.netPay ?? 0,
+          amount: Math.round(payingPayslip.snapshot?.netPay ?? 0),
           accountId: formData.accountId,
           paymentMethod: paymentMethod,
           description: `จ่ายเงินเดือน: ${payingPayslip.userName} งวด ${payingPayslip.batchId}`,

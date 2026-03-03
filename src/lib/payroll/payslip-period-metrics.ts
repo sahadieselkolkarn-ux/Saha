@@ -192,7 +192,7 @@ export function computePeriodMetrics(params: {
   attendanceSummary.scheduledWorkDays = scheduledWorkDays;
   attendanceSummary.dayLogs = dayLogs;
 
-  // Over-limit leave calculation
+  // Over-limit leave calculation - Using integers
   (Object.keys(hrSettings.leavePolicy?.leaveTypes || {}) as TLeaveType[]).forEach(leaveType => {
       const policy = hrSettings.leavePolicy?.leaveTypes?.[leaveType];
       if (!policy?.annualEntitlement) return;
@@ -226,7 +226,8 @@ export function computePeriodMetrics(params: {
 
       if (overLimitDaysThisPeriod > 0 && salary && (overLimitMode === 'DEDUCT_SALARY' || overLimitMode === 'UNPAID')) {
           const baseDays = policy.overLimitHandling?.salaryDeductionBaseDays || hrSettings.payroll?.salaryDeductionBaseDays || 26;
-          const deductionAmount = (salary / baseDays) * overLimitDaysThisPeriod;
+          // FORCE INTEGER for deduction
+          const deductionAmount = Math.round((salary / baseDays) * overLimitDaysThisPeriod);
           autoDeductions.push({
               name: `[AUTO] หักลาเกินสิทธิ์ (${leaveType})`,
               amount: deductionAmount,
@@ -238,7 +239,7 @@ export function computePeriodMetrics(params: {
   });
 
 
-  // Money deductions for MONTHLY
+  // Money deductions for MONTHLY - Using integers
   if (payType === 'MONTHLY' && user.hr?.salaryMonthly) {
       const baseDays = hrSettings.payroll?.salaryDeductionBaseDays || 26;
       const ratePerDay = user.hr.salaryMonthly / baseDays;
@@ -247,14 +248,14 @@ export function computePeriodMetrics(params: {
       if (attendanceSummary.absentUnits > 0) {
         autoDeductions.push({
             name: `[AUTO] หักขาดงาน`,
-            amount: ratePerDay * attendanceSummary.absentUnits,
+            amount: Math.round(ratePerDay * attendanceSummary.absentUnits),
             notes: `${attendanceSummary.absentUnits} หน่วย`
         });
       }
       if (attendanceSummary.lateMinutes > 0) {
         autoDeductions.push({
             name: `[AUTO] หักมาสาย`,
-            amount: ratePerMinute * attendanceSummary.lateMinutes,
+            amount: Math.round(ratePerMinute * attendanceSummary.lateMinutes),
             notes: `${attendanceSummary.lateMinutes} นาที`
         });
       }

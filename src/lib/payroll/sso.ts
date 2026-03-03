@@ -5,33 +5,22 @@
 
 /**
  * Rounds a number to a specified number of decimal places.
- * @param value The number to round.
- * @param decimals The number of decimal places to round to.
- * @returns The rounded number.
+ * Default adjusted to 0 for Sahadiesel integer policy.
  */
-export function round2(value: number, decimals: number = 2): number {
+export function round2(value: number, decimals: number = 0): number {
     const factor = Math.pow(10, decimals);
     return Math.round(value * factor) / factor;
 }
 
 /**
  * Clamps the base salary between a minimum and a maximum for SSO calculation.
- * @param salaryMonthly The employee's monthly salary.
- * @param minBase The minimum salary base for SSO calculation.
- * @param cap The maximum salary base (cap) for SSO calculation.
- * @returns The clamped base salary.
  */
 export function clampSsoBase(salaryMonthly: number, minBase: number, cap: number): number {
     return Math.max(minBase, Math.min(salaryMonthly, cap));
 }
 
 /**
- * Calculates the total monthly SSO deduction amount.
- * @param salaryMonthly The employee's monthly salary.
- * @param percent The SSO deduction percentage for the employee.
- * @param minBase The minimum salary base for SSO calculation.
- * @param cap The maximum salary base (cap) for SSO calculation.
- * @returns The total monthly SSO deduction amount.
+ * Calculates the total monthly SSO deduction amount as an integer.
  */
 export function calcSsoMonthly(
   salaryMonthly: number,
@@ -43,17 +32,16 @@ export function calcSsoMonthly(
     return 0;
   }
   const base = clampSsoBase(salaryMonthly, minBase, cap);
-  return round2(base * (percent / 100));
+  // Force integer rounding
+  return Math.round(base * (percent / 100));
 }
 
 /**
  * Splits the total monthly SSO deduction into two halves for bi-monthly payroll.
- * Handles rounding to ensure the sum of both halves equals the total.
- * @param ssoMonthly The total monthly SSO deduction.
- * @returns An object with the deduction amount for period 1 (p1) and period 2 (p2).
+ * Ensures result is integer.
  */
 export function splitSsoHalf(ssoMonthly: number): { p1: number; p2: number } {
-  const p1 = round2(ssoMonthly / 2);
-  const p2 = round2(ssoMonthly - p1);
+  const p1 = Math.round(ssoMonthly / 2);
+  const p2 = Math.round(ssoMonthly - p1);
   return { p1, p2 };
 }

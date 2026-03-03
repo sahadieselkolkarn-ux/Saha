@@ -15,8 +15,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-// --- Helper Functions ---
-const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// --- Helper Functions - Rounded to Integer ---
+const formatCurrency = (value: number | undefined) => (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const safeParseFloat = (value: any): number => {
     if (typeof value === 'number') return value;
     if (typeof value === 'string') {
@@ -29,10 +29,10 @@ const safeParseFloat = (value: any): number => {
 
 export const calcTotals = (snapshot: PayslipSnapshot | null | undefined) => {
     if (!snapshot) return { basePay: 0, addTotal: 0, dedTotal: 0, netPay: 0 };
-    const basePay = safeParseFloat(snapshot?.basePay);
-    const addTotal = (snapshot?.additions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0);
-    const dedTotal = (snapshot?.deductions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0);
-    const netPay = basePay + addTotal - dedTotal;
+    const basePay = Math.round(safeParseFloat(snapshot?.basePay));
+    const addTotal = Math.round((snapshot?.additions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0));
+    const dedTotal = Math.round((snapshot?.deductions || []).reduce((sum, item) => sum + safeParseFloat(item.amount), 0));
+    const netPay = Math.round(basePay + addTotal - dedTotal);
     return { basePay, addTotal, dedTotal, netPay };
 };
 
@@ -120,7 +120,7 @@ export function PayslipSlipView({
   const renderEditableRow = (type: 'additions' | 'deductions', item: any, index: number) => (
      <div key={index} className="grid grid-cols-[1fr_120px_40px] gap-2 items-start">
         <Input placeholder="รายการ" value={item.name} onChange={(e) => handleFieldChange(`${type}.${index}.name`, e.target.value)} />
-        <Input type="number" placeholder="จำนวนเงิน" className="text-right" value={item.amount || ''} onChange={(e) => handleFieldChange(`${type}.${index}.amount`, safeParseFloat(e.target.value))} />
+        <Input type="number" placeholder="จำนวนเงิน" className="text-right" value={item.amount || ''} onChange={(e) => handleFieldChange(`${type}.${index}.amount`, Math.round(safeParseFloat(e.target.value)))} />
         <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveRow(type, index)}>
           <Trash2 className="h-4 w-4 text-destructive" />
         </Button>
@@ -220,7 +220,7 @@ export function PayslipSlipView({
                     <Label htmlFor="basePay" className={cn(isEdit ? "text-base font-bold" : "text-sm text-muted-foreground")}>ฐานเงินเดือน (ในงวดนี้)</Label>
                     {isEdit ? (
                         <div className="relative">
-                            <Input id="basePay" type="number" className="w-40 text-right font-bold text-lg bg-muted/20 focus:bg-background transition-colors" value={snapshot?.basePay || ''} onChange={(e) => handleFieldChange('basePay', safeParseFloat(e.target.value))}/>
+                            <Input id="basePay" type="number" className="w-40 text-right font-bold text-lg bg-muted/20 focus:bg-background transition-colors" value={snapshot?.basePay || ''} onChange={(e) => handleFieldChange('basePay', Math.round(safeParseFloat(e.target.value)))}/>
                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-bold">฿</span>
                         </div>
                     ) : (

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
@@ -36,6 +37,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { LEAVE_TYPES } from "@/lib/constants";
+
+const formatCurrency = (value: number | undefined) => {
+  return (value ?? 0).toLocaleString("th-TH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+};
 
 const getStatusBadgeVariant = (status?: PayslipStatusNew | string) => {
     switch (status) {
@@ -351,16 +359,16 @@ export default function HRGeneratePayslipsPage() {
         let basePay = 0;
         if (hr.payType === 'DAILY') {
             if (!hr.salaryDaily || hr.salaryDaily <= 0) { toast({variant: 'destructive', title: 'ข้อมูลไม่ครบถ้วน', description: `กรุณาตั้งค่าแรงรายวันสำหรับ ${user.displayName} ก่อน`}); setEditingPayslip(null); return; }
-            basePay = (hr.salaryDaily || 0) * periodMetrics.attendanceSummary.payableUnits;
+            basePay = Math.round((hr.salaryDaily || 0) * periodMetrics.attendanceSummary.payableUnits);
         } else {
-            basePay = (hr?.salaryMonthly ?? 0) / 2;
+            basePay = Math.round((hr?.salaryMonthly ?? 0) / 2);
         }
 
         const manualAdditions = existingSnapshot?.additions?.filter(a => !a.name.startsWith('[AUTO]')) ?? [];
         const manualDeductions = existingSnapshot?.deductions?.filter(d => !d.name.startsWith('[AUTO]')) ?? [];
         
         let initialSnapshot: PayslipSnapshot = {
-            basePay: existingSnapshot?.basePay ?? basePay,
+            basePay: Math.round(existingSnapshot?.basePay ?? basePay),
             netPay: 0,
             additions: manualAdditions,
             deductions: [...manualDeductions, ...periodMetrics.autoDeductions],
@@ -384,19 +392,19 @@ export default function HRGeneratePayslipsPage() {
                     ssoAmountThisPeriod = p1;
                 } else { 
                     const p1Deducted = otherSnapshot?.deductions?.find((d:any) => d.name === '[AUTO] ประกันสังคม')?.amount ?? 0;
-                    ssoAmountThisPeriod = Math.max(0, round2(ssoMonthly - p1Deducted));
+                    ssoAmountThisPeriod = Math.max(0, ssoMonthly - p1Deducted);
                 }
             } else if (hr.payType === 'DAILY' && hr.salaryDaily) {
                 if (period === 1) {
                     const incomeP1 = hr.salaryDaily * periodMetrics.attendanceSummary.payableUnits;
-                    ssoAmountThisPeriod = round2(incomeP1 * (employeePercent / 100));
+                    ssoAmountThisPeriod = Math.round(incomeP1 * (employeePercent / 100));
                 } else {
                     const incomeP1 = hr.salaryDaily * (otherSnapshot?.attendanceSummary?.payableUnits || 0);
                     const incomeP2 = hr.salaryDaily * periodMetrics.attendanceSummary.payableUnits;
                     const totalMonthlyIncome = incomeP1 + incomeP2;
                     const totalSsoMonthly = calcSsoMonthly(totalMonthlyIncome, employeePercent, monthlyMinBase, monthlyCap);
                     const p1Deducted = otherSnapshot?.deductions?.find((d:any) => d.name === '[AUTO] ประกันสังคม')?.amount ?? 0;
-                    ssoAmountThisPeriod = Math.max(0, round2(totalSsoMonthly - p1Deducted));
+                    ssoAmountThisPeriod = Math.max(0, totalSsoMonthly - p1Deducted);
                 }
             }
             
@@ -404,14 +412,14 @@ export default function HRGeneratePayslipsPage() {
             if (ssoAmountThisPeriod > 0) {
                 initialSnapshot.deductions.push({ 
                     name: '[AUTO] ประกันสังคม', 
-                    amount: ssoAmountThisPeriod, 
+                    amount: Math.round(ssoAmountThisPeriod), 
                     notes: hr.payType === 'DAILY' ? `คำนวณจากวันทำงานจริง (เรท ${employeePercent}%)` : `หักครึ่งงวด (เดือนนี้ใช้เรท ${employeePercent}%)` 
                 });
             }
         }
 
         const totals = calcTotals(initialSnapshot);
-        setDrawerSnapshot({ ...initialSnapshot, netPay: totals.netPay });
+        setDrawerSnapshot({ ...initialSnapshot, netPay: Math.round(totals.netPay) });
     };
     
     const handleSaveDraft = async () => {
@@ -425,7 +433,7 @@ export default function HRGeneratePayslipsPage() {
         try {
             await setDoc(batchRef, { year: currentMonth.getFullYear(), month: currentMonth.getMonth() + 1, periodNo: period, createdAt: serverTimestamp(), createdByUid: adminProfile.uid, createdByName: adminProfile.displayName }, { merge: true });
             const totals = calcTotals(drawerSnapshot);
-            const finalSnapshot = { ...drawerSnapshot, netPay: totals.netPay };
+            const finalSnapshot = { ...drawerSnapshot, netPay: Math.round(totals.netPay) };
 
             await setDoc(payslipRef, { status: 'DRAFT', snapshot: finalSnapshot, userId: editingPayslip.id, userName: editingPayslip.displayName, batchId: payrollBatchId, revisionNo: editingPayslip.revisionNo || 0, updatedAt: serverTimestamp() }, { merge: true });
             setEmployeeData(prev => prev.map(e => e.id === editingPayslip.id ? { ...e, payslipStatus: 'DRAFT', snapshot: finalSnapshot, revisionNo: editingPayslip.revisionNo || 0 } : e));
@@ -445,7 +453,7 @@ export default function HRGeneratePayslipsPage() {
         try {
             await setDoc(batchRef, { year: currentMonth.getFullYear(), month: currentMonth.getMonth() + 1, periodNo: period, createdAt: serverTimestamp(), createdByUid: adminProfile.uid, createdByName: adminProfile.displayName }, { merge: true });
             const totals = calcTotals(drawerSnapshot);
-            const finalSnapshot = { ...drawerSnapshot, netPay: totals.netPay };
+            const finalSnapshot = { ...drawerSnapshot, netPay: Math.round(totals.netPay) };
             const nextRevisionNo = (editingPayslip.revisionNo || 0) + 1;
 
             await setDoc(payslipRef, { status: 'SENT_TO_EMPLOYEE', snapshot: finalSnapshot, userId: editingPayslip.id, userName: editingPayslip.displayName, batchId: payrollBatchId, revisionNo: nextRevisionNo, updatedAt: serverTimestamp(), sentAt: serverTimestamp(), lockedAt: serverTimestamp() }, { merge: true });
@@ -510,9 +518,9 @@ export default function HRGeneratePayslipsPage() {
             <table>
               <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
               <tbody>
-                <tr><td>เงินเดือนพื้นฐาน / Base Salary (งวด)</td><td class="text-right">${totals.basePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
-                ${(drawerSnapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${a.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>`).join('')}
-                <tr class="total-row"><td>รวมรายได้ / Total Earnings</td><td class="text-right">${(totals.basePay + totals.addTotal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
+                <tr><td>เงินเดือนพื้นฐาน / Base Salary (งวด)</td><td class="text-right">${formatCurrency(totals.basePay)}</td></tr>
+                ${(drawerSnapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${formatCurrency(a.amount)}</td></tr>`).join('')}
+                <tr class="total-row"><td>รวมรายได้ / Total Earnings</td><td class="text-right">${formatCurrency(totals.basePay + totals.addTotal)}</td></tr>
               </tbody>
             </table>
 
@@ -520,13 +528,13 @@ export default function HRGeneratePayslipsPage() {
             <table>
               <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
               <tbody>
-                ${(drawerSnapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">${d.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0.00</td></tr>'}
-                <tr class="total-row"><td>รวมรายการหัก / Total Deductions</td><td class="text-right">${totals.dedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td></tr>
+                ${(drawerSnapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">${formatCurrency(d.amount)}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0</td></tr>'}
+                <tr class="total-row"><td>รวมรายการหัก / Total Deductions</td><td class="text-right">${formatCurrency(totals.dedTotal)}</td></tr>
               </tbody>
             </table>
 
             <div style="margin-top: 20px; padding: 10px; border: 2px solid #333; text-align: right; font-size: 18px; font-weight: bold;">
-              เงินได้สุทธิ / NET PAY: <span style="margin-left: 20px;">${totals.netPay.toLocaleString(undefined, { minimumFractionDigits: 2 })} บาท</span>
+              เงินได้สุทธิ / NET PAY: <span style="margin-left: 20px;">${formatCurrency(totals.netPay)} บาท</span>
             </div>
 
             <div class="footer">
