@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -16,7 +17,8 @@ import {
   startOfYear, 
   isWithinInterval,
   isBefore,
-  parseISO
+  parseISO,
+  startOfDay
 } from "date-fns";
 import { 
   BarChart, 
@@ -64,7 +66,7 @@ const toDateSafe = (ts: any): Date | null => {
 };
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB", maximumFractionDigits: 0 }).format(value);
+  return (value || 0).toLocaleString("th-TH", { maximumFractionDigits: 0 });
 };
 
 const getTrend = (current: number, previous: number) => {
@@ -231,7 +233,7 @@ function AppDashboardPage() {
       };
     });
 
-    // 6. Customer Acquisition Stats - UPDATED LOGIC
+    // 6. Customer Acquisition Stats - UPDATED & FIXED
     const acqCounts = {
       EXISTING: 0,
       REFERRAL: 0,
@@ -242,28 +244,26 @@ function AppDashboardPage() {
       OTHER: 0,
     };
 
+    const periodStart = startOfDay(from);
+
     currentInflow.forEach(j => {
-      // Find the actual customer record to check their registration date
       const customer = customers.find(c => c.id === j.customerId);
       const customerCreatedAt = toDateSafe(customer?.createdAt);
 
-      // CRITICAL: If customer was created BEFORE the selected period, count as EXISTING
-      if (customerCreatedAt && isBefore(customerCreatedAt, from)) {
+      // If customer was created BEFORE this period, count as EXISTING
+      if (customerCreatedAt && isBefore(startOfDay(customerCreatedAt), periodStart)) {
         acqCounts.EXISTING++;
       } else {
-        // Customer was created DURING this period, use their specific source
-        const src = j.customerAcquisitionSource;
-        if (src && src !== 'EXISTING' && src !== 'NONE') {
-          if (src === 'REFERRAL') acqCounts.REFERRAL++;
-          else if (src === 'GOOGLE') acqCounts.GOOGLE++;
-          else if (src === 'FACEBOOK') acqCounts.FACEBOOK++;
-          else if (src === 'TIKTOK') acqCounts.TIKTOK++;
-          else if (src === 'YOUTUBE') acqCounts.YOUTUBE++;
-          else if (src === 'OTHER') acqCounts.OTHER++;
-          else acqCounts.OTHER++;
-        } else {
-          acqCounts.EXISTING++;
-        }
+        // Customer was created DURING this period, use source from Job or Customer profile
+        const rawSrc = (j.customerAcquisitionSource || customer?.acquisitionSource || 'OTHER').toString().toUpperCase();
+        
+        if (rawSrc === 'REFERRAL') acqCounts.REFERRAL++;
+        else if (rawSrc === 'GOOGLE') acqCounts.GOOGLE++;
+        else if (rawSrc === 'FACEBOOK') acqCounts.FACEBOOK++;
+        else if (rawSrc === 'TIKTOK') acqCounts.TIKTOK++;
+        else if (rawSrc === 'YOUTUBE') acqCounts.YOUTUBE++;
+        else if (rawSrc === 'OTHER') acqCounts.OTHER++;
+        else acqCounts.EXISTING++; // Fallback if explicitly set to EXISTING or none
       }
     });
 
@@ -384,7 +384,7 @@ function AppDashboardPage() {
             </CardHeader>
             <CardContent className="flex-1">
               <div className="text-2xl font-bold">
-                {kpi.isCurrency ? formatCurrency(kpi.value) : kpi.value.toLocaleString()}
+                {kpi.isCurrency ? `฿${formatCurrency(kpi.value)}` : kpi.value.toLocaleString()}
               </div>
               <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1">{kpi.desc}</p>
             </CardContent>
@@ -428,7 +428,7 @@ function AppDashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="name" fontSize={12} />
                   <YAxis tickFormatter={(v) => `${v / 1000}k`} fontSize={12} />
-                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                  <Tooltip formatter={(v: any) => `฿${formatCurrency(Number(v))}`} />
                   <Legend verticalAlign="bottom" iconType="circle" />
                   <Bar dataKey="ภาษีขาย" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="ภาษีซื้อ" fill="hsl(var(--chart-5))" radius={[4, 4, 0, 0]} />
@@ -450,7 +450,7 @@ function AppDashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="name" fontSize={12} />
                   <YAxis tickFormatter={(v) => `${Math.round(v / 1000)}k`} fontSize={12} />
-                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                  <Tooltip formatter={(v: any) => `฿${formatCurrency(Number(v))}`} />
                   <Legend verticalAlign="bottom" iconType="circle" />
                   <Line type="monotone" dataKey="เงินรับเข้า" stroke="hsl(var(--chart-2))" strokeWidth={3} dot={{ r: 4 }} />
                   <Line type="monotone" dataKey="เงินจ่ายออก" stroke="hsl(var(--chart-5))" strokeWidth={3} dot={{ r: 4 }} />
@@ -562,7 +562,7 @@ function AppDashboardPage() {
                     <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">{item.label}</span>
                     {item.trend !== undefined && <TrendIndicator value={item.trend} />}
                   </div>
-                  <div className="text-lg font-bold">{formatCurrency(item.value)}</div>
+                  <div className="text-lg font-bold">฿{formatCurrency(item.value)}</div>
                 </div>
               ))}
             </div>
