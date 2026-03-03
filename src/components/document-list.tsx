@@ -79,7 +79,7 @@ export function DocumentList({
   const [error, setError] = useState<FirestoreError | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
+  const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
   
   const [docToAction, setDocToAction] = useState<Document | null>(null);
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
@@ -288,14 +288,14 @@ export function DocumentList({
     <>
       <Card>
         <CardContent className="pt-6 space-y-4">
-          {indexCreationUrl && (
+          {indexErrorUrl && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
               <AlertDescription className="flex flex-col gap-2">
                 <span>ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับเอกสาร กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
                 <Button asChild variant="outline" size="sm" className="w-fit">
-                  <a href={indexCreationUrl} target="_blank" rel="noopener noreferrer">
+                  <a href={indexErrorUrl} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index ใน Firebase Console
                   </a>
                 </Button>
