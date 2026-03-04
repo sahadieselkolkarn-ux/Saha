@@ -233,7 +233,7 @@ function AppDashboardPage() {
       };
     });
 
-    // 6. Customer Acquisition Stats - UPDATED & FIXED
+    // 6. Customer Acquisition Stats - FIXED FOR UNIQUENESS AND CREATION DATE
     const acqCounts = {
       EXISTING: 0,
       REFERRAL: 0,
@@ -245,25 +245,31 @@ function AppDashboardPage() {
     };
 
     const periodStart = startOfDay(from);
+    
+    // Get UNIQUE customers who had jobs in this period
+    const customersInPeriodIds = Array.from(new Set(currentInflow.map(j => j.customerId)));
 
-    currentInflow.forEach(j => {
-      const customer = customers.find(c => c.id === j.customerId);
-      const customerCreatedAt = toDateSafe(customer?.createdAt);
+    customersInPeriodIds.forEach(cid => {
+      const customer = customers.find(c => c.id === cid);
+      if (!customer) return;
 
-      // If customer was created BEFORE this period, count as EXISTING
+      const customerCreatedAt = toDateSafe(customer.createdAt);
+
+      // CRITICAL LOGIC: If customer was created BEFORE this period, count as EXISTING (ลูกค้าเก่า)
       if (customerCreatedAt && isBefore(startOfDay(customerCreatedAt), periodStart)) {
         acqCounts.EXISTING++;
       } else {
-        // Customer was created DURING this period, use source from Job or Customer profile
-        const rawSrc = (j.customerAcquisitionSource || customer?.acquisitionSource || 'OTHER').toString().toUpperCase();
+        // Customer was created DURING this period, use source from their profile
+        // Find the job that brought them in (usually the first job in the period for a new customer)
+        const representativeJob = currentInflow.find(j => j.customerId === cid);
+        const rawSrc = (representativeJob?.customerAcquisitionSource || customer.acquisitionSource || 'OTHER').toString().toUpperCase();
         
         if (rawSrc === 'REFERRAL') acqCounts.REFERRAL++;
         else if (rawSrc === 'GOOGLE') acqCounts.GOOGLE++;
         else if (rawSrc === 'FACEBOOK') acqCounts.FACEBOOK++;
         else if (rawSrc === 'TIKTOK') acqCounts.TIKTOK++;
         else if (rawSrc === 'YOUTUBE') acqCounts.YOUTUBE++;
-        else if (rawSrc === 'OTHER') acqCounts.OTHER++;
-        else acqCounts.EXISTING++; // Fallback if explicitly set to EXISTING or none
+        else acqCounts.OTHER++;
       }
     });
 
@@ -392,7 +398,7 @@ function AppDashboardPage() {
         ))}
       </div>
 
-      {/* --- Row 2: Trends (3 Columns) --- */}
+      {/* --- Row 2: Trends --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <Card className="h-full flex flex-col">
           <CardHeader>
@@ -461,7 +467,7 @@ function AppDashboardPage() {
         </Card>
       </div>
 
-      {/* --- Row 3: Breakdowns (3 Columns) --- */}
+      {/* --- Row 3: Breakdowns --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <Card className="h-full flex flex-col">
           <CardHeader>
@@ -519,7 +525,7 @@ function AppDashboardPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
             <CardTitle>แหล่งที่มาของลูกค้า</CardTitle>
-            <CardDescription>ลูกค้าเข้ามาจากช่องทางใดในงวดนี้</CardDescription>
+            <CardDescription>ลูกค้าเข้ามาจากช่องทางใดในงวดนี้ (นับรายบุคคล)</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-center">
             <div className="h-[180px]">
@@ -547,7 +553,7 @@ function AppDashboardPage() {
         </Card>
       </div>
 
-      {/* --- Row 4: Summary & Alerts (2 Columns) --- */}
+      {/* --- Row 4: Summary & Alerts --- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="h-full flex flex-col min-h-[260px]">
           <CardHeader>
