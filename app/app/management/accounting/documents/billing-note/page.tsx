@@ -49,7 +49,9 @@ import {
   LayoutGrid,
   Eye,
   MoreHorizontal,
-  PlusCircle
+  PlusCircle,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import type { Customer, Document, BillingRun, StoreSettings } from '@/lib/types';
 import type { WithId } from '@/firebase/firestore/use-collection';
@@ -57,6 +59,7 @@ import { BillingNoteBatchEditDialog } from '@/components/billing-note-batch-edit
 import { createDocument } from '@/firebase/documents';
 import { safeFormat } from '@/lib/date-utils';
 import { DocumentList } from '@/components/document-list';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const formatCurrency = (value: number) =>
   value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -68,6 +71,7 @@ interface GroupedCustomerData {
   separateGroups: Record<string, Document[]>;
   totalIncludedAmount: number;
   createdNoteIds?: { main?: string; separate?: Record<string, string> };
+  warnings?: string[]; // New: Track data integrity issues
 }
 
 function BillingNoteBatchTab() {
@@ -119,17 +123,24 @@ function BillingNoteBatchTab() {
       const invoicesSnap = await getDocs(invoicesQuery);
       const allDocs = invoicesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Document));
       
+      // STRICT FILTER: Only Unpaid Credit Invoices that are NOT Cancelled
       const unpaidInvoices = allDocs.filter(doc => 
         (doc.docType === 'TAX_INVOICE' || doc.docType === 'DELIVERY_NOTE') &&
         doc.paymentTerms === 'CREDIT' &&
         doc.billingRequired === true &&
-        doc.status !== 'PAID'
+        !['PAID', 'CANCELLED', 'REJECTED'].includes(doc.status)
       );
 
       const groupedByCustomer: Record<string, { customer: Customer; invoices: Document[] }> = {};
+      const docNoCount: Record<string, number> = {};
+
       unpaidInvoices.forEach(inv => {
         const customerId = inv.customerId || inv.customerSnapshot.id || inv.customerSnapshot.phone;
         if (!customerId) return;
+        
+        // Track duplicate document numbers across all active docs
+        docNoCount[inv.docNo] = (docNoCount[inv.docNo] || 0) + 1;
+
         if (!groupedByCustomer[customerId]) {
           groupedByCustomer[customerId] = {
             customer: { id: customerId, ...inv.customerSnapshot } as Customer,
@@ -143,8 +154,20 @@ function BillingNoteBatchTab() {
         const includedInvoices: Document[] = [];
         const deferredInvoices: Document[] = [];
         const separateGroups: Record<string, Document[]> = {};
+        const warnings: string[] = [];
 
         invoices.forEach(inv => {
+          // Data Validation Checks
+          if (docNoCount[inv.docNo] > 1) {
+            warnings.push(`พบเลขที่เอกสารซ้ำ (${inv.docNo}) กรุณาตรวจสอบว่าบิลซ้ำหรือไม่`);
+          }
+          
+          const expectedName = customer.taxName || customer.name;
+          const invoiceName = inv.customerSnapshot?.taxName || inv.customerSnapshot?.name;
+          if (invoiceName && invoiceName !== expectedName) {
+            warnings.push(`ชื่อในบิล ${inv.docNo} ไม่ตรงกับชื่อปัจจุบันของลูกค้า`);
+          }
+
           if (billingRun?.deferredInvoices?.[inv.id]) {
             deferredInvoices.push(inv);
           } else if (billingRun?.separateInvoiceGroups?.[inv.id]) {
@@ -163,6 +186,7 @@ function BillingNoteBatchTab() {
           separateGroups,
           totalIncludedAmount: includedInvoices.reduce((sum, inv) => sum + inv.grandTotal, 0),
           createdNoteIds: billingRun?.createdBillingNotes?.[customer.id],
+          warnings: Array.from(new Set(warnings)), // Unique warnings only
         };
       });
 
@@ -240,11 +264,10 @@ function BillingNoteBatchTab() {
           grandTotal: totalAmount,
           notes: groupKey === 'MAIN' ? '' : `เอกสารกลุ่ม: ${groupKey}`,
           senderName: profile.displayName,
-          receiverName: customer.name,
+          receiverName: customer.taxName || customer.name,
           billingRunId: monthId
         }, profile);
 
-        // Update underlying invoices to link to this Billing Note
         const batch = writeBatch(db);
         groupInvoices.forEach(inv => {
             batch.update(doc(db, 'documents', inv.id), {
@@ -360,95 +383,114 @@ function BillingNoteBatchTab() {
         <Card className="bg-muted/50 border-dashed"><CardHeader className="p-4"><CardTitle className="text-xl text-muted-foreground">{summary.separateCount}</CardTitle><CardDescription className="text-xs">บิลที่แยกเล่ม</CardDescription></CardHeader></Card>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          <Table>
-            <TableHeader><TableRow><TableHead>ลูกค้า (Customer)</TableHead><TableHead className="text-center">จำนวนบิล</TableHead><TableHead className="text-right">ยอดรวมสะสม</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="animate-spin" /></TableCell></TableRow>
-              ) : customerData.length > 0 ? (
-                customerData.map(data => (
-                  <TableRow key={data.customer.id} className="hover:bg-muted/30 transition-colors">
-                    <TableCell className="font-semibold">{data.customer.name}</TableCell>
-                    <TableCell className="text-center">{data.includedInvoices.length}</TableCell>
-                    <TableCell className="text-right font-mono">฿{formatCurrency(data.totalIncludedAmount)}</TableCell>
-                    <TableCell>
-                      {data.createdNoteIds ? (
-                        <Badge variant="default" className="bg-green-600">สร้างแล้ว</Badge>
-                      ) : (data.includedInvoices.length > 0 || Object.keys(data.separateGroups).length > 0) ? (
-                        <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">รอดำเนินการ</Badge>
-                      ) : (
-                        <Badge variant="secondary">ไม่มีรายการ</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {!data.createdNoteIds ? (
-                            <>
-                              <DropdownMenuItem onClick={() => setEditingCustomerData(data)}>
-                                <Edit className="mr-2 h-4 w-4" /> แก้ไขการรวบรวม
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => createBillingNotesForCustomer(data)}
-                                disabled={(data.includedInvoices.length + Object.keys(data.separateGroups).length) === 0}
-                                className="text-primary focus:text-primary font-bold"
-                              >
-                                <PlusCircle className="mr-2 h-4 w-4" /> สร้างใบวางบิล
-                              </DropdownMenuItem>
-                            </>
-                          ) : (
-                            <>
-                              {data.createdNoteIds.main && (
-                                <DropdownMenuItem onClick={() => handlePreview(data.createdNoteIds!.main!)}>
-                                  <Eye className="mr-2 h-4 w-4" /> พรีวิว (ใบหลัก)
-                                </DropdownMenuItem>
-                              )}
-                              {Object.entries(data.createdNoteIds.separate).map(([key, id]) => (
-                                <DropdownMenuItem key={id} onClick={() => handlePreview(id)}>
-                                  <Eye className="mr-2 h-4 w-4" /> พรีวิว ({key})
-                                </DropdownMenuItem>
-                              ))}
-                              <DropdownMenuSeparator />
-                              {data.createdNoteIds.main && (
-                                <DropdownMenuItem onClick={() => handlePrint(data.createdNoteIds!.main!)}>
-                                  <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF (ใบหลัก)
-                                </DropdownMenuItem>
-                              )}
-                              {Object.entries(data.createdNoteIds.separate).map(([key, id]) => (
-                                <DropdownMenuItem key={`p-${id}`} onClick={() => handlePrint(id)}>
-                                  <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF ({key})
-                                </DropdownMenuItem>
-                              ))}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                className="text-destructive focus:text-destructive" 
-                                onClick={() => handleResetStatus(data.customer.id)} 
-                                disabled={isResetting === data.customer.id}
-                              >
-                                {isResetting === data.customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4"/>}
-                                ล้างสถานะการสร้าง (Reset)
-                              </DropdownMenuItem>
-                            </>
+      <TooltipProvider>
+        <Card>
+          <CardContent className="pt-6">
+            <Table>
+              <TableHeader><TableRow><TableHead>ลูกค้า (Customer)</TableHead><TableHead className="text-center">จำนวนบิล</TableHead><TableHead className="text-right">ยอดรวมสะสม</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={5} className="h-24 text-center"><Loader2 className="animate-spin" /></TableCell></TableRow>
+                ) : customerData.length > 0 ? (
+                  customerData.map(data => (
+                    <TableRow key={data.customer.id} className="hover:bg-muted/30 transition-colors">
+                      <TableCell className="font-semibold">
+                        <div className="flex items-center gap-2">
+                          {data.customer.taxName || data.customer.name}
+                          {data.warnings && data.warnings.length > 0 && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle className="h-4 w-4 text-orange-500 cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs p-3">
+                                <p className="font-bold text-orange-600 mb-1 flex items-center gap-1"><Info className="h-3 w-3"/> ข้อสังเกตข้อมูล:</p>
+                                <ul className="list-disc pl-4 space-y-1 text-xs">
+                                  {data.warnings.map((w, idx) => <li key={idx}>{w}</li>)}
+                                </ul>
+                              </TooltipContent>
+                            </Tooltip>
                           )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">ไม่พบเอกสารเครดิตที่ต้องวางบิลในเดือนนี้</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">{data.includedInvoices.length}</TableCell>
+                      <TableCell className="text-right font-mono">฿{formatCurrency(data.totalIncludedAmount)}</TableCell>
+                      <TableCell>
+                        {data.createdNoteIds ? (
+                          <Badge variant="default" className="bg-green-600">สร้างแล้ว</Badge>
+                        ) : (data.includedInvoices.length > 0 || Object.keys(data.separateGroups).length > 0) ? (
+                          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">รอดำเนินการ</Badge>
+                        ) : (
+                          <Badge variant="secondary">ไม่มีรายการ</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {!data.createdNoteIds ? (
+                              <>
+                                <DropdownMenuItem onClick={() => setEditingCustomerData(data)}>
+                                  <Edit className="mr-2 h-4 w-4" /> แก้ไขการรวบรวม
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => createBillingNotesForCustomer(data)}
+                                  disabled={(data.includedInvoices.length + Object.keys(data.separateGroups).length) === 0}
+                                  className="text-primary focus:text-primary font-bold"
+                                >
+                                  <PlusCircle className="mr-2 h-4 w-4" /> สร้างใบวางบิล
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <>
+                                {data.createdNoteIds.main && (
+                                  <DropdownMenuItem onClick={() => handlePreview(data.createdNoteIds!.main!)}>
+                                    <Eye className="mr-2 h-4 w-4" /> พรีวิว (ใบหลัก)
+                                  </DropdownMenuItem>
+                                )}
+                                {Object.entries(data.createdNoteIds.separate).map(([key, id]) => (
+                                  <DropdownMenuItem key={id} onClick={() => handlePreview(id)}>
+                                    <Eye className="mr-2 h-4 w-4" /> พรีวิว ({key})
+                                  </DropdownMenuItem>
+                                ))}
+                                <DropdownMenuSeparator />
+                                {data.createdNoteIds.main && (
+                                  <DropdownMenuItem onClick={() => handlePrint(data.createdNoteIds!.main!)}>
+                                    <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF (ใบหลัก)
+                                  </DropdownMenuItem>
+                                )}
+                                {Object.entries(data.createdNoteIds.separate).map(([key, id]) => (
+                                  <DropdownMenuItem key={`p-${id}`} onClick={() => handlePrint(id)}>
+                                    <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF ({key})
+                                  </DropdownMenuItem>
+                                ))}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-destructive focus:text-destructive" 
+                                  onClick={() => handleResetStatus(data.customer.id)} 
+                                  disabled={isResetting === data.customer.id}
+                                >
+                                  {isResetting === data.customer.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4"/>}
+                                  ล้างสถานะการสร้าง (Reset)
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic">ไม่พบเอกสารเครดิตที่ต้องวางบิลในเดือนนี้</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TooltipProvider>
       
       {editingCustomerData && (
         <BillingNoteBatchEditDialog
