@@ -248,27 +248,28 @@ function JobDetailsPageContent() {
   }, [jobId, db]);
 
   useEffect(() => {
-    if (!notFoundInPrimary || !db || !jobId) return;
-    setLoading(true);
-    const searchArchives = async () => {
-      const currentYear = new Date().getFullYear();
-      for (let i = 0; i < 5; i++) {
-        const year = currentYear - i;
-        try {
-          const archiveDocRef = doc(db, `jobsArchive_${year}`, jobId);
-          const docSnap = await getDoc(archiveDocRef);
-          if (docSnap.exists()) {
-            const jobData = { id: docSnap.id, ...docSnap.data(), isArchived: true } as Job;
-            setJob(jobData);
-            setTechReport(jobData.technicalReport || "");
-            setLoading(false);
-            return;
-          }
-        } catch (e) {}
-      }
-      setLoading(false);
-    };
-    searchArchives();
+    if (notFoundInPrimary && db && jobId) {
+      setLoading(true);
+      const searchArchives = async () => {
+        const currentYear = new Date().getFullYear();
+        for (let i = 0; i < 5; i++) {
+          const year = currentYear - i;
+          try {
+            const archiveDocRef = doc(db, `jobsArchive_${year}`, jobId);
+            const docSnap = await getDoc(archiveDocRef);
+            if (docSnap.exists()) {
+              const jobData = { id: docSnap.id, ...docSnap.data(), isArchived: true } as Job;
+              setJob(jobData);
+              setTechReport(jobData.technicalReport || "");
+              setLoading(false);
+              return;
+            }
+          } catch (e) {}
+        }
+        setLoading(false);
+      };
+      searchArchives();
+    }
   }, [notFoundInPrimary, db, jobId]);
 
   const handleOpenEditDescriptionDialog = () => {
@@ -386,7 +387,11 @@ function JobDetailsPageContent() {
         setNewNote(""); setNewPhotos([]); setPhotoPreviews([]);
         toast({title: "อัปเดตกีจกรรมสำเร็จแล้วค่ะ"});
     } catch (error: any) {
-        toast({variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message});
+        if (error.code === 'permission-denied') {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'write' }));
+        } else {
+            toast({variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message});
+        }
     } finally {
         setIsSubmittingNote(false);
     }
@@ -436,7 +441,11 @@ function JobDetailsPageContent() {
         await batch.commit();
         toast({title: `อัปโหลดรูปภาพสำเร็จแล้วค่ะ`});
     } catch(error: any) {
-        toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message});
+        if (error.code === 'permission-denied') {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({ path: jobDocRef.path, operation: 'write', requestResourceData: { photosCount: files.length } }));
+        } else {
+            toast({variant: "destructive", title: "อัปโหลดล้มเหลว", description: error.message});
+        }
     } finally { setIsAddingPhotos(false); e.target.value = ''; }
   }
 

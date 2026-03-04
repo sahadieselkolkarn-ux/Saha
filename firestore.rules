@@ -45,7 +45,7 @@ service cloud.firestore {
     }
 
     function isService() {
-      return signedIn() && (dept() == "CAR_SERVICE" || dept() == "COMMONRAIL" || dept() == "MECHANIC") && !isViewer();
+      return signedIn() && (dept() == "CAR_SERVICE" || dept() == "COMMONRAIL" || dept() == "MECHANIC" || dept() == "OUTSOURCE") && !isViewer();
     }
 
     function canEditJobs() {
