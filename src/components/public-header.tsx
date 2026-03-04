@@ -12,11 +12,25 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Menu, User, Briefcase, Globe, Phone, Package, Settings } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { ChevronDown, Menu, User, Briefcase, Globe, Phone, Package, Settings, Home, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function PublicHeader() {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -26,18 +40,21 @@ export function PublicHeader() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
   return (
     <header 
       className={cn(
         "fixed top-0 z-50 w-full transition-all duration-300 px-4 md:px-8",
         isScrolled 
-          ? "h-16 bg-slate-900/90 backdrop-blur-md border-b border-white/10" 
+          ? "h-16 bg-slate-900/95 backdrop-blur-md border-b border-white/10" 
           : "h-20 bg-transparent"
       )}
     >
       <div className="container mx-auto h-full flex items-center justify-between">
         <Logo className="scale-90" />
 
+        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1">
           <Button variant="ghost" asChild className="text-white hover:bg-white/10 hover:text-white font-medium">
             <Link href="/">หน้าแรก</Link>
@@ -50,10 +67,10 @@ export function PublicHeader() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48 bg-slate-800 border-white/10 text-white">
-              <DropdownMenuItem className="focus:bg-primary/20 focus:text-white">
+              <DropdownMenuItem className="focus:bg-primary/20 focus:text-white cursor-pointer py-2">
                 <Package className="mr-2 h-4 w-4" /> สินค้า
               </DropdownMenuItem>
-              <DropdownMenuItem className="focus:bg-primary/20 focus:text-white">
+              <DropdownMenuItem className="focus:bg-primary/20 focus:text-white cursor-pointer py-2">
                 <Settings className="mr-2 h-4 w-4" /> งานบริการ
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -85,9 +102,80 @@ export function PublicHeader() {
           </DropdownMenu>
         </nav>
 
-        <Button variant="ghost" size="icon" className="md:hidden text-white">
-          <Menu className="h-6 w-6" />
-        </Button>
+        {/* Mobile Navigation */}
+        <div className="md:hidden flex items-center">
+          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Toggle menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="bg-slate-900 border-white/10 text-white w-[300px] p-0">
+              <SheetHeader className="p-6 border-b border-white/10 text-left">
+                <SheetTitle className="text-white font-headline text-xl">เมนูหลัก</SheetTitle>
+              </SheetHeader>
+              
+              <div className="flex flex-col p-4">
+                <Button variant="ghost" asChild className="justify-start text-white hover:bg-white/10 mb-2 h-12" onClick={closeMobileMenu}>
+                  <Link href="/">
+                    <Home className="mr-3 h-5 w-5 text-primary" />
+                    หน้าแรก
+                  </Link>
+                </Button>
+
+                <Accordion type="single" collapsible className="w-full">
+                  <AccordionItem value="services" className="border-none">
+                    <AccordionTrigger className="px-4 h-12 hover:no-underline hover:bg-white/10 rounded-md text-white font-normal">
+                      <div className="flex items-center">
+                        <Settings className="mr-3 h-5 w-5 text-primary" />
+                        สินค้าและบริการ
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="bg-white/5 rounded-md mt-1 pb-2 px-2">
+                      <Button variant="ghost" className="w-full justify-start pl-12 h-10 text-slate-300" onClick={closeMobileMenu}>
+                        <Package className="mr-2 h-4 w-4" /> สินค้า
+                      </Button>
+                      <Button variant="ghost" className="w-full justify-start pl-12 h-10 text-slate-300" onClick={closeMobileMenu}>
+                        <Settings className="mr-2 h-4 w-4" /> งานบริการ
+                      </Button>
+                    </AccordionContent>
+                  </AccordionItem>
+
+                  <Button variant="ghost" asChild className="w-full justify-start text-white hover:bg-white/10 h-12 mt-2" onClick={closeMobileMenu}>
+                    <Link href="#contact">
+                      <Mail className="mr-3 h-5 w-5 text-primary" />
+                      ติดต่อเรา
+                    </Link>
+                  </Button>
+
+                  <AccordionItem value="login" className="border-none mt-2">
+                    <AccordionTrigger className="px-4 h-12 hover:no-underline hover:bg-white/10 rounded-md text-white font-normal">
+                      <div className="flex items-center">
+                        <User className="mr-3 h-5 w-5 text-primary" />
+                        ลงชื่อเข้าใช้
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="bg-white/5 rounded-md mt-1 pb-2 px-2">
+                      <Button variant="ghost" asChild className="w-full justify-start pl-12 h-10 text-slate-300" onClick={closeMobileMenu}>
+                        <Link href="/login">
+                          <Briefcase className="mr-2 h-4 w-4 text-primary" /> สำหรับพนักงาน
+                        </Link>
+                      </Button>
+                      <Button variant="ghost" className="w-full justify-start pl-12 h-10 text-slate-300" onClick={closeMobileMenu}>
+                        <User className="mr-2 h-4 w-4 text-blue-400" /> สำหรับลูกค้า
+                      </Button>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              </div>
+
+              <div className="absolute bottom-8 left-0 right-0 px-6 text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest">Sahadiesel Service System</p>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
     </header>
   );
