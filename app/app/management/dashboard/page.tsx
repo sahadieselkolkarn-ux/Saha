@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, Timestamp, getDocs } from "firebase/firestore";
 import { DateRange } from "react-day-picker";
 import { 
   subDays, 
@@ -93,6 +93,7 @@ function AppDashboardPage() {
   const router = useRouter();
 
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [archivedJobs, setArchivedJobs] = useState<Job[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [obligations, setObligations] = useState<AccountingObligation[]>([]);
@@ -113,6 +114,13 @@ function AppDashboardPage() {
     const unsubJobs = onSnapshot(collection(db, "jobs"), (snap) => {
       setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
+
+    // Fetch archived jobs for current year
+    const currentYear = new Date().getFullYear();
+    const unsubArchived = onSnapshot(collection(db, `jobsArchive_${currentYear}`), (snap) => {
+      setArchivedJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
+    });
+
     const unsubDocs = onSnapshot(collection(db, "documents"), (snap) => {
       setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as Document)));
     });
@@ -131,7 +139,7 @@ function AppDashboardPage() {
     });
 
     return () => {
-      unsubJobs(); unsubDocs(); unsubEntries(); unsubObligations(); unsubPurchases(); unsubCustomers();
+      unsubJobs(); unsubArchived(); unsubDocs(); unsubEntries(); unsubObligations(); unsubPurchases(); unsubCustomers();
     };
   }, [db]);
 
@@ -233,7 +241,7 @@ function AppDashboardPage() {
       };
     });
 
-    // 6. Customer Acquisition Stats - FIXED FOR UNIQUENESS AND CREATION DATE
+    // 6. Customer Acquisition Stats - UPDATED TO INCLUDE ARCHIVED JOBS
     const acqCounts = {
       EXISTING: 0,
       REFERRAL: 0,
@@ -246,8 +254,14 @@ function AppDashboardPage() {
 
     const periodStart = startOfDay(from);
     
-    // Get UNIQUE customers who had jobs in this period
-    const customersInPeriodIds = Array.from(new Set(currentInflow.map(j => j.customerId)));
+    // Combine Active and Archived Jobs that were opened during the period
+    const allJobsInPeriod = [
+      ...jobs.filter(j => isInPeriod(toDateSafe(j.createdAt))),
+      ...archivedJobs.filter(j => isInPeriod(toDateSafe(j.createdAt)))
+    ];
+
+    // Get UNIQUE customers who had jobs in this period (active or archived)
+    const customersInPeriodIds = Array.from(new Set(allJobsInPeriod.map(j => j.customerId)));
 
     customersInPeriodIds.forEach(cid => {
       const customer = customers.find(c => c.id === cid);
@@ -259,9 +273,8 @@ function AppDashboardPage() {
       if (customerCreatedAt && isBefore(startOfDay(customerCreatedAt), periodStart)) {
         acqCounts.EXISTING++;
       } else {
-        // Customer was created DURING this period, use source from their profile
-        // Find the job that brought them in (usually the first job in the period for a new customer)
-        const representativeJob = currentInflow.find(j => j.customerId === cid);
+        // Customer was created DURING this period, use source from their profile or representative job
+        const representativeJob = allJobsInPeriod.find(j => j.customerId === cid);
         const rawSrc = (representativeJob?.customerAcquisitionSource || customer.acquisitionSource || 'OTHER').toString().toUpperCase();
         
         if (rawSrc === 'REFERRAL') acqCounts.REFERRAL++;
@@ -333,7 +346,7 @@ function AppDashboardPage() {
       acquisitionData,
       alerts
     };
-  }, [jobs, documents, entries, obligations, purchaseDocs, customers, dateRange]);
+  }, [jobs, archivedJobs, documents, entries, obligations, purchaseDocs, customers, dateRange]);
 
   const handleDatePreset = (preset: string) => {
     const today = startOfToday();
@@ -490,7 +503,6 @@ function AppDashboardPage() {
               )}
             </div>
           </CardContent>
-        </Card>
 
         <Card className="h-full flex flex-col">
           <CardHeader>
@@ -525,7 +537,7 @@ function AppDashboardPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
             <CardTitle>แหล่งที่มาของลูกค้า</CardTitle>
-            <CardDescription>ลูกค้าเข้ามาจากช่องทางใดในงวดนี้ (นับรายบุคคล)</CardDescription>
+            <CardDescription>สัดส่วนลูกค้าที่เข้าใช้บริการในช่วงเวลาที่เลือก (นับรายบุคคล)</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-center">
             <div className="h-[180px]">
@@ -573,7 +585,6 @@ function AppDashboardPage() {
               ))}
             </div>
           </CardContent>
-        </Card>
 
         <Card className="h-full flex flex-col min-h-[260px]">
           <CardHeader>
@@ -623,7 +634,7 @@ export default function ManagementDashboardPage() {
           <CardContent>
             <Button asChild variant="outline"><Link href="/app/jobs">กลับไปยังหน้างาน</Link></Button>
           </CardContent>
-        </Card>
+        </div>
       </div>
     );
   }
