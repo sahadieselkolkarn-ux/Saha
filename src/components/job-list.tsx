@@ -277,7 +277,10 @@ export function JobList({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {jobs.map((job) => {
           const isOwnDept = profile?.department === job.department;
-          const hasBill = !!job.salesDocId;
+          
+          // CRITICAL FIX: Distinguish between PRE-SALES (Quotation) and ACTUAL REVENUE BILLS (Delivery Note/Tax Invoice)
+          const hasActualBill = !!job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE');
+          const hasQuotation = !!job.salesDocId && job.salesDocType === 'QUOTATION';
           const isPickupStatus = job.status === 'WAITING_CUSTOMER_PICKUP';
           
           return (
@@ -329,7 +332,7 @@ export function JobList({
                     </Button>
                   )}
                   
-                  {job.status === 'WAITING_QUOTATION' && !hasBill && (
+                  {job.status === 'WAITING_QUOTATION' && !hasActualBill && !hasQuotation && (
                     <Button asChild={canDoBilling} className={cn("w-full h-9 font-bold", !canDoBilling && "hidden")} variant="default" disabled={!canDoBilling}>
                       {canDoBilling ? <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link> : null}
                     </Button>
@@ -337,7 +340,7 @@ export function JobList({
 
                   {['DONE', 'WAITING_CUSTOMER_PICKUP', 'CLOSED'].includes(job.status) && (
                     <div className="flex flex-col gap-2 w-full">
-                      {(hasBill || isPickupStatus) ? (
+                      {(hasActualBill || isPickupStatus) ? (
                         <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold overflow-hidden">
                           <Link href={job.salesDocId ? `/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}` : `/app/jobs/${job.id}`}>
                             <div className="flex items-center justify-center truncate">
@@ -347,11 +350,20 @@ export function JobList({
                           </Link>
                         </Button>
                       ) : (
-                        job.status === 'DONE' && canDoBilling && (
-                          <Button className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline" onClick={() => setBillingJob(job)}>
-                            <Receipt className="mr-2 h-4 w-4" />ออกบิล
-                          </Button>
-                        )
+                        <>
+                          {job.status === 'DONE' && canDoBilling && (
+                            <Button className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline" onClick={() => setBillingJob(job)}>
+                              <Receipt className="mr-2 h-4 w-4" />ออกบิล
+                            </Button>
+                          )}
+                          {hasQuotation && (
+                            <Button asChild variant="ghost" className="w-full h-8 text-primary hover:text-primary hover:bg-primary/5 text-[10px] font-bold border border-dashed border-primary/20">
+                              <Link href={`/app/office/documents/quotation/${job.salesDocId}`}>
+                                <Eye className="mr-1 h-3 w-3" /> ดูใบเสนอราคา {job.salesDocNo}
+                              </Link>
+                            </Button>
+                          )}
+                        </>
                       )}
                       
                       {canDoBilling && job.status === 'DONE' && (
