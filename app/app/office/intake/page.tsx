@@ -183,7 +183,6 @@ export default function IntakePage() {
   const onSubmit = async (values: z.infer<typeof intakeSchema>) => {
     if (!db || !storage || !profile || isViewer) return;
 
-    // MANDATORY PHOTO CHECK
     if (photos.length === 0) {
       toast({ 
         variant: "destructive", 
@@ -206,13 +205,16 @@ export default function IntakePage() {
         const jobDocRef = doc(collection(db, "jobs"));
         const jobId = jobDocRef.id;
 
-        // 1. Upload photos first
-        if (photos.length > 0) {
-            for (const photo of photos) {
+        // Upload photos with error handling
+        for (const photo of photos) {
+            try {
                 const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name || 'blob'}`);
                 await uploadBytes(photoRef, photo);
                 const url = await getDownloadURL(photoRef);
                 photoURLs.push(url);
+            } catch (uploadErr: any) {
+                console.error("Upload error:", uploadErr);
+                throw new Error(`อัปโหลดรูปภาพล้มเหลว: ${uploadErr.message || "ปัญหาการเชื่อมต่อ"}`);
             }
         }
 
@@ -225,9 +227,7 @@ export default function IntakePage() {
             department: values.department,
             mainDepartment: values.department, 
             description: values.description,
-            customerSnapshot: { 
-              ...selectedCustomer // Capture FULL customer details for future documents
-            },
+            customerSnapshot: { ...selectedCustomer },
             status: "RECEIVED",
             customerType: isActuallyNew ? 'NEW' : 'EXISTING',
             customerAcquisitionSource: marketingSource,
@@ -247,7 +247,6 @@ export default function IntakePage() {
             jobData.mechanicDetails = values.mechanicDetails;
         }
 
-        // 2. Batch write
         const batch = writeBatch(db);
         batch.set(jobDocRef, sanitizeForFirestore(jobData));
         
@@ -264,20 +263,19 @@ export default function IntakePage() {
         
         toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
         
-        // Safety: Snapshot current previews then clear state
+        // Final state cleanup
         const currentPreviews = [...photoPreviews];
         form.reset();
         setPhotos([]);
         setPhotoPreviews([]);
         setCustomerSearch("");
         
-        // Revoke URLs after state is cleared to avoid image load errors
         currentPreviews.forEach(url => {
             try { URL.revokeObjectURL(url); } catch (e) {}
         });
 
     } catch (error: any) {
-        console.error("Intake Error:", error);
+        console.error("Intake Submission Error:", error);
         toast({ variant: "destructive", title: "สร้างงานไม่สำเร็จ", description: error.message || "เกิดข้อผิดพลาดในการบันทึกหรืออัปโหลดรูป" });
     } finally {
         setIsSubmitting(false);
@@ -290,7 +288,7 @@ export default function IntakePage() {
           try { URL.revokeObjectURL(url); } catch (e) {}
       });
     };
-  }, []);
+  }, [photoPreviews]);
 
   return (
     <>

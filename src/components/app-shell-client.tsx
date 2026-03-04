@@ -22,16 +22,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
 
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      if (process.env.NODE_ENV === "production") {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js');
-        });
-      }
-    }
-  }, []);
-
   const isPublicRoute =
     pathname === "/" ||
     pathname === "/login" ||
