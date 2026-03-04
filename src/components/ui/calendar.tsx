@@ -18,7 +18,6 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      hideHead // Cut the weekdays row (Su, Mo, Tu...) permanently to fix column misalignment
       className={cn("p-3", className)}
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
@@ -32,11 +31,10 @@ function Calendar({
         ),
         nav_button_previous: "absolute left-1",
         nav_button_next: "absolute right-1",
-        table: "w-full border-collapse",
-        head: "hidden", // Double-ensure the head is hidden
-        head_row: "hidden",
-        head_cell: "hidden",
-        row: "grid grid-cols-7 w-full mt-2 gap-1 justify-items-center", // Force 7-column fixed grid
+        table: "w-full border-collapse space-y-1",
+        head_row: "flex",
+        head_cell: "text-blue-600 rounded-md w-9 font-bold text-[10px] uppercase text-center",
+        row: "flex w-full mt-2",
         cell: "h-9 w-9 text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
         day: cn(
           buttonVariants({ variant: "ghost" }),
