@@ -4,7 +4,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, onSnapshot, query, orderBy, Timestamp, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, Timestamp, getDocs, limit, where } from "firebase/firestore";
 import { DateRange } from "react-day-picker";
 import { 
   subDays, 
@@ -119,8 +119,9 @@ function AppDashboardPage() {
       setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
-    // Fetch archived jobs for selected year
-    const unsubArchived = onSnapshot(collection(db, `jobsArchive_${selectedYear}`), (snap) => {
+    // Fetch archived jobs for selected year with a reasonable limit for mobile performance
+    const archivedQuery = query(collection(db, `jobsArchive_${selectedYear}`), orderBy("lastActivityAt", "desc"), limit(500));
+    const unsubArchived = onSnapshot(archivedQuery, (snap) => {
       setArchivedJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
@@ -206,8 +207,14 @@ function AppDashboardPage() {
         dept,
         label: deptLabel(dept),
         count: deptJobs.length,
-        over7: deptJobs.filter(j => differenceInDays(now, toDateSafe(j.createdAt)!) > 7).length,
-        over14: deptJobs.filter(j => differenceInDays(now, toDateSafe(j.createdAt)!) > 14).length,
+        over7: deptJobs.filter(j => {
+            const dt = toDateSafe(j.createdAt);
+            return dt && differenceInDays(now, dt) > 7;
+        }).length,
+        over14: deptJobs.filter(j => {
+            const dt = toDateSafe(j.createdAt);
+            return dt && differenceInDays(now, dt) > 14;
+        }).length,
       };
     }).filter(d => d.count > 0);
 
@@ -262,7 +269,7 @@ function AppDashboardPage() {
       };
     });
 
-    // 6. Customer Acquisition Stats (REFINED LOGIC)
+    // 6. Customer Acquisition Stats (OPTIMIZED)
     const acqCounts = {
       EXISTING: 0,
       REFERRAL: 0,
@@ -274,9 +281,12 @@ function AppDashboardPage() {
     };
 
     const periodStart = startOfDay(from);
-    const periodEnd = endOfDay(to);
     
-    // Combine ALL jobs opened in this period (Active + Archive)
+    // Use a Map for fast customer lookup
+    const customerMap = new Map<string, Customer>();
+    customers.forEach(c => customerMap.set(c.id, c));
+
+    // Combine all jobs in period
     const allJobsInPeriod = [
       ...jobs.filter(j => isInPeriod(toDateSafe(j.createdAt))),
       ...archivedJobs.filter(j => isInPeriod(toDateSafe(j.createdAt)))
@@ -286,17 +296,14 @@ function AppDashboardPage() {
     const uniqueCidsInPeriod = Array.from(new Set(allJobsInPeriod.map(j => j.customerId).filter(Boolean)));
 
     uniqueCidsInPeriod.forEach(cid => {
-      const customer = customers.find(c => c.id === cid);
+      const customer = customerMap.get(cid);
       if (!customer) return;
 
       const customerCreatedAt = toDateSafe(customer.createdAt);
 
-      // CLASSIFY: If customer was created BEFORE the period start, they are EXISTING (ลูกค้าเก่า)
       if (customerCreatedAt && isBefore(startOfDay(customerCreatedAt), periodStart)) {
         acqCounts.EXISTING++;
       } else {
-        // Customer was created WITHIN the period -> Use acquisition source
-        // Prefer source from the job if available, fallback to customer profile
         const representativeJob = allJobsInPeriod.find(j => j.customerId === cid);
         const rawSrc = (representativeJob?.customerAcquisitionSource || customer.acquisitionSource || 'OTHER').toString().toUpperCase();
         
@@ -341,7 +348,10 @@ function AppDashboardPage() {
       },
       { 
         label: "งานค้างเกิน 14 วัน", 
-        count: backlog.filter(j => differenceInDays(new Date(), toDateSafe(j.createdAt)!) > 14).length, 
+        count: backlog.filter(j => {
+            const dt = toDateSafe(j.createdAt);
+            return dt && differenceInDays(new Date(), dt) > 14;
+        }).length, 
         link: "/app/jobs",
         icon: AlertCircle,
         variant: "destructive"
@@ -666,4 +676,3 @@ export default function ManagementDashboardPage() {
 
   return <AppDashboardPage />;
 }
-    

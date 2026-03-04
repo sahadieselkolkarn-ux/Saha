@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -30,15 +31,20 @@ export default function KioskPage() {
   // KIOSK FEATURE FLAG - Set to true to enable
   const KIOSK_ENABLED = true;
 
-  // Use a stable kiosk ID from local storage
+  // Use a stable kiosk ID from local storage with safety for mobile private browsing
   const kioskId = useMemo(() => {
     if (typeof window === 'undefined') return null;
-    let id = localStorage.getItem('kiosk_device_id');
-    if (!id) {
-      id = 'kiosk_' + Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('kiosk_device_id', id);
+    try {
+        let id = localStorage.getItem('kiosk_device_id');
+        if (!id) {
+          id = 'kiosk_' + Math.random().toString(36).substring(2, 15);
+          localStorage.setItem('kiosk_device_id', id);
+        }
+        return id;
+    } catch (e) {
+        console.warn("LocalStorage access blocked, using session fallback");
+        return 'session_' + Math.random().toString(36).substring(2, 8);
     }
-    return id;
   }, []);
 
   const rotateToken = useCallback(async (isManual: boolean = false) => {

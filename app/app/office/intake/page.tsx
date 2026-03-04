@@ -195,7 +195,7 @@ export default function IntakePage() {
 
     const selectedCustomer = customers.find(c => c.id === values.customerId);
     if (!selectedCustomer) {
-        toast({ variant: "destructive", title: "ไม่พบข้อมูลลูกค้า" });
+        toast({ variant: "destructive", title: "ไม่พบข้อมูลลูกค้า", description: "กรุณาเลือกลูกค้าใหม่อีกครั้งค่ะ" });
         return;
     }
     
@@ -209,7 +209,7 @@ export default function IntakePage() {
         // 1. Upload photos first
         if (photos.length > 0) {
             for (const photo of photos) {
-                const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name}`);
+                const photoRef = ref(storage, `jobs/${jobId}/${Date.now()}-${photo.name || 'blob'}`);
                 await uploadBytes(photoRef, photo);
                 const url = await getDownloadURL(photoRef);
                 photoURLs.push(url);
@@ -264,11 +264,17 @@ export default function IntakePage() {
         
         toast({ title: "สร้างใบงานสำเร็จ", description: `รหัสงาน: ${jobId}` });
         
+        // Safety: Snapshot current previews then clear state
+        const currentPreviews = [...photoPreviews];
         form.reset();
         setPhotos([]);
-        photoPreviews.forEach(url => URL.revokeObjectURL(url));
         setPhotoPreviews([]);
         setCustomerSearch("");
+        
+        // Revoke URLs after state is cleared to avoid image load errors
+        currentPreviews.forEach(url => {
+            try { URL.revokeObjectURL(url); } catch (e) {}
+        });
 
     } catch (error: any) {
         console.error("Intake Error:", error);
@@ -280,9 +286,11 @@ export default function IntakePage() {
 
   useEffect(() => {
     return () => {
-      photoPreviews.forEach(url => URL.revokeObjectURL(url));
+      photoPreviews.forEach(url => {
+          try { URL.revokeObjectURL(url); } catch (e) {}
+      });
     };
-  }, [photoPreviews]);
+  }, []);
 
   return (
     <>
