@@ -464,14 +464,16 @@ function JobDetailsPageContent() {
   };
 
   const handleDeleteActivityPhoto = async (activityId: string, url: string) => {
-    if (!db || !storage || !profile || !isUserAdmin || isViewOnly) return;
+    if (!db || !storage || !profile || !isUserAdmin) return;
+    if (job?.isArchived) {
+        toast({ variant: "destructive", title: "ไม่สามารถลบรูปในประวัติได้" });
+        return;
+    }
     if (!confirm("คุณต้องการลบรูปภาพกิจกรรมนี้ออกจากระบบถาวรใช่หรือไม่?")) return;
     
     setIsSubmittingNote(true);
     try {
-        const jobRef = getJobRef();
-        if (!jobRef) return;
-        const activityRef = doc(db, jobRef.path, "activities", activityId);
+        const activityRef = doc(db, "jobs", jobId, "activities", activityId);
         
         await updateDoc(activityRef, {
             photos: arrayRemove(url)
@@ -896,13 +898,13 @@ function JobDetailsPageContent() {
                                           <a href={url} target="_blank" rel="noopener noreferrer" className="block h-full w-full">
                                               <Image src={url} alt="Activity" width={100} height={100} className="rounded-md object-cover w-full aspect-square hover:opacity-80 transition-opacity" />
                                           </a>
-                                          {isUserAdmin && !isViewOnly && (
+                                          {isUserAdmin && !job.isArchived && (
                                               <Button 
                                                   type="button" 
                                                   variant="destructive" 
                                                   size="icon" 
                                                   className="absolute -top-1 -right-1 h-5 w-5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10" 
-                                                  onClick={(e) => { e.preventDefault(); handleDeleteActivityPhoto(activity.id!, url); }}
+                                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteActivityPhoto(activity.id!, url); }}
                                               >
                                                   <Trash2 className="h-3 w-3" />
                                               </Button>
