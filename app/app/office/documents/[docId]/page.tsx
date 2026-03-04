@@ -81,9 +81,10 @@ function DocumentView({
     }
 
     const isTaxDoc = ['TAX_INVOICE', 'RECEIPT', 'BILLING_NOTE', 'CREDIT_NOTE', 'WITHHOLDING_TAX'].includes(document.docType);
+    const isBilling = document.docType === 'BILLING_NOTE';
     
-    // PRIORITY LOGIC: Strictly use data from Customer Management if available
-    const displayCustomerName = isTaxDoc 
+    // NEW LOGIC: Pull name based on useTax flag
+    const displayCustomerName = customer.useTax 
         ? (customer.taxName || customer.name) 
         : (customer.name);
         
@@ -109,7 +110,6 @@ function DocumentView({
         : (document.storeSnapshot.branch ? `สาขา ${document.storeSnapshot.branch}` : '');
 
     const isQuotation = document.docType === 'QUOTATION';
-    const isBilling = document.docType === 'BILLING_NOTE';
     const isReceipt = document.docType === 'RECEIPT';
     
     const labelSender = isQuotation ? 'ผู้เสนอราคา' : (isBilling ? 'ผู้วางบิล' : (isReceipt ? 'ผู้รับเงิน' : 'ผู้ส่งสินค้า'));
@@ -129,7 +129,8 @@ function DocumentView({
                         </p>
                         <p className="text-[11px]">
                             โทร {document.storeSnapshot.phone}
-                            {document.storeSnapshot.taxId && (
+                            {/* REMOVE Tax ID for Billing Notes as requested visually */}
+                            {document.storeSnapshot.taxId && !isBilling && (
                                 <span className="ml-4">เลขประจำตัวผู้เสียภาษี {document.storeSnapshot.taxId}</span>
                             )}
                         </p>
