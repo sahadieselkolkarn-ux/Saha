@@ -29,8 +29,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
+import { Loader2, Home } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -149,11 +150,23 @@ export default function LoginPage() {
               ) : null}
               Login
             </Button>
-            <div className="text-center text-sm">
-              Don&apos;t have an account?{" "}
-              <Link href="/signup" className="underline">
-                Sign up
-              </Link>
+            
+            <div className="flex flex-col items-center gap-3 text-sm w-full">
+              <div className="text-muted-foreground">
+                Don&apos;t have an account?{" "}
+                <Link href="/signup" className="underline text-primary font-bold">
+                  Sign up
+                </Link>
+              </div>
+              
+              <Separator />
+              
+              <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
+                <Link href="/" className="flex items-center gap-2">
+                  <Home className="h-4 w-4" />
+                  กลับหน้าหลัก (HOME)
+                </Link>
+              </Button>
             </div>
           </CardFooter>
         </form>
