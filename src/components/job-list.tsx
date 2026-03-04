@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { 
@@ -146,49 +147,36 @@ export function JobList({
 
   useEffect(() => {
     if (!db) return;
-
     setLoading(true);
     setError(null);
-    setIndexUrl(null);
-
     const qConstraints: QueryConstraint[] = [];
     if (department) qConstraints.push(where('department', '==', department));
     if (assigneeUid) qConstraints.push(where('assigneeUid', '==', assigneeUid));
-    if (statusConfig.inStatus.length > 0) {
-      qConstraints.push(where('status', 'in', statusConfig.inStatus));
-    }
+    if (statusConfig.inStatus.length > 0) qConstraints.push(where('status', 'in', statusConfig.inStatus));
     qConstraints.push(orderBy('lastActivityAt', 'desc'));
     qConstraints.push(limit(200));
 
     const q = query(collection(db, "jobs"), ...qConstraints);
-    
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let jobsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
-      
       const term = searchTerm.toLowerCase().trim();
       if (term) {
         jobsData = jobsData.filter(j => 
           (j.customerSnapshot?.name || "").toLowerCase().includes(term) ||
           (j.customerSnapshot?.phone || "").includes(term) ||
           (j.description || "").toLowerCase().includes(term) ||
-          (j.id && j.id.toLowerCase().includes(term)) ||
-          (j.carServiceDetails?.licensePlate || "").toLowerCase().includes(term) ||
-          (j.carSnapshot?.licensePlate || "").toLowerCase().includes(term)
+          (j.id && j.id.toLowerCase().includes(term))
         );
       }
-      
       setJobs(jobsData);
       setLoading(false);
-    }, (err: FirestoreError) => {
-      console.error("Error fetching jobs:", err);
-      setError(err);
+    }, (err) => {
       if (err.message?.includes('requires an index')) {
         const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
         if (urlMatch) setIndexUrl(urlMatch[0]);
       }
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, [db, department, assigneeUid, statusConfig.key, searchTerm]);
 
@@ -198,24 +186,13 @@ export function JobList({
     try {
       const batch = writeBatch(db);
       const jobRef = doc(db, "jobs", jobId);
-      batch.update(jobRef, { 
-        status: nextStatus, 
-        lastActivityAt: serverTimestamp(), 
-        updatedAt: serverTimestamp() 
-      });
-      batch.set(doc(collection(jobRef, "activities")), { 
-        text: activityText, 
-        userName: profile.displayName, 
-        userId: profile.uid, 
-        createdAt: serverTimestamp() 
-      });
+      batch.update(jobRef, { status: nextStatus, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      batch.set(doc(collection(jobRef, "activities")), { text: activityText, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
       await batch.commit();
       toast({ title: "อัปเดตสถานะสำเร็จ" });
     } catch (e: any) { 
-      toast({ variant: "destructive", title: "ไม่สำเร็จ", description: e.message }); 
-    } finally { 
-      setIsProcessing(null); 
-    }
+      toast({ variant: "destructive", title: "Error", description: e.message }); 
+    } finally { setIsProcessing(null); }
   };
 
   const handleAcceptJob = async (job: Job) => {
@@ -225,10 +202,10 @@ export function JobList({
       const batch = writeBatch(db);
       const jobRef = doc(db, "jobs", job.id);
       batch.update(jobRef, { status: 'IN_PROGRESS', assigneeUid: profile.uid, assigneeName: profile.displayName, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      batch.set(doc(collection(jobRef, "activities")), { text: `ช่างรับงานเองเรียบร้อยแล้ว แผนก ${deptLabel(job.department)}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+      batch.set(doc(collection(jobRef, "activities")), { text: `ช่างรับงานเองเรียบร้อยแล้ว`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
       await batch.commit();
       toast({ title: "รับงานสำเร็จ" });
-    } catch (e: any) { toast({ variant: "destructive", title: "รับงานไม่สำเร็จ", description: e.message }); } finally { setIsProcessing(null); }
+    } catch (e: any) { toast({ variant: "destructive", title: "Error", description: e.message }); } finally { setIsProcessing(null); }
   };
 
   const handleOpenAssignQuick = async (job: Job) => {
@@ -239,17 +216,14 @@ export function JobList({
     try {
       if (job.department === 'OUTSOURCE') {
         const q = query(collection(db, "vendors"), where("vendorType", "==", "CONTRACTOR"), where("isActive", "==", true));
-        const snapshot = await getDocs(q);
-        setDeptWorkers(snapshot.docs.map(d => ({ 
-          uid: d.id, 
-          displayName: d.data().companyName 
-        } as any)));
+        const snap = await getDocs(q);
+        setDeptWorkers(snap.docs.map(d => ({ uid: d.id, displayName: d.data().companyName } as any)));
       } else {
         const q = query(collection(db, "users"), where("department", "==", job.department), where("status", "==", "ACTIVE"));
-        const snapshot = await getDocs(q);
-        setDeptWorkers(snapshot.docs.map(d => ({ ...d.data(), uid: d.id } as UserProfile)).filter(u => u.role === 'WORKER'));
+        const snap = await getDocs(q);
+        setDeptWorkers(snap.docs.map(d => ({ ...d.data(), uid: d.id } as UserProfile)).filter(u => u.role === 'WORKER'));
       }
-    } catch (e) { toast({ variant: 'destructive', title: "ไม่สามารถโหลดรายชื่อได้" }); } finally { setIsLoadingWorkers(false); }
+    } catch (e) { toast({ variant: 'destructive', title: "Error" }); } finally { setIsLoadingWorkers(false); }
   };
 
   const handleConfirmAssign = async () => {
@@ -265,10 +239,10 @@ export function JobList({
       await batch.commit();
       toast({ title: "มอบหมายงานสำเร็จ" });
       setAssigningJob(null);
-    } catch (e: any) { toast({ variant: 'destructive', title: "มอบหมายล้มเหลว", description: e.message }); } finally { setIsProcessing(null); }
+    } catch (e: any) { toast({ variant: 'destructive', title: "Error", description: e.message }); } finally { setIsProcessing(null); }
   };
 
-  if (indexUrl) return (<div className="flex flex-col items-center justify-center p-12 text-center bg-muted/20 rounded-lg border-2 border-dashed"><AlertCircle className="h-12 w-12 text-destructive mb-4" /><h3 className="text-lg font-bold mb-2">ต้องสร้างดัชนี (Index) สำหรับคิวรีนี้</h3><Button asChild><a href={indexUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4" />กดเพื่อสร้าง Index</a></Button></div>);
+  if (indexUrl) return (<div className="flex flex-col items-center justify-center p-12 text-center bg-muted/20 border-2 border-dashed rounded-lg"><AlertCircle className="h-12 w-12 text-destructive mb-4" /><h3 className="text-lg font-bold mb-2">ต้องสร้างดัชนี (Index) ก่อน</h3><Button asChild><a href={indexUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4" />สร้าง Index</a></Button></div>);
   if (loading) return (<div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8" /></div>);
   if (jobs.length === 0) return (<Card className="text-center py-12"><CardHeader><CardTitle className="text-muted-foreground">{emptyTitle}</CardTitle><CardDescription>{emptyDescription}</CardDescription></CardHeader></Card>);
 
@@ -277,8 +251,6 @@ export function JobList({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {jobs.map((job) => {
           const isOwnDept = profile?.department === job.department;
-          
-          // CRITICAL FIX: Distinguish between PRE-SALES (Quotation) and ACTUAL REVENUE BILLS (Delivery Note/Tax Invoice)
           const hasActualBill = !!job.salesDocId && (job.salesDocType === 'DELIVERY_NOTE' || job.salesDocType === 'TAX_INVOICE');
           const hasQuotation = !!job.salesDocId && job.salesDocType === 'QUOTATION';
           const isPickupStatus = job.status === 'WAITING_CUSTOMER_PICKUP';
@@ -286,7 +258,7 @@ export function JobList({
           return (
             <Card key={job.id} className="flex flex-col overflow-hidden hover:shadow-md transition-shadow">
               <div className="relative aspect-video bg-muted">
-                {job.photos && job.photos.length > 0 ? (<Image src={job.photos[0]} alt={job.description} fill className="object-cover" />) : (<div className="flex h-full items-center justify-center text-muted-foreground"><FileImage className="h-10 w-10 opacity-20" /></div>)}
+                {job.photos?.[0] ? (<Image src={job.photos[0]} alt={job.description} fill className="object-cover" />) : (<div className="flex h-full items-center justify-center text-muted-foreground"><FileImage className="h-10 w-10 opacity-20" /></div>)}
                 <Badge className={cn("absolute top-2 right-2 shadow-sm border", getStatusStyles(job.status))}>{jobStatusLabel(job.status)}</Badge>
               </div>
               <CardHeader className="p-4 space-y-1">
@@ -295,84 +267,24 @@ export function JobList({
               </CardHeader>
               <CardContent className="px-4 pb-4 flex-grow"><p className="text-sm line-clamp-2 text-muted-foreground">{job.description}</p></CardContent>
               <CardFooter className="px-4 pb-4 pt-0 flex flex-col gap-2">
-                <Button asChild className="w-full h-9" variant="secondary">
-                  <Link href={`/app/jobs/${job.id}`}>
-                    ดูรายละเอียด
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-                
+                <Button asChild className="w-full h-9" variant="secondary"><Link href={`/app/jobs/${job.id}`}>ดูรายละเอียด <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
                 <div className="w-full flex flex-col gap-2">
-                  {canAssignWork && job.status === 'RECEIVED' && (
-                    <Button onClick={() => handleOpenAssignQuick(job)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold" variant="default">
-                      <UserCheck className="mr-2 h-4 w-4" />มอบหมายงาน
-                    </Button>
-                  )}
-                  
-                  {isMgmtOrOffice && job.status === 'WAITING_APPROVE' && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px]" onClick={() => handleUpdateStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติการซ่อมแล้ว')} disabled={isProcessing === job.id}>
-                        <Check className="mr-1 h-3 w-3" />อนุมัติ
-                      </Button>
-                      <Button variant="outline" className="h-9 border-destructive text-destructive hover:bg-destructive/10 text-[10px] font-bold" onClick={() => handleUpdateStatus(job.id, 'DONE', 'ลูกค้าไม่อนุมัติการซ่อม - ส่งไปรอทำบิล')} disabled={isProcessing === job.id}>
-                        <Ban className="mr-1 h-3 w-3" />ไม่อนุมัติ
-                      </Button>
-                    </div>
-                  )}
-
-                  {isMgmtOrOffice && job.status === 'PENDING_PARTS' && (
-                    <Button className="w-full h-9 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px]" onClick={() => handleUpdateStatus(job.id, 'IN_REPAIR_PROCESS', 'อะไหล่มาครบแล้ว เริ่มดำเนินการซ่อม')} disabled={isProcessing === job.id}>
-                      <PackageCheck className="mr-2 h-4 w-4" />อะไหล่มาครบแล้ว
-                    </Button>
-                  )}
-
-                  {isWorker && isOwnDept && job.status === 'RECEIVED' && (
-                    <Button onClick={() => handleAcceptJob(job)} disabled={isProcessing === job.id} className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold">
-                      {isProcessing === job.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}รับงานนี้
-                    </Button>
-                  )}
-                  
-                  {job.status === 'WAITING_QUOTATION' && !hasActualBill && !hasQuotation && (
-                    <Button asChild={canDoBilling} className={cn("w-full h-9 font-bold", !canDoBilling && "hidden")} variant="default" disabled={!canDoBilling}>
-                      {canDoBilling ? <Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link> : null}
-                    </Button>
-                  )}
-
+                  {canAssignWork && job.status === 'RECEIVED' && (<Button onClick={() => handleOpenAssignQuick(job)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold"><UserCheck className="mr-2 h-4 w-4" />มอบหมายงาน</Button>)}
+                  {isMgmtOrOffice && job.status === 'WAITING_APPROVE' && (<div className="grid grid-cols-2 gap-2"><Button className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px]" onClick={() => handleUpdateStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติการซ่อมแล้ว')} disabled={!!isProcessing}><Check className="mr-1 h-3 w-3" />อนุมัติ</Button><Button variant="outline" className="h-9 border-destructive text-destructive hover:bg-destructive/10 text-[10px] font-bold" onClick={() => handleUpdateStatus(job.id, 'DONE', 'ลูกค้าไม่อนุมัติการซ่อม - ส่งไปรอทำบิล')} disabled={!!isProcessing}><Ban className="mr-1 h-3 w-3" />ไม่อนุมัติ</Button></div>)}
+                  {isMgmtOrOffice && job.status === 'PENDING_PARTS' && (<Button className="w-full h-9 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px]" onClick={() => handleUpdateStatus(job.id, 'IN_REPAIR_PROCESS', 'อะไหล่มาครบแล้ว เริ่มดำเนินการซ่อม')} disabled={!!isProcessing}><PackageCheck className="mr-2 h-4 w-4" />อะไหล่มาครบแล้ว</Button>)}
+                  {isWorker && isOwnDept && job.status === 'RECEIVED' && (<Button onClick={() => handleAcceptJob(job)} disabled={isProcessing === job.id} className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold">{isProcessing === job.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}รับงานนี้</Button>)}
+                  {job.status === 'WAITING_QUOTATION' && !hasActualBill && canDoBilling && (<Button asChild className="w-full h-9 font-bold" variant="default"><Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link></Button>)}
                   {['DONE', 'WAITING_CUSTOMER_PICKUP', 'CLOSED'].includes(job.status) && (
                     <div className="flex flex-col gap-2 w-full">
                       {(hasActualBill || isPickupStatus) ? (
-                        <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold overflow-hidden">
-                          <Link href={job.salesDocId ? `/app/office/documents/${job.salesDocType === 'DELIVERY_NOTE' ? 'delivery-note' : 'tax-invoice'}/${job.salesDocId}` : `/app/jobs/${job.id}`}>
-                            <div className="flex items-center justify-center truncate">
-                                <Eye className="mr-2 h-4 w-4 shrink-0" />
-                                <span className="truncate">ดูบิล {job.salesDocNo || ""}</span>
-                            </div>
-                          </Link>
-                        </Button>
+                        <Button asChild variant="outline" className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold overflow-hidden"><Link href={`/app/jobs/${job.id}`}><div className="flex items-center justify-center truncate"><Eye className="mr-2 h-4 w-4 shrink-0" /><span className="truncate">ดูบิล {job.salesDocNo || ""}</span></div></Link></Button>
                       ) : (
                         <>
-                          {job.status === 'DONE' && canDoBilling && (
-                            <Button className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline" onClick={() => setBillingJob(job)}>
-                              <Receipt className="mr-2 h-4 w-4" />ออกบิล
-                            </Button>
-                          )}
-                          {hasQuotation && (
-                            <Button asChild variant="ghost" className="w-full h-8 text-primary hover:text-primary hover:bg-primary/5 text-[10px] font-bold border border-dashed border-primary/20">
-                              <Link href={`/app/office/documents/quotation/${job.salesDocId}`}>
-                                <Eye className="mr-1 h-3 w-3" /> ดูใบเสนอราคา {job.salesDocNo}
-                              </Link>
-                            </Button>
-                          )}
+                          {job.status === 'DONE' && canDoBilling && (<Button className="w-full h-9 border-primary text-primary hover:bg-primary/10 font-bold" variant="outline" onClick={() => setBillingJob(job)}><Receipt className="mr-2 h-4 w-4" />ออกบิล</Button>)}
+                          {hasQuotation && (<Button asChild variant="ghost" className="w-full h-8 text-primary hover:text-primary hover:bg-primary/5 text-[10px] font-bold border border-dashed border-primary/20"><Link href={`/app/office/documents/quotation/${job.salesDocId}`}><Eye className="mr-1 h-3 w-3" /> ดูใบเสนอราคา {job.salesDocNo}</Link></Button>)}
                         </>
                       )}
-                      
-                      {canDoBilling && job.status === 'DONE' && (
-                        <Button asChild variant="ghost" className="w-full h-8 text-destructive hover:text-destructive hover:bg-destructive/10 text-[10px] font-bold">
-                          <Link href={`/app/jobs/${job.id}?action=revert`}>
-                            <RotateCcw className="mr-1 h-3 w-3" /> ส่งกลับแก้ไข
-                          </Link>
-                        </Button>
-                      )}
+                      {canDoBilling && job.status === 'DONE' && (<Button asChild variant="ghost" className="w-full h-8 text-destructive hover:text-destructive hover:bg-destructive/10 text-[10px] font-bold"><Link href={`/app/jobs/${job.id}?action=revert`}><RotateCcw className="mr-1 h-3 w-3" /> ส่งกลับแก้ไข</Link></Button>)}
                     </div>
                   )}
                 </div>
@@ -384,66 +296,16 @@ export function JobList({
       
       <Dialog open={!!assigningJob} onOpenChange={(open) => !open && setAssigningJob(null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserCheck className="h-5 w-5 text-amber-500" />
-              {assigningJob?.department === 'OUTSOURCE' ? 'มอบหมายผู้รับเหมางานนอก' : 'มอบหมายผู้รับผิดชอบงาน'}
-            </DialogTitle>
-            <DialogDescription>
-              {assigningJob?.department === 'OUTSOURCE' 
-                ? `เลือกร้านผู้รับเหมาเพื่อส่งงานของ ${assigningJob?.customerSnapshot.name}`
-                : `เลือกพนักงานเพื่อรับผิดชอบงานของ ${assigningJob?.customerSnapshot.name}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label>{assigningJob?.department === 'OUTSOURCE' ? 'รายชื่อผู้รับเหมา (Vendors)' : 'พนักงานตำแหน่งช่าง'}</Label>
-              {isLoadingWorkers ? (
-                <div className="flex items-center justify-center p-4 border rounded-md border-dashed">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  <span>กำลังโหลดรายชื่อ...</span>
-                </div>
-              ) : (
-                <Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={assigningJob?.department === 'OUTSOURCE' ? "เลือกผู้รับเหมา..." : "เลือกรายชื่อพนักงาน..."} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {deptWorkers.length > 0 ? (
-                      deptWorkers.map((worker) => (
-                        <SelectItem key={worker.uid} value={worker.uid}>{worker.displayName}</SelectItem>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-sm text-muted-foreground italic">
-                        {assigningJob?.department === 'OUTSOURCE' ? 'ไม่พบรายชื่อผู้รับเหมาในระบบ' : 'ไม่พบพนักงานในแผนกนี้'}
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setAssigningJob(null)} disabled={!!isProcessing}>ยกเลิก</Button>
-            <Button onClick={handleConfirmAssign} disabled={!selectedWorkerId || !!isProcessing}>
-              {isProcessing === assigningJob?.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              ยืนยันการมอบหมาย
-            </Button>
-          </DialogFooter>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-amber-500" />{assigningJob?.department === 'OUTSOURCE' ? 'มอบหมายผู้รับเหมา' : 'มอบหมายพนักงาน'}</DialogTitle></DialogHeader>
+          <div className="py-4 space-y-4">{isLoadingWorkers ? (<div className="flex items-center justify-center p-4 border rounded-md border-dashed"><Loader2 className="h-5 w-5 animate-spin mr-2" /><span>กำลังโหลด...</span></div>) : (<Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}><SelectTrigger><SelectValue placeholder="เลือกรายชื่อ..." /></SelectTrigger><SelectContent>{deptWorkers.length > 0 ? deptWorkers.map(w => (<SelectItem key={w.uid} value={w.uid}>{w.displayName}</SelectItem>)) : <div className="p-4 text-center text-sm italic">ไม่พบรายชื่อ</div>}</SelectContent></Select>)}</div>
+          <DialogFooter><Button variant="outline" onClick={() => setAssigningJob(null)}>ยกเลิก</Button><Button onClick={handleConfirmAssign} disabled={!selectedWorkerId || !!isProcessing}>ยืนยัน</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={!!billingJob} onOpenChange={(open) => !open && setBillingJob(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
-            <AlertDialogDescription>กรุณาเลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={setBillingJob.bind(null, null)} className="w-full sm:w-auto">ยกเลิก</Button>
-            <Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button>
-            <Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button>
-          </AlertDialogFooter>
+          <AlertDialogHeader><AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle><AlertDialogDescription>เลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{billingJob?.customerSnapshot.name}</b></AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2"><Button variant="outline" onClick={() => setBillingJob(null)} className="w-full sm:w-auto">ยกเลิก</Button><Button variant="secondary" onClick={() => { if (billingJob) router.push(`/app/office/documents/delivery-note/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button><Button onClick={() => { if (billingJob) router.push(`/app/office/documents/tax-invoice/new?jobId=${billingJob.id}`); setBillingJob(null); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
