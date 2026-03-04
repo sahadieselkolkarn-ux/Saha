@@ -82,7 +82,7 @@ export async function restoreJobFromArchive(
   userProfile: UserProfile
 ) {
   const archiveColName = archiveCollectionNameByYear(year);
-  const archiveRef = doc(db, archiveColName, jobId);
+  const archiveRef = doc(archiveColName, jobId);
   const jobRef = doc(db, 'jobs', jobId);
 
   await runTransaction(db, async (transaction) => {
@@ -109,6 +109,16 @@ export async function restoreJobFromArchive(
     };
 
     transaction.set(jobRef, sanitizeForFirestore(restoredData));
+    
+    // LOG ACTIVITY: Standardized log for job restoration
+    const activityRef = doc(collection(jobRef, 'activities'));
+    transaction.set(activityRef, {
+        text: `Admin กู้คืนงานจากประวัติ (ปี ${year}) กลับเข้าสู่ระบบงานปัจจุบัน`,
+        userName: userProfile.displayName,
+        userId: userProfile.uid,
+        createdAt: serverTimestamp()
+    });
+
     transaction.delete(archiveRef);
   });
 

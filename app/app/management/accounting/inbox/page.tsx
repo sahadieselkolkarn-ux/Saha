@@ -206,27 +206,6 @@ function AccountingInboxPageContent() {
     }
   };
 
-  const handleOpenConfirmDialog = (doc: WithId<DocumentType>) => {
-    setConfirmError(null);
-    setConfirmingDoc(doc);
-    setSelectedPaymentDate(doc.paymentDate || doc.docDate || format(new Date(), "yyyy-MM-dd"));
-    if (doc.suggestedPayments && doc.suggestedPayments.length > 0) {
-        setSuggestedPayments(doc.suggestedPayments.map(p => ({ accountId: p.accountId, amount: p.amount })));
-    } else {
-        const initialId = doc.receivedAccountId || doc.suggestedAccountId || accounts.find(a=>a.type==='CASH')?.id || accounts[0]?.id || "";
-        setSuggestedPayments([{
-            accountId: initialId,
-            amount: doc.grandTotal
-        }]);
-    }
-  };
-
-  const handleUpdatePaymentLine = (index: number, field: string, value: any) => {
-      const newPayments = [...suggestedPayments];
-      (newPayments[index] as any)[field] = value;
-      setSuggestedPayments(newPayments);
-  };
-
   const handleApproveSaleDocument = async () => {
     if (!db || !profile || !confirmingDoc) return;
     setConfirmError(null);
@@ -285,10 +264,20 @@ function AccountingInboxPageContent() {
             });
 
             if (jobId) {
-                transaction.update(doc(db, 'jobs', jobId), {
+                const jobRef = doc(db, 'jobs', jobId);
+                transaction.update(jobRef, {
                     status: 'CLOSED',
                     updatedAt: serverTimestamp(),
                     lastActivityAt: serverTimestamp()
+                });
+
+                // LOG ACTIVITY: Payment confirmed and job closed
+                const activityRef = doc(collection(jobRef, 'activities'));
+                transaction.set(activityRef, {
+                    text: `ฝ่ายบัญชียืนยันรับเงินสด/โอน เลขที่บิล: ${confirmingDoc.docNo} และปิดงานเรียบร้อยค่ะ`,
+                    userName: profile.displayName,
+                    userId: profile.uid,
+                    createdAt: serverTimestamp()
                 });
             }
         } else {
@@ -321,6 +310,18 @@ function AccountingInboxPageContent() {
                 jobId: jobId || null,
                 dueDate: confirmingDoc.dueDate || null,
             });
+
+            if (jobId) {
+                const jobRef = doc(db, 'jobs', jobId);
+                // LOG ACTIVITY: Invoice approved, waiting for receipt
+                const activityRef = doc(collection(jobRef, 'activities'));
+                transaction.set(activityRef, {
+                    text: `ฝ่ายบัญชีตรวจสอบใบกำกับภาษีเลขที่: ${confirmingDoc.docNo} ถูกต้องแล้ว (รอการออกใบเสร็จ)`,
+                    userName: profile.displayName,
+                    userId: profile.uid,
+                    createdAt: serverTimestamp()
+                });
+            }
         }
       });
 
@@ -381,12 +382,25 @@ function AccountingInboxPageContent() {
           updatedAt: serverTimestamp()
         });
 
-        if (isDeliveryNote && docObj.jobId) {
-            transaction.update(doc(db, 'jobs', docObj.jobId), {
-                status: 'CLOSED',
-                updatedAt: serverTimestamp(),
-                lastActivityAt: serverTimestamp()
+        if (docObj.jobId) {
+            const jobRef = doc(db, 'jobs', docObj.jobId);
+            
+            // LOG ACTIVITY: AR Created
+            const activityRef = doc(collection(jobRef, 'activities'));
+            transaction.set(activityRef, {
+                text: `ฝ่ายบัญชียืนยันตั้งยอดค้างชำระ (Credit) ตามเลขที่บิล: ${docObj.docNo}`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp()
             });
+
+            if (isDeliveryNote) {
+                transaction.update(jobRef, {
+                    status: 'CLOSED',
+                    updatedAt: serverTimestamp(),
+                    lastActivityAt: serverTimestamp()
+                });
+            }
         }
       });
       toast({ title: "ตั้งยอดลูกหนี้สำเร็จ", description: isDeliveryNote ? "ใบส่งของเครดิตเรียบร้อย ระบบกำลังปิดงานให้ค่ะ" : "" });
@@ -410,6 +424,18 @@ function AccountingInboxPageContent() {
     };
     try {
       await updateDoc(docRef, updateData);
+      
+      // LOG ACTIVITY: Document rejected
+      if (disputingDoc.jobId) {
+          const jobRef = doc(db, 'jobs', disputingDoc.jobId);
+          await addDoc(collection(jobRef, 'activities'), {
+              text: `ฝ่ายบัญชีตีกลับเอกสาร ${disputingDoc.docNo} ให้แก้ไข: ${disputeReason}`,
+              userName: profile?.displayName || "System",
+              userId: profile?.uid || "system",
+              createdAt: serverTimestamp()
+          });
+      }
+
       toast({ title: "ส่งเอกสารกลับเพื่อแก้ไขแล้ว" });
       setDisputingDoc(null);
       setDisputeReason("");

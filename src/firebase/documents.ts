@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import type { DocumentSettings, Document, DocType, JobStatus, UserProfile } from '@/lib/types';
 import { sanitizeForFirestore } from '@/lib/utils';
+import { docTypeLabel } from '@/lib/ui-labels';
 
 /**
  * Normalizes year to Gregorian (CE).
@@ -212,6 +213,16 @@ export async function createDocument(
     const targetJobId = data.jobId;
     if (targetJobId && typeof targetJobId === 'string' && targetJobId.trim() !== '') {
       const jobRef = doc(db, 'jobs', targetJobId);
+      
+      // LOG ACTIVITY: Standardized log for document creation
+      const activityRef = doc(collection(jobRef, 'activities'));
+      transaction.set(activityRef, {
+        text: `สร้างเอกสาร ${docTypeLabel(docType)} เลขที่: ${finalDocNo}`,
+        userName: userProfile.displayName,
+        userId: userProfile.uid,
+        createdAt: serverTimestamp()
+      });
+
       transaction.update(jobRef, {
         status: newJobStatus || 'WAITING_APPROVE',
         salesDocId: docId,

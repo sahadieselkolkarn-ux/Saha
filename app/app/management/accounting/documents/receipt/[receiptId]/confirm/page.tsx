@@ -403,11 +403,22 @@ function ConfirmReceiptPageContent() {
 
                         // SYNC: If document is fully paid, also close the linked job
                         if (newStatus === 'PAID' && ob.jobId) {
-                            transaction.update(doc(db, 'jobs', ob.jobId), {
+                            const jobRef = doc(db, 'jobs', ob.jobId);
+                            transaction.update(jobRef, {
                                 status: 'CLOSED',
                                 updatedAt: serverTimestamp(),
                                 lastActivityAt: serverTimestamp()
                             });
+
+                            // LOG ACTIVITY: Final payment confirmed and job closed
+                            const activityRef = doc(collection(jobRef, 'activities'));
+                            transaction.set(activityRef, {
+                                text: `ฝ่ายบัญชียืนยันรับเงินตามใบเสร็จ ${receipt.docNo} (ชำระครบถ้วน) และปิดงานเรียบร้อยค่ะ`,
+                                userName: profile.displayName,
+                                userId: profile.uid,
+                                createdAt: serverTimestamp()
+                            });
+
                             jobsToArchive.push(ob.jobId);
                         }
                     }
