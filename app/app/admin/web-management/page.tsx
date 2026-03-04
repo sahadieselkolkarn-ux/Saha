@@ -70,7 +70,22 @@ export default function WebManagementPage() {
       try {
         const docSnap = await getDoc(doc(db, "settings", "landingPage"));
         if (docSnap.exists()) {
-          form.reset(docSnap.data() as LandingPageFormData);
+          const data = docSnap.data();
+          // Ensure every field has a string fallback to avoid uncontrolled input errors
+          form.reset({
+            heroTitle: data.heroTitle ?? "",
+            heroDescription: data.heroDescription ?? "",
+            buttonText: data.buttonText ?? "",
+            servicesTitle: data.servicesTitle ?? "",
+            s1Title: data.s1Title ?? "",
+            s1Desc: data.s1Desc ?? "",
+            s2Title: data.s2Title ?? "",
+            s2Desc: data.s2Desc ?? "",
+            s3Title: data.s3Title ?? "",
+            s3Desc: data.s3Desc ?? "",
+            s4Title: data.s4Title ?? "",
+            s4Desc: data.s4Desc ?? "",
+          });
         }
       } catch (e) {
         console.error(e);
