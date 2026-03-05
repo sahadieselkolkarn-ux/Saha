@@ -2,6 +2,6 @@
 import { RequireDepartment } from "@/components/require-department";
 
 export default function OfficeJobManagementLayout({ children }: { children: React.ReactNode }) {
-  // Management screens are restricted to Office department
-  return <RequireDepartment allow={['OFFICE']}>{children}</RequireDepartment>;
+  // Management screens are accessible by Office, Purchasing, and Accounting/HR departments
+  return <RequireDepartment allow={['OFFICE', 'PURCHASING', 'ACCOUNTING_HR']}>{children}</RequireDepartment>;
 }
