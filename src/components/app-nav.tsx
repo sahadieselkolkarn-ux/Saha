@@ -415,25 +415,28 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         return profile.department === "MANAGEMENT" || profile.department === "ACCOUNTING_HR" || ["ADMIN", "MANAGER"].includes(profile.role);
     }, [profile]);
 
-    const isRestrictedWorker = useMemo(() => {
+    const isRestrictedAdminWorker = useMemo(() => {
         if (!profile) return false;
         const restrictedDepts: string[] = ['OUTSOURCE', 'PURCHASING', 'ACCOUNTING_HR'];
         return restrictedDepts.includes(profile.department || '') && (profile.role === 'WORKER' || profile.role === 'PURCHASE');
     }, [profile]);
 
     const departmentsToShow = useMemo(() => {
-        if (!profile) {
-            return [];
-        }
-        if (isManagementUser) {
+        if (!profile) return [];
+        
+        // Admins, Managers, and Management staff see all administrative departments
+        if (profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT') {
             const depts: Department[] = ["MANAGEMENT", "OFFICE", "PURCHASING", "ACCOUNTING_HR"];
-            if (profile.department && !depts.includes(profile.department as any) && profile.department !== 'MANAGEMENT') {
+            // If they are technically in a service department, include that too
+            if (profile.department && !depts.includes(profile.department as any)) {
                 depts.push(profile.department as any);
             }
             return depts;
         }
+        
+        // Staff see ONLY their assigned department
         return profile.department ? [profile.department as Department] : [];
-    }, [profile, isManagementUser]);
+    }, [profile]);
 
     if (loading) {
         return (
@@ -448,7 +451,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             <nav 
                 className="grid items-start px-2 text-sm font-medium"
             >
-                {(!isManagementUser && !isRestrictedWorker) && (
+                {(!isManagementUser && !isRestrictedAdminWorker) && (
                     <>
                         <Collapsible defaultOpen={isAttendanceOpen}>
                             <CollapsibleTrigger asChild>
