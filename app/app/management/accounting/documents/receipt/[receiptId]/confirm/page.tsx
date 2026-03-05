@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
@@ -255,7 +254,9 @@ function ConfirmReceiptPageContent() {
             const receiptSnap = await transaction.get(receiptRef);
             
             if (!receiptSnap.exists()) throw new Error("ไม่พบใบเสร็จในระบบ");
-            if (receiptSnap.data().status === 'CONFIRMED' || receiptSnap.data().accountingEntryId) {
+            const rData = receiptSnap.data();
+            
+            if (rData.status === 'CONFIRMED' || rData.accountingEntryId) {
                 throw new Error("รายการนี้ถูกยืนยันไปก่อนหน้านี้แล้ว");
             }
 
@@ -268,8 +269,8 @@ function ConfirmReceiptPageContent() {
             const entryId = `RECEIPT_${receipt.id}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
 
-            const customerName = receipt.customerSnapshot?.name || 'ลูกค้าทั่วไป';
-            const receiptDocNo = receipt.docNo || "Unknown";
+            const customerName = rData.customerSnapshot?.name || 'ลูกค้าทั่วไป';
+            const receiptDocNo = rData.docNo || "Unknown";
 
             transaction.set(arPaymentRef, sanitizeForFirestore({
                 id: arPaymentId,
@@ -319,10 +320,18 @@ function ConfirmReceiptPageContent() {
                 updatedAt: serverTimestamp(),
             }));
             
-            const parentReferenceIds = receipt.referencesDocIds || [];
+            const parentReferenceIds = rData.referencesDocIds || [];
             for (const refId of parentReferenceIds) {
                 const docRef = doc(db, 'documents', refId);
-                transaction.update(docRef, { status: 'PAID', updatedAt: serverTimestamp() });
+                const dSnap = await transaction.get(docRef);
+                if (dSnap.exists()) {
+                    const dData = dSnap.data();
+                    transaction.update(docRef, { status: 'PAID', updatedAt: serverTimestamp() });
+                    if (dData.docType === 'BILLING_NOTE') {
+                        // Billing Note also needs status PAID
+                        transaction.update(docRef, { status: 'PAID', updatedAt: serverTimestamp() });
+                    }
+                }
             }
 
             for (const alloc of data.allocations) {

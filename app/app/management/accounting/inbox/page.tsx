@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, Suspense } from "react";
@@ -40,6 +39,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 
 const formatCurrency = (value: number) => (value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -201,6 +201,27 @@ function AccountingInboxPageContent() {
     }
   };
 
+  const handleUpdatePaymentLine = (index: number, field: 'accountId' | 'amount', value: any) => {
+    setSuggestedPayments(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const handleOpenConfirmDialog = (docObj: WithId<DocumentType>) => {
+    setConfirmingDoc(docObj);
+    setSelectedPaymentDate(docObj.docDate || format(new Date(), "yyyy-MM-dd"));
+    
+    if (docObj.suggestedPayments && docObj.suggestedPayments.length > 0) {
+      setSuggestedPayments(docObj.suggestedPayments.map(p => ({ accountId: p.accountId, amount: p.amount })));
+    } else {
+      const defaultAccount = accounts.find(a => a.type === 'CASH') || accounts[0];
+      setSuggestedPayments([{ accountId: defaultAccount?.id || "", amount: docObj.grandTotal }]);
+    }
+    setConfirmError(null);
+  };
+
   const handleApproveSaleDocument = async () => {
     if (!db || !profile || !confirmingDoc) return;
     setConfirmError(null);
@@ -221,7 +242,7 @@ function AccountingInboxPageContent() {
           throw new Error("รายการนี้ได้รับเงินเรียบร้อยแล้วค่ะ");
         }
 
-        const customerName = confirmingDoc.customerSnapshot?.name || 'Unknown';
+        const customerName = confirmingDoc.customerSnapshot?.name || 'ลูกค้าทั่วไป';
         const finalPayments = suggestedPayments.map(p => {
             const acc = accounts.find(a => a.id === p.accountId);
             return { ...p, method: acc?.type === 'CASH' ? 'CASH' : 'TRANSFER' };
@@ -239,7 +260,7 @@ function AccountingInboxPageContent() {
                 accountId: firstPayment.accountId,
                 paymentMethod: firstPayment.method,
                 categoryMain: 'งานซ่อม',
-                categorySub: 'หน้าร้าน (CAR_SERVICE)',
+                categorySub: 'หน้าร้าน (CARS)',
                 description: `รับเงินสด/โอนตามใบส่งของ: ${confirmingDoc.docNo} (${customerName})`,
                 sourceDocType: 'DELIVERY_NOTE',
                 sourceDocId: confirmingDoc.id,
@@ -339,6 +360,38 @@ function AccountingInboxPageContent() {
     }
   };
 
+  const handleDispute = async () => {
+    if (!db || !disputingDoc || !disputeReason.trim()) return;
+    setIsSubmitting(true);
+    const docRef = doc(db, 'documents', disputingDoc.id);
+    const updateData = {
+      status: 'REJECTED',
+      dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() },
+      updatedAt: serverTimestamp()
+    };
+    try {
+      await updateDoc(docRef, updateData);
+      
+      if (disputingDoc.jobId) {
+          const jobRef = doc(db, 'jobs', disputingDoc.jobId);
+          await addDoc(collection(jobRef, 'activities'), {
+              text: `ฝ่ายบัญชีตีกลับเอกสาร ${disputingDoc.docNo} ให้แก้ไข: ${disputeReason}`,
+              userName: profile?.displayName || "System",
+              userId: profile?.uid || "system",
+              createdAt: serverTimestamp()
+          });
+      }
+
+      toast({ title: "ส่งเอกสารกลับเพื่อแก้ไขแล้ว" });
+      setDisputingDoc(null);
+      setDisputeReason("");
+    } catch(e: any) {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'update', requestResourceData: updateData }));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleCreateAR = async (docObj: WithId<DocumentType>) => {
     if (!db || !profile) return;
     setIsSubmitting(true);
@@ -401,59 +454,6 @@ function AccountingInboxPageContent() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleDispute = async () => {
-    if (!db || !disputingDoc || !disputeReason.trim()) return;
-    setIsSubmitting(true);
-    const docRef = doc(db, 'documents', disputingDoc.id);
-    const updateData = {
-      status: 'REJECTED',
-      dispute: { isDisputed: true, reason: disputeReason, createdAt: serverTimestamp() },
-      updatedAt: serverTimestamp()
-    };
-    try {
-      await updateDoc(docRef, updateData);
-      
-      if (disputingDoc.jobId) {
-          const jobRef = doc(db, 'jobs', disputingDoc.jobId);
-          await addDoc(collection(jobRef, 'activities'), {
-              text: `ฝ่ายบัญชีตีกลับเอกสาร ${disputingDoc.docNo} ให้แก้ไข: ${disputeReason}`,
-              userName: profile?.displayName || "System",
-              userId: profile?.uid || "system",
-              createdAt: serverTimestamp()
-          });
-      }
-
-      toast({ title: "ส่งเอกสารกลับเพื่อแก้ไขแล้ว" });
-      setDisputingDoc(null);
-      setDisputeReason("");
-    } catch(e: any) {
-      errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'update', requestResourceData: updateData }));
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleOpenConfirmDialog = (docObj: WithId<DocumentType>) => {
-    setConfirmingDoc(docObj);
-    setSelectedPaymentDate(docObj.docDate || format(new Date(), "yyyy-MM-dd"));
-    
-    if (docObj.suggestedPayments && docObj.suggestedPayments.length > 0) {
-      setSuggestedPayments(docObj.suggestedPayments.map(p => ({ accountId: p.accountId, amount: p.amount })));
-    } else {
-      const defaultAccount = accounts.find(a => a.type === 'CASH') || accounts[0];
-      setSuggestedPayments([{ accountId: defaultAccount?.id || "", amount: docObj.grandTotal }]);
-    }
-    setConfirmError(null);
-  };
-
-  const handleUpdatePaymentLine = (index: number, field: 'accountId' | 'amount', value: any) => {
-    setSuggestedPayments(prev => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
-    });
   };
 
   if (authLoading) {

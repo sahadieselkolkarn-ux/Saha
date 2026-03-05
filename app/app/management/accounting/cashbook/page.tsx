@@ -9,6 +9,8 @@ import {
   onSnapshot, 
   addDoc, 
   doc, 
+  setDoc,
+  updateDoc,
   deleteDoc, 
   serverTimestamp, 
   Timestamp,
@@ -56,7 +58,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { 
   Loader2, PlusCircle, Search, CalendarIcon, 
-  ArrowDownCircle, ArrowUpCircle, Trash2, 
+  ArrowDownCircle, ArrowUpCircle, Trash2, Edit,
   ChevronLeft, ChevronRight, Filter, AlertCircle, FileText, Wallet, Save, ExternalLink, CalendarDays
 } from "lucide-react";
 import { safeFormat } from "@/lib/date-utils";
@@ -75,7 +77,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 
 const entrySchema = z.object({
-  entryType: z.enum(["CASH_IN", "CASH_OUT"]),
+  entryType: z.enum(["CASH_IN", "CASH_OUT", "RECEIPT"]),
   entryDate: z.string().min(1, "กรุณาเลือกวันที่"),
   amount: z.coerce.number().min(0.01, "ยอดเงินต้องมากกว่า 0"),
   accountId: z.string().min(1, "กรุณาเลือกบัญชี"),
@@ -105,9 +107,12 @@ export default function CashbookPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("ALL");
   const [isAdding, setIsAdding] = useState(false);
+  const [entryToEdit, setEntryToEdit] = useState<WithId<AccountingEntry> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<WithId<AccountingEntry> | null>(null);
   const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
+
+  const isUserAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
 
   const form = useForm<EntryFormData>({
     resolver: zodResolver(entrySchema),
@@ -124,14 +129,13 @@ export default function CashbookPage() {
 
   // Filter Categories based on Type
   const mainCategories = useMemo(() => {
-    return watchedType === "CASH_IN" 
-      ? Object.keys(ACCOUNTING_CATEGORIES.INCOME) 
-      : Object.keys(ACCOUNTING_CATEGORIES.EXPENSE);
+    const type = watchedType === "CASH_OUT" ? "EXPENSE" : "INCOME";
+    return Object.keys(ACCOUNTING_CATEGORIES[type as keyof typeof ACCOUNTING_CATEGORIES]);
   }, [watchedType]);
 
   const subCategories = useMemo(() => {
     if (!watchedMainCat) return [];
-    const source = watchedType === "CASH_IN" ? ACCOUNTING_CATEGORIES.INCOME : ACCOUNTING_CATEGORIES.EXPENSE;
+    const source = (watchedType === "CASH_OUT") ? ACCOUNTING_CATEGORIES.EXPENSE : ACCOUNTING_CATEGORIES.INCOME;
     return (source as any)[watchedMainCat] || [];
   }, [watchedType, watchedMainCat]);
 
@@ -209,7 +213,9 @@ export default function CashbookPage() {
         e.description?.toLowerCase().includes(q) || 
         e.sourceDocNo?.toLowerCase().includes(q) ||
         e.categoryMain?.toLowerCase().includes(q) ||
-        e.categorySub?.toLowerCase().includes(q)
+        e.categorySub?.toLowerCase().includes(q) ||
+        e.customerNameSnapshot?.toLowerCase().includes(q) ||
+        e.vendorNameSnapshot?.toLowerCase().includes(q)
       );
     }
     return result;
@@ -226,17 +232,30 @@ export default function CashbookPage() {
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, "accountingEntries"), sanitizeForFirestore({
+      const entryData = sanitizeForFirestore({
         ...values,
         paymentMethod: account.type === 'CASH' ? 'CASH' : 'TRANSFER',
-        createdAt: serverTimestamp(),
-        createdByUid: profile.uid,
-        createdByName: profile.displayName,
-      }));
-      toast({ title: "บันทึกรายการสำเร็จ" });
+        updatedAt: serverTimestamp(),
+      });
+
+      if (entryToEdit) {
+        await updateDoc(doc(db, "accountingEntries", entryToEdit.id), entryData);
+        toast({ title: "ปรับปรุงรายการสำเร็จ" });
+      } else {
+        await addDoc(collection(db, "accountingEntries"), {
+          ...entryData,
+          createdAt: serverTimestamp(),
+          createdByUid: profile.uid,
+          createdByName: profile.displayName,
+        });
+        toast({ title: "บันทึกรายการสำเร็จ" });
+      }
+      
       setIsAdding(false);
+      setEntryToEdit(null);
       form.reset({
-        ...form.getValues(),
+        entryType: "CASH_IN",
+        entryDate: format(new Date(), "yyyy-MM-dd"),
         amount: 0,
         description: "",
       });
@@ -245,6 +264,20 @@ export default function CashbookPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleEdit = (entry: WithId<AccountingEntry>) => {
+    setEntryToEdit(entry);
+    form.reset({
+      entryType: (entry.entryType as any) || "CASH_IN",
+      entryDate: entry.entryDate || format(new Date(), "yyyy-MM-dd"),
+      amount: entry.amount || 0,
+      accountId: entry.accountId || "",
+      categoryMain: entry.categoryMain || "",
+      categorySub: entry.categorySub || "",
+      description: entry.description || "",
+    });
+    setIsAdding(true);
   };
 
   const handleDelete = async () => {
@@ -277,7 +310,7 @@ export default function CashbookPage() {
           <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}><ChevronLeft /></Button>
           <span className="font-bold text-lg w-32 text-center">{format(currentMonth, "MMMM yyyy")}</span>
           <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}><ChevronRight /></Button>
-          <Button onClick={() => setIsAdding(true)} className="ml-4 shadow-lg bg-primary hover:bg-primary/90">
+          <Button onClick={() => { setEntryToEdit(null); form.reset({ entryType: "CASH_IN", entryDate: format(new Date(), "yyyy-MM-dd"), amount: 0, description: "" }); setIsAdding(true); }} className="ml-4 shadow-lg bg-primary hover:bg-primary/90">
             <PlusCircle className="mr-2 h-4 w-4" /> เพิ่มรายการใหม่
           </Button>
         </div>
@@ -313,7 +346,7 @@ export default function CashbookPage() {
             <CardTitle className="text-sm font-medium text-red-700 uppercase tracking-wider">รายจ่ายรวม</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-black text-green-600">฿{formatCurrency(summary.expense)}</div>
+            <div className="text-2xl font-black text-destructive">฿{formatCurrency(summary.expense)}</div>
           </CardContent>
         </Card>
         <Card className="bg-primary/10 border-primary/20">
@@ -341,7 +374,7 @@ export default function CashbookPage() {
             <div className="relative w-full sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input 
-                placeholder="ค้นหารายการ..." 
+                placeholder="ค้นหา (ลูกค้า/รายการ/หมวดหมู่)..." 
                 className="pl-10" 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -358,7 +391,7 @@ export default function CashbookPage() {
                   <TableHead>บัญชี</TableHead>
                   <TableHead className="text-right">รายรับ (+)</TableHead>
                   <TableHead className="text-right">รายจ่าย (-)</TableHead>
-                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="w-24"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -370,7 +403,9 @@ export default function CashbookPage() {
                       <TableCell className="text-xs text-muted-foreground">{safeFormat(parseISO(entry.entryDate), "dd/MM/yy")}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <p className="font-semibold text-sm">{entry.description}</p>
+                          <p className={cn("font-semibold text-sm", !entry.description && "text-destructive italic")}>
+                            {entry.description || "(ไม่มีรายละเอียด - โปรดแก้ไข)"}
+                          </p>
                           {entry.sourceDocId && (
                             <Badge variant="outline" className="h-4 px-1 text-[8px] border-primary/30 text-primary">AUTO</Badge>
                           )}
@@ -390,14 +425,26 @@ export default function CashbookPage() {
                         {entry.entryType === 'CASH_OUT' ? `-${formatCurrency(entry.amount)}` : ""}
                       </TableCell>
                       <TableCell>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => setEntryToDelete(entry)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          {isUserAdmin && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                              onClick={() => handleEdit(entry)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => setEntryToDelete(entry)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -410,12 +457,12 @@ export default function CashbookPage() {
         </CardContent>
       </Card>
 
-      {/* Add Entry Dialog */}
-      <Dialog open={isAdding} onOpenChange={setIsAdding}>
+      {/* Add/Edit Entry Dialog */}
+      <Dialog open={isAdding} onOpenChange={(o) => { setIsAdding(o); if(!o) setEntryToEdit(null); }}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>บันทึกรายการบัญชีใหม่</DialogTitle>
-            <DialogDescription>บันทึกรายรับหรือรายจ่ายเบ็ดเตล็ดเข้าสมุดเงินสด</DialogDescription>
+            <DialogTitle>{entryToEdit ? "แก้ไขรายการบัญชี" : "บันทึกรายการบัญชีใหม่"}</DialogTitle>
+            <DialogDescription>บันทึกรายละเอียดให้ครบถ้วนเพื่อความถูกต้องของสมุดเงินสด</DialogDescription>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
@@ -428,6 +475,7 @@ export default function CashbookPage() {
                       <SelectContent>
                         <SelectItem value="CASH_IN">รายรับ (+)</SelectItem>
                         <SelectItem value="CASH_OUT">รายจ่าย (-)</SelectItem>
+                        <SelectItem value="RECEIPT">รับเงินลูกหนี้ (RECEIPT)</SelectItem>
                       </SelectContent>
                     </Select>
                   </FormItem>
@@ -444,7 +492,7 @@ export default function CashbookPage() {
                             <Button
                               variant={"outline"}
                               className={cn(
-                                "w-full pl-3 text-left font-normal",
+                                "w-full pl-3 text-left font-normal h-10",
                                 !field.value && "text-muted-foreground"
                               )}
                             >
@@ -508,7 +556,7 @@ export default function CashbookPage() {
                 <Button variant="outline" type="button" onClick={() => setIsAdding(false)}>ยกเลิก</Button>
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                  บันทึกรายการ
+                  {entryToEdit ? "บันทึกการแก้ไข" : "บันทึกรายการ"}
                 </Button>
               </DialogFooter>
             </form>
