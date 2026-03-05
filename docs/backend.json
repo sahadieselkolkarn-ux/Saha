@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "UserProfile": {
@@ -210,6 +211,18 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "PartCategory": {
+      "title": "Part Category",
+      "description": "Categories for categorizing parts in the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "description": "ชื่อหมวดหมู่" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
     }
   },
   "auth": {
@@ -235,6 +248,10 @@
     "/quotationTemplates/{id}": {
       "schema": { "$ref": "#/backend/entities/QuotationTemplate" },
       "description": "Reusable quotation item sets."
+    },
+    "/partCategories/{id}": {
+      "schema": { "$ref": "#/backend/entities/PartCategory" },
+      "description": "Master list of part categories."
     }
   }
 }

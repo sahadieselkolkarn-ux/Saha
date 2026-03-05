@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -58,6 +59,10 @@ service cloud.firestore {
     
     function isAccountingAllowed() {
       return isOfficeOrMgmt();
+    }
+    
+    function isPurchasingAllowed() {
+      return isMgmt() || (signedIn() && (dept() == "PURCHASING" || dept() == "OFFICE"));
     }
     
     function hrSettings() {
@@ -219,6 +224,11 @@ service cloud.firestore {
     match /quotationTemplates/{id} {
       allow read: if signedIn();
       allow write: if isOfficeOrMgmt() && request.resource.data.items.size() <= 50;
+    }
+
+    match /partCategories/{id} {
+      allow read: if signedIn();
+      allow write: if isPurchasingAllowed();
     }
   }
 }

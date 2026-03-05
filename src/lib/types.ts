@@ -1,3 +1,4 @@
+
 import type { Timestamp } from 'firebase/firestore';
 import type { JobStatus, JobDepartment, Role, UserStatus, Department, LeaveType, LeaveStatus, PayrollBatchStatus, PayslipStatus, AccountingCategory, PayType, PayslipStatusNew, VENDOR_TYPES, AcquisitionSource } from './constants';
 
@@ -859,4 +860,11 @@ export interface CarRepairManual {
   createdAt: Timestamp;
   createdByUid: string;
   createdByName: string;
+}
+
+export interface PartCategory {
+  id: string;
+  name: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

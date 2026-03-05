@@ -10,7 +10,7 @@ import {
 
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart, FileText, LayoutList
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart, FileText, LayoutList, Tags
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -337,6 +337,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/office/parts/receive" label="รับอะไหล่" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/parts/purchases" label="รายการซื้อ" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/parts/list" label="รายการอะไหล่/ค้นหา" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/parts/categories" label="จัดการหมวดหมู่อะไหล่" icon={Tags} onClick={onLinkClick} />
                         <SubNavLink href="/app/office/parts/vendors" label="จัดการรายชื่อร้านค้า" onClick={onLinkClick} />
                     </>
                 )}
