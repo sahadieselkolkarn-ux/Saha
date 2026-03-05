@@ -10,7 +10,7 @@ import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { safeFormat, APP_DATE_FORMAT, APP_DATE_TIME_FORMAT } from '@/lib/date-utils';
-import { jobStatusLabel, deptLabel, docStatusLabel } from "@/lib/ui-labels";
+import { jobStatusLabel, deptLabel, docStatusLabel, deptCode } from "@/lib/ui-labels";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -573,7 +573,7 @@ function JobDetailsPageContent() {
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
     batch.update(jobDocRef, { department: transferDepartment, mainDepartment: transferDepartment, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${deptLabel(transferDepartment)}. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `มีการเปลี่ยนแปลงแผนกหลักเป็น ${deptCode(transferDepartment)}. หมายเหตุ: ${transferNote || 'ไม่มี'}`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     batch.commit().then(() => {
       toast({ title: 'โอนย้ายแผนกสำเร็จ' });
       setIsTransferDialogOpen(false);
@@ -586,9 +586,9 @@ function JobDetailsPageContent() {
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
     batch.update(jobDocRef, { department: subTransferDept, mainDepartment: job.mainDepartment || job.department, status: 'RECEIVED', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `ส่งงานต่อให้แผนก: ${deptLabel(subTransferDept)} เพื่อดำเนินการย่อย`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `ส่งงานต่อให้แผนก: ${deptCode(subTransferDept)} เพื่อดำเนินการย่อย`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     batch.commit().then(() => {
-        toast({ title: `ส่งงานต่อไปยังแผนก ${deptLabel(subTransferDept)} เรียบร้อย` });
+        toast({ title: `ส่งงานต่อไปยังแผนก ${deptCode(subTransferDept)} เรียบร้อย` });
         setIsSubTransferDialogOpen(false);
     }).catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message })).finally(() => setIsTransferring(false));
   };
@@ -599,7 +599,7 @@ function JobDetailsPageContent() {
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
     batch.update(jobDocRef, { department: job.mainDepartment, status: 'IN_PROGRESS', assigneeUid: null, assigneeName: null, lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `แผนกย่อย (${deptLabel(job.department)}) ดำเนินการเสร็จสิ้น ส่งงานกลับแผนกหลัก (${deptLabel(job.mainDepartment)})`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `แผนกย่อย (${deptCode(job.department)}) ดำเนินการเสร็จสิ้น ส่งงานกลับแผนกหลัก (${deptCode(job.mainDepartment)})`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     batch.commit().then(() => toast({ title: "ส่งงานกลับแผนกหลักเรียบร้อยแล้วค่ะ" }))
     .catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message }))
     .finally(() => setIsSubmittingNote(false));
@@ -756,7 +756,10 @@ function JobDetailsPageContent() {
       if (job.department === 'OUTSOURCE') {
         const q = query(collection(db, "vendors"), where("vendorType", "==", "CONTRACTOR"), where("isActive", "==", true));
         const snapshot = await getDocs(q);
-        setDepartmentWorkers(snapshot.docs.map(d => ({ id: d.id, displayName: d.data().companyName } as any)));
+        setDepartmentWorkers(snapshot.docs.map(d => ({ 
+            id: d.id, 
+            displayName: d.data().contactName || d.data().companyName || d.data().shortName 
+        } as any)));
       } else {
         const q = query(collection(db, "users"), where("department", "==", job.department), where("role", "==", "WORKER"), where("status", "==", "ACTIVE"));
         const snapshot = await getDocs(q);
@@ -825,7 +828,7 @@ function JobDetailsPageContent() {
                     <div><h4 className="font-semibold text-base text-muted-foreground">แผนกหลัก</h4><Badge variant="outline" className="text-sm">{deptLabel(job.mainDepartment)}</Badge></div>
                 )}
               </div>
-              {job.assigneeName && <div><h4 className="font-semibold text-base">{job.department === 'OUTSOURCE' ? 'ร้านที่รับทำ' : 'ผู้รับผิดชอบ'}</h4><p>{job.assigneeName}</p></div>}
+              {job.assigneeName && <div><h4 className="font-semibold text-base">{job.department === 'OUTSOURCE' ? 'ผู้รับเหมา' : 'ผู้รับผิดชอบ'}</h4><p>{job.assigneeName}</p></div>}
               <div><div className="flex items-center gap-4"><h4 className="font-semibold text-base">รายการแจ้งซ่อม</h4>{canEditDetails && <Button onClick={handleOpenEditDescriptionDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}</div><p className="whitespace-pre-wrap pt-1">{job.description}</p></div>
               <div className="border-t pt-4"><div className="flex items-center gap-4 mb-2"><h4 className="font-semibold text-base">รายละเอียดรถ/ชิ้นส่วน</h4>{canEditDetails && <Button onClick={handleOpenEditVehicleDialog} variant="outline" size="sm" className="h-7" disabled={isViewOnly}><Edit className="h-3 w-3 mr-1"/> แก้ไข</Button>}</div><JobVehicleDetails job={job} /></div>
                <div className="flex gap-2 pt-4 border-t">
@@ -1092,7 +1095,7 @@ function JobDetailsPageContent() {
       </Dialog>
 
       <Dialog open={isSubTransferDialogOpen} onOpenChange={setIsSubTransferDialogOpen}>
-          <DialogContent><DialogHeader><DialogTitle className="flex items-center gap-2"><Forward className="h-5 w-5 text-primary" /> ส่งงานต่อ (เปิดงานย่อย)</DialogTitle></DialogHeader><div className="grid gap-4 py-4"><div className="grid gap-2"><Label>แผนกปลายทาง</Label><Select value={subTransferDept} onValueChange={(v) => setSubTransferDept(v as JobDepartment)}><SelectTrigger><SelectValue placeholder="เลือกแผนก..." /></SelectTrigger><SelectContent><SelectItem value="COMMONRAIL">แผนกคอมมอนเรล</SelectItem><SelectItem value="MECHANIC">แผนกแมคคานิค</SelectItem><SelectItem value="OUTSOURCE">ส่งงานนอก (Outsource)</SelectItem></SelectContent></Select></div><div className="p-3 bg-muted/50 rounded-md text-xs text-muted-foreground flex gap-2"><History className="h-4 w-4 shrink-0" /><p>เมื่อแผนกปลายทางดำเนินการเสร็จ จะมีปุ่มให้ "ส่งงานกลับ" เพื่อมาจบงานที่แผนกหลัก ({deptLabel(job.mainDepartment || job.department)}) ค่ะ</p></div></div><DialogFooter><Button variant="outline" onClick={() => setIsSubTransferDialogOpen(false)}>ยกเลิก</Button><Button onClick={handleSubTransfer} disabled={isTransferring || !subTransferDept}>ยืนยันการส่งต่อ</Button></DialogFooter></DialogContent>
+          <DialogContent><DialogHeader><DialogTitle className="flex items-center gap-2"><Forward className="h-5 w-5 text-primary" /> ส่งงานต่อ (เปิดงานย่อย)</DialogTitle></DialogHeader><div className="grid gap-4 py-4"><div className="grid gap-2"><Label>แผนกปลายทาง</Label><Select value={subTransferDept} onValueChange={(v) => setSubTransferDept(v as JobDepartment)}><SelectTrigger><SelectValue placeholder="เลือกแผนก..." /></SelectTrigger><SelectContent><SelectItem value="COMMONRAIL">แผนกคอมมอนเรล</SelectItem><SelectItem value="MECHANIC">แผนกแมคคานิค</SelectItem><SelectItem value="OUTSOURCE">ส่งงานนอก (Outsource)</SelectItem></SelectContent></Select></div><div className="p-3 bg-muted/50 rounded-md text-xs text-muted-foreground flex gap-2"><History className="h-4 w-4 shrink-0" /><p>เมื่อแผนกปลายทางดำเนินการเสร็จ จะมีปุ่มให้ "ส่งงานกลับ" เพื่อมาจบงานที่แผนกหลัก ({deptCode(job.mainDepartment || job.department)}) ค่ะ</p></div></div><DialogFooter><Button variant="outline" onClick={() => setIsSubTransferDialogOpen(false)}>ยกเลิก</Button><Button onClick={handleSubTransfer} disabled={isTransferring || !subTransferDept}>ยืนยันการส่งต่อ</Button></DialogFooter></DialogContent>
       </Dialog>
       
       <Dialog open={isEditDescriptionDialogOpen} onOpenChange={setIsEditDescriptionDialogOpen}><DialogContent><DialogHeader><DialogTitle>แก้ไขรายการแจ้งซ่อม</DialogTitle></DialogHeader><div className="py-4"><Textarea value={descriptionToEdit} onChange={(e) => setDescriptionToEdit(e.target.value)} rows={8} /></div><DialogFooter><Button variant="outline" onClick={() => setIsEditDescriptionDialogOpen(false)} disabled={isUpdatingDescription}>ยกเลิก</Button><Button onClick={handleUpdateDescription} disabled={isUpdatingDescription}>บันทึก</Button></DialogFooter></DialogContent></Dialog>
@@ -1104,7 +1107,7 @@ function JobDetailsPageContent() {
                     <><div className="grid gap-2"><Label>ยี่ห้อ</Label><Input value={vehicleEditData.brand || ""} onChange={e => setVehicleEditData({...vehicleEditData, brand: e.target.value})} /></div><div className="grid gap-2"><Label>เลขอะไหล่</Label><Input value={vehicleEditData.partNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, partNumber: e.target.value})} /></div><div className="grid gap-2"><Label>เลขทะเบียนชิ้นส่วน</Label><Input value={vehicleEditData.registrationNumber || ""} onChange={e => setVehicleEditData({...vehicleEditData, registrationNumber: e.target.value})} /></div></>
                 )}
             </div><DialogFooter><Button variant="outline" onClick={() => setIsEditVehicleDialogOpen(false)} disabled={isUpdatingVehicle}>ยกเลิก</Button><Button onClick={handleUpdateVehicleDetails} disabled={isUpdatingVehicle}>บันทึก</Button></DialogFooter></DialogContent></Dialog>
-      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}><DialogContent><DialogHeader><DialogTitle>{job.department === 'OUTSOURCE' ? 'มอบหมายงานนอก' : 'มอบหมายพนักงาน'}</DialogTitle></DialogHeader>{isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (<div className="py-4"><Label>{job.department === 'OUTSOURCE' ? 'เลือกร้านผู้รับเหมา' : 'พนักงาน'}</Label><span className="block mt-2"><Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger><SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.id} value={w.id}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบรายการให้เลือก</div>}</SelectContent></Select></span></div>)}<DialogFooter><Button variant="outline" onClick={() => setIsReassignDialogOpen(false)} disabled={isReassigning}>ยกเลิก</Button><Button onClick={handleReassignJob} disabled={isReassigning || isFetchingWorkers || !reassignWorkerId}>ยืนยัน</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}><DialogContent><DialogHeader><DialogTitle>{job.department === 'OUTSOURCE' ? 'มอบหมายผู้รับเหมา' : 'มอบหมายพนักงาน'}</DialogTitle></DialogHeader>{isFetchingWorkers ? <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div> : (<div className="py-4"><Label>{job.department === 'OUTSOURCE' ? 'เลือกร้านผู้รับเหมา' : 'พนักงาน'}</Label><span className="block mt-2"><Select value={reassignWorkerId || ""} onValueChange={setReassignWorkerId}><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger><SelectContent>{departmentWorkers.length > 0 ? departmentWorkers.map(w => <SelectItem key={w.id} value={w.id}>{w.displayName}</SelectItem>) : <div className="p-4 text-center">ไม่พบรายการให้เลือก</div>}</SelectContent></Select></span></div>)}<DialogFooter><Button variant="outline" onClick={() => setIsReassignDialogOpen(false)} disabled={isReassigning}>ยกเลิก</Button><Button onClick={handleReassignJob} disabled={isReassigning || isFetchingWorkers || !reassignWorkerId}>ยืนยัน</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={isRevertDialogOpen} onOpenChange={setIsRevertDialogOpen}>
         <DialogContent>

@@ -27,7 +27,7 @@ import { JOB_DEPARTMENTS, DATA_LIMITS } from "@/lib/constants";
 import { Loader2, Camera, X, ChevronsUpDown, PlusCircle, ImageIcon, AlertCircle } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
-import { deptLabel } from "@/lib/ui-labels";
+import { deptLabel, deptCode } from "@/lib/ui-labels";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
@@ -305,7 +305,7 @@ export default function IntakePage() {
         
         const activityDocRef = doc(collection(db, "jobs", jobId, "activities"));
         batch.set(activityDocRef, {
-            text: `เปิดงานใหม่ในแผนก ${deptLabel(values.department)} พร้อมรูปประกอบ ${photoURLs.length} รูป`,
+            text: `เปิดงานใหม่ในแผนก ${deptCode(values.department)} พร้อมรูปประกอบ ${photoURLs.length} รูป`,
             userName: profile.displayName,
             userId: profile.uid,
             createdAt: serverTimestamp(),

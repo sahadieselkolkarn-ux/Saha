@@ -8,6 +8,15 @@ export const DEPARTMENT_LABELS: Record<string, string> = {
     WEB_MANAGEMENT: "จัดการเว็บไซต์",
 };
 
+export const DEPARTMENT_CODES: Record<string, string> = {
+    MANAGEMENT: "MANA",
+    OFFICE: "OFFC",
+    CAR_SERVICE: "CARS",
+    COMMONRAIL: "COMM",
+    MECHANIC: "MECH",
+    OUTSOURCE: "OUTS",
+};
+
 export const JOB_STATUS_LABELS: Record<string, string> = {
     RECEIVED: "รอช่างรับงาน",
     IN_PROGRESS: "กำลังตรวจสอบ",
@@ -101,6 +110,11 @@ export function newPayslipStatusLabel(status: string | undefined): string {
 export function deptLabel(dept: string | undefined): string {
     if (!dept) return '';
     return DEPARTMENT_LABELS[dept] || dept;
+}
+
+export function deptCode(dept: string | undefined): string {
+    if (!dept) return '';
+    return DEPARTMENT_CODES[dept] || dept;
 }
 
 export function jobStatusLabel(status: string | undefined): string {
