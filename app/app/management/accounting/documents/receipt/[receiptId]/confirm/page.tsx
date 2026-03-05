@@ -273,6 +273,8 @@ function ConfirmReceiptPageContent() {
             const entryId = `RECEIPT_${receipt.id}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
 
+            const customerName = receipt.customerSnapshot?.name || 'ลูกค้าทั่วไป';
+
             transaction.set(arPaymentRef, sanitizeForFirestore({
                 id: arPaymentId,
                 receiptId: receipt.id,
@@ -298,10 +300,11 @@ function ConfirmReceiptPageContent() {
                 paymentMethod: paymentMethod,
                 categoryMain: 'เก็บเงินลูกหนี้',
                 categorySub: 'รับชำระตามบิลในระบบ',
+                description: `รับเงินตามใบเสร็จ: ${receipt.docNo} (${customerName})`,
                 sourceDocType: 'RECEIPT',
                 sourceDocId: receipt.id,
                 sourceDocNo: receipt.docNo,
-                customerNameSnapshot: receipt.customerSnapshot?.name,
+                customerNameSnapshot: customerName,
                 createdAt: serverTimestamp(),
             }));
             
