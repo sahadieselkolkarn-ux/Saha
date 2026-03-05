@@ -4,9 +4,13 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import React, { useMemo, useState, useEffect } from "react"
 import {
-  Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart
+  collection, query, where, getDocs
 } from "firebase/firestore"
+
+import {
+  Building, Factory, Wrench, Truck, Package, Landmark,
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart, FileText
+} from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
