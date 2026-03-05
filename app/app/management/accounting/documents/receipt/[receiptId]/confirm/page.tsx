@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
@@ -24,7 +25,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { Document as DocumentType, AccountingAccount, AccountingObligation } from "@/lib/types";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { safeFormat } from "@/lib/date-utils";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeForFirestore } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -272,7 +273,7 @@ function ConfirmReceiptPageContent() {
             const entryId = `RECEIPT_${receipt.id}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
 
-            transaction.set(arPaymentRef, {
+            transaction.set(arPaymentRef, sanitizeForFirestore({
                 id: arPaymentId,
                 receiptId: receipt.id,
                 customerId: receipt.customerId,
@@ -287,22 +288,24 @@ function ConfirmReceiptPageContent() {
                     grossApplied: a.grossApplied,
                 })),
                 createdAt: serverTimestamp(),
-            });
+            }));
             
-            transaction.set(entryRef, {
+            transaction.set(entryRef, sanitizeForFirestore({
                 entryType: 'RECEIPT',
                 entryDate: data.paymentDate,
                 amount: data.netReceivedTotal,
                 accountId: data.accountId,
                 paymentMethod: paymentMethod,
+                categoryMain: 'เก็บเงินลูกหนี้',
+                categorySub: 'รับชำระตามบิลในระบบ',
                 sourceDocType: 'RECEIPT',
                 sourceDocId: receipt.id,
                 sourceDocNo: receipt.docNo,
                 customerNameSnapshot: receipt.customerSnapshot?.name,
                 createdAt: serverTimestamp(),
-            });
+            }));
             
-            transaction.update(receiptRef, {
+            transaction.update(receiptRef, sanitizeForFirestore({
                 status: 'CONFIRMED',
                 receiptStatus: 'CONFIRMED',
                 accountingEntryId: entryId,
@@ -315,7 +318,7 @@ function ConfirmReceiptPageContent() {
                     arPaymentId: arPaymentId,
                 },
                 updatedAt: serverTimestamp(),
-            });
+            }));
             
             // Update individual Invoices and parent Billing Note
             const parentReferenceIds = receipt.referencesDocIds || [];
