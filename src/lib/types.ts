@@ -868,3 +868,22 @@ export interface PartCategory {
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
+
+export interface Part {
+  id: string;
+  code: string;
+  name: string;
+  categoryId: string;
+  categoryNameSnapshot: string;
+  vendorId: string;
+  vendorNameSnapshot: string;
+  costPrice: number;
+  sellingPrice: number;
+  stockQty: number;
+  location?: string;
+  imageUrl?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  createdByUid: string;
+  createdByName: string;
+}

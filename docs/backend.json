@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "UserProfile": {
@@ -197,6 +196,27 @@
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
+    "Part": {
+      "title": "Part Item",
+      "description": "Represents an individual part or item in inventory.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string", "description": "Part Code / Barcode" },
+        "name": { "type": "string", "description": "ชื่อสินค้า" },
+        "categoryId": { "type": "string" },
+        "categoryNameSnapshot": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "vendorNameSnapshot": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "stockQty": { "type": "number" },
+        "location": { "type": "string", "description": "ชั้นจัดเก็บ" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "QuotationTemplate": {
       "title": "Quotation Template",
       "description": "A reusable set of line items for creating quotations.",
@@ -244,6 +264,10 @@
     "/accountingEntries/{entryId}": {
       "schema": { "$ref": "#/backend/entities/AccountingEntry" },
       "description": "Records of all financial transactions."
+    },
+    "/parts/{partId}": {
+      "schema": { "$ref": "#/backend/entities/Part" },
+      "description": "Inventory parts list."
     },
     "/quotationTemplates/{id}": {
       "schema": { "$ref": "#/backend/entities/QuotationTemplate" },

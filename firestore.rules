@@ -185,6 +185,11 @@ service cloud.firestore {
         allow read, write: if isAccountingAllowed();
     }
 
+    match /parts/{partId} {
+      allow read: if signedIn();
+      allow write: if isPurchasingAllowed();
+    }
+
     match /attendance/{id} { allow read, write: if signedIn(); }
     match /kioskTokens/{id} {
       allow read, create, update: if true;
@@ -201,7 +206,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    match /ssoHospitals/{hospitalId} {
+    ssoHospitals/{hospitalId} {
       allow read: if signedIn();
       allow write: if isMgmt();
     }
