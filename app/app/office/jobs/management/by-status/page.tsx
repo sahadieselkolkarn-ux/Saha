@@ -10,11 +10,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
+import { cn } from "@/lib/utils";
 
 type TabValue = "quotation" | "waiting-approve" | "pending-parts" | "done" | "pickup";
 
 function ByStatusContent() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -23,8 +24,10 @@ function ByStatusContent() {
   const userDept = profile?.department;
   const userRole = profile?.role;
 
-  // Define allowed tabs mapping
+  // Define allowed tabs based on business rules from Joe
   const allowedTabs: TabValue[] = useMemo(() => {
+    if (authLoading || !profile) return [];
+    
     // Admin and Management see everything
     if (userRole === 'ADMIN' || userRole === 'MANAGER' || userDept === 'MANAGEMENT') {
       return ["quotation", "waiting-approve", "pending-parts", "done", "pickup"];
@@ -34,24 +37,30 @@ function ByStatusContent() {
       case 'OFFICE':
         return ["quotation", "waiting-approve", "pickup"];
       case 'PURCHASING':
+        // พนักงานจัดซื้อเข้าได้แค่ "กำลังจัดอะไหล่"
         return ["pending-parts"];
       case 'ACCOUNTING_HR':
+        // บัญชีเข้าได้แค่ "งานเสร็จรอทำบิล" และ "รอลูกค้ารับสินค้า"
         return ["done", "pickup"];
       default:
         return [];
     }
-  }, [userDept, userRole]);
+  }, [userDept, userRole, profile, authLoading]);
 
   const activeTab = (searchParams.get("status") as TabValue) || allowedTabs[0] || "quotation";
 
   // Security Redirect: If user is on a tab they are not allowed to see, redirect them to the first allowed tab
   useEffect(() => {
-    if (allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
+    if (!authLoading && allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
       const params = new URLSearchParams(searchParams.toString());
       params.set("status", allowedTabs[0]);
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     }
-  }, [allowedTabs, activeTab, router, pathname, searchParams]);
+  }, [allowedTabs, activeTab, router, pathname, searchParams, authLoading]);
+
+  if (authLoading) {
+    return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
+  }
 
   const handleTabChange = (value: string) => {
     if (!allowedTabs.includes(value as TabValue)) return;
@@ -64,43 +73,44 @@ function ByStatusContent() {
   const isTabDisabled = (value: TabValue) => !allowedTabs.includes(value);
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader title="จัดการงานซ่อม - ตามสถานะ" description="แสดงงานทั้งหมดที่ยังไม่ปิด แยกตามสถานะปัจจุบัน" />
+      
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 gap-1">
             <TabsTrigger 
               value="quotation" 
               disabled={isTabDisabled("quotation")}
-              className={cn(isTabDisabled("quotation") && "opacity-50 grayscale cursor-not-allowed")}
+              className={cn(isTabDisabled("quotation") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               งานเสนอราคา
             </TabsTrigger>
             <TabsTrigger 
               value="waiting-approve" 
               disabled={isTabDisabled("waiting-approve")}
-              className={cn(isTabDisabled("waiting-approve") && "opacity-50 grayscale cursor-not-allowed")}
+              className={cn(isTabDisabled("waiting-approve") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               รอลูกค้าอนุมัติ
             </TabsTrigger>
             <TabsTrigger 
               value="pending-parts" 
               disabled={isTabDisabled("pending-parts")}
-              className={cn(isTabDisabled("pending-parts") && "opacity-50 grayscale cursor-not-allowed")}
+              className={cn(isTabDisabled("pending-parts") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               กำลังจัดอะไหล่
             </TabsTrigger>
             <TabsTrigger 
               value="done" 
               disabled={isTabDisabled("done")}
-              className={cn(isTabDisabled("done") && "opacity-50 grayscale cursor-not-allowed")}
+              className={cn(isTabDisabled("done") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               งานเสร็จรอทำบิล
             </TabsTrigger>
             <TabsTrigger 
               value="pickup" 
               disabled={isTabDisabled("pickup")}
-              className={cn(isTabDisabled("pickup") && "opacity-50 grayscale cursor-not-allowed")}
+              className={cn(isTabDisabled("pickup") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               รอลูกค้ารับสินค้า
             </TabsTrigger>
@@ -132,7 +142,6 @@ function ByStatusContent() {
                         <JobList 
                             searchTerm={searchTerm}
                             status="WAITING_APPROVE"
-                            actionPreset="waitingApprove"
                             emptyTitle="ไม่มีงานที่รอลูกค้าอนุมัติ"
                             emptyDescription="ไม่มีงานที่อยู่ในสถานะ WAITING_APPROVE ในขณะนี้"
                         />
@@ -143,7 +152,6 @@ function ByStatusContent() {
                         <JobList 
                             searchTerm={searchTerm}
                             status="PENDING_PARTS"
-                            actionPreset="pendingPartsReady"
                             emptyTitle="ไม่มีงานที่รอจัดอะไหล่"
                             emptyDescription="ไม่มีงานที่อยู่ในสถานะ PENDING_PARTS ในขณะนี้"
                         />
@@ -172,11 +180,9 @@ function ByStatusContent() {
             </CardContent>
         </Card>
       </Tabs>
-    </>
+    </div>
   );
 }
-
-import { cn } from "@/lib/utils";
 
 export default function OfficeJobManagementByStatusPage() {
   return (

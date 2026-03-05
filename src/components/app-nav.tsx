@@ -411,17 +411,13 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
     const { profile, loading } = useAuth();
     const isAttendanceOpen = pathname.startsWith('/app/kiosk') || pathname.startsWith('/app/attendance');
 
-    const isManagementUser = useMemo(() => {
+    // Attendance QR only visible for specific technical/office roles, not restricted admin depts
+    const showAttendance = useMemo(() => {
         if (!profile) return false;
-        // Management users are only those in MANAGEMENT/ACHR depts OR ADMINS.
-        // Purchasing/Office managers should still see QR for their attendance unless they are Admin.
-        return profile.department === "MANAGEMENT" || profile.department === "ACCOUNTING_HR" || profile.role === "ADMIN";
-    }, [profile]);
-
-    const isRestrictedAdminWorker = useMemo(() => {
-        if (!profile) return false;
-        const restrictedDepts: string[] = ['OUTSOURCE', 'PURCHASING', 'ACCOUNTING_HR'];
-        return restrictedDepts.includes(profile.department || '') && (profile.role === 'WORKER' || profile.role === 'PURCHASE');
+        if (profile.role === 'ADMIN') return true;
+        // Hide QR attendance menu for Purchasing and Accounting/HR as requested
+        if (['PURCHASING', 'ACCOUNTING_HR', 'MANAGEMENT'].includes(profile.department || '')) return false;
+        return true;
     }, [profile]);
 
     const departmentsToShow = useMemo(() => {
@@ -449,7 +445,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             <nav 
                 className="grid items-start px-2 text-sm font-medium"
             >
-                {(!isManagementUser && !isRestrictedAdminWorker) && (
+                {showAttendance && (
                     <>
                         <Collapsible defaultOpen={isAttendanceOpen}>
                             <CollapsibleTrigger asChild>
