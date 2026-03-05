@@ -9,7 +9,7 @@ import {
 
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart, FileText
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart, FileText, LayoutList
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -288,6 +288,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 {department === 'MANAGEMENT' && (
                     <>
                         <SubNavLink href="/app/management/dashboard" label="แดชบอร์ด" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/jobs/management/by-status" label="งานตามสถานะ" icon={LayoutList} onClick={onLinkClick} />
                         {canSeeAccounting && (
                            <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
                         )}
@@ -330,6 +331,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                 )}
                 {department === 'PURCHASING' && (
                     <>
+                        <SubNavLink href="/app/office/jobs/management/by-status" label="งานตามสถานะ" icon={LayoutList} onClick={onLinkClick} />
                         <SubNavLink href="/app/office/parts/withdraw" label="เบิกอะไหล่" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/parts/receive" label="รับอะไหล่" onClick={onLinkClick} />
                         <SubNavLink href="/app/office/parts/purchases" label="รายการซื้อ" onClick={onLinkClick} />
