@@ -5,9 +5,8 @@ import { usePathname } from "next/navigation"
 import React, { useMemo, useState, useEffect } from "react"
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe
-} from "lucide-react"
-import { collection, query, where, getDocs } from "firebase/firestore"
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart
+} from "firebase/firestore"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -25,6 +24,7 @@ import type { UserProfile } from "@/lib/types"
 const departmentNames: Record<Department, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
+    PURCHASING: "แผนกจัดซื้อและสต๊อคสินค้า",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
     COMMONRAIL: "แผนกคอมมอนเรล",
     MECHANIC: "แผนกแมคคานิค",
@@ -244,6 +244,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
     const icons: Record<Department, React.ElementType> = {
         MANAGEMENT: Building,
         OFFICE: Landmark,
+        PURCHASING: ShoppingCart,
         CAR_SERVICE: Truck,
         COMMONRAIL: Factory,
         MECHANIC: Wrench,
@@ -282,22 +283,21 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/office/intake" label="เปิดงานใหม่ (Intake)" onClick={onLinkClick} />
                         <OfficeJobManagementSubMenu onLinkClick={onLinkClick} />
                         
-                        <Collapsible defaultOpen={pathname.startsWith('/app/office/list-management') || pathname.startsWith('/app/management/customers') || pathname.startsWith('/app/office/parts/vendors')}>
+                        <Collapsible defaultOpen={pathname.startsWith('/app/office/list-management') || pathname.startsWith('/app/management/customers')}>
                             <CollapsibleTrigger asChild>
-                                <Button variant={(pathname.startsWith('/app/office/list-management') || pathname.startsWith('/app/management/customers') || pathname.startsWith('/app/office/parts/vendors')) ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
+                                <Button variant={(pathname.startsWith('/app/office/list-management') || pathname.startsWith('/app/management/customers')) ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
                                     การจัดการรายชื่อ
                                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                                 </Button>
                             </CollapsibleTrigger>
                             <CollapsibleContent className="py-1 pl-4 space-y-1">
                                 <SubNavLink href="/app/management/customers" label="จัดการรายชื่อลูกค้า" onClick={onLinkClick} />
-                                <SubNavLink href="/app/office/parts/vendors" label="จัดการรายชื่อร้านค้า" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
 
-                        <Collapsible defaultOpen={pathname.startsWith('/app/office/documents')}>
+                        <Collapsible defaultOpen={pathname.startsWith('/app/office/documents') && !pathname.includes('/parts')}>
                             <CollapsibleTrigger asChild>
-                                <Button variant={pathname.startsWith('/app/office/documents') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
+                                <Button variant={(pathname.startsWith('/app/office/documents') && !pathname.includes('/parts')) ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
                                     จัดการเอกสารขาย
                                     <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
                                 </Button>
@@ -309,22 +309,16 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                                 <SubNavLink href="/app/office/documents/quotation/templates" label="Template ใบเสนอราคา" onClick={onLinkClick} />
                             </CollapsibleContent>
                         </Collapsible>
-
-                        <Collapsible defaultOpen={pathname.startsWith('/app/office/parts')}>
-                            <CollapsibleTrigger asChild>
-                                <Button variant={pathname.startsWith('/app/office/parts') ? "secondary" : "ghost"} className="w-full justify-between font-normal h-9 text-muted-foreground">
-                                    การจัดการอะไหล่
-                                    <ChevronDown className="h-4 w-4 transition-transform [&[data-state=open]]:rotate-180" />
-                                </Button>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="py-1 pl-4 space-y-1">
-                                <SubNavLink href="/app/office/parts/withdraw" label="เบิกอะไหล่" onClick={onLinkClick} />
-                                <SubNavLink href="/app/office/parts/receive" label="รับอะไหล่" onClick={onLinkClick} />
-                                <SubNavLink href="/app/office/parts/purchases" label="รายการซื้อ" onClick={onLinkClick} />
-                                <SubNavLink href="/app/office/parts/list" label="รายการอะไหล่/ค้นหา" onClick={onLinkClick} />
-                            </CollapsibleContent>
-                        </Collapsible>
                         <SubNavLink href="/app/office/cash-drawer" label="เงินสดหน้าร้าน" onClick={onLinkClick} />
+                    </>
+                )}
+                {department === 'PURCHASING' && (
+                    <>
+                        <SubNavLink href="/app/office/parts/withdraw" label="เบิกอะไหล่" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/parts/receive" label="รับอะไหล่" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/parts/purchases" label="รายการซื้อ" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/parts/list" label="รายการอะไหล่/ค้นหา" onClick={onLinkClick} />
+                        <SubNavLink href="/app/office/parts/vendors" label="จัดการรายชื่อร้านค้า" onClick={onLinkClick} />
                     </>
                 )}
                 {department === 'CAR_SERVICE' && (
@@ -405,7 +399,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             return [];
         }
         if (isManagementUser) {
-            const depts: Department[] = ["MANAGEMENT", "OFFICE"];
+            const depts: Department[] = ["MANAGEMENT", "OFFICE", "PURCHASING"];
             if (profile.department && !depts.includes(profile.department) && profile.department !== 'MANAGEMENT') {
                 depts.push(profile.department);
             }

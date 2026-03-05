@@ -1,6 +1,7 @@
 export const DEPARTMENT_LABELS: Record<string, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
+    PURCHASING: "แผนกจัดซื้อและสต๊อคสินค้า",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
     COMMONRAIL: "แผนกคอมมอนเรล",
     MECHANIC: "แผนกแมคคานิค",
@@ -11,6 +12,7 @@ export const DEPARTMENT_LABELS: Record<string, string> = {
 export const DEPARTMENT_CODES: Record<string, string> = {
     MANAGEMENT: "MANA",
     OFFICE: "OFFC",
+    PURCHASING: "PURC",
     CAR_SERVICE: "CARS",
     COMMONRAIL: "COMM",
     MECHANIC: "MECH",
