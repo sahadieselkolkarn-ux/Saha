@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from "next/link"
@@ -28,7 +29,7 @@ import type { UserProfile } from "@/lib/types"
 const departmentNames: Record<Department, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
-    PURCHASING: "แผนกจัดซื้อและสต๊อคสินค้า",
+    PURCHASING: "จัดซื้อ/สต๊อค",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
     COMMONRAIL: "แผนกคอมมอนเรล",
     MECHANIC: "แผนกแมคคานิค",
@@ -79,14 +80,12 @@ const OfficeJobManagementSubMenu = ({ onLinkClick }: { onLinkClick?: () => void 
 const ManagementAccountingSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
     const pathname = usePathname();
     
-    // Check if we are in any accounting sub-page or moved document pages
     const isAccountingDocActive = 
         pathname.startsWith('/app/office/documents/delivery-note') || 
         pathname.startsWith('/app/office/documents/tax-invoice');
         
     const isOpen = pathname.startsWith('/app/management/accounting') || isAccountingDocActive;
     
-    // Sub-group "Accounting Documents" logic
     const isDocSubGroupActive = 
         pathname.startsWith('/app/management/accounting/documents') || 
         isAccountingDocActive;
@@ -408,8 +407,10 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
         return profile.department === "MANAGEMENT" || ["ADMIN", "MANAGER"].includes(profile.role);
     }, [profile]);
 
-    const isOutsourceWorker = useMemo(() => {
-        return profile?.department === 'OUTSOURCE' && profile?.role === 'WORKER';
+    const isRestrictedWorker = useMemo(() => {
+        if (!profile) return false;
+        const restrictedDepts: string[] = ['OUTSOURCE', 'PURCHASING'];
+        return restrictedDepts.includes(profile.department || '') && (profile.role === 'WORKER' || profile.role === 'PURCHASE');
     }, [profile]);
 
     const departmentsToShow = useMemo(() => {
@@ -423,7 +424,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             }
             return depts;
         }
-        return profile.department ? [profile.department] : [];
+        return profile.department ? [profile.department as Department] : [];
     }, [profile, isManagementUser]);
 
     if (loading) {
@@ -439,7 +440,7 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             <nav 
                 className="grid items-start px-2 text-sm font-medium"
             >
-                {(!isManagementUser && !isOutsourceWorker) && (
+                {(!isManagementUser && !isRestrictedWorker) && (
                     <>
                         <Collapsible defaultOpen={isAttendanceOpen}>
                             <CollapsibleTrigger asChild>

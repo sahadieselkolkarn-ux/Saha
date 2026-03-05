@@ -1,7 +1,7 @@
 
 import { RequireDepartment } from "@/components/require-department";
 
-export default function OfficeQuotationLayout({ children }: { children: React.ReactNode }) {
-  // Quotation management is for Office department
+export default function IntakeLayout({ children }: { children: React.ReactNode }) {
+  // Intake is restricted to Office department
   return <RequireDepartment allow={['OFFICE']}>{children}</RequireDepartment>;
 }
