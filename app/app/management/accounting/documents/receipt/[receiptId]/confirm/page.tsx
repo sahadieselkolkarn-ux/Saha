@@ -59,7 +59,6 @@ const confirmReceiptSchema = z.object({
 }).refine(
   (data) => {
     const totalNetApplied = data.allocations.reduce((sum, alloc) => sum + (alloc.netCashApplied || 0), 0);
-    // Allow for small rounding differences (0.05 baht)
     return Math.abs(totalNetApplied - data.netReceivedTotal) < 0.06;
   },
   {
@@ -134,7 +133,6 @@ function ConfirmReceiptPageContent() {
         let fetchedObligations: Record<string, WithId<AccountingObligation>> = {};
 
         if (invoiceIds.length > 0) {
-            // Check if referring to Billing Notes or Invoices
             const sourceDocsQuery = query(collection(db, "documents"), where("__name__", "in", invoiceIds));
             const sourceDocsSnap = await getDocs(sourceDocsQuery);
             
@@ -169,7 +167,6 @@ function ConfirmReceiptPageContent() {
         const accountsData = accountsSnap.docs.map(d => ({id: d.id, ...d.data()}) as WithId<AccountingAccount>);
         setAccounts(accountsData);
         
-        // Initial setup of allocations based on the outstanding debt
         const initialAllocations = fetchedInvoices.map(inv => {
             const ob = fetchedObligations[inv.id];
             const grossRemaining = Math.round((ob?.balance ?? inv.paymentSummary?.balance ?? inv.grandTotal) * 100) / 100;
@@ -208,7 +205,6 @@ function ConfirmReceiptPageContent() {
     fetchData();
   }, [db, receiptId, form]);
   
-  // Logic to recalculate line Net based on Gross and WHT %
   useEffect(() => {
     const subscription = form.watch((value, { name }) => {
       if (name && name.startsWith('allocations')) {
@@ -227,7 +223,6 @@ function ConfirmReceiptPageContent() {
           const whtAmount = Math.round(whtBase * rate * 100) / 100;
           const netCash = Math.round((grossApplied - whtAmount) * 100) / 100;
 
-          // Only update if something changed to prevent loops
           if (currentAlloc.withholdingAmount !== whtAmount || currentAlloc.netCashApplied !== netCash) {
               update(index, {
                 ...currentAlloc,
@@ -274,6 +269,7 @@ function ConfirmReceiptPageContent() {
             const entryRef = doc(db, 'accountingEntries', entryId);
 
             const customerName = receipt.customerSnapshot?.name || 'ลูกค้าทั่วไป';
+            const receiptDocNo = receipt.docNo || "Unknown";
 
             transaction.set(arPaymentRef, sanitizeForFirestore({
                 id: arPaymentId,
@@ -300,10 +296,10 @@ function ConfirmReceiptPageContent() {
                 paymentMethod: paymentMethod,
                 categoryMain: 'เก็บเงินลูกหนี้',
                 categorySub: 'รับชำระตามบิลในระบบ',
-                description: `รับเงินตามใบเสร็จ: ${receipt.docNo} (${customerName})`,
+                description: `รับเงินตามใบเสร็จ: ${receiptDocNo} (${customerName})`,
                 sourceDocType: 'RECEIPT',
                 sourceDocId: receipt.id,
-                sourceDocNo: receipt.docNo,
+                sourceDocNo: receiptDocNo,
                 customerNameSnapshot: customerName,
                 createdAt: serverTimestamp(),
             }));
@@ -323,7 +319,6 @@ function ConfirmReceiptPageContent() {
                 updatedAt: serverTimestamp(),
             }));
             
-            // Update individual Invoices and parent Billing Note
             const parentReferenceIds = receipt.referencesDocIds || [];
             for (const refId of parentReferenceIds) {
                 const docRef = doc(db, 'documents', refId);
@@ -362,7 +357,7 @@ function ConfirmReceiptPageContent() {
                             const jobRef = doc(db, 'jobs', ob.jobId);
                             transaction.update(jobRef, { status: 'CLOSED', updatedAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
                             transaction.set(doc(collection(jobRef, 'activities')), {
-                                text: `ฝ่ายบัญชียืนยันรับเงินตามใบเสร็จ ${receipt.docNo} และปิดงานเรียบร้อยค่ะ`,
+                                text: `ฝ่ายบัญชียืนยันรับเงินตามใบเสร็จ ${receiptDocNo} และปิดงานเรียบร้อยค่ะ`,
                                 userName: profile.displayName,
                                 userId: profile.uid,
                                 createdAt: serverTimestamp()
@@ -528,7 +523,7 @@ function ConfirmReceiptPageContent() {
                         <div className="space-y-3">
                             <p>เมื่อยืนยันแล้ว ระบบจะดำเนินการดังนี้:</p>
                             <ul className="list-disc pl-5 text-sm space-y-1">
-                                <li>บันทึกรายรับเข้าบัญชี <span className="font-bold text-primary">{formatCurrency(pendingFormData?.netReceivedTotal || 0)} บาท</span></li>
+                                <li>บันทึกรายรับเข้าสมุดบัญชี <span className="font-bold text-primary">{formatCurrency(pendingFormData?.netReceivedTotal || 0)} บาท</span></li>
                                 <li>ตัดยอดหนี้ลูกหนี้ (AR) และใบวางบิลที่เกี่ยวข้อง</li>
                                 <li>ปิดงานซ่อม (CLOSED) ทันทีหากชำระครบถ้วน</li>
                             </ul>

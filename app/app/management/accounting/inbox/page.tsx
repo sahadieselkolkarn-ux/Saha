@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, Suspense } from "react";
@@ -54,7 +55,7 @@ function AccountingInboxPageContent() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"receive" | "ar" | "receipts">("receive");
-  const [indexCreationUrl, setIndexCreationUrl] = useState<string | null>(null);
+  const [indexCreationUrl, setIndexErrorUrl] = useState<string | null>(null);
 
   const [confirmingDoc, setConfirmingDoc] = useState<WithId<DocumentType> | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
@@ -78,7 +79,6 @@ function AccountingInboxPageContent() {
       return;
     }
 
-    // Docs needing review (Includes both PENDING and those wrongly set to APPROVED for DNs)
     const docsQuery = query(
       collection(db, "documents"), 
       where("status", "in", ["PENDING_REVIEW", "APPROVED"]),
@@ -88,16 +88,15 @@ function AccountingInboxPageContent() {
     const unsubDocs = onSnapshot(docsQuery, 
       (snap) => { 
         const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>));
-        // Filter: Keep DNs that are PENDING or APPROVED, Keep TIs that are PENDING only
         const needingReview = all.filter(d => {
             if (d.docType === 'DELIVERY_NOTE') return d.status === 'PENDING_REVIEW' || d.status === 'APPROVED';
             if (d.docType === 'TAX_INVOICE') return d.status === 'PENDING_REVIEW';
-            if (d.docType === 'RECEIPT') return true; // Include receipts for the receipts tab
+            if (d.docType === 'RECEIPT') return true;
             return false;
         });
         setDocuments(needingReview); 
         setLoading(false);
-        setIndexCreationUrl(null);
+        setIndexErrorUrl(null);
       },
       (err: FirestoreError) => { 
         if (err.code === 'permission-denied') {
@@ -108,13 +107,12 @@ function AccountingInboxPageContent() {
           errorEmitter.emit('permission-error', permissionError);
         } else if (err.message?.includes('requires an index')) {
             const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
-            if (urlMatch) setIndexCreationUrl(urlMatch[0]);
+            if (urlMatch) setIndexErrorUrl(urlMatch[0]);
         }
         setLoading(false); 
       }
     );
 
-    // Docs approved but no receipt issued yet (ONLY for Tax Invoices)
     const approvedQuery = query(
         collection(db, "documents"),
         where("status", "==", "APPROVED"),
@@ -123,7 +121,6 @@ function AccountingInboxPageContent() {
     );
     const unsubApproved = onSnapshot(approvedQuery, (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<DocumentType>)).filter(d => !d.receiptDocId);
-        // เรียงลำดับวันที่ล่าสุดขึ้นก่อน
         data.sort((a, b) => (b.docDate || "").localeCompare(a.docDate || ""));
         setApprovedDocs(data);
     });
@@ -167,11 +164,9 @@ function AccountingInboxPageContent() {
       return false;
     });
 
-    // เรียงลำดับวันที่ล่าสุดขึ้นก่อนเสมอ
     filteredByTab.sort((a, b) => {
         const dateCompare = (b.docDate || "").localeCompare(a.docDate || "");
         if (dateCompare !== 0) return dateCompare;
-        // ถ้าวันเดียวกัน ให้เรียงตามเวลาที่สร้าง (จากล่าสุดไปเก่า)
         const timeA = a.createdAt?.toMillis?.() || 0;
         const timeB = b.createdAt?.toMillis?.() || 0;
         return timeB - timeA;
@@ -219,7 +214,6 @@ function AccountingInboxPageContent() {
         const docSnap = await transaction.get(docRef);
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         
-        // Block redundant approvals only for TI (DN can move from APPROVED to PAID)
         if (confirmingDoc.docType === 'TAX_INVOICE' && docSnap.data().status === 'APPROVED') {
           throw new Error("ใบกำกับภาษีนี้ตรวจสอบแล้ว รอออกใบเสร็จค่ะ");
         }
@@ -234,24 +228,25 @@ function AccountingInboxPageContent() {
         });
 
         if (isDeliveryNote) {
-            // DELIVERY NOTE (Cash): Complete immediately and CLOSE JOB
             const entryId = `AUTO_CASH_${confirmingDoc.id}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
             const firstPayment = finalPayments[0];
 
-            transaction.set(entryRef, {
+            transaction.set(entryRef, sanitizeForFirestore({
                 entryType: 'CASH_IN',
                 entryDate: selectedPaymentDate,
                 amount: confirmingDoc.grandTotal,
                 accountId: firstPayment.accountId,
                 paymentMethod: firstPayment.method,
+                categoryMain: 'งานซ่อม',
+                categorySub: 'หน้าร้าน (CAR_SERVICE)',
                 description: `รับเงินสด/โอนตามใบส่งของ: ${confirmingDoc.docNo} (${customerName})`,
                 sourceDocType: 'DELIVERY_NOTE',
                 sourceDocId: confirmingDoc.id,
                 sourceDocNo: confirmingDoc.docNo,
                 customerNameSnapshot: customerName,
                 createdAt: serverTimestamp(),
-            });
+            }));
 
             transaction.update(docRef, { 
                 status: 'PAID', 
@@ -271,7 +266,6 @@ function AccountingInboxPageContent() {
                     lastActivityAt: serverTimestamp()
                 });
 
-                // LOG ACTIVITY: Payment confirmed and job closed
                 const activityRef = doc(collection(jobRef, 'activities'));
                 transaction.set(activityRef, {
                     text: `ฝ่ายบัญชียืนยันรับเงินสด/โอน เลขที่บิล: ${confirmingDoc.docNo} และปิดงานเรียบร้อยค่ะ`,
@@ -281,7 +275,6 @@ function AccountingInboxPageContent() {
                 });
             }
         } else {
-            // TAX INVOICE: Move to APPROVED status (Wait for Receipt confirmed)
             const arId = `AR_${confirmingDoc.id}`;
             const arRef = doc(db, 'accountingObligations', arId);
 
@@ -294,7 +287,7 @@ function AccountingInboxPageContent() {
                 updatedAt: serverTimestamp()
             });
 
-            transaction.set(arRef, {
+            transaction.set(arRef, sanitizeForFirestore({
                 id: arId,
                 type: 'AR', 
                 status: 'UNPAID', 
@@ -309,11 +302,10 @@ function AccountingInboxPageContent() {
                 customerNameSnapshot: customerName,
                 jobId: jobId || null,
                 dueDate: confirmingDoc.dueDate || null,
-            });
+            }));
 
             if (jobId) {
                 const jobRef = doc(db, 'jobs', jobId);
-                // LOG ACTIVITY: Invoice approved, waiting for receipt
                 const activityRef = doc(collection(jobRef, 'activities'));
                 transaction.set(activityRef, {
                     text: `ฝ่ายบัญชีตรวจสอบใบกำกับภาษีเลขที่: ${confirmingDoc.docNo} ถูกต้องแล้ว (รอการออกใบเสร็จ)`,
@@ -358,7 +350,7 @@ function AccountingInboxPageContent() {
 
     try {
       await runTransaction(db, async (transaction) => {
-        transaction.set(arRef, {
+        transaction.set(arRef, sanitizeForFirestore({
           id: arId,
           type: 'AR', 
           status: 'UNPAID', 
@@ -373,7 +365,7 @@ function AccountingInboxPageContent() {
           customerNameSnapshot: customerName,
           jobId: docObj.jobId || null,
           dueDate: docObj.dueDate || null,
-        });
+        }));
         transaction.update(docRef, {
           status: isDeliveryNote ? 'UNPAID' : 'APPROVED', 
           arStatus: 'UNPAID',
@@ -384,8 +376,6 @@ function AccountingInboxPageContent() {
 
         if (docObj.jobId) {
             const jobRef = doc(db, 'jobs', docObj.jobId);
-            
-            // LOG ACTIVITY: AR Created
             const activityRef = doc(collection(jobRef, 'activities'));
             transaction.set(activityRef, {
                 text: `ฝ่ายบัญชียืนยันตั้งยอดค้างชำระ (Credit) ตามเลขที่บิล: ${docObj.docNo}`,
@@ -425,7 +415,6 @@ function AccountingInboxPageContent() {
     try {
       await updateDoc(docRef, updateData);
       
-      // LOG ACTIVITY: Document rejected
       if (disputingDoc.jobId) {
           const jobRef = doc(db, 'jobs', disputingDoc.jobId);
           await addDoc(collection(jobRef, 'activities'), {
@@ -453,7 +442,6 @@ function AccountingInboxPageContent() {
     if (docObj.suggestedPayments && docObj.suggestedPayments.length > 0) {
       setSuggestedPayments(docObj.suggestedPayments.map(p => ({ accountId: p.accountId, amount: p.amount })));
     } else {
-      // Default to full amount in first cash account or first available
       const defaultAccount = accounts.find(a => a.type === 'CASH') || accounts[0];
       setSuggestedPayments([{ accountId: defaultAccount?.id || "", amount: docObj.grandTotal }]);
     }
