@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MoreHorizontal, PlusCircle, Link as LinkIcon } from "lucide-react";
+import { Loader2, MoreHorizontal, PlusCircle, Link as LinkIcon, Edit } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEPARTMENTS, USER_ROLES, USER_STATUSES, PAY_TYPES } from "@/lib/constants";
 import type { UserProfile, SSOHospital, PayType, Vendor } from "@/lib/types";
@@ -69,51 +69,65 @@ const userProfileSchema = z.object({
 
 type UserWithId = WithId<UserProfile>;
 
-const UserCard = ({ user, onEdit, onDelete, isManagerOrAdmin }: { user: UserWithId, onEdit: (user: UserWithId) => void, onDelete: (userId: string) => void, isManagerOrAdmin: boolean }) => (
-    <Card>
-        <CardHeader>
-            <div className="flex justify-between items-start">
-                <CardTitle className="text-lg">{user.displayName}</CardTitle>
-                {isManagerOrAdmin && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                <MoreHorizontal className="h-4 w-4" />
+const UserCard = ({ user, onEdit, onDelete, loggedInUser }: { user: UserWithId, onEdit: (user: UserWithId) => void, onDelete: (userId: string) => void, loggedInUser: UserProfile | null }) => {
+    const isManagerOrAdmin = loggedInUser?.role === 'MANAGER' || loggedInUser?.role === 'ADMIN';
+    const isAdminUser = user.role === 'ADMIN';
+    const isLoggedInAdmin = loggedInUser?.role === 'ADMIN';
+
+    return (
+        <Card>
+            <CardHeader>
+                <div className="flex justify-between items-start">
+                    <CardTitle className="text-lg">{user.displayName}</CardTitle>
+                    {isAdminUser ? (
+                        isLoggedInAdmin ? (
+                            <Button variant="outline" size="sm" onClick={() => onEdit(user)} className="h-8 gap-1">
+                                <Edit className="h-3 w-3" /> แก้ไข
                             </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => onEdit(user)}>แก้ไข</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onDelete(user.id)} className="text-destructive focus:text-destructive">
-                                ลบ
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
-            </div>
-            <CardDescription>{user.phone}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm pt-0">
-            <div className="flex justify-between items-center border-t pt-2">
-                <span className="text-muted-foreground">แผนก</span>
-                <span className="font-medium">{deptLabel(user.department) || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between items-center border-t pt-2">
-                <span className="text-muted-foreground">ตำแหน่ง</span>
-                <span className="font-medium">{user.role}</span>
-            </div>
-             <div className="flex justify-between items-center border-t pt-2">
-                <span className="text-muted-foreground">สถานะ</span>
-                <span className="font-medium">{user.status}</span>
-            </div>
-            {user.linkedVendorName && (
-                <div className="flex justify-between items-center border-t pt-2 text-primary font-bold">
-                    <span className="flex items-center gap-1"><LinkIcon className="h-3 w-3"/> ร้านที่ผูก:</span>
-                    <span>{user.linkedVendorName}</span>
+                        ) : null
+                    ) : (
+                        isManagerOrAdmin && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => onEdit(user)}>แก้ไข</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => onDelete(user.id)} className="text-destructive focus:text-destructive">
+                                        ลบ
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )
+                    )}
                 </div>
-            )}
-        </CardContent>
-    </Card>
-);
+                <CardDescription>{user.phone}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm pt-0">
+                <div className="flex justify-between items-center border-t pt-2">
+                    <span className="text-muted-foreground">แผนก</span>
+                    <span className="font-medium">{deptLabel(user.department) || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between items-center border-t pt-2">
+                    <span className="text-muted-foreground">ตำแหน่ง</span>
+                    <span className="font-medium">{user.role}</span>
+                </div>
+                 <div className="flex justify-between items-center border-t pt-2">
+                    <span className="text-muted-foreground">สถานะ</span>
+                    <span className="font-medium">{user.status}</span>
+                </div>
+                {user.linkedVendorName && (
+                    <div className="flex justify-between items-center border-t pt-2 text-primary font-bold">
+                        <span className="flex items-center gap-1"><LinkIcon className="h-3 w-3"/> ร้านที่ผูก:</span>
+                        <span>{user.linkedVendorName}</span>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+};
 
 export default function ManagementHREmployeesPage() {
   const { db } = useFirebase();
@@ -132,6 +146,7 @@ export default function ManagementHREmployeesPage() {
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(true);
 
   const isManagerOrAdmin = loggedInUser?.role === 'MANAGER' || loggedInUser?.role === 'ADMIN';
+  const isLoggedInAdmin = loggedInUser?.role === 'ADMIN';
 
   const form = useForm<z.infer<typeof userProfileSchema>>({
     resolver: zodResolver(userProfileSchema),
@@ -359,37 +374,48 @@ export default function ManagementHREmployeesPage() {
                 <TableHead>แผนก</TableHead>
                 <TableHead>ตำแหน่ง</TableHead>
                 <TableHead>สถานะ</TableHead>
-                {isManagerOrAdmin && <TableHead><span className="sr-only">จัดการ</span></TableHead>}
+                <TableHead className="text-right">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.length > 0 ? (
-                users.map(user => (
-                    <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                        {user.displayName}
-                        {user.linkedVendorName && <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5"><LinkIcon className="h-2 w-2"/> {user.linkedVendorName}</p>}
-                    </TableCell>
-                    <TableCell>{user.phone}</TableCell>
-                    <TableCell>{deptLabel(user.department) || 'N/A'}</TableCell>
-                    <TableCell>{user.role}</TableCell>
-                    <TableCell>{user.status}</TableCell>
-                    {isManagerOrAdmin && (
-                        <TableCell>
-                            <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openDialog(user)}>แก้ไข</DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDeleteRequest(user.id)} className="text-destructive focus:text-destructive">ลบ</DropdownMenuItem>
-                            </DropdownMenuContent>
-                            </DropdownMenu>
+                users.map(user => {
+                    const isAdminUser = user.role === 'ADMIN';
+                    return (
+                        <TableRow key={user.id}>
+                        <TableCell className="font-medium">
+                            {user.displayName}
+                            {user.linkedVendorName && <p className="text-[10px] text-primary flex items-center gap-1 mt-0.5"><LinkIcon className="h-2 w-2"/> {user.linkedVendorName}</p>}
                         </TableCell>
-                    )}
-                    </TableRow>
-                ))
+                        <TableCell>{user.phone}</TableCell>
+                        <TableCell>{deptLabel(user.department) || 'N/A'}</TableCell>
+                        <TableCell>{user.role}</TableCell>
+                        <TableCell>{user.status}</TableCell>
+                        <TableCell className="text-right">
+                            {isAdminUser ? (
+                                isLoggedInAdmin ? (
+                                    <Button variant="ghost" size="sm" onClick={() => openDialog(user)} className="h-8 gap-1">
+                                        <Edit className="h-3 w-3" /> แก้ไข
+                                    </Button>
+                                ) : null
+                            ) : (
+                                isManagerOrAdmin && (
+                                    <DropdownMenu>
+                                    <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onClick={() => openDialog(user)}>แก้ไข</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleDeleteRequest(user.id)} className="text-destructive focus:text-destructive">ลบ</DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )
+                            )}
+                        </TableCell>
+                        </TableRow>
+                    );
+                })
               ) : (
                 <TableRow>
-                    <TableCell colSpan={isManagerOrAdmin ? 6 : 5} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                        ไม่พบข้อมูลผู้ใช้, ผู้ใช้ใหม่จะปรากฏที่นี่หลังจากสมัครสมาชิก
                     </TableCell>
                 </TableRow>
@@ -402,7 +428,7 @@ export default function ManagementHREmployeesPage() {
       <div className="grid gap-4 sm:hidden">
         {users.length > 0 ? (
             users.map(user => (
-                <UserCard key={user.id} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} isManagerOrAdmin={isManagerOrAdmin} />
+                <UserCard key={user.id} user={user} onEdit={openDialog} onDelete={handleDeleteRequest} loggedInUser={loggedInUser} />
             ))
         ) : (
             <Card className="text-center py-12">

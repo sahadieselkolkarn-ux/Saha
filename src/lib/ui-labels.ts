@@ -1,7 +1,7 @@
 export const DEPARTMENT_LABELS: Record<string, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
-    PURCHASING: "แผนกจัดซื้อและสต๊อคสินค้า",
+    PURCHASING: "จัดซื้อ/สต๊อค",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
     COMMONRAIL: "แผนกคอมมอนเรล",
     MECHANIC: "แผนกแมคคานิค",
