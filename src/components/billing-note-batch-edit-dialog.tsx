@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Document, Customer } from '@/lib/types';
 import { AlertTriangle, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 
 interface EditDialogProps {
   isOpen: boolean;
@@ -32,6 +33,9 @@ interface EditDialogProps {
   };
   onSave: (customerId: string, deferred: Record<string, boolean>, separate: Record<string, string>) => void;
 }
+
+const formatCurrency = (value: number) =>
+  value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function BillingNoteBatchEditDialog({ isOpen, onClose, customer, invoices, initialOverrides, onSave }: EditDialogProps) {
   const [invoiceStates, setInvoiceStates] = useState<Record<string, { group: 'include' | 'defer' | 'separate', separateKey: string }>>({});
