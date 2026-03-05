@@ -50,7 +50,18 @@ service cloud.firestore {
     }
 
     function canEditJobs() {
-      return (isAdmin() || isMgmt() || isOffice() || isService()) && !isViewer();
+      return signedIn() && role() != "VIEWER" && (
+        role() == "ADMIN" || 
+        role() == "MANAGER" || 
+        dept() == "MANAGEMENT" || 
+        dept() == "OFFICE" || 
+        dept() == "PURCHASING" || 
+        dept() == "ACCOUNTING_HR" || 
+        dept() == "CAR_SERVICE" || 
+        dept() == "COMMONRAIL" || 
+        dept() == "MECHANIC" || 
+        dept() == "OUTSOURCE"
+      );
     }
     
     function isOfficeOrMgmt() {
@@ -58,7 +69,7 @@ service cloud.firestore {
     }
     
     function isAccountingAllowed() {
-      return isOfficeOrMgmt();
+      return isOfficeOrMgmt() || (signedIn() && dept() == "ACCOUNTING_HR");
     }
     
     function isPurchasingAllowed() {
@@ -206,7 +217,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
-    ssoHospitals/{hospitalId} {
+    match /ssoHospitals/{hospitalId} {
       allow read: if signedIn();
       allow write: if isMgmt();
     }

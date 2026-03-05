@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -26,6 +27,8 @@ import Image from "next/image";
 import type { Part, PartCategory, Vendor } from "@/lib/types";
 import type { WithId } from "@/firebase";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 const partSchema = z.object({
   code: z.string().min(1, "กรุณากรอกรหัสอะไหล่"),
@@ -82,7 +85,6 @@ export default function PartsInventoryPage() {
     const unsubCats = onSnapshot(query(collection(db, "partCategories"), orderBy("name", "asc")), (snap) => {
       setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<PartCategory>)));
     });
-    // Fix: Client-side sort to avoid index requirement for where + orderBy
     const unsubVendors = onSnapshot(query(collection(db, "vendors"), where("isActive", "==", true)), (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>));
       data.sort((a, b) => (a.shortName || "").localeCompare(b.shortName || "", 'th'));
@@ -141,37 +143,64 @@ export default function PartsInventoryPage() {
         updatedAt: serverTimestamp(),
         createdByUid: profile.uid,
         createdByName: profile.displayName,
-        costPrice: editingPart?.costPrice || 0, // Preserve avg cost
+        costPrice: editingPart?.costPrice || 0,
       };
 
       if (editingPart) {
-        await updateDoc(doc(db, "parts", editingPart.id), sanitizeForFirestore(partData));
-        toast({ title: "อัปเดตข้อมูลสำเร็จ" });
+        const partRef = doc(db, "parts", editingPart.id);
+        updateDoc(partRef, sanitizeForFirestore(partData))
+          .then(() => {
+            toast({ title: "อัปเดตข้อมูลสำเร็จ" });
+            setIsDialogOpen(false);
+          })
+          .catch(async (serverError) => {
+            const permissionError = new FirestorePermissionError({
+              path: partRef.path,
+              operation: 'update',
+              requestResourceData: partData,
+            } satisfies SecurityRuleContext);
+            errorEmitter.emit('permission-error', permissionError);
+          })
+          .finally(() => setIsSubmitting(false));
       } else {
-        await addDoc(collection(db, "parts"), {
-          ...sanitizeForFirestore(partData),
-          createdAt: serverTimestamp(),
-        });
-        toast({ title: "เพิ่มอะไหล่ใหม่สำเร็จ" });
+        const partsColRef = collection(db, "parts");
+        const finalData = { ...sanitizeForFirestore(partData), createdAt: serverTimestamp() };
+        addDoc(partsColRef, finalData)
+          .then(() => {
+            toast({ title: "เพิ่มอะไหล่ใหม่สำเร็จ" });
+            setIsDialogOpen(false);
+          })
+          .catch(async (serverError) => {
+            const permissionError = new FirestorePermissionError({
+              path: partsColRef.path,
+              operation: 'create',
+              requestResourceData: finalData,
+            } satisfies SecurityRuleContext);
+            errorEmitter.emit('permission-error', permissionError);
+          })
+          .finally(() => setIsSubmitting(false));
       }
-      setIsDialogOpen(false);
     } catch (e: any) {
       toast({ variant: "destructive", title: "ผิดพลาด", description: e.message });
-    } finally {
       setIsSubmitting(false);
     }
   };
 
   const confirmDelete = async () => {
     if (!db || !partToDelete) return;
-    try {
-      await deleteDoc(doc(db, "parts", partToDelete.id));
-      toast({ title: "ลบข้อมูลสำเร็จ" });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "ลบไม่สำเร็จ", description: e.message });
-    } finally {
-      setPartToDelete(null);
-    }
+    const partRef = doc(db, "parts", partToDelete.id);
+    deleteDoc(partRef)
+      .then(() => {
+        toast({ title: "ลบข้อมูลสำเร็จ" });
+      })
+      .catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: partRef.path,
+          operation: 'delete',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => setPartToDelete(null));
   };
 
   const filteredParts = useMemo(() => {
