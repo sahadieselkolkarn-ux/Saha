@@ -2,8 +2,29 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // อนุญาตให้ผู้ใช้ที่ผ่านการเข้าสู่ระบบสามารถอ่านและเขียนไฟล์ได้ทั้งหมด
-    // เพื่อรองรับการเก็บรูปภาพงานซ่อม, รูปบิล, และคู่มือต่างๆ
+    // กำหนดสิทธิ์แยกตามประเภทงานเพื่อให้ระบบตรวจสอบได้แม่นยำขึ้น
+    
+    // 1. โฟลเดอร์สำหรับอะไหล่ (Inventory Parts)
+    match /parts/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // 2. โฟลเดอร์สำหรับงานซ่อม (Job Photos)
+    match /jobs/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // 3. โฟลเดอร์สำหรับรายการซื้อ (Purchase Bills)
+    match /purchases/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // 4. โฟลเดอร์สำหรับเงินสดหน้าร้าน (Cash Drawer Proofs)
+    match /cash-drawer/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // กฎสำรองสำหรับไฟล์อื่นๆ ทั้งหมด
     match /{allPaths=**} {
       allow read, write: if request.auth != null;
     }
