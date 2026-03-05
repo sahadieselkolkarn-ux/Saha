@@ -18,7 +18,7 @@ import {
 import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { addMonths, subMonths, format } from "date-fns";
+import { addMonths, subMonths, format, parseISO } from "date-fns";
 import * as z from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,13 +27,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ChevronLeft, ChevronRight, HandCoins, AlertCircle, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, HandCoins, AlertCircle, ExternalLink, CheckCircle2, CalendarDays } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 import type { PayslipNew, AccountingAccount, UserProfile } from "@/lib/types";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { newPayslipStatusLabel } from "@/lib/ui-labels";
@@ -100,13 +103,40 @@ function PayDialog({
               ยอดจ่ายสุทธิ: {formatCurrency(payslip.snapshot?.netPay ?? 0)} บาท
             </div>
             
-            <FormField control={form.control} name="paidDate" render={({ field }) => (
-              <FormItem>
-                <FormLabel>วันที่จ่ายเงิน</FormLabel>
-                <FormControl><Input type="date" {...field} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            <FormField
+              control={form.control}
+              name="paidDate"
+              render={({ field }) => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>วันที่จ่ายเงิน</FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full pl-3 text-left font-normal h-10",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                          <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={field.value ? parseISO(field.value) : undefined}
+                        onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField control={form.control} name="accountId" render={({ field }) => (
               <FormItem>
