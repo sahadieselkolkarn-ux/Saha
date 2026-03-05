@@ -29,7 +29,9 @@
             "ADMIN",
             "MANAGER",
             "OFFICER",
-            "WORKER"
+            "PURCHASE",
+            "WORKER",
+            "VIEWER"
           ]
         },
         "department": {
@@ -38,6 +40,8 @@
           "enum": [
             "MANAGEMENT",
             "OFFICE",
+            "PURCHASING",
+            "ACCOUNTING_HR",
             "CAR_SERVICE",
             "COMMONRAIL",
             "MECHANIC",

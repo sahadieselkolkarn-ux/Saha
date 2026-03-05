@@ -30,6 +30,7 @@ const departmentNames: Record<Department, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
     PURCHASING: "จัดซื้อ/สต๊อค",
+    ACCOUNTING_HR: "แผนกบัญชี/บุคคล",
     CAR_SERVICE: "งานซ่อมหน้าร้าน",
     COMMONRAIL: "แผนกคอมมอนเรล",
     MECHANIC: "แผนกแมคคานิค",
@@ -262,6 +263,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
         MANAGEMENT: Building,
         OFFICE: Landmark,
         PURCHASING: ShoppingCart,
+        ACCOUNTING_HR: Users,
         CAR_SERVICE: Truck,
         COMMONRAIL: Factory,
         MECHANIC: Wrench,
@@ -269,7 +271,7 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
         WEB_MANAGEMENT: Globe,
     };
     const Icon = icons[department];
-    const canSeeAccounting = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT';
+    const canSeeAccounting = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT' || profile?.department === 'ACCOUNTING_HR';
     const isSystemAdmin = profile?.role === 'ADMIN';
 
     return (
@@ -338,6 +340,12 @@ const DepartmentMenu = ({ department, onLinkClick }: { department: Department, o
                         <SubNavLink href="/app/office/parts/vendors" label="จัดการรายชื่อร้านค้า" onClick={onLinkClick} />
                     </>
                 )}
+                {department === 'ACCOUNTING_HR' && (
+                    <>
+                        <ManagementAccountingSubMenu onLinkClick={onLinkClick} />
+                        <HRSubMenu onLinkClick={onLinkClick} />
+                    </>
+                )}
                 {department === 'CAR_SERVICE' && (
                     <>
                        <SubNavLink href="/app/car-service/jobs/all" label="งานทั้งหมด" onClick={onLinkClick} />
@@ -404,12 +412,12 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
 
     const isManagementUser = useMemo(() => {
         if (!profile) return false;
-        return profile.department === "MANAGEMENT" || ["ADMIN", "MANAGER"].includes(profile.role);
+        return profile.department === "MANAGEMENT" || profile.department === "ACCOUNTING_HR" || ["ADMIN", "MANAGER"].includes(profile.role);
     }, [profile]);
 
     const isRestrictedWorker = useMemo(() => {
         if (!profile) return false;
-        const restrictedDepts: string[] = ['OUTSOURCE', 'PURCHASING'];
+        const restrictedDepts: string[] = ['OUTSOURCE', 'PURCHASING', 'ACCOUNTING_HR'];
         return restrictedDepts.includes(profile.department || '') && (profile.role === 'WORKER' || profile.role === 'PURCHASE');
     }, [profile]);
 
@@ -418,9 +426,9 @@ export function AppNav({ onLinkClick }: { onLinkClick?: () => void }) {
             return [];
         }
         if (isManagementUser) {
-            const depts: Department[] = ["MANAGEMENT", "OFFICE", "PURCHASING"];
-            if (profile.department && !depts.includes(profile.department) && profile.department !== 'MANAGEMENT') {
-                depts.push(profile.department);
+            const depts: Department[] = ["MANAGEMENT", "OFFICE", "PURCHASING", "ACCOUNTING_HR"];
+            if (profile.department && !depts.includes(profile.department as any) && profile.department !== 'MANAGEMENT') {
+                depts.push(profile.department as any);
             }
             return depts;
         }
