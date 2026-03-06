@@ -1,15 +1,15 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, updateDoc, where } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useCollection } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { BrowserMultiFormatReader } from '@zxing/browser';
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -20,11 +20,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, Package, MapPin, ImageIcon, Info } from "lucide-react";
+import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import Image from "next/image";
-import type { Part, PartCategory, Vendor } from "@/lib/types";
+import type { Part, PartCategory, PartLocation } from "@/lib/types";
 import type { WithId } from "@/firebase";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -34,7 +34,6 @@ const partSchema = z.object({
   code: z.string().min(1, "กรุณากรอกรหัสอะไหล่"),
   name: z.string().min(1, "กรุณากรอกชื่ออะไหล่"),
   categoryId: z.string().min(1, "กรุณาเลือกหมวดหมู่"),
-  vendorId: z.string().min(1, "กรุณาเลือกผู้ขาย"),
   sellingPrice: z.coerce.number().min(0, "ห้ามติดลบ"),
   stockQty: z.coerce.number().min(0, "ห้ามติดลบ"),
   location: z.string().optional().default(""),
@@ -49,7 +48,6 @@ export default function PartsInventoryPage() {
 
   const [parts, setParts] = useState<WithId<Part>[]>([]);
   const [categories, setCategories] = useState<WithId<PartCategory>[]>([]);
-  const [vendors, setVendors] = useState<WithId<Vendor>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -61,6 +59,17 @@ export default function PartsInventoryPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Barcode Scanner states
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+
+  const locationsQuery = useMemo(() => 
+    db ? query(collection(db, "partLocations"), orderBy("name", "asc")) : null
+  , [db]);
+  const { data: locations } = useCollection<PartLocation>(locationsQuery);
+
   const canManage = profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'PURCHASING';
 
   const form = useForm<PartFormData>({
@@ -69,7 +78,6 @@ export default function PartsInventoryPage() {
       code: "",
       name: "",
       categoryId: "",
-      vendorId: "",
       sellingPrice: 0,
       stockQty: 0,
       location: "",
@@ -85,12 +93,7 @@ export default function PartsInventoryPage() {
     const unsubCats = onSnapshot(query(collection(db, "partCategories"), orderBy("name", "asc")), (snap) => {
       setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<PartCategory>)));
     });
-    const unsubVendors = onSnapshot(query(collection(db, "vendors"), where("isActive", "==", true)), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Vendor>));
-      data.sort((a, b) => (a.shortName || "").localeCompare(b.shortName || "", 'th'));
-      setVendors(data);
-    });
-    return () => { unsubParts(); unsubCats(); unsubVendors(); };
+    return () => { unsubParts(); unsubCats(); };
   }, [db]);
 
   useEffect(() => {
@@ -99,18 +102,59 @@ export default function PartsInventoryPage() {
         code: editingPart.code,
         name: editingPart.name,
         categoryId: editingPart.categoryId,
-        vendorId: editingPart.vendorId,
         sellingPrice: editingPart.sellingPrice,
         stockQty: editingPart.stockQty,
         location: editingPart.location || "",
       });
       setPhotoPreview(editingPart.imageUrl || null);
     } else {
-      form.reset({ code: "", name: "", categoryId: "", vendorId: "", sellingPrice: 0, stockQty: 0, location: "" });
+      form.reset({ code: "", name: "", categoryId: "", sellingPrice: 0, stockQty: 0, location: "" });
       setPhotoPreview(null);
       setPhoto(null);
     }
   }, [editingPart, isDialogOpen, form]);
+
+  // Barcode Scanner Logic
+  const startScanner = async () => {
+    setIsScannerOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      setHasCameraPermission(true);
+      
+      const reader = new BrowserMultiFormatReader();
+      codeReaderRef.current = reader;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        reader.decodeFromVideoElement(videoRef.current, (result, error) => {
+          if (result) {
+            form.setValue("code", result.getText());
+            toast({ title: "สแกนสำเร็จ", description: `รหัสที่พบ: ${result.getText()}` });
+            stopScanner();
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      setHasCameraPermission(false);
+      toast({
+        variant: 'destructive',
+        title: 'ไม่สามารถเข้าถึงกล้องได้',
+        description: 'กรุณาอนุญาตการเข้าถึงกล้องในบราวเซอร์เพื่อใช้งานฟีเจอร์นี้ค่ะ',
+      });
+    }
+  };
+
+  const stopScanner = () => {
+    if (codeReaderRef.current) {
+      codeReaderRef.current.reset();
+    }
+    if (videoRef.current?.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setIsScannerOpen(false);
+  };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -138,26 +182,19 @@ export default function PartsInventoryPage() {
     try {
       let finalImageUrl = "";
       
-      // If there's a new photo, upload it
       if (photo) {
         const photoRef = ref(storage, `parts/${Date.now()}-${photo.name}`);
         await uploadBytes(photoRef, photo);
         finalImageUrl = await getDownloadURL(photoRef);
       } else if (photoPreview) {
-        // If no new photo but there is a preview, keep the old image
         finalImageUrl = editingPart?.imageUrl || "";
-      } else {
-        // If photoPreview is null, user clicked remove photo
-        finalImageUrl = "";
       }
 
       const category = categories.find(c => c.id === values.categoryId);
-      const vendor = vendors.find(v => v.id === values.vendorId);
 
       const partData = {
         ...values,
         categoryNameSnapshot: category?.name || "",
-        vendorNameSnapshot: vendor?.companyName || "",
         imageUrl: finalImageUrl,
         updatedAt: serverTimestamp(),
         createdByUid: profile.uid,
@@ -172,13 +209,12 @@ export default function PartsInventoryPage() {
             toast({ title: "อัปเดตข้อมูลสำเร็จ" });
             setIsDialogOpen(false);
           })
-          .catch(async (serverError) => {
-            const permissionError = new FirestorePermissionError({
+          .catch(async (error) => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
               path: partRef.path,
               operation: 'update',
               requestResourceData: partData,
-            } satisfies SecurityRuleContext);
-            errorEmitter.emit('permission-error', permissionError);
+            }));
           })
           .finally(() => setIsSubmitting(false));
       } else {
@@ -189,13 +225,12 @@ export default function PartsInventoryPage() {
             toast({ title: "เพิ่มอะไหล่ใหม่สำเร็จ" });
             setIsDialogOpen(false);
           })
-          .catch(async (serverError) => {
-            const permissionError = new FirestorePermissionError({
+          .catch(async (error) => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
               path: partsColRef.path,
               operation: 'create',
               requestResourceData: finalData,
-            } satisfies SecurityRuleContext);
-            errorEmitter.emit('permission-error', permissionError);
+            }));
           })
           .finally(() => setIsSubmitting(false));
       }
@@ -212,12 +247,11 @@ export default function PartsInventoryPage() {
       .then(() => {
         toast({ title: "ลบข้อมูลสำเร็จ" });
       })
-      .catch(async (serverError) => {
-        const permissionError = new FirestorePermissionError({
+      .catch(async (error) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
           path: partRef.path,
           operation: 'delete',
-        } satisfies SecurityRuleContext);
-        errorEmitter.emit('permission-error', permissionError);
+        }));
       })
       .finally(() => setPartToDelete(null));
   };
@@ -321,17 +355,17 @@ export default function PartsInventoryPage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 flex flex-col">
+          <DialogHeader className="p-6 pb-2">
             <DialogTitle>{editingPart ? "แก้ไขข้อมูลอะไหล่" : "เพิ่มอะไหล่ใหม่เข้าระบบ"}</DialogTitle>
             <DialogDescription>กรอกข้อมูลรายละเอียดของอะไหล่ให้ครบถ้วนเพื่อความแม่นยำของสต็อกสินค้า</DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg bg-muted/20 gap-4">
-                    <div className="relative w-40 h-40 border rounded-md overflow-hidden bg-background">
+                    <div className="relative w-40 h-40 border rounded-md overflow-hidden bg-background shadow-inner">
                       {photoPreview ? (
                         <>
                           <Image src={photoPreview} alt="Preview" fill className="object-cover" />
@@ -351,15 +385,27 @@ export default function PartsInventoryPage() {
                       )}
                     </div>
                     <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isSubmitting}>
-                      <Camera className="mr-2 h-4 w-4" /> เลือกรูปภาพ (1 รูป)
+                      <Camera className="mr-2 h-4 w-4" /> เลือกรูปภาพ (จากกล้อง/คลัง)
                     </Button>
-                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoChange} />
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      capture="environment" 
+                      onChange={handlePhotoChange} 
+                    />
                   </div>
                   
                   <FormField name="code" control={form.control} render={({ field }) => (
                     <FormItem>
                       <FormLabel>รหัสสินค้า / Barcode <span className="text-destructive">*</span></FormLabel>
-                      <FormControl><Input placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัส..." {...field} disabled={isSubmitting} /></FormControl>
+                      <div className="flex gap-2">
+                        <FormControl><Input placeholder="ยิงบาร์โค้ด หรือพิมพ์รหัส..." {...field} disabled={isSubmitting} /></FormControl>
+                        <Button type="button" variant="secondary" size="icon" onClick={startScanner} disabled={isSubmitting} title="สแกนบาร์โค้ด">
+                          <ScanBarcode className="h-5 w-5" />
+                        </Button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )} />
@@ -370,40 +416,37 @@ export default function PartsInventoryPage() {
                     <FormItem><FormLabel>ชื่อรายการสินค้า <span className="text-destructive">*</span></FormLabel><FormControl><Input placeholder="เช่น กรองน้ำมันเครื่อง Revo" {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>
                   )} />
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField name="categoryId" control={form.control} render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>หมวดหมู่ <span className="text-destructive">*</span></FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
-                          <SelectContent>
-                            {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField name="vendorId" control={form.control} render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>ร้านค้าที่ซื้อ <span className="text-destructive">*</span></FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
-                          <SelectContent>
-                            {vendors.map(v => <SelectItem key={v.id} value={v.id}>{v.shortName}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </div>
+                  <FormField name="categoryId" control={form.control} render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>หมวดหมู่ <span className="text-destructive">*</span></FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                        <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
 
-                  <div className="grid grid-cols-1 gap-4 border-t pt-4">
-                    <FormField name="sellingPrice" control={form.control} render={({ field }) => (<FormItem><FormLabel className="text-primary font-bold">ราคาขาย (บาท) <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
-                  </div>
+                  <FormField name="sellingPrice" control={form.control} render={({ field }) => (<FormItem><FormLabel className="text-primary font-bold">ราคาขาย (บาท) <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
 
                   <div className="grid grid-cols-2 gap-4">
                     <FormField name="stockQty" control={form.control} render={({ field }) => (<FormItem><FormLabel>สต็อกเริ่มต้น</FormLabel><FormControl><Input type="number" {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
-                    <FormField name="location" control={form.control} render={({ field }) => (<FormItem><FormLabel>ชั้นจัดเก็บ (Location)</FormLabel><FormControl><Input placeholder="เช่น A1-02" {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
+                    <FormField name="location" control={form.control} render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>ชั้นจัดเก็บ (Location)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                          <FormControl><SelectTrigger><SelectValue placeholder="เลือกตำแหน่ง..." /></SelectTrigger></FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">-- ไม่ระบุ --</SelectItem>
+                            {locations?.map(loc => (
+                              <SelectItem key={loc.id} value={loc.name}>{loc.name} ({loc.zone})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )} />
                   </div>
 
                   <Alert className="bg-blue-50 border-blue-200">
@@ -414,15 +457,43 @@ export default function PartsInventoryPage() {
                   </Alert>
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
-                <Button type="submit" disabled={isSubmitting}>
+              <DialogFooter className="pt-4 gap-2">
+                <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting} className="flex-1 sm:flex-none">ยกเลิก</Button>
+                <Button type="submit" disabled={isSubmitting} className="flex-1 sm:flex-none">
                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {editingPart ? "บันทึกการแก้ไข" : "เพิ่มสินค้าลงสต็อก"}
                 </Button>
               </DialogFooter>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Barcode Scanner Dialog */}
+      <Dialog open={isScannerOpen} onOpenChange={(open) => !open && stopScanner()}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black">
+          <DialogHeader className="p-4 bg-background border-b">
+            <DialogTitle>สแกนรหัสสินค้า</DialogTitle>
+            <DialogDescription>หันกล้องไปที่บาร์โค้ดหรือ QR Code</DialogDescription>
+          </DialogHeader>
+          <div className="relative aspect-square w-full max-w-sm mx-auto bg-black flex items-center justify-center">
+            <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+            <div className="absolute inset-0 border-2 border-primary/50 m-12 rounded-lg pointer-events-none">
+              <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" />
+            </div>
+            {hasCameraPermission === false && (
+              <div className="absolute inset-0 flex items-center justify-center p-6 text-center bg-black/80 text-white">
+                <div className="space-y-4">
+                  <AlertCircle className="h-12 w-12 mx-auto text-destructive" />
+                  <p>ไม่ได้รับอนุญาตให้เข้าถึงกล้อง</p>
+                  <Button variant="outline" size="sm" onClick={startScanner}>ลองอีกครั้ง</Button>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="p-4 bg-background">
+            <Button variant="outline" className="w-full" onClick={stopScanner}>ยกเลิก</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
