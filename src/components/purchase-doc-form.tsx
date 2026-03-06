@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, addDoc, getDocs, limit, orderBy, runTransaction } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, updateDoc, serverTimestamp, addDoc, getDocs, limit, orderBy, runTransaction, Timestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -25,7 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Calendar } from "@/components/ui/calendar";
 import { format, parseISO } from "date-fns";
 
-import { createPurchaseDoc, getNextAvailablePurchaseDocNo } from "@/firebase/purchases";
+import { getNextAvailablePurchaseDocNo } from "@/firebase/purchases";
 import { VENDOR_TYPES } from "@/lib/constants";
 import { vendorTypeLabel } from "@/lib/ui-labels";
 import type { PurchaseDoc, Vendor, AccountingAccount, Part } from "@/lib/types";
@@ -258,38 +258,72 @@ export function PurchaseDocForm() {
 
       const targetStatus = isSubmitForReview ? 'PENDING_REVIEW' : 'DRAFT';
 
-      // Use runTransaction to handle stock and cost updates atomically with doc creation
-      const documentNumber = await runTransaction(db, async (transaction) => {
-        // 1. Get next doc number (manual simplified version for transaction)
-        const docNo = editDocId ? (docToEdit?.docNo || "Unknown") : await (async () => {
-            const dateObj = new Date(data.docDate);
-            const year = dateObj.getFullYear() > 2400 ? dateObj.getFullYear() - 543 : dateObj.getFullYear();
-            const docSettingsSnap = await transaction.get(doc(db, 'settings', 'documents'));
-            const prefix = (docSettingsSnap.exists() ? (docSettingsSnap.data() as any).purchasePrefix : 'PUR') || 'PUR';
-            
-            // Note: complex sequence finding is best outside transaction but we need it here for integrity
-            // For now we'll assume the pre-fetched previewDocNo is safe or let createPurchaseDoc handle it if possible
-            // But runTransaction requires all reads before writes. 
-            // Better approach: create doc then update stock.
-            return previewDocNo; 
-        })();
-
+      // CRITICAL FIX: Ensure all transaction.get() happen before any transaction.update()/set()
+      await runTransaction(db, async (transaction) => {
+        // --- STEP 1: All READS ---
+        
+        // 1.1 Read counter and settings if needed
+        const docSettingsRef = doc(db, 'settings', 'documents');
+        const docSettingsSnap = await transaction.get(docSettingsRef);
+        
         const finalDocId = editDocId || creationId;
         const newDocRef = doc(db, "purchaseDocs", finalDocId);
-
-        // CHECK IF ALREADY RECEIVED (IMPORTANT!)
+        
         let alreadyReceived = false;
+        let existingDocNo = "";
         if (editDocId) {
             const existingDoc = await transaction.get(newDocRef);
-            if (existingDoc.exists() && existingDoc.data()?.isReceived) {
-                alreadyReceived = true;
+            if (existingDoc.exists()) {
+                alreadyReceived = !!existingDoc.data()?.isReceived;
+                existingDocNo = existingDoc.data()?.docNo || "";
             }
         }
 
+        // 1.2 Read all parts involved
+        const partsToUpdate = [];
+        if (isSubmitForReview && !alreadyReceived) {
+            for (const item of data.items) {
+                if (!item.partId) continue;
+                const partRef = doc(db, 'parts', item.partId);
+                const partSnap = await transaction.get(partRef);
+                partsToUpdate.push({ partRef, partSnap, item });
+            }
+        }
+
+        // --- STEP 2: All WRITES ---
+
+        // 2.1 Calculate and Update Parts
+        for (const { partRef, partSnap, item } of partsToUpdate) {
+            if (partSnap.exists()) {
+                const partData = partSnap.data() as Part;
+                const currentQty = partData.stockQty || 0;
+                const currentAvgCost = partData.costPrice || 0;
+                const receivedQty = item.quantity || 0;
+                const purchasePrice = item.unitPrice || 0;
+
+                const newTotalQty = currentQty + receivedQty;
+                let newAvgCost = currentAvgCost;
+
+                if (newTotalQty > 0) {
+                    newAvgCost = ((currentQty * currentAvgCost) + (receivedQty * purchasePrice)) / newTotalQty;
+                } else if (receivedQty > 0) {
+                    newAvgCost = purchasePrice;
+                }
+
+                transaction.update(partRef, {
+                    stockQty: newTotalQty,
+                    costPrice: Math.round(newAvgCost * 100) / 100,
+                    updatedAt: serverTimestamp()
+                });
+            }
+        }
+
+        // 2.2 Save Document
+        const finalDocNo = editDocId ? existingDocNo : previewDocNo;
         const docData = {
           ...data,
           id: finalDocId,
-          docNo: editDocId ? (docToEdit?.docNo || "") : docNo,
+          docNo: finalDocNo,
           vendorSnapshot: { 
             shortName: vendor.shortName, 
             companyName: vendor.companyName, 
@@ -299,56 +333,22 @@ export function PurchaseDocForm() {
           billPhotos: uploadedPhotos,
           status: targetStatus,
           updatedAt: serverTimestamp(),
-          isReceived: alreadyReceived || isSubmitForReview, // Mark as received if submitting for review
+          isReceived: alreadyReceived || isSubmitForReview,
           ...(isSubmitForReview && { submittedAt: serverTimestamp() }),
           ...(!editDocId && { createdAt: serverTimestamp() })
         };
 
-        // 2. Perform Stock Update if Submitting for Review and not already received
-        if (isSubmitForReview && !alreadyReceived) {
-            for (const item of data.items) {
-                if (!item.partId) continue;
-                const partRef = doc(db, 'parts', item.partId);
-                const partSnap = await transaction.get(partRef);
-                
-                if (partSnap.exists()) {
-                    const partData = partSnap.data() as Part;
-                    const currentQty = partData.stockQty || 0;
-                    const currentAvgCost = partData.costPrice || 0;
-                    const receivedQty = item.quantity || 0;
-                    const purchasePrice = item.unitPrice || 0;
-
-                    const newTotalQty = currentQty + receivedQty;
-                    let newAvgCost = currentAvgCost;
-
-                    if (newTotalQty > 0) {
-                        newAvgCost = ((currentQty * currentAvgCost) + (receivedQty * purchasePrice)) / newTotalQty;
-                    } else if (receivedQty > 0) {
-                        newAvgCost = purchasePrice;
-                    }
-
-                    transaction.update(partRef, {
-                        stockQty: newTotalQty,
-                        costPrice: Math.round(newAvgCost * 100) / 100,
-                        updatedAt: serverTimestamp()
-                    });
-                }
-            }
-        }
-
-        // 3. Write Document
         transaction.set(newDocRef, sanitizeForFirestore(docData), { merge: true });
 
-        // 4. Update Claim
+        // 2.3 Create Claim if needed
         if (isSubmitForReview) {
             const claimId = `CLAIM_${finalDocId}`;
             const claimRef = doc(db, "purchaseClaims", claimId);
-            
             transaction.set(claimRef, sanitizeForFirestore({
                 id: claimId,
                 status: 'PENDING',
                 purchaseDocId: finalDocId,
-                purchaseDocNo: docData.docNo,
+                purchaseDocNo: finalDocNo,
                 vendorNameSnapshot: vendor.companyName,
                 invoiceNo: data.invoiceNo,
                 paymentMode: data.paymentMode,
@@ -362,13 +362,28 @@ export function PurchaseDocForm() {
                 createdByName: profile.displayName,
             }));
         }
-
-        return docData.docNo;
+        
+        // 2.4 Update Counters if it's a new doc
+        if (!editDocId) {
+            const dateObj = new Date(data.docDate);
+            const year = dateObj.getFullYear() > 2400 ? dateObj.getFullYear() - 543 : dateObj.getFullYear();
+            const counterRef = doc(db, 'documentCounters', String(year));
+            const prefix = (docSettingsSnap.exists() ? (docSettingsSnap.data() as any).purchasePrefix : 'PUR') || 'PUR';
+            
+            // Extract the sequence from previewDocNo
+            const seqParts = previewDocNo.split('-');
+            const seq = parseInt(seqParts[seqParts.length - 1], 10);
+            
+            transaction.set(counterRef, { 
+                [`PURCHASE_${prefix.toUpperCase()}_count`]: seq
+            }, { merge: true });
+        }
       });
 
       toast({ title: isSubmitForReview ? "รับอะไหล่และส่งตรวจสอบสำเร็จ" : "บันทึกฉบับร่างสำเร็จ" });
       router.push("/app/office/parts/purchases");
     } catch (e: any) {
+      console.error("Save Purchase Doc Error:", e);
       toast({ variant: "destructive", title: "ผิดพลาด", description: e.message });
       setIsSubmitting(false);
     }
@@ -385,10 +400,6 @@ export function PurchaseDocForm() {
   );
 
   if (isLoadingData || (editDocId && isLoadingDoc)) return <Skeleton className="h-96" />;
-
-  const formatCurrency = (value: number) => {
-    return (value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
 
   return (
     <div className="flex flex-col gap-6">
