@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -167,11 +168,14 @@ function ReceivePaymentDialog({
       // CRITICAL: Close associated job if fully paid
       if (newStatus === 'PAID' && obligation.jobId) {
           const jobRef = doc(db, 'jobs', obligation.jobId);
-          batch.update(jobRef, {
-              status: 'CLOSED',
-              updatedAt: serverTimestamp(),
-              lastActivityAt: serverTimestamp()
-          });
+          const jobSnap = await getDoc(jobRef);
+          if (jobSnap.exists()) {
+              batch.update(jobRef, {
+                  status: 'CLOSED',
+                  updatedAt: serverTimestamp(),
+                  lastActivityAt: serverTimestamp()
+              });
+          }
       }
 
       await batch.commit();

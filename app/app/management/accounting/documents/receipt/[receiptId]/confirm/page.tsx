@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
@@ -328,7 +329,6 @@ function ConfirmReceiptPageContent() {
                     const dData = dSnap.data();
                     transaction.update(docRef, { status: 'PAID', updatedAt: serverTimestamp() });
                     if (dData.docType === 'BILLING_NOTE') {
-                        // Billing Note also needs status PAID
                         transaction.update(docRef, { status: 'PAID', updatedAt: serverTimestamp() });
                     }
                 }
@@ -364,14 +364,18 @@ function ConfirmReceiptPageContent() {
 
                         if (newStatus === 'PAID' && ob.jobId) {
                             const jobRef = doc(db, 'jobs', ob.jobId);
-                            transaction.update(jobRef, { status: 'CLOSED', updatedAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
-                            transaction.set(doc(collection(jobRef, 'activities')), {
-                                text: `ฝ่ายบัญชียืนยันรับเงินตามใบเสร็จ ${receiptDocNo} และปิดงานเรียบร้อยค่ะ`,
-                                userName: profile.displayName,
-                                userId: profile.uid,
-                                createdAt: serverTimestamp()
-                            });
-                            jobsToArchive.push(ob.jobId);
+                            // FIX: Check if job exists before updating in transaction
+                            const jobSnap = await transaction.get(jobRef);
+                            if (jobSnap.exists()) {
+                                transaction.update(jobRef, { status: 'CLOSED', updatedAt: serverTimestamp(), lastActivityAt: serverTimestamp() });
+                                transaction.set(doc(collection(jobRef, 'activities')), {
+                                    text: `ฝ่ายบัญชียืนยันรับเงินตามใบเสร็จ ${receiptDocNo} และปิดงานเรียบร้อยค่ะ`,
+                                    userName: profile.displayName,
+                                    userId: profile.uid,
+                                    createdAt: serverTimestamp()
+                                });
+                                jobsToArchive.push(ob.jobId);
+                            }
                         }
                     }
                 }
