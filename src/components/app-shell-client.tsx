@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { Suspense, useEffect, useState } from "react";
@@ -27,7 +28,8 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     pathname === "/login" ||
     pathname === "/pending" ||
     pathname === "/signup" ||
-    pathname === "/healthz";
+    pathname === "/healthz" ||
+    pathname === "/products"; // Added /products to allow public access
 
   useEffect(() => {
     if (loading) return;
