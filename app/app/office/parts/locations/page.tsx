@@ -72,7 +72,7 @@ export default function PartLocationsPage() {
       updatedAt: serverTimestamp(),
     };
 
-    // Use non-blocking pattern
+    // Use non-blocking pattern according to guidelines
     addDoc(colRef, data)
       .then(() => {
         toast({ title: "เพิ่มตำแหน่งสำเร็จ" });

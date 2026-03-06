@@ -73,7 +73,7 @@ service cloud.firestore {
     }
     
     function isPurchasingAllowed() {
-      return isMgmt() || (signedIn() && (dept() == "PURCHASING" || dept() == "OFFICE"));
+      return isMgmt() || (signedIn() && (dept() == "PURCHASING" || dept() == "OFFICE" || role() == "PURCHASE"));
     }
     
     function hrSettings() {
@@ -198,17 +198,20 @@ service cloud.firestore {
 
     match /parts/{partId} {
       allow read: if signedIn();
-      allow write: if isPurchasingAllowed();
+      allow create, update: if isPurchasingAllowed();
+      allow delete: if isMgmt();
     }
 
     match /partLocations/{id} {
       allow read: if signedIn();
-      allow write: if isPurchasingAllowed();
+      allow create, update: if isPurchasingAllowed();
+      allow delete: if isMgmt();
     }
 
     match /partCategories/{id} {
       allow read: if signedIn();
-      allow write: if isPurchasingAllowed();
+      allow create, update: if isPurchasingAllowed();
+      allow delete: if isMgmt();
     }
 
     match /attendance/{id} { allow read, write: if signedIn(); }
