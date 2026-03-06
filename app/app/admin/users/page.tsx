@@ -16,13 +16,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, Database, Trash2, Wrench, Search, RotateCcw, AlertTriangle, Link2Off, Save, UserCheck, History, Link as LinkIcon, FileText, CheckCircle2, PlusCircle } from "lucide-react";
+import { Loader2, Database, Trash2, Wrench, Search, RotateCcw, AlertTriangle, Link2Off, Save, UserCheck, History, Link as LinkIcon, FileText, CheckCircle2, PlusCircle, FileSearch, Check } from "lucide-react";
 import { jobStatusLabel, deptLabel, docTypeLabel } from "@/lib/ui-labels";
 import { JOB_STATUSES } from "@/lib/constants";
-import type { Job, Document as DocumentType } from "@/lib/types";
+import type { Job, Document as DocumentType, DocType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function AdminUsersPage() {
   const { db, app: firebaseApp } = useFirebase();
@@ -38,7 +40,9 @@ export default function AdminUsersPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Link Doc States
-  const [linkDocNo, setLinkDocNo] = useState("");
+  const [linkSearchTerm, setLinkSearchTerm] = useState("");
+  const [linkSearchType, setLinkSearchType] = useState<string>("DELIVERY_NOTE");
+  const [docSearchResults, setDocSearchResults] = useState<DocumentType[]>([]);
   const [isSearchingDoc, setIsSearchingDoc] = useState(false);
   const [foundDoc, setFoundDoc] = useState<DocumentType | null>(null);
 
@@ -97,17 +101,33 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleSearchDocument = async () => {
-    if (!db || !linkDocNo.trim()) return;
+  const handleSearchDocuments = async () => {
+    if (!db || !linkSearchTerm.trim()) return;
     setIsSearchingDoc(true);
+    setDocSearchResults([]);
     setFoundDoc(null);
     try {
-      const q = query(collection(db, "documents"), where("docNo", "==", linkDocNo.trim()), limit(1));
+      // General search for the selected type
+      const q = query(
+        collection(db, "documents"), 
+        where("docType", "==", linkSearchType),
+        limit(100)
+      );
+      
       const snap = await getDocs(q);
-      if (snap.empty) {
-        toast({ variant: "destructive", title: "ไม่พบเอกสาร", description: "กรุณาตรวจสอบเลขที่บิลอีกครั้งค่ะ" });
-      } else {
-        setFoundDoc({ id: snap.docs[0].id, ...snap.docs[0].data() } as DocumentType);
+      const term = linkSearchTerm.toLowerCase();
+      
+      const filtered = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as DocumentType))
+        .filter(d => 
+          d.docNo.toLowerCase().includes(term) || 
+          d.customerSnapshot?.name?.toLowerCase().includes(term) ||
+          d.customerSnapshot?.phone?.includes(term)
+        );
+      
+      setDocSearchResults(filtered);
+      if (filtered.length === 0) {
+        toast({ variant: "destructive", title: "ไม่พบเอกสาร", description: "กรุณาตรวจสอบเลขที่บิลหรือชื่อลูกค้าอีกครั้งค่ะ" });
       }
     } catch (e: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: e.message });
@@ -142,7 +162,8 @@ export default function AdminUsersPage() {
       toast({ title: "ปรับปรุงข้อมูลสำเร็จ" });
       setEditingJob(null);
       setFoundDoc(null);
-      setLinkDocNo("");
+      setLinkSearchTerm("");
+      setDocSearchResults([]);
       handleSearchJobs();
     } catch (e: any) {
       toast({ variant: 'destructive', title: "บันทึกไม่สำเร็จ", description: e.message });
@@ -160,7 +181,6 @@ export default function AdminUsersPage() {
       salesDocType: foundDoc.docType
     };
 
-    // Also update document to point back to job
     try {
       setIsSaving(true);
       const batch = writeBatch(db);
@@ -188,7 +208,8 @@ export default function AdminUsersPage() {
       toast({ title: "เชื่อมโยงเอกสารสำเร็จ" });
       setEditingJob(null);
       setFoundDoc(null);
-      setLinkDocNo("");
+      setLinkSearchTerm("");
+      setDocSearchResults([]);
       handleSearchJobs();
     } catch (e: any) {
       toast({ variant: "destructive", title: "ล้มเหลว", description: e.message });
@@ -323,7 +344,7 @@ export default function AdminUsersPage() {
                         </TableCell>
                         <TableCell><Badge variant="outline">{jobStatusLabel(job.status)}</Badge></TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => { setEditingJob(job); setFoundDoc(null); setLinkDocNo(""); }}>
+                          <Button variant="outline" size="sm" onClick={() => { setEditingJob(job); setFoundDoc(null); setLinkSearchTerm(""); setDocSearchResults([]); }}>
                             <Wrench className="h-3 w-3 mr-1" /> แก้ไขข้อมูล
                           </Button>
                         </TableCell>
@@ -339,7 +360,7 @@ export default function AdminUsersPage() {
 
       {/* Manual Job Editor Dialog */}
       <Dialog open={!!editingJob} onOpenChange={(o) => !o && setEditingJob(null)}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="p-6 pb-0">
             <DialogTitle>เครื่องมือแก้ไขจ๊อบ: {editingJob?.customerSnapshot?.name}</DialogTitle>
             <DialogDescription>
@@ -397,41 +418,78 @@ export default function AdminUsersPage() {
                 <p className="text-[9px] text-muted-foreground">เมื่อล้างลิงก์แล้ว จ๊อบจะสามารถ "ออกบิลใหม่" ได้ทันที</p>
               </div>
 
-              {/* Relink / Link Existing Section */}
+              {/* Relink / Link Existing Section with Tabs */}
               <div className="p-3 border border-primary/20 bg-primary/5 rounded-md space-y-3">
                 <p className="text-xs font-bold text-primary flex items-center gap-1"><PlusCircle className="h-3 w-3"/> สร้างลิงก์ใหม่ (Link Existing Doc)</p>
-                <div className="flex gap-2">
-                  <Input 
-                    placeholder="ใส่เลขบิลที่ต้องการผูก (เช่น DN...)" 
-                    className="h-8 text-xs font-mono"
-                    value={linkDocNo}
-                    onChange={e => setLinkDocNo(e.target.value)}
-                  />
-                  <Button size="sm" className="h-8 px-2" onClick={handleSearchDocument} disabled={isSearchingDoc || !linkDocNo.trim()}>
-                    {isSearchingDoc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-                  </Button>
-                </div>
+                
+                <Tabs value={linkSearchType} onValueChange={setLinkSearchType}>
+                  <TabsList className="grid grid-cols-3 h-8">
+                    <TabsTrigger value="DELIVERY_NOTE" className="text-[10px]">ใบส่งของ</TabsTrigger>
+                    <TabsTrigger value="QUOTATION" className="text-[10px]">เสนอราคา</TabsTrigger>
+                    <TabsTrigger value="TAX_INVOICE" className="text-[10px]">กำกับภาษี</TabsTrigger>
+                  </TabsList>
+                  
+                  <div className="mt-3 space-y-3">
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder={`ค้นหาเลขที่หรือชื่อใน ${docTypeLabel(linkSearchType)}...`} 
+                        className="h-8 text-xs"
+                        value={linkSearchTerm}
+                        onChange={e => setLinkSearchTerm(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSearchDocuments()}
+                      />
+                      <Button size="sm" className="h-8 px-2" onClick={handleSearchDocuments} disabled={isSearchingDoc || !linkSearchTerm.trim()}>
+                        {isSearchingDoc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                      </Button>
+                    </div>
+
+                    <ScrollArea className="h-48 border rounded-md bg-background">
+                      <div className="p-2 space-y-1">
+                        {docSearchResults.length > 0 ? docSearchResults.map(docItem => (
+                          <Button 
+                            key={docItem.id} 
+                            variant={foundDoc?.id === docItem.id ? "secondary" : "ghost"}
+                            className="w-full justify-between h-auto py-2 px-3 border-b last:border-0 rounded-none text-left"
+                            onClick={() => setFoundDoc(docItem)}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-bold font-mono text-xs">{docItem.docNo}</span>
+                              <span className="text-[10px] text-muted-foreground">{docItem.customerSnapshot?.name}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-primary block">฿{docItem.grandTotal.toLocaleString()}</span>
+                              {foundDoc?.id === docItem.id && <Badge className="h-3 text-[8px] bg-green-600">เลือกอยู่</Badge>}
+                            </div>
+                          </Button>
+                        )) : (
+                          <div className="py-8 text-center text-xs text-muted-foreground italic">
+                            {isSearchingDoc ? "กำลังค้นหา..." : "กรอกคำค้นหาด้านบนเพื่อเริ่มหาเอกสารค่ะ"}
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </Tabs>
 
                 {foundDoc && (
-                  <div className="mt-2 p-2 bg-background border rounded-md animate-in slide-in-from-top-1">
-                    <div className="flex justify-between items-start mb-2">
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md animate-in slide-in-from-top-1">
+                    <div className="flex justify-between items-center">
                       <div className="space-y-0.5">
-                        <Badge variant="outline" className="text-[8px] h-3 px-1">{docTypeLabel(foundDoc.docType)}</Badge>
+                        <p className="text-[10px] uppercase font-bold text-green-700">เอกสารที่เลือกผูก:</p>
                         <p className="text-xs font-bold font-mono">{foundDoc.docNo}</p>
                         <p className="text-[10px] text-muted-foreground">{foundDoc.customerSnapshot?.name}</p>
-                        <p className="text-[10px] font-bold text-primary">฿{foundDoc.grandTotal.toLocaleString()}</p>
                       </div>
-                      <Button size="sm" className="h-7 text-[10px] bg-green-600 hover:bg-green-700" onClick={handleLinkDocument} disabled={isSaving}>
-                        {isSaving ? <Loader2 className="h-3 w-3 animate-spin"/> : <CheckCircle2 className="mr-1 h-3 w-3"/>}
-                        ผูกบิลนี้
+                      <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700" onClick={handleLinkDocument} disabled={isSaving}>
+                        {isSaving ? <Loader2 className="h-3 w-3 animate-spin"/> : <Check className="mr-1 h-3 w-3"/>}
+                        ยืนยันผูกลิงก์
                       </Button>
                     </div>
                     {foundDoc.jobId && (
-                      <p className="text-[9px] text-destructive italic font-bold">* บิลนี้เคยผูกอยู่กับจ๊อบอื่น (ID: {foundDoc.jobId.substring(0,8)})</p>
+                      <p className="text-[9px] text-destructive italic font-bold mt-1">* ระวัง: เอกสารนี้เคยผูกอยู่กับจ๊อบอื่น (ID: {foundDoc.jobId.substring(0,8)})</p>
                     )}
                   </div>
                 )}
-                <p className="text-[9px] text-muted-foreground">ใช้สำหรับกรณีออกบิลมือหรือแยกบิลแล้วต้องการนำมาผูกคืนกับใบงานค่ะ</p>
+                <p className="text-[9px] text-muted-foreground italic">ใช้สำหรับกรณีออกบิลมือหรือแยกบิลแล้วต้องการนำมาผูกคืนกับใบงานเพื่อให้ติดตามสถานะได้ถูกต้องค่ะ</p>
               </div>
             </div>
           </div>
