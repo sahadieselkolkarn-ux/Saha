@@ -893,6 +893,13 @@ export interface Part {
   location?: string;
   imageUrl?: string;
   showOnWeb?: boolean; // NEW: Flag to show on public site
+  
+  // WEB SPECIFIC FIELDS
+  webPrice?: number; // Special web price
+  webPromoNote?: string; // Promotions like "Free item"
+  bulkPriceQty?: number; // Bulk threshold
+  bulkPrice?: number; // Price per unit when bulk condition met
+  
   createdAt: Timestamp;
   updatedAt: Timestamp;
   createdByUid: string;
