@@ -23,12 +23,72 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import Image from "next/image";
 import type { Part, PartCategory, PartLocation } from "@/lib/types";
 import type { WithId } from "@/firebase";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+
+const FILE_SIZE_THRESHOLD = 5 * 1024 * 1024; // 5MB
+
+// Helper function to compress image step by step
+const compressImageIfNeeded = async (file: File): Promise<File> => {
+  if (file.size <= FILE_SIZE_THRESHOLD) return file;
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        let quality = 0.9;
+        const attemptCompression = (q: number) => {
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                if (blob.size <= FILE_SIZE_THRESHOLD || q <= 0.1) {
+                  const compressedFile = new File([blob], file.name, {
+                    type: "image/jpeg",
+                    lastModified: Date.now(),
+                  });
+                  resolve(compressedFile);
+                } else {
+                  attemptCompression(q - 0.1);
+                }
+              } else {
+                resolve(file); // Fallback to original
+              }
+            },
+            "image/jpeg",
+            q
+          );
+        };
+        attemptCompression(quality);
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
 
 const partSchema = z.object({
   code: z.string().min(1, "กรุณากรอกรหัสอะไหล่"),
@@ -53,11 +113,14 @@ export default function PartsInventoryPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<WithId<Part> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [partToDelete, setPartToDelete] = useState<WithId<Part> | null>(null);
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   // Barcode Scanner states
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -128,7 +191,6 @@ export default function PartsInventoryPage() {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // Start decoding and store controls returned by zxing/browser
         const controls = await reader.decodeFromVideoElement(videoRef.current, (result, error) => {
           if (result) {
             form.setValue("code", result.getText());
@@ -150,7 +212,6 @@ export default function PartsInventoryPage() {
   };
 
   const stopScanner = () => {
-    // Correct way to stop ZXing browser reader is via the stop() method on controls
     if (scannerControlsRef.current) {
       scannerControlsRef.current.stop();
       scannerControlsRef.current = null;
@@ -164,11 +225,20 @@ export default function PartsInventoryPage() {
     setIsScannerOpen(false);
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setPhoto(file);
-      setPhotoPreview(URL.createObjectURL(file));
+      setIsCompressing(true);
+      try {
+        const processed = await compressImageIfNeeded(file);
+        setPhoto(processed);
+        setPhotoPreview(URL.createObjectURL(processed));
+      } catch (err) {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการจัดการรูปภาพ" });
+      } finally {
+        setIsCompressing(false);
+        e.target.value = '';
+      }
     }
   };
 
@@ -178,9 +248,6 @@ export default function PartsInventoryPage() {
     }
     setPhoto(null);
     setPhotoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
   const onSubmit = async (values: PartFormData) => {
@@ -383,7 +450,7 @@ export default function PartsInventoryPage() {
                             size="icon" 
                             className="absolute top-1 right-1 h-6 w-6 rounded-full shadow-md z-10"
                             onClick={handleRemovePhoto}
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || isCompressing}
                           >
                             <X className="h-3 w-3" />
                           </Button>
@@ -392,15 +459,37 @@ export default function PartsInventoryPage() {
                         <div className="flex h-full items-center justify-center text-muted-foreground"><ImageIcon className="h-12 w-12 opacity-20" /></div>
                       )}
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isSubmitting}>
-                      <Camera className="mr-2 h-4 w-4" /> เลือกรูปภาพ (จากกล้อง/คลัง)
-                    </Button>
+                    
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button type="button" variant="outline" size="sm" disabled={isSubmitting || isCompressing}>
+                          {isCompressing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                          {isCompressing ? "กำลังลดขนาดรูป..." : "เลือกรูปภาพ (จากกล้อง/คลัง)"}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="center" className="w-48">
+                        <DropdownMenuItem onClick={() => cameraInputRef.current?.click()}>
+                          <Camera className="mr-2 h-4 w-4" /> ถ่ายรูปจากกล้อง
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => galleryInputRef.current?.click()}>
+                          <ImageIcon className="mr-2 h-4 w-4" /> เลือกจากอัลบั้ม
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
                     <input 
                       type="file" 
-                      ref={fileInputRef} 
+                      ref={cameraInputRef} 
                       className="hidden" 
                       accept="image/*" 
                       capture="environment" 
+                      onChange={handlePhotoChange} 
+                    />
+                    <input 
+                      type="file" 
+                      ref={galleryInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
                       onChange={handlePhotoChange} 
                     />
                   </div>
