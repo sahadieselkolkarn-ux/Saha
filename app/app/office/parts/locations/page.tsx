@@ -1,8 +1,7 @@
-
 "use client";
 
-import { useState, useMemo } from "react";
-import { collection, query, orderBy, addDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { useState, useMemo, useEffect } from "react";
+import { collection, query, orderBy, addDoc, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useFirebase, useCollection } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2, PlusCircle, Trash2, MapPin, Save, AlertCircle, Search } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, MapPin, Save, Edit, Search } from "lucide-react";
 import type { PartLocation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -49,6 +48,7 @@ export default function PartLocationsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [locationToDelete, setLocationToDelete] = useState<PartLocation | null>(null);
+  const [editingLocation, setEditingLocation] = useState<PartLocation | null>(null);
 
   const locationsQuery = useMemo(() => 
     db ? query(collection(db, "partLocations"), orderBy("name", "asc")) : null
@@ -61,35 +61,77 @@ export default function PartLocationsPage() {
     defaultValues: { name: "", zone: "" },
   });
 
+  // Reset form when dialog opens/closes or switching between add/edit
+  useEffect(() => {
+    if (isDialogOpen) {
+      if (editingLocation) {
+        form.reset({
+          name: editingLocation.name,
+          zone: editingLocation.zone,
+        });
+      } else {
+        form.reset({ name: "", zone: "" });
+      }
+    }
+  }, [isDialogOpen, editingLocation, form]);
+
   const onSubmit = (values: LocationFormData) => {
     if (!db || !profile) return;
     setIsSubmitting(true);
     
-    const colRef = collection(db, "partLocations");
-    const data = {
-      ...values,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
+    if (editingLocation) {
+      // Update existing location
+      const docRef = doc(db, "partLocations", editingLocation.id);
+      const updateData = {
+        ...values,
+        updatedAt: serverTimestamp(),
+      };
 
-    // Use non-blocking pattern according to guidelines
-    addDoc(colRef, data)
-      .then(() => {
-        toast({ title: "เพิ่มตำแหน่งสำเร็จ" });
-        form.reset();
-        setIsDialogOpen(false);
-      })
-      .catch(async (serverError) => {
-        const permissionError = new FirestorePermissionError({
-          path: colRef.path,
-          operation: 'create',
-          requestResourceData: data,
-        } satisfies SecurityRuleContext);
-        errorEmitter.emit('permission-error', permissionError);
-      })
-      .finally(() => {
-        setIsSubmitting(false);
-      });
+      updateDoc(docRef, updateData)
+        .then(() => {
+          toast({ title: "ปรับปรุงตำแหน่งสำเร็จ" });
+          setIsDialogOpen(false);
+          setEditingLocation(null);
+        })
+        .catch(async (error) => {
+          const permissionError = new FirestorePermissionError({
+            path: docRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        })
+        .finally(() => setIsSubmitting(false));
+    } else {
+      // Create new location
+      const colRef = collection(db, "partLocations");
+      const data = {
+        ...values,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      addDoc(colRef, data)
+        .then(() => {
+          toast({ title: "เพิ่มตำแหน่งสำเร็จ" });
+          form.reset();
+          setIsDialogOpen(false);
+        })
+        .catch(async (serverError) => {
+          const permissionError = new FirestorePermissionError({
+            path: colRef.path,
+            operation: 'create',
+            requestResourceData: data,
+          } satisfies SecurityRuleContext);
+          errorEmitter.emit('permission-error', permissionError);
+        })
+        .finally(() => setIsSubmitting(false));
+    }
+  };
+
+  const handleEdit = (location: PartLocation) => {
+    setEditingLocation(location);
+    setIsDialogOpen(true);
   };
 
   const confirmDelete = () => {
@@ -97,7 +139,6 @@ export default function PartLocationsPage() {
     
     const docRef = doc(db, "partLocations", locationToDelete.id);
     
-    // Use non-blocking pattern
     deleteDoc(docRef)
       .then(() => {
         toast({ title: "ลบตำแหน่งสำเร็จ" });
@@ -127,16 +168,19 @@ export default function PartLocationsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="จัดการชั้นวางสินค้า" description="กำหนดพิกัดตำแหน่งการจัดเก็บอะไหล่ในคลังเพื่อให้ค้นหาได้ง่ายขึ้น">
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) setEditingLocation(null);
+        }}>
           <DialogTrigger asChild>
-            <Button disabled={isSubmitting}>
+            <Button disabled={isSubmitting} onClick={() => setEditingLocation(null)}>
               <PlusCircle className="mr-2 h-4 w-4" />
               เพิ่มตำแหน่งใหม่
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>สร้างตำแหน่งชั้นวางใหม่</DialogTitle>
+              <DialogTitle>{editingLocation ? "แก้ไขตำแหน่งชั้นวาง" : "สร้างตำแหน่งชั้นวางใหม่"}</DialogTitle>
               <DialogDescription>ระบุรายละเอียดพิกัดที่เก็บสินค้าในโกดัง</DialogDescription>
             </DialogHeader>
             <Form {...form}>
@@ -167,7 +211,7 @@ export default function PartLocationsPage() {
                   <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    บันทึกตำแหน่ง
+                    {editingLocation ? "บันทึกการแก้ไข" : "บันทึกตำแหน่ง"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -214,15 +258,26 @@ export default function PartLocationsPage() {
                       </TableCell>
                       <TableCell>{loc.zone}</TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => setLocationToDelete(loc)}
-                          disabled={isSubmitting}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-primary hover:text-primary hover:bg-primary/10"
+                            onClick={() => handleEdit(loc)}
+                            disabled={isSubmitting}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => setLocationToDelete(loc)}
+                            disabled={isSubmitting}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
