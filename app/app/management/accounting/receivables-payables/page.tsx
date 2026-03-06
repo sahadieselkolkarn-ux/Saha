@@ -188,94 +188,98 @@ function ReceivePaymentDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-0">
           <DialogTitle>รับชำระหนี้</DialogTitle>
           <DialogDescription>สำหรับเอกสาร: {obligation.sourceDocNo}</DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form id="payment-form" onSubmit={form.handleSubmit(handleSavePayment)} className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="paymentDate"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>วันที่รับเงิน</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal h-10",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
-                            <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value ? parseISO(field.value) : undefined}
-                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField name="amount" control={form.control} render={({ field }) => (<FormItem><FormLabel>จำนวนเงินที่รับ</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
-            </div>
-             <div className="grid grid-cols-1 gap-4">
-              <FormField name="accountId" control={form.control} render={({ field }) => (
-                  <FormItem>
-                      <FormLabel>เข้าบัญชี</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
-                          <SelectContent>
-                              {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.type === 'CASH' ? 'เงินสด' : 'โอน'})</SelectItem>)}
-                          </SelectContent>
-                      </Select>
-                      <FormMessage/>
-                  </FormItem>
-              )} />
-            </div>
-            <div className="p-4 border rounded-md space-y-4">
-              <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
-                <FormItem className="flex items-center gap-2 space-y-0">
-                  <FormControl>
-                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                  <FormLabel className="font-normal">มีหัก ณ ที่จ่าย</FormLabel>
-                </FormItem>
-              )} />
-              {watchedWhtEnabled && (
-                <FormField control={form.control} name="withholdingAmount" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>ยอดเงินที่ถูกหัก (WHT)</FormLabel>
+        
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <Form {...form}>
+            <form id="payment-form" onSubmit={form.handleSubmit(handleSavePayment)} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="paymentDate"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>วันที่รับเงิน</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full pl-3 text-left font-normal h-10",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                              <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? parseISO(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField name="amount" control={form.control} render={({ field }) => (<FormItem><FormLabel>จำนวนเงินที่รับ</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
+              </div>
+               <div className="grid grid-cols-1 gap-4">
+                <FormField name="accountId" control={form.control} render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>เข้าบัญชี</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชี..." /></SelectTrigger></FormControl>
+                            <SelectContent>
+                                {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.type === 'CASH' ? 'เงินสด' : 'โอน'})</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        <FormMessage/>
+                    </FormItem>
+                )} />
+              </div>
+              <div className="p-4 border rounded-md bg-muted/20 space-y-4">
+                <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
+                  <FormItem className="flex items-center gap-2 space-y-0">
                     <FormControl>
-                      <Input type="number" {...field} value={field.value || 0} />
+                      <Checkbox checked={field.value} onCheckedChange={field.onChange} />
                     </FormControl>
-                    <FormMessage/>
+                    <FormLabel className="font-bold cursor-pointer text-primary">มีหัก ณ ที่จ่าย (WHT)</FormLabel>
                   </FormItem>
                 )} />
-              )}
-            </div>
-            <div className="text-right space-y-1">
-                <p>ยอดรับชำระ: {formatCurrency(watchedAmount)}</p>
-                {watchedWhtEnabled && <p className='text-destructive'>หัก ณ ที่จ่าย: -{formatCurrency(watchedWhtAmount || 0)}</p>}
-                <p className="font-bold text-lg">ยอดเงินเข้าจริง: {formatCurrency(cashReceived)}</p>
-            </div>
-             <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
-          </form>
-        </Form>
-        <DialogFooter>
+                {watchedWhtEnabled && (
+                  <FormField control={form.control} name="withholdingAmount" render={({ field }) => (
+                    <FormItem className="animate-in slide-in-from-top-1 duration-200">
+                      <FormLabel>ยอดเงินที่ถูกหัก (WHT)</FormLabel>
+                      <FormControl>
+                        <Input type="number" {...field} value={field.value || 0} />
+                      </FormControl>
+                      <FormMessage/>
+                    </FormItem>
+                  )} />
+                )}
+              </div>
+              <div className="text-right space-y-1 p-2">
+                  <p className="text-sm">ยอดรับชำระ: {formatCurrency(watchedAmount)}</p>
+                  {watchedWhtEnabled && <p className='text-xs text-destructive'>หัก ณ ที่จ่าย: -{formatCurrency(watchedWhtAmount || 0)}</p>}
+                  <p className="font-bold text-xl text-primary">ยอดเงินเข้าจริง: {formatCurrency(cashReceived)}</p>
+              </div>
+               <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+            </form>
+          </Form>
+        </div>
+
+        <DialogFooter className="p-6 pt-4 border-t bg-muted/10">
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
           <Button type="submit" form="payment-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}บันทึกการรับชำระ</Button>
         </DialogFooter>
@@ -529,143 +533,147 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <DialogHeader className="p-6 pb-0">
           <DialogTitle>จ่ายเจ้าหนี้</DialogTitle>
           <DialogDescription>สำหรับบิลเลขที่: {obligation.invoiceNo || obligation.sourceDocNo} ({obligation.vendorShortNameSnapshot || obligation.vendorNameSnapshot})</DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form id="ap-payment-form" onSubmit={form.handleSubmit(handleSavePayment)} className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="paymentDate"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>วันที่จ่ายเงิน</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal h-10",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
-                            <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value ? parseISO(field.value) : undefined}
-                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField name="amount" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดตัดหนี้ (Gross)</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
-            </div>
-            <div className="grid grid-cols-1 gap-4">
-              <FormField name="accountId" control={form.control} render={({ field }) => (
-                  <FormItem>
-                      <FormLabel>หักจากบัญชี</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชีที่ใช้จ่าย..."/></SelectTrigger></FormControl>
-                          <SelectContent>
-                              {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.type === 'CASH' ? 'เงินสด' : 'โอน'})</SelectItem>)}
-                          </SelectContent>
-                      </Select>
-                      <FormMessage/>
-                  </FormItem>
-              )} />
-            </div>
-
-            <div className="p-4 border rounded-md bg-muted/20 space-y-4">
-                <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
-                    <FormItem className="flex items-center gap-2 space-y-0">
-                        <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                        <FormLabel className="font-semibold text-primary">หักภาษี ณ ที่จ่าย (WHT)</FormLabel>
+        
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <Form {...form}>
+            <form id="ap-payment-form" onSubmit={form.handleSubmit(handleSavePayment)} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="paymentDate"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>วันที่จ่ายเงิน</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full pl-3 text-left font-normal h-10",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                              <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? parseISO(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField name="amount" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดตัดหนี้ (Gross)</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <FormField name="accountId" control={form.control} render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>หักจากบัญชี</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl><SelectTrigger><SelectValue placeholder="เลือกบัญชีที่ใช้จ่าย..."/></SelectTrigger></FormControl>
+                            <SelectContent>
+                                {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.type === 'CASH' ? 'เงินสด' : 'โอน'})</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        <FormMessage/>
                     </FormItem>
                 )} />
-                {watchedWhtEnabled && (
-                    <div className="space-y-3 pt-2">
-                        <FormField control={form.control} name="withholdingPercent" render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="text-xs">อัตราหัก (%)</FormLabel>
-                                <Select onValueChange={(v) => field.onChange(Number(v))} value={field.value?.toString()}>
-                                    <FormControl><SelectTrigger className="h-8"><SelectValue /></SelectTrigger></FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="1">1% (ขนส่ง)</SelectItem>
-                                        <SelectItem value="3">3% (บริการ)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </FormItem>
-                        )} />
-                        {sourceDoc?.withTax && (
-                            <div className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 p-1 rounded">
-                                <Info className="h-3 w-3" />
-                                มี VAT: คำนวณ WHT จากยอดก่อนภาษี ({formatCurrency(sourceDoc.subtotal)})
-                            </div>
-                        )}
-                        <div className="flex justify-between text-xs font-medium text-destructive">
-                            <span>ยอดหักภาษี:</span>
-                            <span>-{formatCurrency(whtInfo.whtAmount)}</span>
-                        </div>
-                    </div>
-                )}
-            </div>
+              </div>
 
-            <div className="p-4 border rounded-md bg-muted/30 space-y-2">
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
-                    <Wallet className="h-3 w-3" /> ตรวจสอบยอดเงิน
-                </h4>
-                {isLoadingAccount || isLoadingEntries ? (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin"/> กำลังคำนวณ...</div>
-                ) : (
-                    <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                            <span>ยอดคงเหลือปัจจุบัน:</span>
-                            <span className="font-medium">{formatCurrency(currentBalance)}</span>
-                        </div>
-                        <div className="flex justify-between text-destructive">
-                            <span>เงินออกจริงครั้งนี้:</span>
-                            <span className="font-medium">-{formatCurrency(cashOutAmount)}</span>
-                        </div>
-                        <Separator className="my-1"/>
-                        <div className={cn("flex justify-between font-bold", balanceAfter < 0 ? "text-destructive" : "text-green-600")}>
-                            <span>คงเหลือประมาณการ:</span>
-                            <span>{formatCurrency(balanceAfter)}</span>
-                        </div>
-                    </div>
-                )}
-            </div>
+              <div className="p-4 border rounded-md bg-muted/20 space-y-4">
+                  <FormField control={form.control} name="withholdingEnabled" render={({ field }) => (
+                      <FormItem className="flex items-center gap-2 space-y-0">
+                          <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                          <FormLabel className="font-semibold text-primary cursor-pointer">หักภาษี ณ ที่จ่าย (WHT)</FormLabel>
+                      </FormItem>
+                  )} />
+                  {watchedWhtEnabled && (
+                      <div className="space-y-3 pt-2 animate-in slide-in-from-top-1">
+                          <FormField control={form.control} name="withholdingPercent" render={({ field }) => (
+                              <FormItem>
+                                  <FormLabel className="text-xs">อัตราหัก (%)</FormLabel>
+                                  <Select onValueChange={(v) => field.onChange(Number(v))} value={field.value?.toString()}>
+                                      <FormControl><SelectTrigger className="h-8"><SelectValue /></SelectTrigger></FormControl>
+                                      <SelectContent>
+                                          <SelectItem value="1">1% (ขนส่ง)</SelectItem>
+                                          <SelectItem value="3">3% (บริการ)</SelectItem>
+                                      </SelectContent>
+                                  </Select>
+                              </FormItem>
+                          )} />
+                          {sourceDoc?.withTax && (
+                              <div className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 p-1 rounded">
+                                  <Info className="h-3 w-3" />
+                                  มี VAT: คำนวณ WHT จากยอดก่อนภาษี ({formatCurrency(sourceDoc.subtotal)})
+                              </div>
+                          )}
+                          <div className="flex justify-between text-xs font-medium text-destructive">
+                              <span>ยอดหักภาษี:</span>
+                              <span>-{formatCurrency(whtInfo.whtAmount)}</span>
+                          </div>
+                      </div>
+                  )}
+              </div>
 
-            {isInsufficient && (
-                <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
-                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <div>
-                        <p className="font-bold">ยอดเงินไม่เพียงพอ</p>
-                        {isBlocked ? (
-                            <p className="text-xs">กรุณาเลือกบัญชีที่มีเงินพอ หรือติดต่อ Admin</p>
-                        ) : (
-                            <p className="text-xs italic">Admin/Manager: กด "บันทึก" เพื่อยืนยันรายการติดลบ</p>
-                        )}
-                    </div>
-                </div>
-            )}
+              <div className="p-4 border rounded-md bg-muted/30 space-y-2">
+                  <h4 className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-2">
+                      <Wallet className="h-3 w-3" /> ตรวจสอบยอดเงิน
+                  </h4>
+                  {isLoadingAccount || isLoadingEntries ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin"/> กำลังคำนวณ...</div>
+                  ) : (
+                      <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                              <span>ยอดคงเหลือปัจจุบัน:</span>
+                              <span className="font-medium">{formatCurrency(currentBalance)}</span>
+                          </div>
+                          <div className="flex justify-between text-destructive">
+                              <span>เงินออกจริงครั้งนี้:</span>
+                              <span className="font-medium">-{formatCurrency(cashOutAmount)}</span>
+                          </div>
+                          <Separator className="my-1"/>
+                          <div className={cn("flex justify-between font-bold", balanceAfter < 0 ? "text-destructive" : "text-green-600")}>
+                              <span>คงเหลือประมาณการ:</span>
+                              <span>{formatCurrency(balanceAfter)}</span>
+                          </div>
+                      </div>
+                  )}
+              </div>
 
-            <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
-          </form>
-        </Form>
-        <DialogFooter>
+              {isInsufficient && (
+                  <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md text-destructive text-sm">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                          <p className="font-bold">ยอดเงินไม่เพียงพอ</p>
+                          {isBlocked ? (
+                              <p className="text-xs">กรุณาเลือกบัญชีที่มีเงินพอ หรือติดต่อ Admin</p>
+                          ) : (
+                              <p className="text-xs italic">Admin/Manager: กด "บันทึก" เพื่อยืนยันรายการติดลบ</p>
+                          )}
+                      </div>
+                  </div>
+              )}
+
+              <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+            </form>
+          </Form>
+        </div>
+
+        <DialogFooter className="p-6 pt-4 border-t bg-muted/10">
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
           <Button 
             type="submit" 
@@ -751,111 +759,115 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
     
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent>
-                <DialogHeader>
+            <DialogContent className="max-h-[90vh] flex flex-col p-0 overflow-hidden">
+                <DialogHeader className="p-6 pb-0">
                     <DialogTitle>เพิ่มเจ้าหนี้ใหม่</DialogTitle>
                     <DialogDescription>บันทึกบิลที่ได้รับจากร้านค้าภายนอก</DialogDescription>
                 </DialogHeader>
-                 <Form {...form}>
-                    <form id="add-creditor-form" onSubmit={form.handleSubmit(handleSave)} className="space-y-4 py-4">
-                        <FormField name="vendorId" control={form.control} render={({ field }) => (
-                            <FormItem className="flex flex-col">
-                                <FormLabel>Vendor</FormLabel>
-                                <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-                                <PopoverTrigger asChild>
-                                <FormControl><Button variant="outline" role="combobox" className="justify-between">
-                                    {field.value ? vendors.find(v => v.id === field.value)?.shortName : "เลือก Vendor..."}
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button></FormControl>
-                                </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
-                                <CommandInput placeholder="ค้นหา..." value={vendorSearch} onValueChange={setVendorSearch} />
-                                <CommandList><CommandEmpty>ไม่พบ Vendor</CommandEmpty><CommandGroup>
-                                    {filteredVendors.map((v) => (
-                                    <CommandItem value={v.shortName} key={v.id} onSelect={() => { field.onChange(v.id); setIsPopoverOpen(false); }}>
-                                        {v.shortName} - {v.companyName}
-                                    </CommandItem>
-                                    ))}
-                                </CommandGroup></CommandList>
-                                </Command></PopoverContent></Popover>
-                                <FormMessage />
-                            </FormItem>
-                        )} />
-                        <FormField name="invoiceNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขที่บิล (Invoice No.)</FormLabel><FormControl><Input {...field}/></FormControl><FormMessage/></FormItem>)} />
-                        <FormField name="amountTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดเงินรวม</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
-                        <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                              control={form.control}
-                              name="docDate"
-                              render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                  <FormLabel>วันที่บนบิล</FormLabel>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <FormControl>
-                                        <Button
-                                          variant={"outline"}
-                                          className={cn(
-                                            "w-full pl-3 text-left font-normal h-10",
-                                            !field.value && "text-muted-foreground"
-                                          )}
-                                        >
-                                          {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
-                                          <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
-                                        </Button>
-                                      </FormControl>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                      <Calendar
-                                        mode="single"
-                                        selected={field.value ? parseISO(field.value) : undefined}
-                                        onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
+                
+                <div className="flex-1 overflow-y-auto px-6 py-4">
+                  <Form {...form}>
+                      <form id="add-creditor-form" onSubmit={form.handleSubmit(handleSave)} className="space-y-4">
+                          <FormField name="vendorId" control={form.control} render={({ field }) => (
+                              <FormItem className="flex flex-col">
+                                  <FormLabel>Vendor</FormLabel>
+                                  <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
+                                  <PopoverTrigger asChild>
+                                  <FormControl><Button variant="outline" role="combobox" className="justify-between">
+                                      {field.value ? vendors.find(v => v.id === field.value)?.shortName : "เลือก Vendor..."}
+                                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button></FormControl>
+                                  </PopoverTrigger><PopoverContent className="w-[--radix-popover-trigger-width] p-0"><Command>
+                                  <CommandInput placeholder="ค้นหา..." value={vendorSearch} onValueChange={setVendorSearch} />
+                                  <CommandList><CommandEmpty>ไม่พบ Vendor</CommandEmpty><CommandGroup>
+                                      {filteredVendors.map((v) => (
+                                      <CommandItem value={v.shortName} key={v.id} onSelect={() => { field.onChange(v.id); setIsPopoverOpen(false); }}>
+                                          {v.shortName} - {v.companyName}
+                                      </CommandItem>
+                                      ))}
+                                  </CommandGroup></CommandList>
+                                  </Command></PopoverContent></Popover>
                                   <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name="dueDate"
-                              render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                  <FormLabel>วันครบกำหนดจ่าย</FormLabel>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <FormControl>
-                                        <Button
-                                          variant={"outline"}
-                                          className={cn(
-                                            "w-full pl-3 text-left font-normal h-10",
-                                            !field.value && "text-muted-foreground"
-                                          )}
-                                        >
-                                          {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
-                                          <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
-                                        </Button>
-                                      </FormControl>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                      <Calendar
-                                        mode="single"
-                                        selected={field.value ? parseISO(field.value) : undefined}
-                                        onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
-                                        initialFocus
-                                      />
-                                    </PopoverContent>
-                                  </Popover>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                        </div>
-                        <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
-                    </form>
-                 </Form>
-                 <DialogFooter>
+                              </FormItem>
+                          )} />
+                          <FormField name="invoiceNo" control={form.control} render={({ field }) => (<FormItem><FormLabel>เลขที่บิล (Invoice No.)</FormLabel><FormControl><Input {...field}/></FormControl><FormMessage/></FormItem>)} />
+                          <FormField name="amountTotal" control={form.control} render={({ field }) => (<FormItem><FormLabel>ยอดเงินรวม</FormLabel><FormControl><Input type="number" {...field}/></FormControl><FormMessage/></FormItem>)} />
+                          <div className="grid grid-cols-2 gap-4">
+                              <FormField
+                                control={form.control}
+                                name="docDate"
+                                render={({ field }) => (
+                                  <FormItem className="flex flex-col">
+                                    <FormLabel>วันที่บนบิล</FormLabel>
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <FormControl>
+                                          <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                              "w-full pl-3 text-left font-normal h-10",
+                                              !field.value && "text-muted-foreground"
+                                            )}
+                                          >
+                                            {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                            <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
+                                          </Button>
+                                        </FormControl>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                          mode="single"
+                                          selected={field.value ? parseISO(field.value) : undefined}
+                                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                          initialFocus
+                                        />
+                                      </PopoverContent>
+                                    </Popover>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={form.control}
+                                name="dueDate"
+                                render={({ field }) => (
+                                  <FormItem className="flex flex-col">
+                                    <FormLabel>วันครบกำหนดจ่าย</FormLabel>
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <FormControl>
+                                          <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                              "w-full pl-3 text-left font-normal h-10",
+                                              !field.value && "text-muted-foreground"
+                                            )}
+                                          >
+                                            {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                            <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
+                                          </Button>
+                                        </FormControl>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-auto p-0" align="start">
+                                        <Calendar
+                                          mode="single"
+                                          selected={field.value ? parseISO(field.value) : undefined}
+                                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                          initialFocus
+                                        />
+                                      </PopoverContent>
+                                    </Popover>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                          </div>
+                          <FormField control={form.control} name="notes" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field}/></FormControl></FormItem>)} />
+                      </form>
+                  </Form>
+                </div>
+
+                 <DialogFooter className="p-6 pt-4 border-t bg-muted/10">
                     <Button variant="outline" onClick={onClose} disabled={isSubmitting}>ยกเลิก</Button>
                     <Button type="submit" form="add-creditor-form" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}บันทึก</Button>
                 </DialogFooter>
