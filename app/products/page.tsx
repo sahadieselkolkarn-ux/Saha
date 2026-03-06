@@ -17,11 +17,11 @@ import {
   CreditCard, CheckCircle2, ChevronDown, LayoutGrid
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { 
   Sheet, 
   SheetContent, 
-  SheetDescription, 
   SheetHeader, 
   SheetTitle, 
   SheetTrigger,
@@ -174,7 +174,7 @@ export default function PublicProductsPage() {
       <main className="relative z-10 flex-1 pt-24 pb-20 overflow-x-hidden">
         <div className="container mx-auto px-4">
           
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+          <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-12">
             <div className="animate-in fade-in slide-in-from-top-4 duration-700">
               <h1 className="text-4xl md:text-5xl font-bold text-white mb-2 font-headline tracking-tight">สินค้าและอะไหล่</h1>
               <p className="text-white/60 text-sm md:text-base">เลือกชมรายการอะไหล่มาตรฐาน Sahadiesel ในราคาพิเศษ</p>
