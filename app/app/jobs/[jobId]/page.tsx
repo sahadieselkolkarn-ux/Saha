@@ -73,7 +73,6 @@ const getSafeTime = (val: any): number => {
     return 0;
 };
 
-// Helper function to compress image step by step
 const compressImageIfNeeded = async (file: File): Promise<File> => {
   if (file.size <= FILE_SIZE_THRESHOLD) return file;
 
@@ -198,7 +197,6 @@ function JobDetailsPageContent() {
 
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
-    // CRITICAL FIX: Ensure we use the correct archive path if identified
     if (job?.isArchived || archiveYear) {
       const year = archiveYear || parseInt((job?.closedDate || "").split('-')[0]) || new Date().getFullYear();
       return query(collection(db, `jobsArchive_${year}`, jobId, "activities"), orderBy("createdAt", "desc"));
@@ -308,7 +306,6 @@ function JobDetailsPageContent() {
       setLoading(true);
       const searchArchives = async () => {
         const currentYear = new Date().getFullYear();
-        // Robust search through recent years
         for (let i = 0; i <= 5; i++) {
           const year = currentYear - i;
           try {
@@ -420,7 +417,6 @@ function JobDetailsPageContent() {
     }
     if (!db || !profile || !job || !jobDocRef) return;
 
-    // Safety Limit: Check activities count
     const activitiesCountSnap = await getCountFromServer(collection(jobDocRef, "activities"));
     if (activitiesCountSnap.data().count >= DATA_LIMITS.MAX_ACTIVITY_LOGS) {
         toast({ variant: "destructive", title: "รายการกิจกรรมเต็ม", description: `ไม่สามารถบันทึกเพิ่มได้เนื่องจากเกิน ${DATA_LIMITS.MAX_ACTIVITY_LOGS} รายการ กรุณาสรุปงานในช่องสมุดบันทึกแทนค่ะ` });
@@ -615,9 +611,9 @@ function JobDetailsPageContent() {
     const jobDocRef = doc(db, "jobs", job.id);
     const batch = writeBatch(db);
     batch.update(jobDocRef, { status: 'DONE', lastActivityAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    batch.set(doc(collection(jobDocRef, "activities")), { text: `ช่างกดจบงานเรียบร้อยแล้ว รอดำเนินการออกบิลโดยแผนกออฟฟิศ`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
+    batch.set(doc(collection(jobDocRef, "activities")), { text: `ช่างแจ้งซ่อมเสร็จสิ้น - รอดำเนินการทำบิล`, userName: profile.displayName, userId: profile.uid, createdAt: serverTimestamp() });
     batch.commit().then(() => {
-        toast({ title: "บันทึกจบงานสำเร็จ", description: "สถานะงานเปลี่ยนเป็น 'DONE' แล้วค่ะ กรุณาแจ้งแผนกออฟฟิศเพื่อออกบิลนะคะ" });
+        toast({ title: "บันทึกแจ้งทำบิลสำเร็จ", description: "สถานะงานเปลี่ยนเป็น 'DONE' แล้วค่ะ กรุณาแจ้งแผนกออฟฟิศเพื่อออกบิลนะคะ" });
     })
     .catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message }))
     .finally(() => setIsSubmittingNote(false));
@@ -977,7 +973,7 @@ function JobDetailsPageContent() {
                             className="bg-green-600 hover:bg-green-700 text-white font-bold"
                           >
                               <CheckCircle className="mr-2 h-4 w-4" /> 
-                              {isSubTask ? "ส่งงานกลับแผนกหลัก" : "จบงาน (Finish Job)"}
+                              {isSubTask ? "ส่งงานกลับแผนกหลัก" : "งานเสร็จแจ้งทำบิล"}
                           </Button>
                       )}
 
