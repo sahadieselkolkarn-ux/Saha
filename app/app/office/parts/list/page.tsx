@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle } from "lucide-react";
+import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle, MoreHorizontal, Eye } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -28,6 +28,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import Image from "next/image";
 import type { Part, PartCategory, PartLocation } from "@/lib/types";
@@ -91,7 +92,7 @@ const compressImageIfNeeded = async (file: File): Promise<File> => {
 };
 
 const partSchema = z.object({
-  code: z.string().min(1, "กรุณากรอกรหัสอะไหล่"),
+  code: z.string().min(1, "กรุณากรอกหรัสอะไหล่"),
   name: z.string().min(1, "กรุณากรอกชื่ออะไหล่"),
   categoryId: z.string().min(1, "กรุณาเลือกหมวดหมู่"),
   sellingPrice: z.coerce.number().min(0, "ห้ามติดลบ"),
@@ -282,8 +283,6 @@ export default function PartsInventoryPage() {
       };
 
       if (editingPart) {
-        // Requirements: code and stockQty must remain consistent during edit
-        // We do not update them to ensure integrity
         const partRef = doc(db, "parts", editingPart.id);
         updateDoc(partRef, sanitizeForFirestore(partData))
           .then(() => {
@@ -419,16 +418,31 @@ export default function PartsInventoryPage() {
                         <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{part.location || '-'}</div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => { setEditingPart(part); setIsDialogOpen(true); }}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {profile?.role === 'ADMIN' && (
-                            <Button variant="ghost" size="icon" onClick={() => setPartToDelete(part)} className="text-destructive">
-                              <Trash2 className="h-4 w-4" />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
                             </Button>
-                          )}
-                        </div>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => { setEditingPart(part); setIsDialogOpen(true); }}>
+                              <Eye className="mr-2 h-4 w-4" /> ดู
+                            </DropdownMenuItem>
+                            {canManage && (
+                              <DropdownMenuItem onClick={() => { setEditingPart(part); setIsDialogOpen(true); }}>
+                                <Edit className="mr-2 h-4 w-4" /> แก้ไข
+                              </DropdownMenuItem>
+                            )}
+                            {profile?.role === 'ADMIN' && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setPartToDelete(part)} className="text-destructive focus:text-destructive">
+                                  <Trash2 className="mr-2 h-4 w-4" /> ลบ
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -444,7 +458,7 @@ export default function PartsInventoryPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 flex flex-col">
           <DialogHeader className="p-6 pb-2">
-            <DialogTitle>{editingPart ? "แก้ไขข้อมูลอะไหล่" : "เพิ่มอะไหล่ใหม่เข้าระบบ"}</DialogTitle>
+            <DialogTitle>{editingPart ? "รายละเอียดและแก้ไขอะไหล่" : "เพิ่มอะไหล่ใหม่เข้าระบบ"}</DialogTitle>
             <DialogDescription>กรอกข้อมูลรายละเอียดของอะไหล่ให้ครบถ้วนเพื่อความแม่นยำของสต็อกสินค้า</DialogDescription>
           </DialogHeader>
           <Form {...form}>
@@ -517,18 +531,18 @@ export default function PartsInventoryPage() {
                           </Button>
                         )}
                       </div>
-                      {watchedCode && (
+                      {(watchedCode || editingPart?.code) && (
                         <div className="mt-4 flex flex-col items-center p-3 border rounded-lg bg-white shadow-sm overflow-hidden">
                           <div className="relative w-full h-16 flex justify-center bg-white">
                             <Image 
-                              src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(watchedCode)}&scale=2&rotate=N&includetext`} 
+                              src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(watchedCode || editingPart?.code || '')}&scale=2&rotate=N&includetext`} 
                               alt="Barcode Code 128" 
                               fill 
                               className="object-contain" 
                               unoptimized
                             />
                           </div>
-                          <p className="text-[10px] text-muted-foreground mt-1 font-mono uppercase tracking-widest">{watchedCode}</p>
+                          <p className="text-[10px] text-muted-foreground mt-1 font-mono uppercase tracking-widest">{watchedCode || editingPart?.code}</p>
                         </div>
                       )}
                       <FormMessage />
