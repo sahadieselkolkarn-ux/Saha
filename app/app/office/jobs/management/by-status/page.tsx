@@ -12,7 +12,7 @@ import { Search, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { cn } from "@/lib/utils";
 
-type TabValue = "quotation" | "waiting-approve" | "pending-parts" | "done" | "pickup";
+type TabValue = "quotation" | "waiting-approve" | "pending-parts" | "in-repair" | "done" | "pickup";
 
 function ByStatusContent() {
   const { profile, loading: authLoading } = useAuth();
@@ -30,22 +30,18 @@ function ByStatusContent() {
     
     // Admin and System Management see everything
     if (userRole === 'ADMIN' || userDept === 'MANAGEMENT') {
-      return ["quotation", "waiting-approve", "pending-parts", "done", "pickup"];
+      return ["quotation", "waiting-approve", "pending-parts", "in-repair", "done", "pickup"];
     }
 
-    // Department-based restrictions (Managers in these depts are also restricted)
+    // Department-based restrictions
     switch (userDept) {
       case 'OFFICE':
-        // Updated: Added "done" (งานเสร็จรอทำบิล) for Office department
-        return ["quotation", "waiting-approve", "done", "pickup"];
+        return ["quotation", "waiting-approve", "in-repair", "done", "pickup"];
       case 'PURCHASING':
-        // พนักงานจัดซื้อเข้าได้แค่ "กำลังจัดอะไหล่" เท่านั้น
         return ["pending-parts"];
       case 'ACCOUNTING_HR':
-        // บัญชีเข้าได้แค่ "งานเสร็จรอทำบิล" และ "รอลูกค้ารับสินค้า"
         return ["done", "pickup"];
       default:
-        // Other departments might not have access to these management tabs
         return [];
     }
   }, [userDept, userRole, profile, authLoading]);
@@ -81,39 +77,46 @@ function ByStatusContent() {
       
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 gap-1">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 gap-1 h-auto">
             <TabsTrigger 
               value="quotation" 
               disabled={isTabDisabled("quotation")}
-              className={cn(isTabDisabled("quotation") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
+              className={cn("text-[10px] sm:text-xs", isTabDisabled("quotation") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               งานเสนอราคา
             </TabsTrigger>
             <TabsTrigger 
               value="waiting-approve" 
               disabled={isTabDisabled("waiting-approve")}
-              className={cn(isTabDisabled("waiting-approve") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
+              className={cn("text-[10px] sm:text-xs", isTabDisabled("waiting-approve") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               รอลูกค้าอนุมัติ
             </TabsTrigger>
             <TabsTrigger 
               value="pending-parts" 
               disabled={isTabDisabled("pending-parts")}
-              className={cn(isTabDisabled("pending-parts") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
+              className={cn("text-[10px] sm:text-xs", isTabDisabled("pending-parts") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               กำลังจัดอะไหล่
             </TabsTrigger>
             <TabsTrigger 
+              value="in-repair" 
+              disabled={isTabDisabled("in-repair")}
+              className={cn("text-[10px] sm:text-xs font-bold text-primary", isTabDisabled("in-repair") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
+            >
+              กำลังดำเนินการซ่อม
+            </TabsTrigger>
+            <TabsTrigger 
               value="done" 
               disabled={isTabDisabled("done")}
-              className={cn(isTabDisabled("done") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
+              className={cn("text-[10px] sm:text-xs", isTabDisabled("done") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               งานเสร็จรอทำบิล
             </TabsTrigger>
             <TabsTrigger 
               value="pickup" 
               disabled={isTabDisabled("pickup")}
-              className={cn(isTabDisabled("pickup") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
+              className={cn("text-[10px] sm:text-xs", isTabDisabled("pickup") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
               รอลูกค้ารับสินค้า
             </TabsTrigger>
@@ -157,6 +160,16 @@ function ByStatusContent() {
                             status="PENDING_PARTS"
                             emptyTitle="ไม่มีงานที่รอจัดอะไหล่"
                             emptyDescription="ไม่มีงานที่อยู่ในสถานะ PENDING_PARTS ในขณะนี้"
+                        />
+                    )}
+                </TabsContent>
+                <TabsContent value="in-repair" className="mt-0">
+                    {activeTab === 'in-repair' && allowedTabs.includes('in-repair') && (
+                        <JobList 
+                            searchTerm={searchTerm}
+                            status="IN_REPAIR_PROCESS"
+                            emptyTitle="ไม่มีงานที่กำลังซ่อม"
+                            emptyDescription="ยังไม่มีงานที่อยู่ในสถานะ 'กำลังดำเนินการซ่อม' ในขณะนี้"
                         />
                     )}
                 </TabsContent>
