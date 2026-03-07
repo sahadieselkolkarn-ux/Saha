@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronLeft, ChevronRight, ExternalLink, RotateCcw } from "lucide-react";
+import { Loader2, Search, AlertCircle, MoreHorizontal, XCircle, Trash2, Edit, Eye, ChevronLeft, ChevronRight, ExternalLink, RotateCcw, Hash, Filter } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -74,9 +74,9 @@ export function DocumentList({
 
   const [allDocuments, setAllDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<FirestoreError | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [prefixFilter, setPrefixFilter] = useState("ALL");
   const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
   
   const [docToAction, setDocToAction] = useState<Document | null>(null);
@@ -98,6 +98,16 @@ export function DocumentList({
     if (docType === 'DELIVERY_NOTE') return base.filter(s => s !== "APPROVED");
     return base;
   }, [docType]);
+
+  // Extract unique prefixes from docNo (e.g. DN, INV, DN3)
+  const availablePrefixes = useMemo(() => {
+    const prefixes = new Set<string>();
+    allDocuments.forEach(doc => {
+      const match = doc.docNo.match(/^[A-Za-z]+/);
+      if (match) prefixes.add(match[0]);
+    });
+    return Array.from(prefixes).sort();
+  }, [allDocuments]);
 
   const stableQuery = useMemo(() => {
     if (!db) return null;
@@ -127,7 +137,18 @@ export function DocumentList({
 
   const processedDocuments = useMemo(() => {
     let filtered = [...allDocuments];
-    if (statusFilter !== "ALL") filtered = filtered.filter(doc => getDocDisplayStatus(doc).key === statusFilter);
+    
+    // Filter by Prefix
+    if (prefixFilter !== "ALL") {
+      filtered = filtered.filter(doc => doc.docNo.startsWith(prefixFilter));
+    }
+
+    // Filter by Status
+    if (statusFilter !== "ALL") {
+      filtered = filtered.filter(doc => getDocDisplayStatus(doc).key === statusFilter);
+    }
+
+    // Search by text
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
       filtered = filtered.filter(doc =>
@@ -137,12 +158,12 @@ export function DocumentList({
       );
     }
     return filtered;
-  }, [allDocuments, searchTerm, statusFilter]);
+  }, [allDocuments, searchTerm, statusFilter, prefixFilter]);
   
   const paginatedDocuments = useMemo(() => processedDocuments.slice(currentPage * limitProp, (currentPage + 1) * limitProp), [processedDocuments, currentPage, limitProp]);
   const totalPages = Math.max(1, Math.ceil(processedDocuments.length / limitProp));
   
-  useEffect(() => { setCurrentPage(0); }, [searchTerm, statusFilter]);
+  useEffect(() => { setCurrentPage(0); }, [searchTerm, statusFilter, prefixFilter]);
 
   const unlinkJob = async (batch: any, docObj: Document) => {
     if (!docObj.jobId) return;
@@ -264,19 +285,52 @@ export function DocumentList({
             </Alert>
           )}
 
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col md:flex-row gap-3">
+            {/* 1. Prefix Filter */}
+            <div className="w-full md:w-48">
+              <Select value={prefixFilter} onValueChange={setPrefixFilter}>
+                <SelectTrigger className="bg-background">
+                  <div className="flex items-center gap-2">
+                    <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Prefix..." />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">ทุก Prefix</SelectItem>
+                  {availablePrefixes.map(p => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 2. Search Input */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="ค้นหา..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+              <Input 
+                placeholder="ค้นหาชื่อลูกค้า, เบอร์โทร, เลขบิล..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                className="pl-10 bg-background" 
+              />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="สถานะ..." /></SelectTrigger>
-              <SelectContent>
-                {uniqueStatuses.map(status => (
-                    <SelectItem key={status} value={status}>{status === "ALL" ? "ทุกสถานะ" : docStatusLabel(status, docType)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+            {/* 3. Status Filter */}
+            <div className="w-full md:w-56">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="bg-background">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="สถานะ..." />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {uniqueStatuses.map(status => (
+                      <SelectItem key={status} value={status}>{status === "ALL" ? "ทุกสถานะ" : docStatusLabel(status, docType)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           {loading ? (
@@ -296,7 +350,7 @@ export function DocumentList({
 
                     return (
                     <TableRow key={docItem.id}>
-                      <TableCell className="font-mono text-xs">{docItem.docNo}</TableCell>
+                      <TableCell className="font-mono text-xs font-bold text-primary">{docItem.docNo}</TableCell>
                       <TableCell className="text-xs">{safeFormat(new Date(docItem.docDate), APP_DATE_FORMAT)}</TableCell>
                       <TableCell className="text-sm font-medium">{docItem.customerSnapshot?.name || "-"}</TableCell>
                       <TableCell><Badge variant={displayStatus.variant} className="text-[10px]">{displayStatus.label}</Badge></TableCell>
