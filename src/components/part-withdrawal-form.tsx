@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -66,7 +67,7 @@ const withdrawalSchema = z.object({
 type WithdrawalFormData = z.infer<typeof withdrawalSchema>;
 
 export default function PartWithdrawalForm() {
-  const { db } = useFirebase();
+  const { db, storage } = useFirebase();
   const { profile } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
@@ -107,6 +108,7 @@ export default function PartWithdrawalForm() {
   const watchedRefType = form.watch("refType");
   const watchedCustomerId = form.watch("customerId");
 
+  // ดึงข้อมูลพื้นฐาน
   useEffect(() => {
     if (!db) return;
     
@@ -114,11 +116,11 @@ export default function PartWithdrawalForm() {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer)));
     });
 
-    const unsubJobs = onSnapshot(query(collection(db, "jobs"), where("status", "!=", "CLOSED")), (snap) => {
+    const unsubJobs = onSnapshot(query(collection(db, "jobs"), where("status", "in", ["PENDING_PARTS", "IN_REPAIR_PROCESS"])), (snap) => {
       setActiveJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
-    const unsubDocs = onSnapshot(query(collection(db, "documents"), where("status", "in", ["DRAFT", "PENDING_REVIEW", "APPROVED", "UNPAID", "PARTIAL"])), (snap) => {
+    const unsubDocs = onSnapshot(query(collection(db, "documents"), where("status", "==", "DRAFT")), (snap) => {
       setActiveSalesDocs(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)));
     });
 
@@ -129,6 +131,19 @@ export default function PartWithdrawalForm() {
 
     return () => { unsubCustomers(); unsubJobs(); unsubDocs(); unsubParts(); };
   }, [db]);
+
+  // ตรรกะกรองลูกค้าตามประเภทการเบิก
+  const availableCustomers = useMemo(() => {
+    if (watchedRefType === 'JOB') {
+      const customerIdsWithValidJobs = new Set(activeJobs.map(j => j.customerId));
+      return customers.filter(c => customerIdsWithValidJobs.has(c.id));
+    }
+    if (watchedRefType === 'SALES_DOC') {
+      const customerIdsWithDraftDocs = new Set(activeSalesDocs.map(d => d.customerId));
+      return customers.filter(c => customerIdsWithDraftDocs.has(c.id));
+    }
+    return customers; // สำหรับ LOAN แสดงทั้งหมด
+  }, [watchedRefType, activeJobs, activeSalesDocs, customers]);
 
   const filteredJobs = useMemo(() => activeJobs.filter(j => j.customerId === watchedCustomerId), [activeJobs, watchedCustomerId]);
   const filteredSalesDocs = useMemo(() => activeSalesDocs.filter(d => d.customerId === watchedCustomerId), [activeSalesDocs, watchedCustomerId]);
@@ -260,16 +275,39 @@ export default function PartWithdrawalForm() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Step 1: Reference Type */}
             <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4 text-primary"/> 1. ข้อมูลลูกค้า</CardTitle></CardHeader>
-              <CardContent>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-primary"/> 1. อ้างอิงรายการ</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <FormField name="refType" control={form.control} render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>ประเภทการเบิก</FormLabel>
+                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("customerId", ""); form.setValue("refId", ""); }} value={field.value}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="JOB">งานซ่อม (Job)</SelectItem>
+                        <SelectItem value="SALES_DOC">บิลขาย (ฉบับร่าง)</SelectItem>
+                        <SelectItem value="LOAN">ยืมอะไหล่</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+              </CardContent>
+            </Card>
+
+            {/* Step 2: Customer Selection (Conditional) */}
+            <Card>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4 text-primary"/> 2. เลือกลูกค้า</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
                 <FormField name="customerId" control={form.control} render={({ field }) => (
                   <FormItem>
                     <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button variant="outline" className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")}>
-                            {field.value ? customers.find(c => c.id === field.value)?.name : "ค้นหาชื่อลูกค้า..."}
+                            <span className="truncate">
+                              {field.value ? (customers.find(c => c.id === field.value)?.name || "เลือกรายชื่อ...") : "ค้นหาชื่อลูกค้า..."}
+                            </span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
                         </FormControl>
@@ -277,34 +315,16 @@ export default function PartWithdrawalForm() {
                       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                         <div className="p-2 border-b"><Input placeholder="พิมพ์ชื่อเพื่อค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} /></div>
                         <ScrollArea className="h-60">
-                          {customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).map(c => (
+                          {availableCustomers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).map(c => (
                             <Button key={c.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); form.setValue("refId", ""); }}>
                               <div className="flex flex-col"><span className="font-medium">{c.name}</span><span className="text-xs text-muted-foreground">{c.phone}</span></div>
                             </Button>
                           ))}
+                          {availableCustomers.length === 0 && <div className="p-4 text-center text-xs text-muted-foreground italic">ไม่พบลูกค้าที่มีรายการค้างตามเงื่อนไขที่เลือก</div>}
                         </ScrollArea>
                       </PopoverContent>
                     </Popover>
                     <FormMessage />
-                  </FormItem>
-                )} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-primary"/> 2. อ้างอิงรายการ</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <FormField name="refType" control={form.control} render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>ประเภทการเบิก</FormLabel>
-                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("refId", ""); }} value={field.value}>
-                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        <SelectItem value="JOB">งานซ่อม (Job)</SelectItem>
-                        <SelectItem value="SALES_DOC">บิลขาย (DN/TI)</SelectItem>
-                        <SelectItem value="LOAN">ยืมอะไหล่</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </FormItem>
                 )} />
 
@@ -385,6 +405,7 @@ export default function PartWithdrawalForm() {
         </form>
       </Form>
 
+      {/* Scanner Dialog */}
       <Dialog open={isScannerOpen} onOpenChange={(o) => !o && stopScanner()}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black">
           <div className="relative aspect-square">
