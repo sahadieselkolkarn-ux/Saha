@@ -146,6 +146,7 @@ function JobDetailsPageContent() {
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFoundInPrimary, setNotFoundInPrimary] = useState(false);
+  const [archiveYear, setArchiveYear] = useState<number | null>(null);
   
   const [newNote, setNewNote] = useState("");
   const [newPhotos, setNewPhotos] = useState<File[]>([]);
@@ -197,12 +198,13 @@ function JobDetailsPageContent() {
 
   const activitiesQuery = useMemo(() => {
     if (!db || !jobId) return null;
-    if (job?.isArchived) {
-      const year = parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
+    // CRITICAL FIX: Ensure we use the correct archive path if identified
+    if (job?.isArchived || archiveYear) {
+      const year = archiveYear || parseInt((job?.closedDate || "").split('-')[0]) || new Date().getFullYear();
       return query(collection(db, `jobsArchive_${year}`, jobId, "activities"), orderBy("createdAt", "desc"));
     }
     return query(collection(db, "jobs", jobId, "activities"), orderBy("createdAt", "desc"));
-  }, [db, jobId, job?.isArchived, job?.closedDate]);
+  }, [db, jobId, job?.isArchived, job?.closedDate, archiveYear]);
 
   const { data: activities, isLoading: activitiesLoading } = useCollection<JobActivity>(activitiesQuery);
 
@@ -249,8 +251,8 @@ function JobDetailsPageContent() {
 
   const getJobRef = () => {
     if (!db || !job) return null;
-    if (job.isArchived) {
-      const year = parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
+    if (job.isArchived || archiveYear) {
+      const year = archiveYear || parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
       return doc(db, `jobsArchive_${year}`, jobId);
     }
     return doc(db, "jobs", jobId);
@@ -289,7 +291,7 @@ function JobDetailsPageContent() {
       if (docSnap.exists()) {
         const jobData = { id: docSnap.id, ...docSnap.data() } as Job;
         setJob(jobData);
-        setTechReport(jobData.technicalReport || "");
+        setTechReport(jobData.technicalReport || jobData.officeNote || "");
         setLoading(false);
         setNotFoundInPrimary(false);
       } else {
@@ -306,7 +308,8 @@ function JobDetailsPageContent() {
       setLoading(true);
       const searchArchives = async () => {
         const currentYear = new Date().getFullYear();
-        for (let i = 0; i < 5; i++) {
+        // Robust search through recent years
+        for (let i = 0; i <= 5; i++) {
           const year = currentYear - i;
           try {
             const archiveDocRef = doc(db, `jobsArchive_${year}`, jobId);
@@ -314,7 +317,8 @@ function JobDetailsPageContent() {
             if (docSnap.exists()) {
               const jobData = { id: docSnap.id, ...docSnap.data(), isArchived: true } as Job;
               setJob(jobData);
-              setTechReport(jobData.technicalReport || "");
+              setArchiveYear(year);
+              setTechReport(jobData.technicalReport || jobData.officeNote || "");
               setLoading(false);
               return;
             }
@@ -377,7 +381,7 @@ function JobDetailsPageContent() {
 
   const handleOpenEditVehicleDialog = () => {
     if (!job) return;
-    const data = job.carServiceDetails || job.commonrailDetails || job.mechanicDetails || {};
+    const data = job.carServiceDetails || job.commonrailDetails || job.mechanicDetails || job.carSnapshot || {};
     setVehicleEditData(data);
     setIsEditVehicleDialogOpen(true);
   };
@@ -678,7 +682,7 @@ function JobDetailsPageContent() {
     if (!db || !profile || !job || !job.isArchived) return;
     setIsRestoring(true);
     try {
-      const year = parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
+      const year = archiveYear || parseInt((job.closedDate || "").split('-')[0]) || new Date().getFullYear();
       await restoreJobFromArchive(db, job.id, year, profile);
       toast({ title: "กู้คืนงานสำเร็จ", description: "งานถูกย้ายกลับมาเป็นงานที่กำลังดำเนินการ (Active) เรียบร้อยแล้วค่ะ" });
       setIsRestoreDialogOpen(false);
@@ -793,7 +797,7 @@ function JobDetailsPageContent() {
       
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-          {job.isArchived && isUserAdmin && (
+          {(job.isArchived || archiveYear) && isUserAdmin && (
             <Card className="border-amber-500 bg-amber-50 shadow-md">
               <CardHeader className="pb-3">
                 <CardTitle className="text-amber-700 flex items-center gap-2 text-base">
@@ -895,7 +899,7 @@ function JobDetailsPageContent() {
             ) : <p className="text-muted-foreground text-sm">ยังไม่มีรูปตอนรับงาน</p>}</CardContent>
           </Card>
           
-          {(job.status !== 'CLOSED' || allowEditing) && (
+          {(!isViewOnly) && (
             <Card>
                 <CardHeader><CardTitle>อัปเดทการทำงาน/รูปงาน</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
@@ -1159,7 +1163,7 @@ function JobDetailsPageContent() {
               disabled={isRestoring}
               className="bg-amber-600 hover:bg-amber-700"
             >
-              {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+              {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-2 h-4 w-4" />}
               ยืนยันกู้คืน
             </AlertDialogAction>
           </AlertDialogFooter>

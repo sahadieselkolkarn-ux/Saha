@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Job } from "@/lib/types";
@@ -19,35 +18,31 @@ const DetailRow: React.FC<DetailRowProps> = ({ label, value }) => {
 };
 
 export function JobVehicleDetails({ job }: { job: Job }) {
-  // Show details if they exist, regardless of the current department
-  const hasCarDetails = !!(job.carServiceDetails?.brand || job.carServiceDetails?.licensePlate);
-  const hasCommonrailDetails = !!(job.commonrailDetails?.brand || job.commonrailDetails?.partNumber);
-  const hasMechanicDetails = !!(job.mechanicDetails?.brand || job.mechanicDetails?.partNumber);
+  // Check details across all possible structures including snapshots for archived jobs
+  const car = job.carServiceDetails || job.carSnapshot;
+  const commonrail = job.commonrailDetails || job.carSnapshot;
+  const mechanic = job.mechanicDetails || job.carSnapshot;
+
+  const hasCarDetails = !!(car?.brand || car?.licensePlate || car?.model);
+  const hasPartsDetails = !!(commonrail?.brand || commonrail?.partNumber || commonrail?.registrationNumber);
 
   return (
     <div className="space-y-1">
       {hasCarDetails && (
         <>
-          <DetailRow label="ยี่ห้อรถ" value={job.carServiceDetails?.brand} />
-          <DetailRow label="รุ่นรถ" value={job.carServiceDetails?.model} />
-          <DetailRow label="ทะเบียนรถ" value={job.carServiceDetails?.licensePlate} />
+          <DetailRow label="ยี่ห้อรถ" value={car?.brand} />
+          <DetailRow label="รุ่นรถ" value={car?.model} />
+          <DetailRow label="ทะเบียนรถ" value={car?.licensePlate} />
         </>
       )}
-      {hasCommonrailDetails && (
+      {hasPartsDetails && !hasCarDetails && (
         <>
-          <DetailRow label="ยี่ห้อ" value={job.commonrailDetails?.brand} />
-          <DetailRow label="เลขอะไหล่" value={job.commonrailDetails?.partNumber} />
-          <DetailRow label="เลขทะเบียน" value={job.commonrailDetails?.registrationNumber} />
+          <DetailRow label="ยี่ห้อ" value={commonrail?.brand} />
+          <DetailRow label="เลขอะไหล่" value={commonrail?.partNumber} />
+          <DetailRow label="เลขทะเบียนชิ้นส่วน" value={commonrail?.registrationNumber} />
         </>
       )}
-      {hasMechanicDetails && (
-        <>
-          <DetailRow label="ยี่ห้อ" value={job.mechanicDetails?.brand} />
-          <DetailRow label="เลขอะไหล่" value={job.mechanicDetails?.partNumber} />
-          <DetailRow label="เลขทะเบียน" value={job.mechanicDetails?.registrationNumber} />
-        </>
-      )}
-      {!hasCarDetails && !hasCommonrailDetails && !hasMechanicDetails && (
+      {!hasCarDetails && !hasPartsDetails && (
         <p className="text-xs text-muted-foreground italic">ไม่มีข้อมูลรายละเอียดรถ/ชิ้นส่วน</p>
       )}
     </div>
