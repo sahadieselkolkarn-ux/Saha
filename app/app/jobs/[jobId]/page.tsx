@@ -49,21 +49,6 @@ import { restoreJobFromArchive } from "@/firebase/jobs-archive";
 
 const FILE_SIZE_THRESHOLD = 5 * 1024 * 1024; // 5MB
 
-const getStatusStyles = (status: Job['status']) => {
-  switch (status) {
-    case 'RECEIVED': return 'bg-amber-500 text-white border-amber-600 hover:bg-amber-500';
-    case 'IN_PROGRESS': return 'bg-cyan-500 text-white border-cyan-600 hover:bg-cyan-500';
-    case 'WAITING_QUOTATION': return 'bg-blue-500 text-white border-blue-600 hover:bg-blue-500';
-    case 'WAITING_APPROVE': return 'bg-orange-500 text-white border-orange-600 hover:bg-orange-500';
-    case 'PENDING_PARTS': return 'bg-purple-500 text-white border-purple-600 hover:bg-purple-500';
-    case 'IN_REPAIR_PROCESS': return 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-600';
-    case 'DONE': return 'bg-green-500 text-white border-green-600 hover:bg-green-500';
-    case 'WAITING_CUSTOMER_PICKUP': return 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-600 shadow-sm';
-    case 'CLOSED': return 'bg-slate-400 text-white border-slate-500 hover:bg-slate-400';
-    default: return 'bg-secondary text-secondary-foreground';
-  }
-}
-
 const getSafeTime = (val: any): number => {
     if (!val) return 0;
     if (typeof val.toMillis === 'function') return val.toMillis();
@@ -173,6 +158,7 @@ function JobDetailsPageContent() {
 
   const [relatedDocuments, setRelatedDocuments] = useState<Partial<Record<DocType, DocumentType[]>>>({});
   const [loadingDocs, setLoadingDocs] = useState(true);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
 
   const [isEditDescriptionDialogOpen, setIsEditDescriptionDialogOpen] = useState(false);
   const [descriptionToEdit, setDescriptionToEdit] = useState("");
@@ -279,7 +265,13 @@ function JobDetailsPageContent() {
         console.error("Error fetching related documents:", error);
         setLoadingDocs(false);
     });
-    return () => unsubscribeDocs();
+
+    const qWithdrawals = query(collection(db, "partWithdrawals"), where("refId", "==", jobId), where("refType", "==", "JOB"));
+    const unsubWithdrawals = onSnapshot(qWithdrawals, (snap) => {
+        setWithdrawals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubscribeDocs(); unsubWithdrawals(); };
   }, [db, jobId]);
 
   useEffect(() => {
@@ -1066,38 +1058,50 @@ function JobDetailsPageContent() {
 
           <Card><CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><FileText className="h-4 w-4"/> เอกสารอ้างอิง</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">
               {loadingDocs ? <div className="flex justify-center"><Loader2 className="animate-spin"/></div> : (
-                (['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'] as DocType[]).map(docType => {
-                    const label = { QUOTATION: 'ใบเสนอราคา', DELIVERY_NOTE: 'ใบส่งของชั่วคราว', TAX_INVOICE: 'ใบกำกับภาษี', RECEIPT: 'ใบเสร็จ' }[docType];
-                    const latestDoc = relatedDocuments[docType]?.[0];
-                    return (latestDoc || docType !== 'RECEIPT') ? (
-                      <div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
-                        <span className="text-muted-foreground pt-1">{label}:</span>
-                        {latestDoc ? (
-                          <div className="flex flex-col items-end gap-1">
-                            <div className="flex items-center gap-2">
-                              {isTechnicalDept ? (
-                                <span className="font-medium">{latestDoc.docNo}</span>
-                              ) : (
-                                <Button asChild variant="link" className="p-0 h-auto font-medium">
-                                  <Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link>
+                <>
+                  {(['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'] as DocType[]).map(docType => {
+                      const label = { QUOTATION: 'ใบเสนอราคา', DELIVERY_NOTE: 'ใบส่งของชั่วคราว', TAX_INVOICE: 'ใบกำกับภาษี', RECEIPT: 'ใบเสร็จรับเงิน' }[docType];
+                      const latestDoc = relatedDocuments[docType]?.[0];
+                      return (latestDoc || docType !== 'RECEIPT') ? (
+                        <div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
+                          <span className="text-muted-foreground pt-1">{label}:</span>
+                          {latestDoc ? (
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-2">
+                                {isTechnicalDept ? (
+                                  <span className="font-medium">{latestDoc.docNo}</span>
+                                ) : (
+                                  <Button asChild variant="link" className="p-0 h-auto font-medium">
+                                    <Link href={`/app/office/documents/${latestDoc.id}`}>{latestDoc.docNo}</Link>
+                                  </Button>
+                                )}
+                                <Badge variant="outline" className="text-[8px] px-1 h-4">
+                                  {docStatusLabel(latestDoc.status, latestDoc.docType)}
+                                </Badge>
+                              </div>
+                              {canIssueBill && latestDoc.status === 'APPROVED' && !latestDoc.receiptDocId && docType === 'TAX_INVOICE' && (
+                                <Button asChild size="sm" variant="outline" className="h-6 text-[9px] px-2 border-primary text-primary hover:bg-primary/5">
+                                  <Link href={`/app/management/accounting/documents/receipt?customerId=${latestDoc.customerId}&sourceDocId=${latestDoc.id}`}>
+                                    <Receipt className="h-2.5 w-2.5 mr-1" /> ออกใบเสร็จ (Issue Receipt)
+                                  </Link>
                                 </Button>
                               )}
-                              <Badge variant="outline" className="text-[8px] px-1 h-4">
-                                {docStatusLabel(latestDoc.status, latestDoc.docType)}
-                              </Badge>
                             </div>
-                            {canIssueBill && latestDoc.status === 'APPROVED' && !latestDoc.receiptDocId && docType === 'TAX_INVOICE' && (
-                              <Button asChild size="sm" variant="outline" className="h-6 text-[9px] px-2 border-primary text-primary hover:bg-primary/5">
-                                <Link href={`/app/management/accounting/documents/receipt?customerId=${latestDoc.customerId}&sourceDocId=${latestDoc.id}`}>
-                                  <Receipt className="h-2.5 w-2.5 mr-1" /> ออกใบเสร็จ (Issue Receipt)
-                                </Link>
-                              </Button>
-                            )}
-                          </div>
-                        ) : <span className="pt-1">— ไม่มี —</span>}
+                          ) : <span className="pt-1">— ไม่มี —</span>}
+                        </div>
+                      ) : null;
+                  })}
+                  <div className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
+                    <span className="text-muted-foreground pt-1">ใบเบิกอะไหล่:</span>
+                    {withdrawals.length > 0 ? (
+                      <div className="flex flex-col items-end gap-1">
+                        <Button asChild variant="link" className="p-0 h-auto font-medium">
+                          <Link href="/app/office/parts/withdraw">ดูรายการเบิก ({withdrawals.length} ครั้ง)</Link>
+                        </Button>
                       </div>
-                    ) : null;
-                })
+                    ) : <span className="pt-1">— ไม่มี —</span>}
+                  </div>
+                </>
               )}
             </CardContent></Card>
         </div>
