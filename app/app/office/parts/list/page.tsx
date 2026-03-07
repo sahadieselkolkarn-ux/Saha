@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, updateDoc, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase, useCollection } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -123,11 +123,16 @@ export default function PartsInventoryPage() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
-  // Barcode Scanner states
+  // Barcode Scanner states (Form)
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerControlsRef = useRef<any>(null);
+
+  // Barcode Scanner states (Search)
+  const [isSearchScannerOpen, setIsSearchScannerOpen] = useState(false);
+  const searchVideoRef = useRef<HTMLVideoElement>(null);
+  const searchScannerControlsRef = useRef<any>(null);
 
   const locationsQuery = useMemo(() => 
     db ? query(collection(db, "partLocations"), orderBy("name", "asc")) : null
@@ -183,7 +188,7 @@ export default function PartsInventoryPage() {
     }
   }, [editingPart, isDialogOpen, form]);
 
-  // Barcode Scanner Logic
+  // Form Barcode Scanner Logic
   const startScanner = async () => {
     setIsScannerOpen(true);
     try {
@@ -226,6 +231,51 @@ export default function PartsInventoryPage() {
       videoRef.current.srcObject = null;
     }
     setIsScannerOpen(false);
+  };
+
+  // Search Barcode Scanner Logic
+  const startSearchScanner = async () => {
+    setIsSearchScannerOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      setHasCameraPermission(true);
+      
+      const reader = new BrowserMultiFormatReader();
+
+      if (searchVideoRef.current) {
+        searchVideoRef.current.srcObject = stream;
+        const controls = await reader.decodeFromVideoElement(searchVideoRef.current, (result, error) => {
+          if (result) {
+            setSearchTerm(result.getText());
+            toast({ title: "ค้นหาด้วยรหัสสำเร็จ", description: `รหัส: ${result.getText()}` });
+            stopSearchScanner();
+          }
+        });
+        searchScannerControlsRef.current = controls;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      setHasCameraPermission(false);
+      toast({
+        variant: 'destructive',
+        title: 'ไม่สามารถเข้าถึงกล้องได้',
+        description: 'กรุณาอนุญาตการเข้าถึงกล้องในบราวเซอร์เพื่อค้นหาสินค้าค่ะ',
+      });
+    }
+  };
+
+  const stopSearchScanner = () => {
+    if (searchScannerControlsRef.current) {
+      searchScannerControlsRef.current.stop();
+      searchScannerControlsRef.current = null;
+    }
+    
+    if (searchVideoRef.current?.srcObject) {
+      const stream = searchVideoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      searchVideoRef.current.srcObject = null;
+    }
+    setIsSearchScannerOpen(false);
   };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -364,14 +414,19 @@ export default function PartsInventoryPage() {
 
       <Card>
         <CardHeader>
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="ค้นหาตามชื่อ, รหัส, หรือหมวดหมู่..." 
-              className="pl-10" 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
-            />
+          <div className="flex gap-2 w-full max-w-md">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="ค้นหาตามชื่อ, รหัส, หรือหมวดหมู่..." 
+                className="pl-10" 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+              />
+            </div>
+            <Button variant="secondary" size="icon" onClick={startSearchScanner} title="สแกนบาร์โค้ดเพื่อค้นหา">
+              <ScanBarcode className="h-5 w-5" />
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -456,7 +511,7 @@ export default function PartsInventoryPage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 flex flex-col">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto p-0 flex flex-col">
           <DialogHeader className="p-6 pb-2">
             <DialogTitle>{editingPart ? "รายละเอียดและแก้ไขอะไหล่" : "เพิ่มอะไหล่ใหม่เข้าระบบ"}</DialogTitle>
             <DialogDescription>กรอกข้อมูลรายละเอียดของอะไหล่ให้ครบถ้วนเพื่อความแม่นยำของสต็อกสินค้า</DialogDescription>
@@ -614,7 +669,7 @@ export default function PartsInventoryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Barcode Scanner Dialog */}
+      {/* Barcode Scanner Dialog (Form) */}
       <Dialog open={isScannerOpen} onOpenChange={(open) => !open && stopScanner()}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black">
           <DialogHeader className="p-4 bg-background border-b">
@@ -638,6 +693,34 @@ export default function PartsInventoryPage() {
           </div>
           <DialogFooter className="p-4 bg-background">
             <Button variant="outline" className="w-full" onClick={stopScanner}>ยกเลิก</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Barcode Scanner Dialog (Search) */}
+      <Dialog open={isSearchScannerOpen} onOpenChange={(open) => !open && stopSearchScanner()}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black">
+          <DialogHeader className="p-4 bg-background border-b">
+            <DialogTitle>สแกนเพื่อค้นหาอะไหล่</DialogTitle>
+            <DialogDescription>หันกล้องไปที่บาร์โค้ดสินค้าที่ต้องการค้นหา</DialogDescription>
+          </DialogHeader>
+          <div className="relative aspect-square w-full max-w-sm mx-auto bg-black flex items-center justify-center">
+            <video ref={searchVideoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+            <div className="absolute inset-0 border-2 border-primary/50 m-12 rounded-lg pointer-events-none">
+              <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" />
+            </div>
+            {hasCameraPermission === false && (
+              <div className="absolute inset-0 flex items-center justify-center p-6 text-center bg-black/80 text-white">
+                <div className="space-y-4">
+                  <AlertCircle className="h-12 w-12 mx-auto text-destructive" />
+                  <p>ไม่ได้รับอนุญาตให้เข้าถึงกล้อง</p>
+                  <Button variant="outline" size="sm" onClick={startSearchScanner}>ลองอีกครั้ง</Button>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="p-4 bg-background">
+            <Button variant="outline" className="w-full" onClick={stopSearchScanner}>ยกเลิก</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
