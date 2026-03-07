@@ -292,6 +292,17 @@ export function JobList({
                     </Button>
                   )}
 
+                  {job.status === 'IN_REPAIR_PROCESS' && (
+                    <Button 
+                      className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold" 
+                      onClick={() => handleUpdateStatus(job.id, 'DONE', 'ช่างแจ้งซ่อมเสร็จสิ้น - รอดำเนินการทำบิล')}
+                      disabled={!!isProcessing}
+                    >
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      งานเสร็จแจ้งทำบิล
+                    </Button>
+                  )}
+
                   {isWorker && isOwnDept && job.status === 'RECEIVED' && (<Button onClick={() => handleAcceptJob(job)} disabled={isProcessing === job.id} className="w-full h-9 bg-green-600 hover:bg-green-700 text-white font-bold">{isProcessing === job.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4" />}รับงานนี้</Button>)}
                   {job.status === 'WAITING_QUOTATION' && !hasActualBill && canDoBilling && (<Button asChild className="w-full h-9 font-bold" variant="default"><Link href={`/app/office/documents/quotation/new?jobId=${job.id}`}><FileText className="mr-2 h-4 w-4" />สร้างใบเสนอราคา</Link></Button>)}
                   {['DONE', 'WAITING_CUSTOMER_PICKUP', 'CLOSED'].includes(job.status) && (
