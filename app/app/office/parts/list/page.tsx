@@ -664,17 +664,13 @@ export default function PartsInventoryPage() {
                         )}
                       </div>
                       {(watchedCode || editingPart?.code) && (
-                        <div className="mt-4 flex flex-col items-center p-3 border rounded-lg bg-white shadow-sm overflow-hidden">
-                          <div className="relative w-full h-20 flex justify-center bg-white">
-                            <Image 
-                              src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(watchedCode || editingPart?.code || '')}&scale=10&rotate=N&includetext&barheight=10`} 
-                              alt="Barcode Code 128" 
-                              fill 
-                              className="object-contain" 
-                              unoptimized
-                            />
-                          </div>
-                          <p className="text-[10px] text-muted-foreground mt-1 font-mono uppercase tracking-widest">{watchedCode || editingPart?.code}</p>
+                        <div className="mt-4 flex flex-col items-center p-4 border rounded-lg bg-white shadow-sm overflow-hidden">
+                          <img 
+                            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(watchedCode || editingPart?.code || '')}&scale=4&rotate=N&includetext&barheight=25`} 
+                            alt="Barcode"
+                            className="w-full h-auto max-w-[300px] block"
+                          />
+                          <p className="text-[10px] text-muted-foreground mt-2 font-mono uppercase tracking-widest">{watchedCode || editingPart?.code}</p>
                         </div>
                       )}
                       <FormMessage />
