@@ -905,3 +905,18 @@ export interface Part {
   createdByUid: string;
   createdByName: string;
 }
+
+export interface StockActivity {
+  id: string;
+  partId: string;
+  partCode: string;
+  partName: string;
+  type: 'ADJUST_ADD' | 'ADJUST_REMOVE' | 'PURCHASE' | 'WITHDRAW';
+  diffQty: number;
+  beforeQty: number;
+  afterQty: number;
+  notes: string;
+  createdByUid: string;
+  createdByName: string;
+  createdAt: Timestamp;
+}

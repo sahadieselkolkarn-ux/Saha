@@ -10,7 +10,7 @@ import {
 
 import {
   Building, Factory, Wrench, Truck, Package, Landmark,
-  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart, FileText, LayoutList, Tags
+  ChevronDown, QrCode, Smartphone, Settings, LogOut, Clock, History, Presentation, Users, Loader2, ShieldCheck, MessageSquareText, Receipt, CalendarDays, Globe, ShoppingCart, FileText, LayoutList, Tags, ClipboardList
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -181,6 +181,7 @@ const AdminSubMenu = ({ onLinkClick }: { onLinkClick?: () => void }) => {
             </CollapsibleTrigger>
             <CollapsibleContent className="py-1 pl-4 space-y-1">
                 <SubNavLink href="/app/admin/users" label="จัดการผู้ใช้ / Maintenance" onClick={onLinkClick} />
+                <SubNavLink href="/app/admin/stock-log" label="ประวัติสต๊อก (Activity Log)" onClick={onLinkClick} />
             </CollapsibleContent>
         </Collapsible>
     );

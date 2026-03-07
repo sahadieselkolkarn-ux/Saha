@@ -202,6 +202,12 @@ service cloud.firestore {
       allow delete: if isMgmt();
     }
 
+    match /stockActivities/{id} {
+      allow read: if signedIn();
+      allow create: if isPurchasingAllowed();
+      allow update, delete: if isAdmin();
+    }
+
     match /partLocations/{id} {
       allow read: if signedIn();
       allow create, update: if isPurchasingAllowed();

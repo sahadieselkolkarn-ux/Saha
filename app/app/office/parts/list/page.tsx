@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, updateDoc, where, getDocs } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, updateDoc, where, getDocs, runTransaction } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase, useCollection } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -20,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle, MoreHorizontal, Eye } from "lucide-react";
+import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle, MoreHorizontal, Eye, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -30,8 +31,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import Image from "next/image";
-import type { Part, PartCategory, PartLocation } from "@/lib/types";
+import type { Part, PartCategory, PartLocation, StockActivity } from "@/lib/types";
 import type { WithId } from "@/firebase";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -102,6 +106,14 @@ const partSchema = z.object({
 
 type PartFormData = z.infer<typeof partSchema>;
 
+const adjustStockSchema = z.object({
+  type: z.enum(["ADJUST_ADD", "ADJUST_REMOVE"]),
+  diffQty: z.coerce.number().min(0.01, "ต้องระบุจำนวนที่ต้องการปรับปรุง"),
+  notes: z.string().min(1, "กรุณาระบุเหตุผลในการปรับปรุงยอดสต็อก"),
+});
+
+type AdjustStockFormData = z.infer<typeof adjustStockSchema>;
+
 export default function PartsInventoryPage() {
   const { db, storage } = useFirebase();
   const { profile } = useAuth();
@@ -116,6 +128,10 @@ export default function PartsInventoryPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [partToDelete, setPartToDelete] = useState<WithId<Part> | null>(null);
+
+  // Adjustment States
+  const [isAdjustingStock, setIsAdjustingStock] = useState(false);
+  const [isAdjustmentSubmitting, setIsAdjustmentSubmitting] = useState(false);
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -150,6 +166,15 @@ export default function PartsInventoryPage() {
       sellingPrice: 0,
       stockQty: 0,
       location: "",
+    },
+  });
+
+  const adjustForm = useForm<AdjustStockFormData>({
+    resolver: zodResolver(adjustStockSchema),
+    defaultValues: {
+      type: "ADJUST_ADD",
+      diffQty: 0,
+      notes: "",
     },
   });
 
@@ -373,6 +398,58 @@ export default function PartsInventoryPage() {
     } catch (e: any) {
       toast({ variant: "destructive", title: "ผิดพลาด", description: e.message });
       setIsSubmitting(false);
+    }
+  };
+
+  const onAdjustStock = async (values: AdjustStockFormData) => {
+    if (!db || !profile || !editingPart) return;
+    setIsAdjustmentSubmitting(true);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const partRef = doc(db, "parts", editingPart.id);
+        const partSnap = await transaction.get(partRef);
+        if (!partSnap.exists()) throw new Error("ไม่พบรายการอะไหล่ในระบบ");
+
+        const currentQty = partSnap.data().stockQty || 0;
+        const diff = values.type === "ADJUST_ADD" ? values.diffQty : -values.diffQty;
+        const newQty = currentQty + diff;
+
+        if (newQty < 0) throw new Error("จำนวนสต็อกคงเหลือไม่สามารถติดลบได้");
+
+        // 1. Update Part
+        transaction.update(partRef, {
+          stockQty: newQty,
+          updatedAt: serverTimestamp(),
+        });
+
+        // 2. Log Activity
+        const activityRef = doc(collection(db, "stockActivities"));
+        transaction.set(activityRef, sanitizeForFirestore({
+          id: activityRef.id,
+          partId: editingPart.id,
+          partCode: editingPart.code,
+          partName: editingPart.name,
+          type: values.type,
+          diffQty: values.diffQty,
+          beforeQty: currentQty,
+          afterQty: newQty,
+          notes: values.notes,
+          createdByUid: profile.uid,
+          createdByName: profile.displayName,
+          createdAt: serverTimestamp(),
+        } as StockActivity));
+      });
+
+      toast({ title: "ปรับปรุงสต็อกสำเร็จ", description: `ยอดคงเหลือใหม่: ${form.getValues('stockQty') + (values.type === 'ADJUST_ADD' ? values.diffQty : -values.diffQty)}` });
+      setIsAdjustingStock(false);
+      adjustForm.reset();
+      // Update form display
+      form.setValue('stockQty', form.getValues('stockQty') + (values.type === 'ADJUST_ADD' ? values.diffQty : -values.diffQty));
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "ล้มเหลว", description: e.message });
+    } finally {
+      setIsAdjustmentSubmitting(false);
     }
   };
 
@@ -630,7 +707,20 @@ export default function PartsInventoryPage() {
                       <FormItem>
                         <FormLabel>{editingPart ? "สต็อกปัจจุบัน" : "สต็อกเริ่มต้น"}</FormLabel>
                         <FormControl><Input type="number" {...field} disabled={isSubmitting || !!editingPart} className={cn(!!editingPart && "bg-muted cursor-not-allowed")} /></FormControl>
-                        {!!editingPart && <FormDescription className="text-[10px] text-amber-600">แก้ไขผ่านเมนูจัดซื้อหรือเบิกของ</FormDescription>}
+                        {!!editingPart && (
+                          <div className="space-y-2 mt-1">
+                            <p className="text-[10px] text-amber-600">แก้ไขผ่านเมนูจัดซื้อหรือเบิกของ</p>
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="sm" 
+                              className="h-7 text-[10px] w-full border-dashed border-primary text-primary hover:bg-primary/5"
+                              onClick={() => setIsAdjustingStock(true)}
+                            >
+                              <RefreshCw className="mr-1 h-3 w-3" /> ปรับปรุงสต็อกตามจริง
+                            </Button>
+                          </div>
+                        )}
                       </FormItem>
                     )} />
                     <FormField name="location" control={form.control} render={({ field }) => (
@@ -657,11 +747,91 @@ export default function PartsInventoryPage() {
                   </Alert>
                 </div>
               </div>
-              <DialogFooter className="pt-4 gap-2">
+              <DialogFooter className="pt-4 gap-2 border-t mt-4 pt-6">
                 <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting} className="flex-1 sm:flex-none">ยกเลิก</Button>
                 <Button type="submit" disabled={isSubmitting} className="flex-1 sm:flex-none">
                   {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   {editingPart ? "บันทึกการแก้ไข" : "เพิ่มสินค้าลงสต็อก"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stock Adjustment Dialog */}
+      <Dialog open={isAdjustingStock} onOpenChange={setIsAdjustingStock}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>ปรับปรุงจำนวนสต็อกสินค้า</DialogTitle>
+            <DialogDescription>สำหรับสินค้า: {editingPart?.name} ({editingPart?.code})</DialogDescription>
+          </DialogHeader>
+          <div className="p-4 bg-muted/30 rounded-lg border flex justify-between items-center mb-4">
+            <span className="text-sm font-medium">สต็อกปัจจุบัน:</span>
+            <span className="text-lg font-bold">{editingPart?.stockQty}</span>
+          </div>
+          <Form {...adjustForm}>
+            <form onSubmit={adjustForm.handleSubmit(onAdjustStock)} className="space-y-6">
+              <FormField
+                control={adjustForm.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem className="space-y-3">
+                    <FormLabel>การดำเนินการ</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        className="flex flex-col space-y-1"
+                      >
+                        <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+                          <FormControl><RadioGroupItem value="ADJUST_ADD" /></FormControl>
+                          <Label className="font-normal flex items-center gap-2 cursor-pointer text-green-600">
+                            <TrendingUp className="h-4 w-4" /> เพิ่มจำนวน (เหมือนรับของเข้า)
+                          </Label>
+                        </FormItem>
+                        <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+                          <FormControl><RadioGroupItem value="ADJUST_REMOVE" /></FormControl>
+                          <Label className="font-normal flex items-center gap-2 cursor-pointer text-destructive">
+                            <TrendingDown className="h-4 w-4" /> ลดจำนวน (เหมือนเบิกออก)
+                          </Label>
+                        </FormItem>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={adjustForm.control}
+                name="diffQty"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>จำนวนที่ต้องการปรับปรุง</FormLabel>
+                    <FormControl><Input type="number" step="any" placeholder="0" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={adjustForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>เหตุผลการปรับปรุง <span className="text-destructive">*</span></FormLabel>
+                    <FormControl><Textarea placeholder="เช่น ปรับปรุงตามยอดนับจริงประจำปี, เบิกเคลมคืนโรงงาน..." {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={() => setIsAdjustingStock(false)}>ยกเลิก</Button>
+                <Button type="submit" disabled={isAdjustmentSubmitting}>
+                  {isAdjustmentSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  ยืนยันการปรับปรุง
                 </Button>
               </DialogFooter>
             </form>
