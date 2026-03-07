@@ -8,6 +8,7 @@ import {
   collection, query, where, onSnapshot, doc, writeBatch, 
   serverTimestamp, getDocs, limit, orderBy, runTransaction 
 } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -24,16 +25,21 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from "@/components/ui/table";
 import { 
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle 
+} from "@/components/ui/dialog";
+import { 
   Loader2, PlusCircle, Trash2, Save, ArrowLeft, Search, 
-  ScanBarcode, AlertCircle, Info, Package, User, FileText
+  ScanBarcode, AlertCircle, Info, Package, User, FileText, Camera, ImageIcon, X
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import type { Customer, Job, Part, Document as DocumentType } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 const withdrawalItemSchema = z.object({
   partId: z.string().min(1, "กรุณาเลือกอะไหล่"),
@@ -104,7 +110,7 @@ export default function PartWithdrawalForm() {
   const watchedRefType = form.watch("refType");
   const watchedCustomerId = form.watch("customerId");
 
-  // 1. Fetch Masters
+  // Fetch data
   useEffect(() => {
     if (!db) return;
     
@@ -128,7 +134,6 @@ export default function PartWithdrawalForm() {
     return () => { unsubCustomers(); unsubJobs(); unsubDocs(); unsubParts(); };
   }, [db]);
 
-  // Filter references based on customer
   const filteredJobs = useMemo(() => activeJobs.filter(j => j.customerId === watchedCustomerId), [activeJobs, watchedCustomerId]);
   const filteredSalesDocs = useMemo(() => activeSalesDocs.filter(d => d.customerId === watchedCustomerId), [activeSalesDocs, watchedCustomerId]);
 
@@ -184,7 +189,6 @@ export default function PartWithdrawalForm() {
 
     try {
       await runTransaction(db, async (transaction) => {
-        // 1. Validate Stock again in transaction
         for (const item of data.items) {
           const partRef = doc(db, "parts", item.partId);
           const partSnap = await transaction.get(partRef);
@@ -192,13 +196,11 @@ export default function PartWithdrawalForm() {
           const currentQty = partSnap.data().stockQty || 0;
           if (currentQty < item.quantity) throw new Error(`สินค้า ${item.code} สต็อกไม่พอ (เหลือ ${currentQty})`);
           
-          // Deduct Stock
           transaction.update(partRef, {
             stockQty: currentQty - item.quantity,
             updatedAt: serverTimestamp()
           });
 
-          // Log Stock Activity
           const actRef = doc(collection(db, "stockActivities"));
           transaction.set(actRef, sanitizeForFirestore({
             id: actRef.id,
@@ -216,7 +218,6 @@ export default function PartWithdrawalForm() {
           }));
         }
 
-        // 2. Add Activity Log to Job if applicable
         if (data.refType === 'JOB') {
           const jobRef = doc(db, "jobs", data.refId);
           const actRef = doc(collection(jobRef, "activities"));
@@ -229,7 +230,6 @@ export default function PartWithdrawalForm() {
           });
         }
 
-        // 3. Create Withdrawal Document
         const wdRef = doc(collection(db, "partWithdrawals"));
         transaction.set(wdRef, sanitizeForFirestore({
           ...data,
@@ -390,7 +390,6 @@ export default function PartWithdrawalForm() {
         </form>
       </Form>
 
-      {/* Scanner Dialog */}
       <Dialog open={isScannerOpen} onOpenChange={(o) => !o && stopScanner()}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black">
           <div className="relative aspect-square">
