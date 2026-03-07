@@ -73,7 +73,17 @@ function ByStatusContent() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="จัดการงานซ่อม - ตามสถานะ" description="แสดงงานทั้งหมดที่ยังไม่ปิด แยกตามสถานะปัจจุบัน" />
+      <PageHeader title="จัดการงานซ่อม - ตามสถานะ" description="แสดงงานทั้งหมดที่ยังไม่ปิด แยกตามสถานะปัจจุบัน">
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="ค้นหาชื่อ/เบอร์โทร..."
+            className="pl-9 h-10 bg-background/50"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </PageHeader>
       
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
@@ -83,7 +93,7 @@ function ByStatusContent() {
               disabled={isTabDisabled("quotation")}
               className={cn("text-[10px] sm:text-xs", isTabDisabled("quotation") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
-              งานเสนอราคา
+              รอเสนอราคา
             </TabsTrigger>
             <TabsTrigger 
               value="waiting-approve" 
@@ -97,7 +107,7 @@ function ByStatusContent() {
               disabled={isTabDisabled("pending-parts")}
               className={cn("text-[10px] sm:text-xs", isTabDisabled("pending-parts") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
-              กำลังจัดอะไหล่
+              รอจัดอะไหล่
             </TabsTrigger>
             <TabsTrigger 
               value="in-repair" 
@@ -111,7 +121,7 @@ function ByStatusContent() {
               disabled={isTabDisabled("done")}
               className={cn("text-[10px] sm:text-xs", isTabDisabled("done") && "opacity-40 grayscale cursor-not-allowed pointer-events-none")}
             >
-              งานเสร็จรอทำบิล
+              รอทำบิล
             </TabsTrigger>
             <TabsTrigger 
               value="pickup" 
@@ -121,15 +131,6 @@ function ByStatusContent() {
               รอลูกค้ารับสินค้า
             </TabsTrigger>
           </TabsList>
-          <div className="relative w-full md:w-auto md:max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="ค้นหาชื่อ/เบอร์โทร..."
-              className="pl-8"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
         </div>
         <Card>
             <CardContent className="p-0">
