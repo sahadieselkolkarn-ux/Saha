@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -32,7 +31,7 @@ import { Separator } from "@/components/ui/separator";
 import { Calendar } from "@/components/ui/calendar";
 
 import type { AccountingObligation, AccountingAccount, UserProfile, Vendor, Document as DocumentType, AccountingEntry, PurchaseDoc, StoreSettings, DocumentSettings } from "@/lib/types";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_FORMAT } from "@/lib/date-utils";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 
 const formatCurrency = (value: number | null | undefined) => {
@@ -992,7 +991,7 @@ function ObligationList({ type, searchTerm, accounts, vendors }: { type: 'AR' | 
                   
                   return (
                     <TableRow key={ob.id}>
-                        <TableCell className="text-xs">{ob.dueDate ? safeFormat(parseISO(ob.dueDate), 'dd/MM/yy') : '-'}</TableCell>
+                        <TableCell className="text-xs">{ob.dueDate ? safeFormat(parseISO(ob.dueDate), APP_DATE_FORMAT) : '-'}</TableCell>
                         <TableCell>
                             <div className="font-medium">{type === 'AR' ? ob.sourceDocNo : (ob.invoiceNo || ob.sourceDocNo)}</div>
                             {details?.billingNoteNo && (
@@ -1139,8 +1138,7 @@ export default function ReceivablesPayablesPage() {
                         <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
                         <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
                     </CardHeader>
-                </Card>
-            </div>
+                </div>
         );
     }
 

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -12,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Loader2, PlusCircle, ClipboardList, History, Search, Eye } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_FORMAT } from "@/lib/date-utils";
 import type { Document } from "@/lib/types";
 
 export default function OfficePartsWithdrawPage() {
@@ -98,7 +97,7 @@ export default function OfficePartsWithdrawPage() {
                   filtered.map(w => (
                     <TableRow key={w.id} className="hover:bg-muted/30">
                       <TableCell className="font-bold font-mono text-primary text-xs">{w.docNo}</TableCell>
-                      <TableCell className="text-xs">{safeFormat(new Date(w.docDate), "dd/MM/yy")}</TableCell>
+                      <TableCell className="text-xs">{safeFormat(new Date(w.docDate), APP_DATE_FORMAT)}</TableCell>
                       <TableCell>
                         {w.jobId ? (
                             <Badge variant="outline" className="font-mono text-[10px] border-primary/20 text-primary">

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -213,7 +212,7 @@ export function DocumentList({
       batch.update(docRef, {
         status: 'CANCELLED',
         updatedAt: serverTimestamp(),
-        notes: (docToAction.notes || "") + `\n[System] ยกเลิกเมื่อ ${safeFormat(new Date(), 'dd/MM/yy HH:mm')} โดย ${profile.displayName}`
+        notes: (docToAction.notes || "") + `\n[System] ยกเลิกเมื่อ ${safeFormat(new Date(), APP_DATE_FORMAT + ' HH:mm')} โดย ${profile.displayName}`
       });
       await unlinkJob(batch, docToAction);
       await batch.commit();

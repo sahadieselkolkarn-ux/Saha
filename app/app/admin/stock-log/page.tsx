@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -10,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Loader2, Search, History, ClipboardList, TrendingUp, TrendingDown, ShoppingCart, User } from "lucide-react";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_TIME_FORMAT } from "@/lib/date-utils";
 import type { StockActivity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +91,7 @@ export default function StockLogPage() {
                     return (
                       <TableRow key={log.id} className="hover:bg-muted/30">
                         <TableCell className="text-[10px] text-muted-foreground">
-                          {safeFormat(log.createdAt, "dd/MM/yy HH:mm:ss")}
+                          {safeFormat(log.createdAt, APP_DATE_TIME_FORMAT)}
                         </TableCell>
                         <TableCell>
                           <p className="font-bold text-[11px] font-mono text-primary uppercase">{log.partCode}</p>

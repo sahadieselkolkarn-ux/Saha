@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -20,7 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { PurchaseDoc } from "@/lib/types";
 import { WithId } from "@/firebase/firestore/use-collection";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_FORMAT } from "@/lib/date-utils";
 
 // Status Badge & Tooltip Helper (Thai Labels)
 const getStatusDisplay = (status?: PurchaseDoc['status']) => {
@@ -178,7 +177,7 @@ export default function PurchaseDocsListPage() {
 
                     return (
                       <TableRow key={purchaseDoc.id}>
-                        <TableCell>{safeFormat(new Date(purchaseDoc.docDate), 'dd/MM/yy')}</TableCell>
+                        <TableCell>{safeFormat(new Date(purchaseDoc.docDate), APP_DATE_FORMAT)}</TableCell>
                         <TableCell className="font-medium">{purchaseDoc.docNo}</TableCell>
                         <TableCell>{purchaseDoc.vendorSnapshot.shortName}</TableCell>
                         <TableCell>{purchaseDoc.invoiceNo}</TableCell>

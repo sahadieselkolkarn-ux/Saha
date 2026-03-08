@@ -3,10 +3,10 @@ import { format } from 'date-fns';
 
 /**
  * Standard Date Formats for the application (Thai Standard)
- * Unified to dd/MM/yy as requested.
+ * Unified to dd/MM/yyyy as requested.
  */
-export const APP_DATE_FORMAT = 'dd/MM/yy';
-export const APP_DATE_TIME_FORMAT = 'dd/MM/yy HH:mm';
+export const APP_DATE_FORMAT = 'dd/MM/yyyy';
+export const APP_DATE_TIME_FORMAT = 'dd/MM/yyyy HH:mm';
 export const APP_FULL_DATE_FORMAT = 'dd/MM/yyyy';
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { 
   collection, 
   query, 
@@ -9,18 +9,16 @@ import {
   onSnapshot, 
   addDoc, 
   doc, 
-  setDoc,
   updateDoc,
   deleteDoc, 
   serverTimestamp, 
-  Timestamp,
   limit,
   type FirestoreError
 } from "firebase/firestore";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format, startOfMonth, endOfMonth, parseISO, isWithinInterval, subMonths, addMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth, parseISO, subMonths, addMonths } from "date-fns";
 
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
@@ -39,8 +37,7 @@ import {
   DialogDescription, 
   DialogFooter, 
   DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+  DialogTitle 
 } from "@/components/ui/dialog";
 import { 
   Form, 
@@ -57,11 +54,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { 
-  Loader2, PlusCircle, Search, CalendarIcon, 
+  Loader2, PlusCircle, Search, 
   ArrowDownCircle, ArrowUpCircle, Trash2, Edit,
   ChevronLeft, ChevronRight, Filter, AlertCircle, FileText, Wallet, Save, ExternalLink, CalendarDays
 } from "lucide-react";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_FORMAT } from "@/lib/date-utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -400,7 +397,7 @@ export default function CashbookPage() {
                 ) : filteredEntries.length > 0 ? (
                   filteredEntries.map(entry => (
                     <TableRow key={entry.id} className="hover:bg-muted/30">
-                      <TableCell className="text-xs text-muted-foreground">{safeFormat(parseISO(entry.entryDate), "dd/MM/yy")}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{safeFormat(parseISO(entry.entryDate), APP_DATE_FORMAT)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <p className={cn("font-semibold text-sm", !entry.description && "text-destructive italic")}>

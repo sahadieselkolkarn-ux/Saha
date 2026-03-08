@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -70,7 +69,7 @@ import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 import type { Job, JobStatus, JobDepartment, UserProfile } from "@/lib/types";
 import { JOB_STATUSES } from "@/lib/constants";
-import { safeFormat } from "@/lib/date-utils";
+import { safeFormat, APP_DATE_TIME_FORMAT } from "@/lib/date-utils";
 import { jobStatusLabel, deptLabel } from "@/lib/ui-labels";
 import { cn } from "@/lib/utils";
 
@@ -274,7 +273,7 @@ export function JobList({
               </div>
               <CardHeader className="p-4 space-y-1">
                 <CardTitle className="text-base line-clamp-1">{job.customerSnapshot.name}</CardTitle>
-                <CardDescription className="text-[10px]">{deptLabel(job.department)} • {safeFormat(job.lastActivityAt, "dd/MM/yy HH:mm")}</CardDescription>
+                <CardDescription className="text-[10px]">{deptLabel(job.department)} • {safeFormat(job.lastActivityAt, APP_DATE_TIME_FORMAT)}</CardDescription>
               </CardHeader>
               <CardContent className="px-4 pb-4 flex-grow"><p className="text-sm line-clamp-2 text-muted-foreground">{job.description}</p></CardContent>
               <CardFooter className="px-4 pb-4 pt-0 flex flex-col gap-2">
