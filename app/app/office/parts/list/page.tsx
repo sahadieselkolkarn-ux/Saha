@@ -136,7 +136,7 @@ export default function PartsInventoryPage() {
   const [isAdjustingStock, setIsAdjustingStock] = useState(false);
   const [isAdjustmentSubmitting, setIsAdjustmentSubmitting] = useState(false);
 
-  // Searchable Location State
+  // Autocomplete Location State
   const [locationSearch, setLocationSearch] = useState("");
   const [isLocationPopoverOpen, setIsLocationPopoverOpen] = useState(false);
 
@@ -311,7 +311,7 @@ export default function PartsInventoryPage() {
       let finalImageUrl = "";
       if (photo) {
         const photoRef = ref(storage, `parts/${Date.now()}-${photo.name}`);
-        await uploadBytes(photoRef, file);
+        await uploadBytes(photoRef, photo);
         finalImageUrl = await getDownloadURL(photoRef);
       } else if (photoPreview) {
         finalImageUrl = editingPart?.imageUrl || "";
@@ -583,52 +583,61 @@ export default function PartsInventoryPage() {
                         <Popover open={isLocationPopoverOpen} onOpenChange={setIsLocationPopoverOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                className={cn("w-full justify-between font-normal text-left px-3 h-10", !field.value && "text-muted-foreground")}
-                                disabled={isSubmitting}
-                              >
-                                <span className="truncate">{field.value || "เลือกชั้นวาง..."}</span>
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
+                              <div className="relative">
+                                <Input
+                                  placeholder="พิมพ์พิกัด..."
+                                  {...field}
+                                  autoComplete="off"
+                                  onChange={(e) => {
+                                    field.onChange(e.target.value);
+                                    setLocationSearch(e.target.value);
+                                    if (!isLocationPopoverOpen) setIsLocationPopoverOpen(true);
+                                  }}
+                                  onFocus={() => setIsLocationPopoverOpen(true)}
+                                  disabled={isSubmitting}
+                                  className="pr-8"
+                                />
+                                <MapPin className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-50" />
+                              </div>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-[200px] p-0" align="start">
-                            <div className="p-2 border-b">
-                              <Input 
-                                placeholder="ค้นหาชั้นวาง..." 
-                                value={locationSearch} 
-                                onChange={(e) => setLocationSearch(e.target.value)} 
-                                className="h-8 text-xs"
-                              />
-                            </div>
-                            <ScrollArea className="h-60">
+                          <PopoverContent 
+                            className="p-0 w-[var(--radix-popover-trigger-width)]" 
+                            align="start"
+                            onOpenAutoFocus={(e) => e.preventDefault()}
+                          >
+                            <ScrollArea className="h-60 border rounded-md shadow-md bg-popover">
                               <Button
                                 variant="ghost"
                                 type="button"
                                 onClick={() => { field.onChange(""); setIsLocationPopoverOpen(false); setLocationSearch(""); }}
-                                className="w-full justify-start rounded-none border-b h-8 text-xs"
+                                className="w-full justify-start rounded-none border-b h-9 text-xs"
                               >
                                 -- ไม่ระบุ --
                               </Button>
-                              {filteredLocationOptions.map((loc) => (
-                                <Button
-                                  key={loc.id}
-                                  variant="ghost"
-                                  type="button"
-                                  onClick={() => {
-                                    field.onChange(loc.name);
-                                    setIsLocationPopoverOpen(false);
-                                    setLocationSearch("");
-                                  }}
-                                  className="w-full justify-start rounded-none border-b last:border-0 h-8 text-xs text-left"
-                                >
-                                  <span className="truncate">{loc.name}</span>
-                                </Button>
-                              ))}
-                              {filteredLocationOptions.length === 0 && locationSearch && (
-                                <div className="p-4 text-center text-xs text-muted-foreground italic">ไม่พบข้อมูล</div>
+                              {filteredLocationOptions.length > 0 ? (
+                                <div className="flex flex-col">
+                                  {filteredLocationOptions.map((loc) => (
+                                    <Button
+                                      key={loc.id}
+                                      variant="ghost"
+                                      type="button"
+                                      onClick={() => {
+                                        field.onChange(loc.name);
+                                        setIsLocationPopoverOpen(false);
+                                        setLocationSearch("");
+                                      }}
+                                      className="justify-start font-normal h-9 rounded-none border-b last:border-0 text-xs text-left"
+                                    >
+                                      <MapPin className="mr-2 h-3 w-3 text-muted-foreground shrink-0" />
+                                      <span className="truncate">{loc.name}</span>
+                                    </Button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="p-4 text-center text-xs text-muted-foreground italic">
+                                  {locationSearch ? "ไม่พบพิกัดเดิม (พิมพ์เพื่อบันทึกเป็นชื่อใหม่ได้ค่ะ)" : "พิมพ์เพื่อค้นหา..."}
+                                </div>
                               )}
                             </ScrollArea>
                           </PopoverContent>
