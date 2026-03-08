@@ -50,9 +50,6 @@ const withdrawalItemSchema = z.object({
   quantity: z.coerce.number().min(0.01, "ต้องระบุจำนวน"),
   unitPrice: z.coerce.number().min(0).default(0),
   total: z.coerce.number().default(0),
-}).superRefine((data, ctx) => {
-  // Only validate stock if not a draft (though draft could also warn)
-  // We'll handle strict stock check in the execution logic
 });
 
 const withdrawalSchema = z.object({
@@ -77,6 +74,8 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryJobId = searchParams.get('jobId');
+
+  const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
@@ -179,7 +178,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
   useEffect(() => {
     if (docToEdit && customers.length > 0) {
         form.reset({
-            refType: docToEdit.jobId ? 'JOB' : 'LOAN', // Simple mapping
+            refType: docToEdit.jobId ? 'JOB' : 'LOAN', 
             refId: docToEdit.jobId || 'MANUAL_LOAN',
             customerId: docToEdit.customerId || "",
             docDate: docToEdit.docDate,
@@ -363,7 +362,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
     }
   };
 
-  if (isLoadingData || (editDocId && isLoadingDoc)) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-primary" /></div>;
+  const filteredCustomers = customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch));
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
