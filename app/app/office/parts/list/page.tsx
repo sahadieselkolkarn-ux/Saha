@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -339,7 +338,7 @@ export default function PartsInventoryPage() {
         categoryNameSnapshot: category?.name || "",
         sellingPrice: values.sellingPrice,
         costPrice: values.costPrice,
-        stockQty: values.stockQty, // Only used for new, but included for updates if needed (guarded by logic)
+        stockQty: values.stockQty, // Only used for new
         minStock: values.minStock,
         location: values.location || "",
         details: values.details || "",
@@ -470,7 +469,7 @@ export default function PartsInventoryPage() {
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="w-[180px]">
                   <div className="flex items-center gap-2">
-                    <Filter className="h-3 w-3 text-muted-foreground" />
+                    <Filter className="h-3.5 w-3.5 text-muted-foreground" />
                     <SelectValue placeholder="หมวดหมู่ทั้งหมด" />
                   </div>
                 </SelectTrigger>
@@ -485,7 +484,7 @@ export default function PartsInventoryPage() {
               <Select value={locationFilter} onValueChange={setLocationFilter}>
                 <SelectTrigger className="w-[180px]">
                   <div className="flex items-center gap-2">
-                    <MapPin className="h-3 w-3 text-muted-foreground" />
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                     <SelectValue placeholder="ชั้นวางทั้งหมด" />
                   </div>
                 </SelectTrigger>
@@ -552,7 +551,6 @@ export default function PartsInventoryPage() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(data => onSubmit(data))} className="space-y-6 p-6">
               <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                {/* Left side: Image and Code */}
                 <div className="md:col-span-2 space-y-4">
                   <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-lg bg-muted/20 gap-4">
                     <div className="relative w-full aspect-square border rounded-md overflow-hidden bg-background shadow-inner">
@@ -582,12 +580,9 @@ export default function PartsInventoryPage() {
                   )} />
                 </div>
 
-                {/* Right side: Field inputs rearranged into 5 rows */}
                 <div className="md:col-span-3 space-y-4">
-                  {/* Row 1: Name */}
                   <FormField name="name" control={form.control} render={({ field }) => (<FormItem><FormLabel>ชื่อรายการสินค้า <span className="text-destructive">*</span></FormLabel><FormControl><Input {...field} disabled={isSubmitting} /></FormControl><FormMessage /></FormItem>)} />
                   
-                  {/* Row 2: Category */}
                   <FormField name="categoryId" control={form.control} render={({ field }) => (
                     <FormItem>
                       <FormLabel>หมวดหมู่ <span className="text-destructive">*</span></FormLabel>
@@ -599,13 +594,11 @@ export default function PartsInventoryPage() {
                     </FormItem>
                   )} />
 
-                  {/* Row 3: Sale Price | Cost Price */}
                   <div className="grid grid-cols-2 gap-4">
                     <FormField name="sellingPrice" control={form.control} render={({ field }) => (<FormItem><FormLabel className="text-primary font-bold">ราคาขาย (บาท) <span className="text-destructive">*</span></FormLabel><FormControl><Input type="number" step="0.01" {...field} disabled={isSubmitting} /></FormControl></FormItem>)} />
                     <FormField name="costPrice" control={form.control} render={({ field }) => (<FormItem><FormLabel>ราคาทุนเฉลี่ย</FormLabel><FormControl><Input type="number" step="0.01" {...field} value={field.value || ''} disabled={isSubmitting} /></FormControl></FormItem>)} />
                   </div>
 
-                  {/* Row 4: Initial Stock | Minimum Stock */}
                   <div className="grid grid-cols-2 gap-4">
                     <FormField name="stockQty" control={form.control} render={({ field }) => (
                       <FormItem>
@@ -623,7 +616,6 @@ export default function PartsInventoryPage() {
                     )} />
                   </div>
 
-                  {/* Row 5: Location (narrower) | Zone Display | Details */}
                   <div className="grid grid-cols-12 gap-4 items-start">
                     <div className="col-span-3">
                       <FormField name="location" control={form.control} render={({ field }) => (
@@ -723,7 +715,13 @@ export default function PartsInventoryPage() {
                   </div>
                 </div>
               </div>
-              <DialogFooter className="pt-4 border-t mt-4"><Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button><Button type="submit" disabled={isSubmitting}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} {editingPart ? "บันทึกการแก้ไข" : "เพิ่มสินค้า"}</Button></DialogFooter>
+              <DialogFooter className="pt-4 border-t mt-4">
+                <Button variant="outline" type="button" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} 
+                  {editingPart ? "บันทึกการแก้ไข" : "เพิ่มสินค้า"}
+                </Button>
+              </DialogFooter>
             </form>
           </Form>
         </DialogContent>
@@ -738,15 +736,26 @@ export default function PartsInventoryPage() {
                 <FormItem>
                   <FormControl>
                     <RadioGroup onValueChange={field.onChange} defaultValue={field.value} className="flex flex-col gap-2">
-                      <FormItem className="flex items-center space-x-3 p-3 border rounded-lg"><FormControl><RadioGroupItem value="ADJUST_ADD" /></FormControl><Label className="font-normal text-green-600 flex items-center gap-2 cursor-pointer"><TrendingUp className="h-4 w-4"/> ปรับเพิ่ม</Label></FormItem>
-                      <FormItem className="flex items-center space-x-3 p-3 border rounded-lg"><FormControl><RadioGroupItem value="ADJUST_REMOVE" /></FormControl><Label className="font-normal text-destructive flex items-center gap-2 cursor-pointer"><TrendingDown className="h-4 w-4"/> ปรับลด</Label></FormItem>
+                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-lg">
+                        <FormControl><RadioGroupItem value="ADJUST_ADD" /></FormControl>
+                        <Label className="font-normal text-green-600 flex items-center gap-2 cursor-pointer"><TrendingUp className="h-4 w-4"/> ปรับเพิ่ม</Label>
+                      </FormItem>
+                      <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-lg">
+                        <FormControl><RadioGroupItem value="ADJUST_REMOVE" /></FormControl>
+                        <Label className="font-normal text-destructive flex items-center gap-2 cursor-pointer"><TrendingDown className="h-4 w-4"/> ปรับลด</Label>
+                      </FormItem>
                     </RadioGroup>
                   </FormControl>
                 </FormItem>
               )} />
-              <FormField name="diffQty" render={({ field }) => (<FormItem><FormLabel>จำนวนที่ปรับปรุง</FormLabel><FormControl><Input type="number" {...field} /></FormControl></FormItem>)} />
+              <FormField name="diffQty" render={({ field }) => (<FormItem><FormLabel>จำนวนที่ปรับปรุง</FormLabel><FormControl><Input type="number" step="any" {...field} /></FormControl></FormItem>)} />
               <FormField name="notes" render={({ field }) => (<FormItem><FormLabel>เหตุผล <span className="text-destructive">*</span></FormLabel><FormControl><Textarea placeholder="เช่น ปรับปรุงตามยอดนับจริง..." {...field} /></FormControl><FormMessage /></FormItem>)} />
-              <DialogFooter><Button variant="outline" type="button" onClick={() => setIsAdjustingStock(false)}>ยกเลิก</Button><Button type="submit" disabled={isAdjustmentSubmitting}>{isAdjustmentSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยัน</Button></DialogFooter>
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={() => setIsAdjustingStock(false)}>ยกเลิก</Button>
+                <Button type="submit" disabled={isAdjustmentSubmitting}>
+                  {isAdjustmentSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}ยืนยัน
+                </Button>
+              </DialogFooter>
             </form>
           </Form>
         </DialogContent>
@@ -754,16 +763,27 @@ export default function PartsInventoryPage() {
 
       <Dialog open={isScannerOpen} onOpenChange={(open) => !open && stopScanner()}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black">
-          <div className="relative aspect-square"><video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline /><div className="absolute inset-0 border-2 border-primary/50 m-12 rounded-lg pointer-events-none"><div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 animate-pulse" /></div></div>
+          <div className="relative aspect-square">
+            <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+            <div className="absolute inset-0 border-2 border-primary/50 m-12 rounded-lg pointer-events-none">
+              <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 animate-pulse" />
+            </div>
+          </div>
           <DialogFooter className="p-4 bg-background"><Button variant="outline" className="w-full" onClick={stopScanner}>ยกเลิก</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={isSearchScannerOpen} onOpenChange={(open) => !open && stopSearchScanner()}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-black">
-          <div className="relative aspect-square"><video ref={searchVideoRef} className="w-full h-full object-cover" autoPlay muted playsInline /><div className="absolute inset-0 border-2 border-primary/50 m-12 rounded-lg pointer-events-none"><div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 animate-pulse" /></div></div>
+          <div className="relative aspect-square">
+            <video ref={searchVideoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+            <div className="absolute inset-0 border-2 border-primary/50 m-12 rounded-lg pointer-events-none">
+              <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 animate-pulse" />
+            </div>
+          </div>
           <DialogFooter className="p-4 bg-background"><Button variant="outline" className="w-full" onClick={stopSearchScanner}>ยกเลิก</Button></DialogFooter>
         </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!partToDelete} onOpenChange={(o) => !o && setPartToDelete(null)}>
         <AlertDialogContent>
