@@ -16,8 +16,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, LogOut, Edit } from "lucide-react";
+import { Loader2, LogOut, Edit, Home } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import Link from "next/link";
 
 const profileSchema = z.object({
   displayName: z.string().min(1, "Name is required"),
@@ -46,7 +47,7 @@ const InfoRow = ({ label, value }: { label: string, value: React.ReactNode }) =>
 )
 
 export default function SettingsPage() {
-    const { profile, signOut, loading } = useAuth();
+    const { profile, loading } = useAuth();
     const { db } = useFirebase();
     const router = useRouter();
     const { toast } = useToast();
@@ -107,15 +108,6 @@ export default function SettingsPage() {
         }
     };
 
-    const handleLogout = async () => {
-        try {
-            await signOut();
-            router.push('/login');
-        } catch (error: any) {
-            toast({ variant: "destructive", title: "Logout failed", description: error.message });
-        }
-    };
-
     if (loading || !profile) return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
     return (
@@ -163,9 +155,11 @@ export default function SettingsPage() {
             <Card>
                 <CardHeader><CardTitle>การดำเนินการ</CardTitle></CardHeader>
                 <CardContent>
-                    <Button onClick={handleLogout} variant="outline" className="text-destructive border-destructive hover:bg-destructive/10">
-                        <LogOut className="mr-2 h-4 w-4"/>
-                        ออกจากระบบ
+                    <Button asChild variant="outline" className="text-primary border-primary hover:bg-primary/5">
+                        <Link href="/">
+                            <Home className="mr-2 h-4 w-4"/>
+                            กลับสู่หน้าแรก
+                        </Link>
                     </Button>
                 </CardContent>
             </Card>

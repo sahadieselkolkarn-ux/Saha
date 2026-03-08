@@ -1,8 +1,7 @@
-
 "use client"
 
 import Link from "next/link"
-import { Settings, LogOut, FileText, Receipt, CalendarDays } from "lucide-react"
+import { Settings, LogOut, FileText, Receipt, CalendarDays, Home } from "lucide-react"
 
 import { useAuth } from "@/context/auth-context"
 import { Button } from "@/components/ui/button"
@@ -77,9 +76,11 @@ export function AppSidebar() {
                             </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={signOut}>
-                            <LogOut className="mr-2 h-4 w-4" />
-                            <span>ออกจากระบบ</span>
+                        <DropdownMenuItem asChild>
+                            <Link href="/" className="text-primary font-bold">
+                                <Home className="mr-2 h-4 w-4" />
+                                <span>กลับสู่หน้าแรก</span>
+                            </Link>
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>

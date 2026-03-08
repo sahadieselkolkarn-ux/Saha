@@ -45,14 +45,6 @@ export default function LoginPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const form = useForm<z.infer<typeof loginSchema>>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  });
-
   async function onSubmit(values: z.infer<typeof loginSchema>) {
     if (!db) return;
     setIsSubmitting(true);
@@ -85,7 +77,8 @@ export default function LoginPage() {
       }
 
       toast({ title: "Login Successful" });
-      router.push("/app"); 
+      // Redirect to Home page instead of /app as requested
+      router.push("/"); 
     } catch (error: any) {
       toast({
         variant: "destructive",

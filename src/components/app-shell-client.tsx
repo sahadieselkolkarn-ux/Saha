@@ -29,7 +29,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     pathname === "/signup" ||
     pathname === "/healthz" ||
     pathname === "/products" ||
-    pathname === "/contact"; // Added /contact to public routes
+    pathname === "/contact";
 
   useEffect(() => {
     if (loading) return;
@@ -40,14 +40,19 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       }
       return;
     }
-    if (isPublicRoute && pathname !== "/pending") {
+
+    // Auto-redirect to Home (not app) from auth pages if already logged in
+    const isAuthPage = pathname === "/login" || pathname === "/signup";
+    
+    if (isAuthPage && pathname !== "/pending") {
         if (profile?.status === "ACTIVE") {
-            router.replace("/app");
+            router.replace("/"); // Redirect to Home
         } else if (profile) {
             router.replace("/pending");
         }
         return;
     }
+
     if (!isPublicRoute) {
         if (!profile || (profile.status && profile.status !== "ACTIVE")) {
             if (pathname !== "/pending") {
