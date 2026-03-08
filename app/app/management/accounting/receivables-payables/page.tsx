@@ -1138,7 +1138,8 @@ export default function ReceivablesPayablesPage() {
                         <CardTitle>ไม่มีสิทธิ์เข้าถึง</CardTitle>
                         <CardDescription>หน้านี้สงวนไว้สำหรับผู้ดูแลระบบหรือฝ่ายบริหารเท่านั้น</CardDescription>
                     </CardHeader>
-                </div>
+                </Card>
+            </div>
         );
     }
 
