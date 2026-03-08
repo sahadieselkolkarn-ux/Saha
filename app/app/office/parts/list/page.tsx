@@ -189,6 +189,14 @@ export default function PartsInventoryPage() {
   });
 
   const watchedCode = form.watch("code");
+  const watchedLocation = form.watch("location");
+
+  // ดึงรายละเอียดพิกัดของตำแหน่งที่เลือก
+  const selectedLocationZone = useMemo(() => {
+    if (!watchedLocation || !locations) return "";
+    const found = locations.find(l => l.name.toLowerCase() === watchedLocation.toLowerCase().trim());
+    return found?.zone || "";
+  }, [watchedLocation, locations]);
 
   useEffect(() => {
     if (!db) return;
@@ -615,82 +623,103 @@ export default function PartsInventoryPage() {
                     )} />
                   </div>
 
-                  {/* Row 5: Location | Details */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField name="location" control={form.control} render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>ชั้นจัดเก็บ</FormLabel>
-                        <Popover open={isLocationPopoverOpen} onOpenChange={setIsLocationPopoverOpen}>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <div className="relative">
-                                <Input
-                                  placeholder="พิมพ์พิกัด..."
-                                  {...field}
-                                  autoComplete="off"
-                                  onChange={(e) => {
-                                    field.onChange(e.target.value);
-                                    setLocationSearch(e.target.value);
-                                    if (!isLocationPopoverOpen) setIsLocationPopoverOpen(true);
-                                  }}
-                                  onFocus={() => setIsLocationPopoverOpen(true)}
-                                  disabled={isSubmitting}
-                                  className="pr-8"
-                                />
-                                <MapPin className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground opacity-50" />
-                              </div>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent 
-                            className="p-0 w-[var(--radix-popover-trigger-width)]" 
-                            align="start"
-                            onOpenAutoFocus={(e) => e.preventDefault()}
-                          >
-                            <ScrollArea className="h-60 border rounded-md shadow-md bg-popover">
-                              <Button
-                                variant="ghost"
-                                type="button"
-                                onClick={() => { field.onChange(""); setIsLocationPopoverOpen(false); setLocationSearch(""); }}
-                                className="w-full justify-start rounded-none border-b h-9 text-xs"
-                              >
-                                -- ไม่ระบุ --
-                              </Button>
-                              {filteredLocationOptions.length > 0 ? (
-                                <div className="flex flex-col">
-                                  {filteredLocationOptions.map((loc) => (
-                                    <Button
-                                      key={loc.id}
-                                      variant="ghost"
-                                      type="button"
-                                      onClick={() => {
-                                        field.onChange(loc.name);
-                                        setIsLocationPopoverOpen(false);
-                                        setLocationSearch("");
-                                      }}
-                                      className="justify-start font-normal h-9 rounded-none border-b last:border-0 text-xs text-left"
-                                    >
-                                      <MapPin className="mr-2 h-3 w-3 text-muted-foreground shrink-0" />
-                                      <span className="truncate">{loc.name}</span>
-                                    </Button>
-                                  ))}
+                  {/* Row 5: Location (narrower) | Zone Display | Details */}
+                  <div className="grid grid-cols-12 gap-4 items-start">
+                    <div className="col-span-3">
+                      <FormField name="location" control={form.control} render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>ชั้นจัดเก็บ</FormLabel>
+                          <Popover open={isLocationPopoverOpen} onOpenChange={setIsLocationPopoverOpen}>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    placeholder="พิมพ์พิกัด..."
+                                    {...field}
+                                    autoComplete="off"
+                                    onChange={(e) => {
+                                      field.onChange(e.target.value);
+                                      setLocationSearch(e.target.value);
+                                      if (!isLocationPopoverOpen) setIsLocationPopoverOpen(true);
+                                    }}
+                                    onFocus={() => setIsLocationPopoverOpen(true)}
+                                    disabled={isSubmitting}
+                                    className="pr-8 h-9 text-xs"
+                                  />
+                                  <MapPin className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground opacity-50" />
                                 </div>
-                              ) : (
-                                <div className="p-4 text-center text-xs text-muted-foreground italic">
-                                  {locationSearch ? "ไม่พบพิกัดเดิม (พิมพ์เพื่อบันทึกเป็นชื่อใหม่ได้ค่ะ)" : "พิมพ์เพื่อค้นหา..."}
-                                </div>
-                              )}
-                            </ScrollArea>
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField name="details" control={form.control} render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>รายละเอียดเพิ่มเติม</FormLabel>
-                        <FormControl><Input placeholder="ระบุข้อมูลแจ้งไว้..." {...field} disabled={isSubmitting} /></FormControl>
-                      </FormItem>
-                    )} />
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent 
+                              className="p-0 w-[var(--radix-popover-trigger-width)]" 
+                              align="start"
+                              onOpenAutoFocus={(e) => e.preventDefault()}
+                            >
+                              <ScrollArea className="h-60 border rounded-md shadow-md bg-popover">
+                                <Button
+                                  variant="ghost"
+                                  type="button"
+                                  onClick={() => { field.onChange(""); setIsLocationPopoverOpen(false); setLocationSearch(""); }}
+                                  className="w-full justify-start rounded-none border-b h-9 text-xs"
+                                >
+                                  -- ไม่ระบุ --
+                                </Button>
+                                {filteredLocationOptions.length > 0 ? (
+                                  <div className="flex flex-col">
+                                    {filteredLocationOptions.map((loc) => (
+                                      <Button
+                                        key={loc.id}
+                                        variant="ghost"
+                                        type="button"
+                                        onClick={() => {
+                                          field.onChange(loc.name);
+                                          setIsLocationPopoverOpen(false);
+                                          setLocationSearch("");
+                                        }}
+                                        className="justify-start font-normal h-9 rounded-none border-b last:border-0 text-xs text-left"
+                                      >
+                                        <MapPin className="mr-2 h-3 w-3 text-muted-foreground shrink-0" />
+                                        <span className="truncate">{loc.name}</span>
+                                      </Button>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="p-4 text-center text-xs text-muted-foreground italic">
+                                    {locationSearch ? "ไม่พบพิกัดเดิม" : "พิมพ์เพื่อค้นหา..."}
+                                  </div>
+                                )}
+                              </ScrollArea>
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    </div>
+
+                    <div className="col-span-5">
+                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 block">พิกัดตำแหน่ง</Label>
+                      <div className="h-9 px-3 py-2 rounded-md border-2 border-dashed border-blue-200 bg-blue-50/30 text-[10px] flex items-center italic text-blue-700">
+                        {selectedLocationZone ? (
+                          <div className="flex items-center gap-1.5 truncate">
+                            <Info className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{selectedLocationZone}</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground/50">ระบุชั้นจัดเก็บเพื่อดูพิกัด...</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="col-span-4">
+                      <FormField name="details" control={form.control} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>รายละเอียดเพิ่มเติม</FormLabel>
+                          <FormControl>
+                            <Input placeholder="ระบุข้อมูลแจ้งไว้..." {...field} disabled={isSubmitting} className="h-9 text-xs" />
+                          </FormControl>
+                        </FormItem>
+                      )} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -735,7 +764,6 @@ export default function PartsInventoryPage() {
           <div className="relative aspect-square"><video ref={searchVideoRef} className="w-full h-full object-cover" autoPlay muted playsInline /><div className="absolute inset-0 border-2 border-primary/50 m-12 rounded-lg pointer-events-none"><div className="absolute top-1/2 left-0 right-0 h-0.5 bg-red-500 animate-pulse" /></div></div>
           <DialogFooter className="p-4 bg-background"><Button variant="outline" className="w-full" onClick={stopSearchScanner}>ยกเลิก</Button></DialogFooter>
         </DialogContent>
-      </Dialog>
 
       <AlertDialog open={!!partToDelete} onOpenChange={(o) => !o && setPartToDelete(null)}>
         <AlertDialogContent>
