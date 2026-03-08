@@ -40,7 +40,6 @@ const locationItemSchema = z.object({
   zone: z.string().optional().default(""),
 }).refine(data => {
     // If either name or zone is filled, the other must be filled too (for specific rows)
-    // But we allow empty rows to be skipped during submission
     return (data.name === "" && data.zone === "") || (data.name !== "" && data.zone !== "");
 }, {
     message: "กรุณากรอกทั้งชื่อตำแหน่งและโซน",
@@ -216,18 +215,19 @@ export default function PartLocationsPage() {
             <DialogTrigger asChild>
               <Button disabled={isSubmitting} variant="default" className="bg-green-700 hover:bg-green-800">
                 <PlusCircle className="mr-2 h-4 w-4" />
-                เพิ่มหลายรายการ (Bulk Add 20+)
+                เพิ่มหลายรายการ (Bulk Add)
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0">
-              <DialogHeader className="p-6 pb-0">
+            <DialogContent className="sm:max-w-2xl h-[85vh] flex flex-col p-0">
+              <DialogHeader className="p-6 pb-2 shrink-0 border-b">
                 <DialogTitle>เพิ่มตำแหน่งชั้นวางทีละหลายรายการ</DialogTitle>
-                <DialogDescription>เพิ่มหลายตำแหน่งในครั้งเดียวเพื่อความรวดเร็ว ระบบเตรียมไว้ให้ 20 แถวค่ะ</DialogDescription>
+                <DialogDescription>พิมพ์ชื่อตำแหน่งและโซนลงในตาราง (สามารถเลื่อนลงเพื่อดูแถวเพิ่มได้ค่ะ)</DialogDescription>
               </DialogHeader>
+              
               <Form {...bulkForm}>
                 <form onSubmit={bulkForm.handleSubmit(onBulkSubmit)} className="flex flex-col flex-1 overflow-hidden">
-                  <ScrollArea className="flex-1 px-6 py-4">
-                    <div className="space-y-4">
+                  <ScrollArea className="flex-1">
+                    <div className="p-6 space-y-4">
                       {fields.map((field, index) => (
                         <div key={field.id} className="flex gap-3 items-start animate-in fade-in slide-in-from-top-1 duration-200">
                           <div className="pt-2 text-[10px] font-bold text-muted-foreground w-6">#{index + 1}</div>
@@ -255,7 +255,7 @@ export default function PartLocationsPage() {
                             type="button" 
                             variant="ghost" 
                             size="icon" 
-                            className="text-destructive mt-0.5 h-8 w-8" 
+                            className="text-destructive mt-0.5 h-8 w-8 shrink-0" 
                             onClick={() => remove(index)}
                             disabled={isSubmitting}
                           >
@@ -263,19 +263,23 @@ export default function PartLocationsPage() {
                           </Button>
                         </div>
                       ))}
+                      
+                      <div className="pt-2">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full border-dashed border-primary text-primary hover:bg-primary/5"
+                          onClick={() => append({ name: "", zone: "" })}
+                          disabled={isSubmitting}
+                        >
+                          <Plus className="mr-2 h-4 w-4" /> เพิ่มแถวใหม่ (Add More Rows)
+                        </Button>
+                      </div>
                     </div>
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      size="sm" 
-                      className="mt-6 border-dashed w-full"
-                      onClick={() => append({ name: "", zone: "" })}
-                      disabled={isSubmitting}
-                    >
-                      <Plus className="mr-2 h-4 w-4" /> เพิ่มแถวใหม่ (ถ้าต้องการมากกว่า 20)
-                    </Button>
                   </ScrollArea>
-                  <DialogFooter className="p-6 pt-4 border-t bg-muted/10">
+                  
+                  <DialogFooter className="p-6 pt-4 border-t bg-muted/10 shrink-0">
                     <Button variant="outline" type="button" onClick={() => setIsBulkDialogOpen(false)} disabled={isSubmitting}>ยกเลิก</Button>
                     <Button type="submit" disabled={isSubmitting}>
                       {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
