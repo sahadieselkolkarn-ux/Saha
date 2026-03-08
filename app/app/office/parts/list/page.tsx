@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle, MoreHorizontal, Eye, RefreshCw, TrendingUp, TrendingDown, Filter } from "lucide-react";
+import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle, MoreHorizontal, Eye, RefreshCw, TrendingUp, TrendingDown, Filter, ChevronsUpDown } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -33,6 +33,8 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import Image from "next/image";
 import type { Part, PartCategory, PartLocation, StockActivity } from "@/lib/types";
 import type { WithId } from "@/firebase";
@@ -133,6 +135,10 @@ export default function PartsInventoryPage() {
 
   const [isAdjustingStock, setIsAdjustingStock] = useState(false);
   const [isAdjustmentSubmitting, setIsAdjustmentSubmitting] = useState(false);
+
+  // Searchable Location State
+  const [locationSearch, setLocationSearch] = useState("");
+  const [isLocationPopoverOpen, setIsLocationPopoverOpen] = useState(false);
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -305,7 +311,7 @@ export default function PartsInventoryPage() {
       let finalImageUrl = "";
       if (photo) {
         const photoRef = ref(storage, `parts/${Date.now()}-${photo.name}`);
-        await uploadBytes(photoRef, photo);
+        await uploadBytes(photoRef, file);
         finalImageUrl = await getDownloadURL(photoRef);
       } else if (photoPreview) {
         finalImageUrl = editingPart?.imageUrl || "";
@@ -416,6 +422,12 @@ export default function PartsInventoryPage() {
     }
     return result;
   }, [parts, searchTerm, categoryFilter, locationFilter]);
+
+  const filteredLocationOptions = useMemo(() => {
+    if (!locations) return [];
+    if (!locationSearch) return locations;
+    return locations.filter(l => l.name.toLowerCase().includes(locationSearch.toLowerCase()));
+  }, [locations, locationSearch]);
 
   return (
     <div className="space-y-6">
@@ -566,12 +578,62 @@ export default function PartsInventoryPage() {
                       </FormItem>
                     )} />
                     <FormField name="location" control={form.control} render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="flex flex-col">
                         <FormLabel>ชั้นจัดเก็บ</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
-                          <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
-                          <SelectContent><SelectItem value="none">-- ไม่ระบุ --</SelectItem>{locations?.map(loc => <SelectItem key={loc.id} value={loc.name}>{loc.name}</SelectItem>)}</SelectContent>
-                        </Select>
+                        <Popover open={isLocationPopoverOpen} onOpenChange={setIsLocationPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn("w-full justify-between font-normal text-left px-3 h-10", !field.value && "text-muted-foreground")}
+                                disabled={isSubmitting}
+                              >
+                                <span className="truncate">{field.value || "เลือกชั้นวาง..."}</span>
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[200px] p-0" align="start">
+                            <div className="p-2 border-b">
+                              <Input 
+                                placeholder="ค้นหาชั้นวาง..." 
+                                value={locationSearch} 
+                                onChange={(e) => setLocationSearch(e.target.value)} 
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                            <ScrollArea className="h-60">
+                              <Button
+                                variant="ghost"
+                                type="button"
+                                onClick={() => { field.onChange(""); setIsLocationPopoverOpen(false); setLocationSearch(""); }}
+                                className="w-full justify-start rounded-none border-b h-8 text-xs"
+                              >
+                                -- ไม่ระบุ --
+                              </Button>
+                              {filteredLocationOptions.map((loc) => (
+                                <Button
+                                  key={loc.id}
+                                  variant="ghost"
+                                  type="button"
+                                  onClick={() => {
+                                    field.onChange(loc.name);
+                                    setIsLocationPopoverOpen(false);
+                                    setLocationSearch("");
+                                  }}
+                                  className="w-full justify-start rounded-none border-b last:border-0 h-8 text-xs text-left"
+                                >
+                                  <span className="truncate">{loc.name}</span>
+                                </Button>
+                              ))}
+                              {filteredLocationOptions.length === 0 && locationSearch && (
+                                <div className="p-4 text-center text-xs text-muted-foreground italic">ไม่พบข้อมูล</div>
+                              )}
+                            </ScrollArea>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
                       </FormItem>
                     )} />
                   </div>
