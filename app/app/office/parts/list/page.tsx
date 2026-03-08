@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle, MoreHorizontal, Eye, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, PlusCircle, Search, Edit, Trash2, Camera, X, Save, Box, MapPin, ImageIcon, Info, ScanBarcode, AlertCircle, MoreHorizontal, Eye, RefreshCw, TrendingUp, TrendingDown, Filter } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -120,6 +120,11 @@ export default function PartsInventoryPage() {
   const [categories, setCategories] = useState<WithId<PartCategory>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Filtering States
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [locationFilter, setLocationFilter] = useState("ALL");
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<WithId<Part> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -136,7 +141,6 @@ export default function PartsInventoryPage() {
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerControlsRef = useRef<any>(null);
 
@@ -213,7 +217,6 @@ export default function PartsInventoryPage() {
     setIsScannerOpen(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      setHasCameraPermission(true);
       const reader = new BrowserMultiFormatReader();
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -227,7 +230,7 @@ export default function PartsInventoryPage() {
         scannerControlsRef.current = controls;
       }
     } catch (error) {
-      setHasCameraPermission(false);
+      toast({ variant: "destructive", title: "ไม่สามารถเปิดกล้องได้" });
     }
   };
 
@@ -245,7 +248,6 @@ export default function PartsInventoryPage() {
     setIsSearchScannerOpen(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      setHasCameraPermission(true);
       const reader = new BrowserMultiFormatReader();
       if (searchVideoRef.current) {
         searchVideoRef.current.srcObject = stream;
@@ -258,7 +260,7 @@ export default function PartsInventoryPage() {
         searchScannerControlsRef.current = controls;
       }
     } catch (error) {
-      setHasCameraPermission(false);
+      toast({ variant: "destructive", title: "ไม่สามารถเปิดกล้องได้" });
     }
   };
 
@@ -394,10 +396,26 @@ export default function PartsInventoryPage() {
   };
 
   const filteredParts = useMemo(() => {
-    if (!searchTerm) return parts;
-    const q = searchTerm.toLowerCase();
-    return parts.filter(p => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q) || p.categoryNameSnapshot.toLowerCase().includes(q));
-  }, [parts, searchTerm]);
+    let result = [...parts];
+
+    if (categoryFilter !== "ALL") {
+      result = result.filter(p => p.categoryId === categoryFilter);
+    }
+
+    if (locationFilter !== "ALL") {
+      result = result.filter(p => p.location === locationFilter);
+    }
+
+    if (searchTerm) {
+      const q = searchTerm.toLowerCase();
+      result = result.filter(p => 
+        p.name.toLowerCase().includes(q) || 
+        p.code.toLowerCase().includes(q) || 
+        p.categoryNameSnapshot.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [parts, searchTerm, categoryFilter, locationFilter]);
 
   return (
     <div className="space-y-6">
@@ -407,12 +425,46 @@ export default function PartsInventoryPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex gap-2 w-full max-w-md">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="ค้นหาตามชื่อ, รหัส, หรือหมวดหมู่..." className="pl-10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          <div className="flex flex-col sm:flex-row gap-4 w-full">
+            <div className="flex gap-2 flex-1 max-w-md">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="ค้นหาตามชื่อ หรือรหัส..." className="pl-10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              </div>
+              <Button variant="secondary" size="icon" onClick={startSearchScanner}><ScanBarcode className="h-5 w-5" /></Button>
             </div>
-            <Button variant="secondary" size="icon" onClick={startSearchScanner}><ScanBarcode className="h-5 w-5" /></Button>
+            
+            <div className="flex flex-wrap gap-2">
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-3 w-3 text-muted-foreground" />
+                    <SelectValue placeholder="หมวดหมู่ทั้งหมด" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">หมวดหมู่ทั้งหมด</SelectItem>
+                  {categories.map(cat => (
+                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="h-3 w-3 text-muted-foreground" />
+                    <SelectValue placeholder="ชั้นวางทั้งหมด" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">ชั้นวางทั้งหมด</SelectItem>
+                  {locations?.map(loc => (
+                    <SelectItem key={loc.id} value={loc.name}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
