@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/auth-context";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,12 +25,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { ChevronDown, Menu, User, Briefcase, Globe, Phone, Package, Settings, Home, Mail } from "lucide-react";
+import { ChevronDown, Menu, User, Briefcase, Globe, Phone, Package, Settings, Home, Mail, Wrench, LayoutDashboard, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function PublicHeader() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user, profile, signOut } = useAuth();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -64,8 +66,17 @@ export function PublicHeader() {
           </Button>
 
           <Button variant="ghost" asChild className="text-white hover:bg-white/10 hover:text-white font-medium">
-            <Link href="/contact">ติดต่อเรา</Link>
+            <Link href="/services">งานบริการ</Link>
           </Button>
+
+          {user && (
+            <Button variant="ghost" asChild className="text-primary hover:bg-primary/10 hover:text-primary font-bold">
+              <Link href="/app" className="flex items-center gap-2">
+                <LayoutDashboard className="h-4 w-4" />
+                เข้าสู่ application
+              </Link>
+            </Button>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -74,17 +85,38 @@ export function PublicHeader() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-slate-800 border-white/10 text-white">
-              <DropdownMenuItem asChild className="focus:bg-primary/20 focus:text-white cursor-pointer py-3">
-                <Link href="/login">
-                  <Briefcase className="mr-2 h-4 w-4 text-primary" /> 
-                  สำหรับพนักงาน (Staff)
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-white/10" />
-              <DropdownMenuItem className="focus:bg-primary/20 focus:text-white cursor-pointer py-3">
-                <User className="mr-2 h-4 w-4 text-blue-400" /> 
-                สำหรับลูกค้า (Customer)
-              </DropdownMenuItem>
+              {!user ? (
+                <>
+                  <DropdownMenuItem asChild className="focus:bg-primary/20 focus:text-white cursor-pointer py-3">
+                    <Link href="/login">
+                      <Briefcase className="mr-2 h-4 w-4 text-primary" /> 
+                      สำหรับพนักงาน (Staff)
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-white/10" />
+                  <DropdownMenuItem className="focus:bg-primary/20 focus:text-white cursor-pointer py-3 opacity-50">
+                    <User className="mr-2 h-4 w-4 text-blue-400" /> 
+                    สำหรับลูกค้า (Customer)
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <div className="px-3 py-2 text-xs text-slate-400 italic">
+                    เข้าใช้โดย: {profile?.displayName || user.email}
+                  </div>
+                  <DropdownMenuSeparator className="bg-white/10" />
+                  <DropdownMenuItem asChild className="focus:bg-primary/20 focus:text-white cursor-pointer py-3">
+                    <Link href="/app">
+                      <LayoutDashboard className="mr-2 h-4 w-4 text-primary" /> 
+                      หน้าหลักของฉัน
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={signOut} className="focus:bg-destructive/20 focus:text-destructive cursor-pointer py-3 text-destructive font-bold">
+                    <LogOut className="mr-2 h-4 w-4" /> 
+                    ออกจากระบบ
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </nav>
@@ -118,33 +150,39 @@ export function PublicHeader() {
                   </Link>
                 </Button>
 
-                <Button variant="ghost" asChild className="w-full justify-start text-white hover:bg-white/10 h-12 mt-2" onClick={closeMobileMenu}>
-                  <Link href="/contact">
-                    <Mail className="mr-3 h-5 w-5 text-primary" />
-                    ติดต่อเรา
+                <Button variant="ghost" asChild className="justify-start text-white hover:bg-white/10 mb-2 h-12" onClick={closeMobileMenu}>
+                  <Link href="/services">
+                    <Wrench className="mr-3 h-5 w-5 text-primary" />
+                    งานบริการ
                   </Link>
                 </Button>
 
-                <Accordion type="single" collapsible className="w-full mt-4">
-                  <AccordionItem value="login" className="border-none mt-2">
-                    <AccordionTrigger className="px-4 h-12 hover:no-underline hover:bg-white/10 rounded-md text-white font-normal">
-                      <div className="flex items-center">
-                        <User className="mr-3 h-5 w-5 text-primary" />
-                        ลงชื่อเข้าใช้
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="bg-white/5 rounded-md mt-1 pb-2 px-2">
-                      <Button variant="ghost" asChild className="w-full justify-start pl-12 h-10 text-slate-300" onClick={closeMobileMenu}>
+                {user && (
+                  <Button variant="ghost" asChild className="justify-start text-primary hover:bg-primary/10 mb-2 h-12 font-bold" onClick={closeMobileMenu}>
+                    <Link href="/app">
+                      <LayoutDashboard className="mr-3 h-5 w-5" />
+                      เข้าสู่ application
+                    </Link>
+                  </Button>
+                )}
+
+                <div className="mt-4 pt-4 border-t border-white/10">
+                  {!user ? (
+                    <div className="space-y-2">
+                      <Button variant="outline" asChild className="w-full justify-start border-white/20 bg-white/5 h-12" onClick={closeMobileMenu}>
                         <Link href="/login">
-                          <Briefcase className="mr-2 h-4 w-4 text-primary" /> สำหรับพนักงาน
+                          <Briefcase className="mr-3 h-5 w-5 text-primary" />
+                          ลงชื่อเข้าใช้ (พนักงาน)
                         </Link>
                       </Button>
-                      <Button variant="ghost" className="w-full justify-start pl-12 h-10 text-slate-300" onClick={closeMobileMenu}>
-                        <User className="mr-2 h-4 w-4 text-blue-400" /> สำหรับลูกค้า
-                      </Button>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
+                    </div>
+                  ) : (
+                    <Button variant="ghost" onClick={() => { signOut(); closeMobileMenu(); }} className="w-full justify-start text-destructive h-12 font-bold">
+                      <LogOut className="mr-3 h-5 w-5" />
+                      ออกจากระบบ
+                    </Button>
+                  )}
+                </div>
               </div>
 
               <div className="absolute bottom-8 left-0 right-0 px-6 text-center">
