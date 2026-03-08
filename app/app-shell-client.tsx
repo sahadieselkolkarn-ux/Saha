@@ -42,12 +42,12 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Auto-redirect to app only from auth pages (login/signup)
+    // Auto-redirect to Home (not app) from auth pages if already logged in
     const isAuthPage = pathname === "/login" || pathname === "/signup";
     
     if (isAuthPage && pathname !== "/pending") {
         if (profile?.status === "ACTIVE") {
-            router.replace("/app");
+            router.replace("/"); // Redirect to Home
         } else if (profile) {
             router.replace("/pending");
         }
