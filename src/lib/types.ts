@@ -430,6 +430,7 @@ export interface DocumentSettings {
   creditNotePrefix?: string;
   withholdingTaxPrefix?: string;
   purchasePrefix?: string;
+  withdrawalPrefix?: string; // Prefix for part withdrawals
 }
 
 export interface DocumentItem {
@@ -437,9 +438,11 @@ export interface DocumentItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  partId?: string;
+  code?: string;
 }
 
-export type DocType = 'QUOTATION' | 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'RECEIPT' | 'BILLING_NOTE' | 'CREDIT_NOTE' | 'WITHHOLDING_TAX';
+export type DocType = 'QUOTATION' | 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'RECEIPT' | 'BILLING_NOTE' | 'CREDIT_NOTE' | 'WITHHOLDING_TAX' | 'WITHDRAWAL';
 
 export interface Document {
   id: string;
@@ -562,6 +565,8 @@ export interface DocumentCounters {
   withholdingTaxPrefix?: string;
   purchase?: number;
   purchasePrefix?: string;
+  withdrawal?: number;
+  withdrawalPrefix?: string;
   [key: string]: any;
 }
 
@@ -705,7 +710,7 @@ export interface AccountingObligation {
   id: string;
   type: 'AR' | 'AP';
   status: 'UNPAID' | 'PARTIAL' | 'PAID';
-  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'PURCHASE_ORDER' | 'BILL' | 'PURCHASE';
+  sourceDocType: 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'PURCHASE_ORDER' | 'BILL' | 'PURCHASE' | 'WITHDRAWAL';
   sourceDocId: string;
   sourceDocNo: string;
   amountTotal: number;

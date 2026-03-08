@@ -7,10 +7,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { 
   collection, query, where, onSnapshot, doc, writeBatch, 
-  serverTimestamp, getDocs, limit, orderBy, runTransaction 
+  serverTimestamp, getDocs, limit, orderBy, runTransaction, getDoc
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { BrowserMultiFormatReader } from '@zxing/browser';
@@ -24,29 +24,31 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
-} from "@/components/ui/table";
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle 
 } from "@/components/ui/dialog";
 import { 
   Loader2, PlusCircle, Trash2, Save, ArrowLeft, Search, 
-  ScanBarcode, AlertCircle, Info, Package, User, FileText, ChevronsUpDown, X, ClipboardList
+  ScanBarcode, AlertCircle, Info, Package, User, FileText, ChevronsUpDown, X, ClipboardList, Hash, ExternalLink
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
-import type { Customer, Job, Part, Document as DocumentType } from "@/lib/types";
+import type { Customer, Job, Part, Document as DocumentType, StoreSettings } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { createDocument, getNextAvailableDocNo } from "@/firebase/documents";
 
 const withdrawalItemSchema = z.object({
   partId: z.string().min(1, "กรุณาเลือกอะไหล่"),
   code: z.string().optional(),
-  name: z.string().optional(),
+  description: z.string().min(1, "กรุณากรอกรายการ"),
   stockQty: z.number().optional(),
   quantity: z.coerce.number().min(0.01, "ต้องระบุจำนวน"),
+  unitPrice: z.coerce.number().min(0).default(0),
+  total: z.coerce.number().default(0),
 }).superRefine((data, ctx) => {
   if (data.stockQty !== undefined && data.quantity > data.stockQty) {
     ctx.addIssue({
@@ -63,6 +65,7 @@ const withdrawalSchema = z.object({
   customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
   items: z.array(withdrawalItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   notes: z.string().optional(),
+  docDate: z.string().min(1, "กรุณาเลือกวันที่"),
 });
 
 type WithdrawalFormData = z.infer<typeof withdrawalSchema>;
@@ -88,9 +91,15 @@ export default function PartWithdrawalForm() {
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [activePartSearchIdx, setActivePartSearchIdx] = useState<number | null>(null);
 
+  const [previewDocNo, setPreviewDocNo] = useState<string>("");
+  const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
+
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerControlsRef = useRef<any>(null);
+
+  const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
+  const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
 
   const form = useForm<WithdrawalFormData>({
     resolver: zodResolver(withdrawalSchema),
@@ -98,7 +107,8 @@ export default function PartWithdrawalForm() {
       refType: "JOB",
       refId: "",
       customerId: "",
-      items: [{ partId: "", code: "", name: "", stockQty: 0, quantity: 1 }],
+      docDate: new Date().toISOString().split("T")[0],
+      items: [{ partId: "", code: "", description: "", stockQty: 0, quantity: 1, unitPrice: 0, total: 0 }],
       notes: "",
     },
   });
@@ -110,6 +120,20 @@ export default function PartWithdrawalForm() {
 
   const watchedRefType = form.watch("refType");
   const watchedCustomerId = form.watch("customerId");
+  const watchedDocDate = form.watch("docDate");
+
+  // Fetch Preview Doc No
+  useEffect(() => {
+    if (!db || !watchedDocDate) return;
+    const fetchPreview = async () => {
+      try {
+        const result = await getNextAvailableDocNo(db, 'WITHDRAWAL', watchedDocDate);
+        setPreviewDocNo(result.docNo);
+        if (result.indexErrorUrl) setIndexErrorUrl(result.indexErrorUrl);
+      } catch (e) {}
+    };
+    fetchPreview();
+  }, [db, watchedDocDate, isSubmitting]);
 
   // ดึงข้อมูลพื้นฐาน
   useEffect(() => {
@@ -119,7 +143,7 @@ export default function PartWithdrawalForm() {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer)));
     });
 
-    const unsubJobs = onSnapshot(query(collection(db, "jobs"), where("status", "in", ["PENDING_PARTS", "IN_REPAIR_PROCESS"])), (snap) => {
+    const unsubJobs = onSnapshot(query(collection(db, "jobs"), where("status", "in", ["PENDING_PARTS", "IN_REPAIR_PROCESS", "DONE", "WAITING_CUSTOMER_PICKUP"])), (snap) => {
       setActiveJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
@@ -147,7 +171,6 @@ export default function PartWithdrawalForm() {
     }
   }, [queryJobId, activeJobs, customers, form]);
 
-  // ตรรกะกรองลูกค้าตามประเภทการเบิก
   const availableCustomers = useMemo(() => {
     if (watchedRefType === 'JOB') {
       const customerIdsWithValidJobs = new Set(activeJobs.map(j => j.customerId));
@@ -157,7 +180,7 @@ export default function PartWithdrawalForm() {
       const customerIdsWithDraftDocs = new Set(activeSalesDocs.map(d => d.customerId));
       return customers.filter(c => customerIdsWithDraftDocs.has(c.id));
     }
-    return customers; // สำหรับ LOAN แสดงทั้งหมด
+    return customers;
   }, [watchedRefType, activeJobs, activeSalesDocs, customers]);
 
   const filteredJobs = useMemo(() => activeJobs.filter(j => j.customerId === watchedCustomerId), [activeJobs, watchedCustomerId]);
@@ -166,8 +189,10 @@ export default function PartWithdrawalForm() {
   const handleSelectPart = (index: number, part: Part) => {
     form.setValue(`items.${index}.partId`, part.id);
     form.setValue(`items.${index}.code`, part.code);
-    form.setValue(`items.${index}.name`, part.name);
+    form.setValue(`items.${index}.description`, part.name);
     form.setValue(`items.${index}.stockQty`, part.stockQty);
+    form.setValue(`items.${index}.unitPrice`, part.sellingPrice);
+    form.setValue(`items.${index}.total`, part.sellingPrice * form.getValues(`items.${index}.quantity`));
     setActivePartSearchIdx(null);
     setPartSearch("");
   };
@@ -210,17 +235,32 @@ export default function PartWithdrawalForm() {
   };
 
   const onSubmit = async (data: WithdrawalFormData) => {
-    if (!db || !profile) return;
+    if (!db || !profile || !storeSettings) return;
     setIsSubmitting(true);
+
+    const customer = customers.find(c => c.id === data.customerId);
+    if (!customer) {
+        setIsSubmitting(false);
+        return;
+    }
 
     try {
       await runTransaction(db, async (transaction) => {
+        // All Reads first
         for (const item of data.items) {
           const partRef = doc(db, "parts", item.partId);
           const partSnap = await transaction.get(partRef);
           if (!partSnap.exists()) throw new Error(`ไม่พบสินค้า ${item.code}`);
           const currentQty = partSnap.data().stockQty || 0;
           if (currentQty < item.quantity) throw new Error(`สินค้า ${item.code} สต็อกไม่พอ (เหลือ ${currentQty})`);
+        }
+
+        // All Writes
+        for (const item of data.items) {
+          const partRef = doc(db, "parts", item.partId);
+          // We already read it above, but transaction.update needs ref
+          const partSnap = await transaction.get(partRef); // Read again in same tx context if needed or use previous data
+          const currentQty = partSnap.data()?.stockQty || 0;
           
           transaction.update(partRef, {
             stockQty: currentQty - item.quantity,
@@ -231,7 +271,7 @@ export default function PartWithdrawalForm() {
           transaction.set(actRef, sanitizeForFirestore({
             partId: item.partId,
             partCode: item.code,
-            partName: item.name,
+            partName: item.description,
             type: 'WITHDRAW',
             diffQty: item.quantity,
             beforeQty: currentQty,
@@ -243,20 +283,9 @@ export default function PartWithdrawalForm() {
           }));
         }
 
-        if (data.refType === 'JOB') {
-          const jobRef = doc(db, "jobs", data.refId);
-          const actRef = doc(collection(jobRef, "activities"));
-          const itemText = data.items.map(i => `${i.name} (${i.quantity} ชิ้น)`).join(", ");
-          transaction.set(actRef, {
-            text: `มีการเบิกอะไหล่ใส่ใบงาน: ${itemText}`,
-            userName: profile.displayName,
-            userId: profile.uid,
-            createdAt: serverTimestamp(),
-          });
-        }
-
-        const wdRef = doc(collection(db, "partWithdrawals"));
-        transaction.set(wdRef, sanitizeForFirestore({
+        // Legacy record for backward compatibility if needed
+        const legacyWdRef = doc(collection(db, "partWithdrawals"));
+        transaction.set(legacyWdRef, sanitizeForFirestore({
           ...data,
           status: 'COMPLETED',
           createdByUid: profile.uid,
@@ -266,7 +295,34 @@ export default function PartWithdrawalForm() {
         }));
       });
 
-      toast({ title: "บันทึกการเบิกสำเร็จ", description: "สต็อกถูกหักเรียบร้อยแล้วค่ะ" });
+      // Create formal document
+      const subtotal = data.items.reduce((sum, i) => sum + (i.total || 0), 0);
+      await createDocument(db, 'WITHDRAWAL', {
+        jobId: data.refType === 'JOB' ? data.refId : undefined,
+        customerId: data.customerId,
+        docDate: data.docDate,
+        customerSnapshot: customer,
+        storeSnapshot: storeSettings,
+        items: data.items.map(i => ({ 
+            description: i.description || "", 
+            quantity: i.quantity, 
+            unitPrice: i.unitPrice || 0, 
+            total: i.total || 0,
+            partId: i.partId,
+            code: i.code
+        })),
+        subtotal,
+        discountAmount: 0,
+        net: subtotal,
+        withTax: false,
+        vatAmount: 0,
+        grandTotal: subtotal,
+        notes: data.notes,
+        senderName: profile.displayName,
+        receiverName: customer.name,
+      }, profile);
+
+      toast({ title: "สร้างใบเบิกอะไหล่สำเร็จ", description: "สต็อกถูกหักและเอกสารบันทึกเรียบร้อยแล้วค่ะ" });
       router.push("/app/office/parts/withdraw");
     } catch (e: any) {
       toast({ variant: "destructive", title: "ล้มเหลว", description: e.message });
@@ -281,22 +337,35 @@ export default function PartWithdrawalForm() {
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting}><ArrowLeft className="mr-2 h-4 w-4" /> กลับ</Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              ยืนยันการเบิกอะไหล่
+              สร้างรายการเบิก (Create Withdrawal)
             </Button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-primary"/> 1. อ้างอิงรายการ</CardTitle></CardHeader>
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                    <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-primary"/> 1. ข้อมูลเอกสาร</CardTitle>
+                    <Badge variant="outline" className="font-mono text-[10px] border-primary/30 text-primary bg-primary/5">
+                        {previewDocNo || "Loading..."}
+                    </Badge>
+                </div>
+              </CardHeader>
               <CardContent className="space-y-4">
+                <FormField control={form.control} name="docDate" render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                        <FormLabel>วันที่เบิก</FormLabel>
+                        <FormControl><Input type="date" {...field} disabled={isSubmitting} /></FormControl>
+                    </FormItem>
+                )} />
                 <FormField name="refType" control={form.control} render={({ field }) => (
                   <FormItem>
                     <FormLabel>ประเภทการเบิก</FormLabel>
-                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("customerId", ""); form.setValue("refId", ""); }} value={field.value}>
+                    <Select onValueChange={(v) => { field.onChange(v); form.setValue("customerId", ""); form.setValue("refId", ""); }} value={field.value} disabled={isSubmitting}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="JOB">งานซ่อม (Job)</SelectItem>
@@ -310,14 +379,14 @@ export default function PartWithdrawalForm() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4 text-primary"/> 2. เลือกลูกค้า</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4 text-primary"/> 2. รายละเอียดการอ้างอิง</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <FormField name="customerId" control={form.control} render={({ field }) => (
                   <FormItem>
                     <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                       <PopoverTrigger asChild>
                         <FormControl>
-                          <Button variant="outline" className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")}>
+                          <Button variant="outline" className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isSubmitting || !!queryJobId}>
                             <span className="truncate">
                               {field.value ? (customers.find(c => c.id === field.value)?.name || "เลือกรายชื่อ...") : "ค้นหาชื่อลูกค้า..."}
                             </span>
@@ -333,7 +402,6 @@ export default function PartWithdrawalForm() {
                               <div className="flex flex-col"><span className="font-medium">{c.name}</span><span className="text-xs text-muted-foreground">{c.phone}</span></div>
                             </Button>
                           ))}
-                          {availableCustomers.length === 0 && <div className="p-4 text-center text-xs text-muted-foreground italic">ไม่พบลูกค้าที่มีรายการค้างตามเงื่อนไขที่เลือก</div>}
                         </ScrollArea>
                       </PopoverContent>
                     </Popover>
@@ -345,10 +413,10 @@ export default function PartWithdrawalForm() {
                   <FormField name="refId" control={form.control} render={({ field }) => (
                     <FormItem className="animate-in fade-in slide-in-from-top-1">
                       <FormLabel>เลือกรายการอ้างอิง</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select onValueChange={field.onChange} value={field.value || ""} disabled={isSubmitting || !!queryJobId}>
                         <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {watchedRefType === 'JOB' && filteredJobs.map(j => <SelectItem key={j.id} value={j.id}>Job: {j.id.slice(0,8)} - {j.description.slice(0,20)}...</SelectItem>)}
+                          {watchedRefType === 'JOB' && filteredJobs.map(j => <SelectItem key={j.id} value={j.id}>{j.id} - {j.description.slice(0,20)}...</SelectItem>)}
                           {watchedRefType === 'SALES_DOC' && filteredSalesDocs.map(d => <SelectItem key={d.id} value={d.id}>{d.docNo} ({d.grandTotal.toLocaleString()}.-)</SelectItem>)}
                           {watchedRefType === 'LOAN' && <SelectItem value="MANUAL_LOAN">ระบุมือ (ยืมของ)</SelectItem>}
                         </SelectContent>
@@ -364,7 +432,7 @@ export default function PartWithdrawalForm() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><Package className="h-4 w-4 text-primary"/> 3. รายการอะไหล่ที่เบิก</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="border rounded-md overflow-hidden">
+              <div className="border rounded-md overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-muted/50">
                     <TableRow>
@@ -380,7 +448,7 @@ export default function PartWithdrawalForm() {
                         <TableCell>
                           <div className="flex gap-2">
                             <Popover open={activePartSearchIdx === index} onOpenChange={(o) => !o && setActivePartSearchIdx(null)}>
-                              <PopoverTrigger asChild><Button variant="outline" size="icon" onClick={() => setActivePartSearchIdx(index)}><Search className="h-4 w-4" /></Button></PopoverTrigger>
+                              <PopoverTrigger asChild><Button variant="outline" size="icon" onClick={() => setActivePartSearchIdx(index)} disabled={isSubmitting}><Search className="h-4 w-4" /></Button></PopoverTrigger>
                               <PopoverContent className="w-80 p-0" align="start">
                                 <div className="p-2 border-b"><Input placeholder="ค้นหาอะไหล่..." value={partSearch} onChange={e => setPartSearch(e.target.value)} /></div>
                                 <ScrollArea className="h-64">
@@ -392,27 +460,33 @@ export default function PartWithdrawalForm() {
                                 </ScrollArea>
                               </PopoverContent>
                             </Popover>
-                            <Button variant="outline" size="icon" onClick={() => startScanner(index)}><ScanBarcode className="h-4 w-4" /></Button>
-                            <Input readOnly placeholder="คลิกแว่นขยายเพื่อเลือกอะไหล่..." value={form.watch(`items.${index}.name`) || ""} className="bg-muted/30 cursor-not-allowed" />
+                            <Button variant="outline" size="icon" onClick={() => startScanner(index)} disabled={isSubmitting}><ScanBarcode className="h-4 w-4" /></Button>
+                            <Input readOnly placeholder="เลือกอะไหล่..." value={form.watch(`items.${index}.description`) || ""} className="bg-muted/30 cursor-not-allowed text-xs" />
                           </div>
                           {form.watch(`items.${index}.code`) && <p className="text-[10px] font-mono text-primary mt-1 ml-20">รหัส: {form.watch(`items.${index}.code`)}</p>}
                         </TableCell>
                         <TableCell className="text-right font-bold text-muted-foreground">{form.watch(`items.${index}.stockQty`) ?? "-"}</TableCell>
-                        <TableCell><FormField name={`items.${index}.quantity`} control={form.control} render={({ field }) => (<Input type="number" step="any" className="text-right" {...field} />)} /></TableCell>
-                        <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
+                        <TableCell><FormField name={`items.${index}.quantity`} control={form.control} render={({ field }) => (
+                            <Input type="number" step="any" className="text-right" {...field} disabled={isSubmitting} onChange={(e) => {
+                                const v = parseFloat(e.target.value) || 0;
+                                field.onChange(v);
+                                form.setValue(`items.${index}.total`, v * form.getValues(`items.${index}.unitPrice`));
+                            }} />
+                        )} /></TableCell>
+                        <TableCell><Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={isSubmitting}><Trash2 className="h-4 w-4 text-destructive" /></Button></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => append({ partId: "", quantity: 1, name: "", code: "", stockQty: 0 })} disabled={isSubmitting || fields.length >= 50}><PlusCircle className="mr-2 h-4 w-4" /> เพิ่มรายการ</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => append({ partId: "", quantity: 1, description: "", code: "", stockQty: 0, unitPrice: 0, total: 0 })} disabled={isSubmitting || fields.length >= 50}><PlusCircle className="mr-2 h-4 w-4" /> เพิ่มรายการ</Button>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle className="text-base">4. หมายเหตุเพิ่มเติม</CardTitle></CardHeader>
             <CardContent>
-              <FormField name="notes" control={form.control} render={({ field }) => (<Textarea placeholder="เช่น เบิกให้ช่างตู่, ใช้ประกอบเครื่องยนต์ Revo..." {...field} />)} />
+              <FormField name="notes" control={form.control} render={({ field }) => (<Textarea placeholder="เช่น เบิกให้ช่างตู่, ใช้ประกอบเครื่องยนต์ Revo..." {...field} disabled={isSubmitting} />)} />
             </CardContent>
           </Card>
         </form>

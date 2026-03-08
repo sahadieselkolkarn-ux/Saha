@@ -174,7 +174,7 @@ function JobDetailsPageContent() {
 
   const [relatedDocuments, setRelatedDocuments] = useState<Partial<Record<DocType, DocumentType[]>>>({});
   const [loadingDocs, setLoadingDocs] = useState(true);
-  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [withdrawals, setWithdrawals] = useState<DocumentType[]>([]);
 
   const [isEditDescriptionDialogOpen, setIsEditDescriptionDialogOpen] = useState(false);
   const [descriptionToEdit, setDescriptionToEdit] = useState("");
@@ -266,8 +266,12 @@ function JobDetailsPageContent() {
         const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType));
         const grouped: Partial<Record<DocType, DocumentType[]>> = {};
         const relevantDocTypes: DocType[] = ['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'];
+        const wdDocs: DocumentType[] = [];
+
         for (const docItem of allDocs) {
-            if (relevantDocTypes.includes(docItem.docType)) {
+            if (docItem.docType === 'WITHDRAWAL') {
+                wdDocs.push(docItem);
+            } else if (relevantDocTypes.includes(docItem.docType)) {
                 if (!grouped[docItem.docType]) grouped[docItem.docType] = [];
                 grouped[docItem.docType]!.push(docItem);
             }
@@ -276,18 +280,14 @@ function JobDetailsPageContent() {
             grouped[docType as DocType]!.sort((a, b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt));
         }
         setRelatedDocuments(grouped);
+        setWithdrawals(wdDocs.sort((a,b) => getSafeTime(b.createdAt) - getSafeTime(a.createdAt)));
         setLoadingDocs(false);
     }, (error) => {
         console.error("Error fetching related documents:", error);
         setLoadingDocs(false);
     });
 
-    const qWithdrawals = query(collection(db, "partWithdrawals"), where("refId", "==", jobId), where("refType", "==", "JOB"));
-    const unsubWithdrawals = onSnapshot(qWithdrawals, (snap) => {
-        setWithdrawals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    return () => { unsubscribeDocs(); unsubWithdrawals(); };
+    return () => { unsubscribeDocs(); };
   }, [db, jobId]);
 
   useEffect(() => {
@@ -1111,9 +1111,16 @@ function JobDetailsPageContent() {
                     <span className="text-muted-foreground pt-1">ใบเบิกอะไหล่:</span>
                     {withdrawals.length > 0 ? (
                       <div className="flex flex-col items-end gap-1">
-                        <Button asChild variant="link" className="p-0 h-auto font-medium">
-                          <Link href="/app/office/parts/withdraw">ดูรายการเบิก ({withdrawals.length} ครั้ง)</Link>
-                        </Button>
+                        {withdrawals.map(wd => (
+                            <div key={wd.id} className="flex items-center gap-2">
+                                <Button asChild variant="link" className="p-0 h-auto font-medium">
+                                    <Link href={`/app/documents/${wd.id}`}>{wd.docNo}</Link>
+                                </Button>
+                                <Badge variant="outline" className="text-[8px] px-1 h-4">
+                                    {docStatusLabel(wd.status, 'WITHDRAWAL')}
+                                </Badge>
+                            </div>
+                        ))}
                       </div>
                     ) : <span className="pt-1">— ไม่มี —</span>}
                   </div>

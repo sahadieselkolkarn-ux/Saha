@@ -1,3 +1,4 @@
+
 'use client';
 
 import {
@@ -92,6 +93,7 @@ export async function getNextAvailableDocNo(
     BILLING_NOTE: 'billingNotePrefix',
     CREDIT_NOTE: 'creditNotePrefix',
     WITHHOLDING_TAX: 'withholdingTaxPrefix',
+    WITHDRAWAL: 'withdrawalPrefix',
   };
 
   const defaultPrefixMap: Record<DocType, string> = {
@@ -102,6 +104,7 @@ export async function getNextAvailableDocNo(
     BILLING_NOTE: 'BN',
     CREDIT_NOTE: 'CN',
     WITHHOLDING_TAX: 'WHT',
+    WITHDRAWAL: 'SWD',
   };
 
   const prefix = (docSettingsSnap.exists() 
@@ -138,7 +141,7 @@ export async function createDocument(
     }
   }
 
-  // Check for manual duplicates OUTSIDE transaction (queries are illegal inside transaction)
+  // Check for manual duplicates OUTSIDE transaction
   if (options?.manualDocNo) {
     const qDuplicate = query(
       collection(db, "documents"), 
@@ -163,6 +166,7 @@ export async function createDocument(
     BILLING_NOTE: 'billingNotePrefix',
     CREDIT_NOTE: 'creditNotePrefix',
     WITHHOLDING_TAX: 'withholdingTaxPrefix',
+    WITHDRAWAL: 'withdrawalPrefix',
   };
 
   const defaultPrefixMap: Record<DocType, string> = {
@@ -173,6 +177,7 @@ export async function createDocument(
     BILLING_NOTE: 'BN',
     CREDIT_NOTE: 'CN',
     WITHHOLDING_TAX: 'WHT',
+    WITHDRAWAL: 'SWD',
   };
 
   const prefix = (docSettingsSnap.exists() 
@@ -203,7 +208,7 @@ export async function createDocument(
       id: docId,
       docNo: finalDocNo,
       docType,
-      status: options?.initialStatus ?? 'DRAFT',
+      status: options?.initialStatus ?? (docType === 'WITHDRAWAL' ? 'ISSUED' : 'DRAFT'),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -223,14 +228,17 @@ export async function createDocument(
         createdAt: serverTimestamp()
       });
 
-      transaction.update(jobRef, {
-        status: newJobStatus || 'WAITING_APPROVE',
-        salesDocId: docId,
-        salesDocNo: finalDocNo,
-        salesDocType: docType,
-        lastActivityAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      // For withdrawals, we don't necessarily want to change status to WAITING_APPROVE
+      if (docType !== 'WITHDRAWAL') {
+        transaction.update(jobRef, {
+          status: newJobStatus || 'WAITING_APPROVE',
+          salesDocId: docId,
+          salesDocNo: finalDocNo,
+          salesDocType: docType,
+          lastActivityAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
     }
 
     return { finalDocNo };

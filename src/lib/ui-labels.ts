@@ -1,3 +1,4 @@
+
 export const DEPARTMENT_LABELS: Record<string, string> = {
     MANAGEMENT: "ฝ่ายบริหาร",
     OFFICE: "แผนกออฟฟิศ",
@@ -41,6 +42,7 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
     BILLING_NOTE: "ใบวางบิล",
     CREDIT_NOTE: "ใบลดหนี้",
     WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
+    WITHDRAWAL: "ใบเบิกอะไหล่",
 };
 
 export const DOC_STATUS_LABELS: Record<string, string> = {
@@ -54,6 +56,8 @@ export const DOC_STATUS_LABELS: Record<string, string> = {
     PENDING_REVIEW: "รอบัญชีตรวจสอบ",
     REJECTED: "ตีกลับเพื่อแก้ไข",
     PARTIAL: "รับเงินบางส่วน",
+    ISSUED: "ออกเอกสารแล้ว",
+    COMPLETED: "เสร็จสมบูรณ์",
 };
 
 export const PAY_TYPE_LABELS: Record<string, string> = {
