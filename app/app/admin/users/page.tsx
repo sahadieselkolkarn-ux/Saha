@@ -172,6 +172,57 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleFullUnlink = async () => {
+    if (!db || !editingJob || !profile) return;
+    setIsSaving(true);
+    try {
+      const batch = writeBatch(db);
+      const colName = searchInArchive ? `jobsArchive_${new Date().getFullYear()}` : "jobs";
+      const jobRef = doc(db, colName, editingJob.id);
+      
+      // 1. Clear Job Pointers
+      batch.update(jobRef, {
+        salesDocId: deleteField(),
+        salesDocNo: deleteField(),
+        salesDocType: deleteField(),
+        updatedAt: serverTimestamp(),
+        lastActivityAt: serverTimestamp()
+      });
+
+      // 2. Standardized Activity Log
+      const activityRef = doc(collection(jobRef, "activities"));
+      batch.set(activityRef, {
+        text: `[Admin Full Unlink] ล้างการเชื่อมโยงเอกสารทั้งหมด (ใบเสนอราคา/ใบส่งของ/ใบกำกับ/ใบเบิก) เรียบร้อยแล้วค่ะ`,
+        userName: profile.displayName,
+        userId: profile.uid,
+        createdAt: serverTimestamp()
+      });
+
+      // 3. Find and Clear links from Documents
+      const docsQuery = query(collection(db, "documents"), where("jobId", "==", editingJob.id));
+      const docSnaps = await getDocs(docsQuery);
+      docSnaps.docs.forEach(d => {
+          batch.update(d.ref, { jobId: deleteField(), updatedAt: serverTimestamp() });
+      });
+
+      // 4. Find and Clear links from Part Withdrawals
+      const withdrawalsQuery = query(collection(db, "partWithdrawals"), where("refId", "==", editingJob.id));
+      const withdrawalSnaps = await getDocs(withdrawalsQuery);
+      withdrawalSnaps.docs.forEach(d => {
+          batch.update(d.ref, { refId: "UNLINKED", notes: (d.data().notes || "") + " [Admin Unlinked from " + editingJob.id + "]", updatedAt: serverTimestamp() });
+      });
+
+      await batch.commit();
+      toast({ title: "ล้างลิงก์เอกสารทั้งหมดสำเร็จ" });
+      setEditingJob(null);
+      handleSearchJobs();
+    } catch (e: any) {
+      toast({ variant: 'destructive', title: "ล้มเหลว", description: e.message });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleLinkDocument = async () => {
     if (!db || !editingJob || !foundDoc) return;
     
@@ -318,7 +369,7 @@ export default function AdminUsersPage() {
             {foundJobs.length > 0 && (
               <div className="border rounded-lg bg-background overflow-hidden animate-in fade-in slide-in-from-top-2">
                 <Table>
-                  <TableHeader className="bg-muted/50">
+                  <TableHeader>
                     <TableRow>
                       <TableHead>รหัสงาน / ลูกค้า</TableHead>
                       <TableHead>บิลที่ผูกอยู่</TableHead>
@@ -398,24 +449,23 @@ export default function AdminUsersPage() {
 
               {/* Unlink Section */}
               <div className="p-3 border border-destructive/20 bg-destructive/5 rounded-md space-y-2">
-                <p className="text-xs font-bold text-destructive flex items-center gap-1"><Link2Off className="h-3 w-3"/> ล้างลิงก์เดิม</p>
+                <p className="text-xs font-bold text-destructive flex items-center gap-1"><Link2Off className="h-3 w-3"/> ล้างลิงก์เอกสารทั้งหมด (Full Unlink)</p>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs">เลขบิลปัจจุบัน: <b>{editingJob?.salesDocNo || "ไม่มี"}</b></span>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs">เลขบิลหลัก: <b>{editingJob?.salesDocNo || "ไม่มี"}</b></span>
+                    <p className="text-[9px] text-muted-foreground">ครอบคลุม: ใบเสนอราคา/ใบส่งของ/ใบกำกับ/ใบเบิก</p>
+                  </div>
                   <Button 
                     variant="destructive" 
                     size="sm" 
                     className="h-7 text-[10px]"
-                    disabled={!editingJob?.salesDocNo && !editingJob?.salesDocId}
-                    onClick={() => handleUpdateJobManual(editingJob!.id, {
-                      salesDocId: deleteField(),
-                      salesDocNo: deleteField(),
-                      salesDocType: deleteField()
-                    }, "ล้างลิงก์เอกสารที่ผูกอยู่")}
+                    onClick={handleFullUnlink}
+                    disabled={isSaving}
                   >
-                    ล้างลิงก์ทิ้ง
+                    {isSaving ? <Loader2 className="h-3 w-3 animate-spin"/> : "ล้างลิงก์ทิ้ง"}
                   </Button>
                 </div>
-                <p className="text-[9px] text-muted-foreground">เมื่อล้างลิงก์แล้ว จ๊อบจะสามารถ "ออกบิลใหม่" ได้ทันที</p>
+                <p className="text-[9px] text-muted-foreground italic">เมื่อล้างลิงก์แล้ว จ๊อบจะสามารถ "ออกบิลใหม่" ได้ทันที และเอกสารเดิมจะถูกปลดออกจากจ๊อบนี้ค่ะ</p>
               </div>
 
               {/* Relink / Link Existing Section with Tabs */}

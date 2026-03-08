@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useMemo, Suspense, useRef } from "react";
@@ -1077,7 +1078,7 @@ function JobDetailsPageContent() {
                   {(['QUOTATION', 'DELIVERY_NOTE', 'TAX_INVOICE', 'RECEIPT'] as DocType[]).map(docType => {
                       const label = { QUOTATION: 'ใบเสนอราคา', DELIVERY_NOTE: 'ใบส่งของชั่วคราว', TAX_INVOICE: 'ใบกำกับภาษี', RECEIPT: 'ใบเสร็จรับเงิน' }[docType];
                       const latestDoc = relatedDocuments[docType]?.[0];
-                      return (latestDoc || docType !== 'RECEIPT') ? (
+                      return (
                         <div key={docType} className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
                           <span className="text-muted-foreground pt-1">{label}:</span>
                           {latestDoc ? (
@@ -1104,7 +1105,7 @@ function JobDetailsPageContent() {
                             </div>
                           ) : <span className="pt-1">— ไม่มี —</span>}
                         </div>
-                      ) : null;
+                      );
                   })}
                   <div className="flex justify-between items-start border-b border-muted/50 pb-2 last:border-0 last:pb-0">
                     <span className="text-muted-foreground pt-1">ใบเบิกอะไหล่:</span>
