@@ -139,10 +139,11 @@ export function docStatusLabel(status: string | undefined, docType?: string): st
     if (!status) return '';
     const s = status.toUpperCase();
     
-    // จัดการชื่อสถานะพิเศษสำหรับใบเบิกอะไหล่
+    // จัดการชื่อสถานะพิเศษสำหรับใบเบิกอะไหล่ (ให้กระชับตามความต้องการ)
     if (docType === 'WITHDRAWAL') {
-        if (s === 'ISSUED') return 'เบิกสินค้าแล้ว';
-        if (s === 'DRAFT') return 'ฉบับร่าง (ยังไม่หักสต็อก)';
+        if (s === 'ISSUED') return 'เบิก';
+        if (s === 'DRAFT') return 'ฉบับร่าง';
+        if (s === 'CANCELLED') return 'ยกเลิก';
     }
 
     return DOC_STATUS_LABELS[s] || status;

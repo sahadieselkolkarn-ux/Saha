@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -32,7 +33,8 @@ import {
   MoreHorizontal, 
   Trash2, 
   AlertCircle,
-  RotateCcw
+  RotateCcw,
+  XCircle
 } from "lucide-react";
 import { 
   DropdownMenu, 
@@ -68,8 +70,10 @@ export default function OfficePartsWithdrawPage() {
   const [withdrawals, setWithdrawals] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [isDeleting, setIsDeleting] = useState(false);
+  
+  const [isActionLoading, setIsActionLoading] = useState(false);
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
+  const [docToCancel, setDocToCancel] = useState<Document | null>(null);
 
   const isAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
 
@@ -92,7 +96,7 @@ export default function OfficePartsWithdrawPage() {
 
   const handleConfirmDelete = async () => {
     if (!db || !docToDelete || !profile) return;
-    setIsDeleting(true);
+    setIsActionLoading(true);
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -118,13 +122,12 @@ export default function OfficePartsWithdrawPage() {
                 updatedAt: serverTimestamp()
               });
 
-              // Log stock activity for reversion
               const actRef = doc(collection(db, "stockActivities"));
               transaction.set(actRef, sanitizeForFirestore({
                 partId: item.partId,
                 partCode: item.code,
                 partName: item.description,
-                type: 'ADJUST_ADD', // Reverting withdrawal is an adjustment add
+                type: 'ADJUST_ADD',
                 diffQty: revertQty,
                 beforeQty: currentQty,
                 afterQty: currentQty + revertQty,
@@ -137,7 +140,6 @@ export default function OfficePartsWithdrawPage() {
           }
         }
 
-        // Delete the document
         transaction.delete(docRef);
       });
 
@@ -148,8 +150,74 @@ export default function OfficePartsWithdrawPage() {
     } catch (e: any) {
       toast({ variant: "destructive", title: "ลบไม่สำเร็จ", description: e.message });
     } finally {
-      setIsDeleting(false);
+      setIsActionLoading(false);
       setDocToDelete(null);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!db || !docToCancel || !profile) return;
+    setIsActionLoading(true);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const docRef = doc(db, "documents", docToCancel.id);
+        const docSnap = await transaction.get(docRef);
+        
+        if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
+        const docData = docSnap.data() as Document;
+
+        // 1. Revert Stock if was ISSUED
+        if (docData.status === 'ISSUED') {
+          for (const item of docData.items) {
+            if (!item.partId) continue;
+            const partRef = doc(db, "parts", item.partId);
+            const partSnap = await transaction.get(partRef);
+            
+            if (partSnap.exists()) {
+              const currentQty = partSnap.data().stockQty || 0;
+              const revertQty = item.quantity || 0;
+              
+              transaction.update(partRef, {
+                stockQty: currentQty + revertQty,
+                updatedAt: serverTimestamp()
+              });
+
+              const actRef = doc(collection(db, "stockActivities"));
+              transaction.set(actRef, sanitizeForFirestore({
+                partId: item.partId,
+                partCode: item.code,
+                partName: item.description,
+                type: 'ADJUST_ADD',
+                diffQty: revertQty,
+                beforeQty: currentQty,
+                afterQty: currentQty + revertQty,
+                notes: `คืนสต็อกเนื่องจากการยกเลิกใบเบิก ${docData.docNo} โดย ${profile.displayName}`,
+                createdByUid: profile.uid,
+                createdByName: profile.displayName,
+                createdAt: serverTimestamp(),
+              }));
+            }
+          }
+        }
+
+        // 2. Set status to CANCELLED
+        transaction.update(docRef, {
+          status: 'CANCELLED',
+          updatedAt: serverTimestamp(),
+          notes: (docData.notes || "") + `\n[System] ยกเลิกเมื่อ ${safeFormat(new Date(), 'dd/MM/yyyy HH:mm')} โดย ${profile.displayName} (คืนสต็อก/ยกเลิกการผูกบิล)`
+        });
+      });
+
+      toast({ 
+        title: "ยกเลิกรายการเบิกสำเร็จ", 
+        description: "คืนยอดสต็อกกลับเข้าคลังและปลดการเชื่อมโยงเรียบร้อยแล้วค่ะ" 
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "ยกเลิกไม่สำเร็จ", description: e.message });
+    } finally {
+      setIsActionLoading(false);
+      setDocToCancel(null);
     }
   };
 
@@ -201,7 +269,7 @@ export default function OfficePartsWithdrawPage() {
                   <TableHead className="w-24">วันที่</TableHead>
                   <TableHead>อ้างอิงใบงาน</TableHead>
                   <TableHead>ลูกค้า</TableHead>
-                  <TableHead>สถานะ</TableHead>
+                  <TableHead className="text-center">สถานะ</TableHead>
                   <TableHead className="text-right">มูลค่ารวม</TableHead>
                   <TableHead className="text-right w-24">จัดการ</TableHead>
                 </TableRow>
@@ -210,60 +278,71 @@ export default function OfficePartsWithdrawPage() {
                 {loading ? (
                   <TableRow><TableCell colSpan={7} className="h-24 text-center"><Loader2 className="animate-spin mx-auto text-primary" /></TableCell></TableRow>
                 ) : filtered.length > 0 ? (
-                  filtered.map(w => (
-                    <TableRow key={w.id} className="hover:bg-muted/30">
-                      <TableCell className="font-bold font-mono text-primary text-xs">
-                        <Link href={`/app/documents/${w.id}`} className="hover:underline">{w.docNo}</Link>
-                      </TableCell>
-                      <TableCell className="text-xs">{safeFormat(new Date(w.docDate), APP_DATE_FORMAT)}</TableCell>
-                      <TableCell>
-                        {w.jobId ? (
-                            <Badge variant="outline" className="font-mono text-[10px] border-primary/20 text-primary">
-                                {w.jobId}
-                            </Badge>
-                        ) : "-"}
-                      </TableCell>
-                      <TableCell className="text-sm">{w.customerSnapshot?.name}</TableCell>
-                      <TableCell>
-                        <Badge variant={w.status === 'DRAFT' ? 'secondary' : 'default'} className="text-[10px]">
-                            {docStatusLabel(w.status, 'WITHDRAWAL')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-black">฿{w.grandTotal.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => router.push(`/app/documents/${w.id}`)}>
-                              <Eye className="mr-2 h-4 w-4" /> ดูรายละเอียด
-                            </DropdownMenuItem>
-                            
-                            {w.status === 'DRAFT' && (
-                              <DropdownMenuItem onClick={() => router.push(`/app/office/parts/withdraw/new?editDocId=${w.id}`)}>
-                                <Edit className="mr-2 h-4 w-4" /> แก้ไขฉบับร่าง
+                  filtered.map(w => {
+                    const s = w.status.toUpperCase();
+                    return (
+                      <TableRow key={w.id} className={cn("hover:bg-muted/30", s === 'CANCELLED' && "opacity-50 grayscale")}>
+                        <TableCell className="font-bold font-mono text-primary text-xs">
+                          <Link href={`/app/documents/${w.id}`} className="hover:underline">{w.docNo}</Link>
+                        </TableCell>
+                        <TableCell className="text-xs">{safeFormat(new Date(w.docDate), APP_DATE_FORMAT)}</TableCell>
+                        <TableCell>
+                          {w.jobId ? (
+                              <Badge variant="outline" className="font-mono text-[10px] border-primary/20 text-primary">
+                                  {w.jobId}
+                              </Badge>
+                          ) : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm font-medium">{w.customerSnapshot?.name}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge 
+                            variant={s === 'DRAFT' ? 'secondary' : s === 'CANCELLED' ? 'destructive' : 'default'} 
+                            className={cn("text-[10px] min-w-[60px] justify-center", s === 'ISSUED' && "bg-green-600")}
+                          >
+                              {docStatusLabel(w.status, 'WITHDRAWAL')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-black">฿{w.grandTotal.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => router.push(`/app/documents/${w.id}`)}>
+                                <Eye className="mr-2 h-4 w-4" /> ดูรายละเอียด
                               </DropdownMenuItem>
-                            )}
-
-                            {(isAdmin || w.status === 'DRAFT') && (
-                              <>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  className="text-destructive focus:text-destructive"
-                                  onClick={() => setDocToDelete(w)}
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" /> ลบรายการ
+                              
+                              {s === 'DRAFT' && (
+                                <DropdownMenuItem onClick={() => router.push(`/app/office/parts/withdraw/new?editDocId=${w.id}`)}>
+                                  <Edit className="mr-2 h-4 w-4" /> แก้ไขฉบับร่าง
                                 </DropdownMenuItem>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                              )}
+
+                              {s !== 'CANCELLED' && (
+                                <DropdownMenuItem 
+                                  className="text-orange-600 focus:text-orange-600"
+                                  onClick={() => setDocToCancel(w)}
+                                >
+                                  <XCircle className="mr-2 h-4 w-4" /> ยกเลิกรายการ
+                                </DropdownMenuItem>
+                              )}
+
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => setDocToDelete(w)}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" /> ลบถาวร
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 ) : (
                   <TableRow><TableCell colSpan={7} className="h-32 text-center text-muted-foreground italic">ไม่พบรายการเบิก</TableCell></TableRow>
                 )}
@@ -273,35 +352,70 @@ export default function OfficePartsWithdrawPage() {
         </CardContent>
       </Card>
 
+      {/* Delete Dialog */}
       <AlertDialog open={!!docToDelete} onOpenChange={(o) => !o && setDocToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-              ยืนยันการลบใบเบิก?
+              <Trash2 className="h-5 w-5 text-destructive" />
+              ยืนยันการลบรายการถาวร?
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              <p>คุณต้องการลบเอกสารเลขที่ <span className="font-bold">{docToDelete?.docNo}</span> ใช่หรือไม่?</p>
+              <p>คุณต้องการลบเอกสารเลขที่ <span className="font-bold">{docToDelete?.docNo}</span> ใช่หรือไม่? การลบจะทำให้ข้อมูลหายไปจากระบบอย่างถาวร</p>
               {docToDelete?.status === 'ISSUED' && (
                 <Alert variant="destructive" className="bg-destructive/5 border-destructive/20 text-destructive">
                   <RotateCcw className="h-4 w-4" />
                   <AlertTitle className="text-xs font-bold">ข้อมูลการคืนสต็อก</AlertTitle>
                   <AlertDescription className="text-[10px]">
-                    เนื่องจากเอกสารนี้ถูกตัดสต็อกไปแล้ว เมื่อลบระบบจะทำการ **บวกยอดสินค้าคืนเข้าคลัง** ให้โดยอัตโนมัติค่ะ
+                    เนื่องจากรายการนี้เบิกไปแล้ว เมื่อลบระบบจะทำการ **บวกยอดสินค้าคืนเข้าคลัง** ให้โดยอัตโนมัติค่ะ
                   </AlertDescription>
                 </Alert>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleConfirmDelete} 
-              disabled={isDeleting}
+              disabled={isActionLoading}
               className="bg-destructive hover:bg-destructive/90"
             >
-              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-              ยืนยันการลบ
+              {isActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "ยืนยันลบถาวร"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Dialog */}
+      <AlertDialog open={!!docToCancel} onOpenChange={(o) => !o && setDocToCancel(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <XCircle className="h-5 w-5 text-orange-600" />
+              ยืนยันการยกเลิกรายการเบิก?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>ต้องการยกเลิกใบเบิกเลขที่ <span className="font-bold">{docToCancel?.docNo}</span> ใช่หรือไม่? เอกสารจะยังคงอยู่ในประวัติแต่สถานะจะเปลี่ยนเป็นยกเลิก</p>
+              {docToCancel?.status === 'ISSUED' && (
+                <Alert variant="secondary" className="bg-orange-50 border-orange-200 text-orange-800">
+                  <RotateCcw className="h-4 w-4 text-orange-600" />
+                  <AlertTitle className="text-xs font-bold">ผลของการยกเลิก</AlertTitle>
+                  <AlertDescription className="text-[10px] space-y-1">
+                    <p>• ระบบจะ **คืนยอดสินค้าเข้าคลัง** ให้โดยอัตโนมัติ</p>
+                    <p>• ระบบจะ **ยกเลิกการผูกบิล** ออกจากใบงานซ่อมเพื่อให้เบิกใหม่ได้</p>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isActionLoading}>ปิด</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmCancel} 
+              disabled={isActionLoading}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {isActionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "ยืนยันยกเลิก"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
