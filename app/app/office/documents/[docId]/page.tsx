@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -64,6 +65,7 @@ function DocumentView({
         BILLING_NOTE: "ใบวางบิล / Billing Note",
         CREDIT_NOTE: "ใบลดหนี้ / Credit Note",
         WITHHOLDING_TAX: "หนังสือรับรองหัก ณ ที่จ่าย",
+        WITHDRAWAL: "ใบเบิกอะไหล่ / Part Withdrawal",
     };
     
     let finalDocTitle = docTypeDisplay[document.docType] || document.docType;
@@ -81,6 +83,7 @@ function DocumentView({
 
     const isTaxDoc = ['TAX_INVOICE', 'RECEIPT', 'BILLING_NOTE', 'CREDIT_NOTE', 'WITHHOLDING_TAX'].includes(document.docType);
     const isBilling = document.docType === 'BILLING_NOTE';
+    const isWithdrawal = document.docType === 'WITHDRAWAL';
     
     const displayCustomerName = customer.useTax 
         ? (customer.taxName || customer.name) 
@@ -110,8 +113,8 @@ function DocumentView({
     const isQuotation = document.docType === 'QUOTATION';
     const isReceipt = document.docType === 'RECEIPT';
     
-    const labelSender = isQuotation ? 'ผู้เสนอราคา' : (isBilling ? 'ผู้วางบิล' : (isReceipt ? 'ผู้รับเงิน' : 'ผู้ส่งสินค้า'));
-    const labelReceiver = isQuotation ? 'ลูกค้า / ผู้รับข้อเสนอ' : (isBilling ? 'ผู้รับวางบิล' : (isReceipt ? 'ลูกค้า / ผู้จ่ายเงิน' : 'ผู้รับสินค้า'));
+    const labelSender = isQuotation ? 'ผู้เสนอราคา' : (isBilling ? 'ผู้วางบิล' : (isReceipt ? 'ผู้รับเงิน' : (isWithdrawal ? 'ผู้จ่ายอะไหล่' : 'ผู้ส่งสินค้า')));
+    const labelReceiver = isQuotation ? 'ลูกค้า / ผู้รับข้อเสนอ' : (isBilling ? 'ผู้รับวางบิล' : (isReceipt ? 'ลูกค้า / ผู้จ่ายเงิน' : (isWithdrawal ? 'ผู้รับอะไหล่' : 'ผู้รับสินค้า')));
 
     return (
         <div className="printable-document border bg-white shadow-sm w-[210mm] mx-auto text-black print:shadow-none print:border-none print:m-0 print:w-full box-border flex flex-col">
@@ -220,9 +223,9 @@ function DocumentView({
                 </div>
             </div>
 
-            {isReceipt && (
+            {(isReceipt || isWithdrawal) && (
                 <div className="text-center text-[10px] text-muted-foreground border-t pt-2 mt-4 italic">
-                    "เอกสารฉบับนี้จะสมบูรณ์เมื่อได้รับเงินครบถ้วนแล้วเท่านั้น"
+                    {isReceipt ? "\"เอกสารฉบับนี้จะสมบูรณ์เมื่อได้รับเงินครบถ้วนแล้วเท่านั้น\"" : "\"ใช้สำหรับการเบิกอะไหล่ภายในคลังสินค้า Sahadiesel เท่านั้น\""}
                 </div>
             )}
         </div>
@@ -293,6 +296,9 @@ function DocumentPageContent() {
                 break;
             case 'RECEIPT':
                 router.push('/app/management/accounting/documents/receipt');
+                break;
+            case 'WITHDRAWAL':
+                router.push('/app/office/parts/withdraw');
                 break;
             default:
                 router.push('/app/jobs');

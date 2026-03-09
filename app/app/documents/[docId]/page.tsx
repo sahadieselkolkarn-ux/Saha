@@ -35,18 +35,19 @@ function RouterInner() {
           router.replace(`/app/office/documents/tax-invoice/${document.id}${baseParams}`);
           break;
         case 'BILLING_NOTE':
-          // Redirect to the universal viewer for billing notes
           router.replace(`/app/office/documents/${document.id}${baseParams}`);
           break;
         case 'RECEIPT':
-          // FIX: Always redirect to the document viewer first so user can preview/print.
-          // The confirmation UI is now strictly accessed from the Accounting Inbox or specific buttons.
           router.replace(`/app/office/documents/${document.id}${baseParams}`);
           break;
         case 'WITHHOLDING_TAX':
           router.replace(`/app/office/documents/${document.id}${baseParams}`);
           break;
         case 'CREDIT_NOTE':
+          router.replace(`/app/office/documents/${document.id}${baseParams}`);
+          break;
+        case 'WITHDRAWAL':
+          // Redirect to the universal viewer for withdrawals
           router.replace(`/app/office/documents/${document.id}${baseParams}`);
           break;
         default:
