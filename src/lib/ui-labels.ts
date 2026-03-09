@@ -138,6 +138,13 @@ export function docTypeLabel(docType: string | undefined): string {
 export function docStatusLabel(status: string | undefined, docType?: string): string {
     if (!status) return '';
     const s = status.toUpperCase();
+    
+    // จัดการชื่อสถานะพิเศษสำหรับใบเบิกอะไหล่
+    if (docType === 'WITHDRAWAL') {
+        if (s === 'ISSUED') return 'เบิกสินค้าแล้ว';
+        if (s === 'DRAFT') return 'ฉบับร่าง (ยังไม่หักสต็อก)';
+    }
+
     return DOC_STATUS_LABELS[s] || status;
 }
 
