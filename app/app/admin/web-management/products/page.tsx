@@ -359,8 +359,8 @@ export default function WebManagementProductsPage() {
 
       {/* Manage Promotion Dialog */}
       <Dialog open={isManaging} onOpenChange={setIsManaging}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-0">
             <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-orange-500" />
                 ตั้งค่าข้อมูลหน้าเว็บ: {managingPart?.name}
@@ -368,95 +368,98 @@ export default function WebManagementProductsPage() {
             <DialogDescription>จัดการราคา โปรโมชั่น และรายละเอียดสินค้าสำหรับแสดงหน้าเว็บ</DialogDescription>
           </DialogHeader>
           <Form {...manageForm}>
-            <form onSubmit={manageForm.handleSubmit(onManageSubmit)} className="space-y-6 py-4">
-              
-              <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl border border-primary/10">
-                <div className="space-y-0.5">
-                  <Label className="text-sm font-bold text-primary">เป็นสินค้าราคาพิเศษ</Label>
-                  <p className="text-[10px] text-muted-foreground">แสดงราคาปกติขีดฆ่าคู่กับราคาพิเศษ</p>
-                </div>
-                <FormField control={manageForm.control} name="isSpecialPrice" render={({ field }) => (
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                )} />
-              </div>
+            <form onSubmit={manageForm.handleSubmit(onManageSubmit)} className="flex flex-col flex-1 overflow-hidden">
+              <ScrollArea className="flex-1 px-6">
+                <div className="space-y-6 py-4 pb-8">
+                  <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl border border-primary/10">
+                    <div className="space-y-0.5">
+                      <Label className="text-sm font-bold text-primary">เป็นสินค้าราคาพิเศษ</Label>
+                      <p className="text-[10px] text-muted-foreground">แสดงราคาปกติขีดฆ่าคู่กับราคาพิเศษ</p>
+                    </div>
+                    <FormField control={manageForm.control} name="isSpecialPrice" render={({ field }) => (
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    )} />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                {watchedIsSpecial ? (
-                  <>
-                    <FormField control={manageForm.control} name="webPriceOld" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-muted-foreground">ราคาปกติ (ขีดฆ่า)</FormLabel>
-                        <FormControl><Input type="number" step="0.01" className="bg-muted/50 line-through text-muted-foreground" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={manageForm.control} name="webPrice" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-primary font-bold">ราคาพิเศษหน้าเว็บ</FormLabel>
-                        <FormControl><Input type="number" step="0.01" className="text-lg font-black border-primary/50 text-primary" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </>
-                ) : (
-                  <FormField control={manageForm.control} name="webPrice" render={({ field }) => (
-                    <FormItem className="col-span-2">
-                      <FormLabel className="font-bold">ราคาหน้าเว็บ</FormLabel>
-                      <FormControl><Input type="number" step="0.01" className="text-lg font-bold" {...field} /></FormControl>
-                      <FormDescription className="text-[10px]">ระบุราคาที่จะแสดงบนหน้าเว็บ (ปกติจะดึงจากราคาขายในสต็อก)</FormDescription>
+                  <div className="grid grid-cols-2 gap-4">
+                    {watchedIsSpecial ? (
+                      <>
+                        <FormField control={manageForm.control} name="webPriceOld" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-muted-foreground">ราคาปกติ (ขีดฆ่า)</FormLabel>
+                            <FormControl><Input type="number" step="0.01" className="bg-muted/50 line-through text-muted-foreground" {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                        <FormField control={manageForm.control} name="webPrice" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-primary font-bold">ราคาพิเศษหน้าเว็บ</FormLabel>
+                            <FormControl><Input type="number" step="0.01" className="text-lg font-black border-primary/50 text-primary" {...field} /></FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                      </>
+                    ) : (
+                      <FormField control={manageForm.control} name="webPrice" render={({ field }) => (
+                        <FormItem className="col-span-2">
+                          <FormLabel className="font-bold">ราคาหน้าเว็บ</FormLabel>
+                          <FormControl><Input type="number" step="0.01" className="text-lg font-bold" {...field} /></FormControl>
+                          <FormDescription className="text-[10px]">ระบุราคาที่จะแสดงบนหน้าเว็บ (ปกติจะดึงจากราคาขายในสต็อก)</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  <FormField control={manageForm.control} name="webDetails" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 font-bold"><FileText className="h-4 w-4 text-blue-600"/> รายละเอียดสินค้า (สำหรับลูกค้าอ่าน)</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="ระบุคุณสมบัติ จุดเด่น หรือรายละเอียดเทคนิคที่ลูกค้าควรทราบ..." 
+                          className="min-h-[100px] text-sm"
+                          {...field} 
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
-                )}
-              </div>
 
-              <Separator />
+                  <div className="space-y-4">
+                    <Label className="flex items-center gap-2 text-green-600 font-bold"><LayoutGrid className="h-4 w-4"/> ราคาส่ง/ยกลัง (Bulk Price)</Label>
+                    <div className="grid grid-cols-2 gap-4 bg-green-50/50 p-4 rounded-xl border border-green-100">
+                        <FormField control={manageForm.control} name="bulkPriceQty" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-[10px] uppercase">ซื้อกี่ชิ้นขึ้นไป</FormLabel>
+                                <FormControl><Input type="number" {...field} placeholder="0" /></FormControl>
+                            </FormItem>
+                        )} />
+                        <FormField control={manageForm.control} name="bulkPrice" render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="text-[10px] uppercase">ราคาต่อชิ้นที่ลด</FormLabel>
+                                <FormControl><Input type="number" step="0.01" {...field} placeholder="0" /></FormControl>
+                            </FormItem>
+                        )} />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground italic">* ระบุเป็น 0 หากไม่ต้องการใช้ราคาส่ง</p>
+                  </div>
 
-              <FormField control={manageForm.control} name="webDetails" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2 font-bold"><FileText className="h-4 w-4 text-blue-600"/> รายละเอียดสินค้า (สำหรับลูกค้าอ่าน)</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder="ระบุคุณสมบัติ จุดเด่น หรือรายละเอียดเทคนิคที่ลูกค้าควรทราบ..." 
-                      className="min-h-[100px] text-sm"
-                      {...field} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-
-              <div className="space-y-4">
-                <Label className="flex items-center gap-2 text-green-600 font-bold"><LayoutGrid className="h-4 w-4"/> ราคาส่ง/ยกลัง (Bulk Price)</Label>
-                <div className="grid grid-cols-2 gap-4 bg-green-50/50 p-4 rounded-xl border border-green-100">
-                    <FormField control={manageForm.control} name="bulkPriceQty" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel className="text-[10px] uppercase">ซื้อกี่ชิ้นขึ้นไป</FormLabel>
-                            <FormControl><Input type="number" {...field} placeholder="0" /></FormControl>
-                        </FormItem>
-                    )} />
-                    <FormField control={manageForm.control} name="bulkPrice" render={({ field }) => (
-                        <FormItem>
-                            <FormLabel className="text-[10px] uppercase">ราคาต่อชิ้นที่ลด</FormLabel>
-                            <FormControl><Input type="number" step="0.01" {...field} placeholder="0" /></FormControl>
-                        </FormItem>
-                    )} />
+                  <FormField control={manageForm.control} name="webPromoNote" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2 text-orange-600 font-bold"><Gift className="h-4 w-4"/> ข้อความโปรโมชั่น/ของแถม (ตัวหนา)</FormLabel>
+                      <FormControl><Input placeholder="เช่น ซื้อ 1 แถม 1, ฟรีค่าแรงขัน, ของแถมจำนวนจำกัด" {...field} /></FormControl>
+                      <FormDescription className="text-[10px]">ข้อความนี้จะปรากฏเป็นไฮไลท์สีส้มบนหน้าเว็บ</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
                 </div>
-                <p className="text-[10px] text-muted-foreground italic">* ระบุเป็น 0 หากไม่ต้องการใช้ราคาส่ง</p>
-              </div>
+              </ScrollArea>
 
-              <FormField control={manageForm.control} name="webPromoNote" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-2 text-orange-600 font-bold"><Gift className="h-4 w-4"/> ข้อความโปรโมชั่น/ของแถม (ตัวหนา)</FormLabel>
-                  <FormControl><Input placeholder="เช่น ซื้อ 1 แถม 1, ฟรีค่าแรงขัน, ของแถมจำนวนจำกัด" {...field} /></FormControl>
-                  <FormDescription className="text-[10px]">ข้อความนี้จะปรากฏเป็นไฮไลท์สีส้มบนหน้าเว็บ</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )} />
-
-              <DialogFooter className="pt-2">
+              <DialogFooter className="p-6 pt-4 border-t bg-muted/10 shrink-0">
                 <Button variant="outline" type="button" onClick={() => setIsManaging(false)}>ยกเลิก</Button>
                 <Button type="submit">บันทึกข้อมูลหน้าเว็บ</Button>
               </DialogFooter>
