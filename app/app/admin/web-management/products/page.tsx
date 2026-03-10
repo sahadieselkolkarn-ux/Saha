@@ -20,7 +20,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Search, Package, Globe, PlusCircle, Settings, Trash2, Box, Info, Sparkles, Gift, LayoutGrid, ExternalLink, AlertCircle } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Search, Package, Globe, PlusCircle, Settings, Trash2, Box, Info, Sparkles, Gift, LayoutGrid, ExternalLink, AlertCircle, FileText } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Part } from "@/lib/types";
 import type { WithId } from "@/firebase";
@@ -30,8 +32,11 @@ import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { onSnapshot } from "firebase/firestore";
 
 const manageWebSchema = z.object({
+  isSpecialPrice: z.boolean().default(false),
   webPrice: z.coerce.number().min(0, "ห้ามติดลบ"),
+  webPriceOld: z.coerce.number().min(0, "ห้ามติดลบ").optional(),
   webPromoNote: z.string().optional().default(""),
+  webDetails: z.string().optional().default(""),
   bulkPriceQty: z.coerce.number().min(0, "ห้ามติดลบ"),
   bulkPrice: z.coerce.number().min(0, "ห้ามติดลบ"),
 });
@@ -55,24 +60,31 @@ export default function WebManagementProductsPage() {
 
   const manageForm = useForm<z.infer<typeof manageWebSchema>>({
     resolver: zodResolver(manageWebSchema),
-    defaultValues: { webPrice: 0, webPromoNote: "", bulkPriceQty: 0, bulkPrice: 0 }
+    defaultValues: { 
+      isSpecialPrice: false,
+      webPrice: 0, 
+      webPriceOld: 0,
+      webPromoNote: "", 
+      webDetails: "",
+      bulkPriceQty: 0, 
+      bulkPrice: 0 
+    }
   });
 
-  // 1. Fetch Web Parts (Real-time) - Simplified query to avoid index crash
+  const watchedIsSpecial = manageForm.watch("isSpecialPrice");
+
+  // 1. Fetch Web Parts (Real-time)
   useEffect(() => {
     if (!db) return;
     
     setLoading(true);
     setIndexErrorUrl(null);
 
-    // FIX: Remove orderBy on Firestore side to avoid missing index errors during prototype
-    // We will sort client-side instead.
     const q = query(collection(db, "parts"), where("showOnWeb", "==", true));
 
     const unsubscribe = onSnapshot(q, {
       next: (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as WithId<Part>));
-        // Client-side sort
         data.sort((a, b) => a.name.localeCompare(b.name, 'th'));
         setWebParts(data);
         setLoading(false);
@@ -129,8 +141,11 @@ export default function WebManagementProductsPage() {
   const handleOpenManage = (part: WithId<Part>) => {
     setManagingPart(part);
     manageForm.reset({
+      isSpecialPrice: part.isSpecialPrice || false,
       webPrice: part.webPrice || part.sellingPrice,
+      webPriceOld: part.webPriceOld || part.sellingPrice,
       webPromoNote: part.webPromoNote || "",
+      webDetails: part.webDetails || "",
       bulkPriceQty: part.bulkPriceQty || 0,
       bulkPrice: part.bulkPrice || 0,
     });
@@ -145,7 +160,7 @@ export default function WebManagementProductsPage() {
         ...values,
         updatedAt: serverTimestamp()
       }));
-      toast({ title: "บันทึกโปรโมชั่นสำเร็จ" });
+      toast({ title: "บันทึกข้อมูลสำเร็จ" });
       setManagingPart(null);
     } catch (e: any) {
       toast({ variant: "destructive", title: "ล้มเหลว", description: e.message });
@@ -219,7 +234,6 @@ export default function WebManagementProductsPage() {
                 <TableRow>
                   <TableHead className="w-16 text-center">รูป</TableHead>
                   <TableHead>สินค้าและสต๊อก</TableHead>
-                  <TableHead className="text-right">ราคาปกติ</TableHead>
                   <TableHead className="text-right">ราคาหน้าเว็บ</TableHead>
                   <TableHead>โปรโมชั่น / ของแถม</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
@@ -227,7 +241,7 @@ export default function WebManagementProductsPage() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={6} className="h-32 text-center"><Loader2 className="animate-spin mx-auto text-primary" /></TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center"><Loader2 className="animate-spin mx-auto text-primary" /></TableCell></TableRow>
                 ) : filteredWebParts.length > 0 ? (
                   filteredWebParts.map(part => (
                     <TableRow key={part.id} className="group hover:bg-muted/30">
@@ -249,20 +263,32 @@ export default function WebManagementProductsPage() {
                           </Badge>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground line-through text-xs">฿{part.sellingPrice.toLocaleString()}</TableCell>
                       <TableCell className="text-right">
-                        <div className="font-black text-primary">฿{(part.webPrice || part.sellingPrice).toLocaleString()}</div>
+                        {part.isSpecialPrice ? (
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] text-muted-foreground line-through">฿{(part.webPriceOld || part.sellingPrice).toLocaleString()}</span>
+                            <span className="font-black text-primary">฿{part.webPrice?.toLocaleString()}</span>
+                          </div>
+                        ) : (
+                          <span className="font-black text-slate-700">฿{(part.webPrice || part.sellingPrice).toLocaleString()}</span>
+                        )}
                         {part.bulkPrice > 0 && (
                             <div className="text-[9px] text-green-600 font-bold leading-tight">({part.bulkPriceQty}+ ชิ้น: ฿{part.bulkPrice.toLocaleString()})</div>
                         )}
                       </TableCell>
                       <TableCell>
-                        {part.webPromoNote ? (
-                            <div className="flex items-center gap-1.5 text-xs text-orange-600 font-medium">
-                                <Gift className="h-3 w-3" />
-                                {part.webPromoNote}
-                            </div>
-                        ) : <span className="text-muted-foreground/40 text-xs italic">ไม่มี</span>}
+                        <div className="space-y-1">
+                          {part.webPromoNote && (
+                              <div className="flex items-center gap-1.5 text-[10px] text-orange-600 font-bold uppercase">
+                                  <Gift className="h-3 w-3" />
+                                  {part.webPromoNote}
+                              </div>
+                          )}
+                          {part.webDetails && (
+                            <p className="text-[10px] text-muted-foreground line-clamp-1 italic">{part.webDetails}</p>
+                          )}
+                          {!part.webPromoNote && !part.webDetails && <span className="text-muted-foreground/40 text-xs italic">ไม่มีข้อมูล</span>}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -277,7 +303,7 @@ export default function WebManagementProductsPage() {
                     </TableRow>
                   ))
                 ) : (
-                  <TableRow><TableCell colSpan={6} className="h-48 text-center text-muted-foreground italic">
+                  <TableRow><TableCell colSpan={5} className="h-48 text-center text-muted-foreground italic">
                     <div className="flex flex-col items-center gap-2">
                         <LayoutGrid className="h-10 w-10 opacity-10" />
                         <p>ยังไม่มีสินค้าบนหน้าเว็บค่ะ<br/>กดปุ่มด้านบนเพื่อเลือกสินค้าจากคลังมาแสดงผลที่นี่</p>
@@ -333,31 +359,74 @@ export default function WebManagementProductsPage() {
 
       {/* Manage Promotion Dialog */}
       <Dialog open={isManaging} onOpenChange={setIsManaging}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-orange-500" />
-                ตั้งค่าโปรโมชั่น: {managingPart?.name}
+                ตั้งค่าข้อมูลหน้าเว็บ: {managingPart?.name}
             </DialogTitle>
-            <DialogDescription>จัดการราคาพิเศษและเงื่อนไขการแถมสำหรับแสดงหน้าเว็บ</DialogDescription>
+            <DialogDescription>จัดการราคา โปรโมชั่น และรายละเอียดสินค้าสำหรับแสดงหน้าเว็บ</DialogDescription>
           </DialogHeader>
           <Form {...manageForm}>
             <form onSubmit={manageForm.handleSubmit(onManageSubmit)} className="space-y-6 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-muted/30 rounded-lg border border-dashed flex flex-col items-center justify-center">
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold">ราคาขายปกติ</p>
-                    <p className="text-lg font-black text-muted-foreground line-through">฿{managingPart?.sellingPrice.toLocaleString()}</p>
+              
+              <div className="flex items-center justify-between p-4 bg-primary/5 rounded-xl border border-primary/10">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-bold text-primary">เป็นสินค้าราคาพิเศษ</Label>
+                  <p className="text-[10px] text-muted-foreground">แสดงราคาปกติขีดฆ่าคู่กับราคาพิเศษ</p>
                 </div>
-                <FormField control={manageForm.control} name="webPrice" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-primary font-bold">ราคาพิเศษหน้าเว็บ</FormLabel>
-                    <FormControl><Input type="number" step="0.01" className="text-lg font-black border-primary/50 text-primary" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
+                <FormField control={manageForm.control} name="isSpecialPrice" render={({ field }) => (
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
                 )} />
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                {watchedIsSpecial ? (
+                  <>
+                    <FormField control={manageForm.control} name="webPriceOld" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-muted-foreground">ราคาปกติ (ขีดฆ่า)</FormLabel>
+                        <FormControl><Input type="number" step="0.01" className="bg-muted/50 line-through text-muted-foreground" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={manageForm.control} name="webPrice" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-primary font-bold">ราคาพิเศษหน้าเว็บ</FormLabel>
+                        <FormControl><Input type="number" step="0.01" className="text-lg font-black border-primary/50 text-primary" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </>
+                ) : (
+                  <FormField control={manageForm.control} name="webPrice" render={({ field }) => (
+                    <FormItem className="col-span-2">
+                      <FormLabel className="font-bold">ราคาหน้าเว็บ</FormLabel>
+                      <FormControl><Input type="number" step="0.01" className="text-lg font-bold" {...field} /></FormControl>
+                      <FormDescription className="text-[10px]">ระบุราคาที่จะแสดงบนหน้าเว็บ (ปกติจะดึงจากราคาขายในสต็อก)</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
+              </div>
+
               <Separator />
+
+              <FormField control={manageForm.control} name="webDetails" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2 font-bold"><FileText className="h-4 w-4 text-blue-600"/> รายละเอียดสินค้า (สำหรับลูกค้าอ่าน)</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="ระบุคุณสมบัติ จุดเด่น หรือรายละเอียดเทคนิคที่ลูกค้าควรทราบ..." 
+                      className="min-h-[100px] text-sm"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
 
               <div className="space-y-4">
                 <Label className="flex items-center gap-2 text-green-600 font-bold"><LayoutGrid className="h-4 w-4"/> ราคาส่ง/ยกลัง (Bulk Price)</Label>
@@ -380,7 +449,7 @@ export default function WebManagementProductsPage() {
 
               <FormField control={manageForm.control} name="webPromoNote" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-2 text-orange-600 font-bold"><Gift className="h-4 w-4"/> รายละเอียดของแถม / ข้อความโปรโมชั่น</FormLabel>
+                  <FormLabel className="flex items-center gap-2 text-orange-600 font-bold"><Gift className="h-4 w-4"/> ข้อความโปรโมชั่น/ของแถม (ตัวหนา)</FormLabel>
                   <FormControl><Input placeholder="เช่น ซื้อ 1 แถม 1, ฟรีค่าแรงขัน, ของแถมจำนวนจำกัด" {...field} /></FormControl>
                   <FormDescription className="text-[10px]">ข้อความนี้จะปรากฏเป็นไฮไลท์สีส้มบนหน้าเว็บ</FormDescription>
                   <FormMessage />
