@@ -17,7 +17,7 @@ import { Loader2, Save, ChevronsUpDown, AlertCircle, Info, Send, Trash2, XCircle
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { ScrollArea } from "./ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -150,14 +150,14 @@ export function ReceiptForm() {
   const handleToggleDoc = (docId: string) => {
     const currentIds = form.getValues('sourceDocIds');
     if (currentIds.includes(docId)) {
-      form.setValue('sourceDocIds', currentIds.filter(id => id !== docId), { shouldValidate: true });
+      form.setValue('sourceDocIds', currentIds.filter(id => id !== id), { shouldValidate: true });
     } else {
       form.setValue('sourceDocIds', [...currentIds, docId], { shouldValidate: true });
     }
   };
 
-  const handleProcessSubmission = async (data: ReceiptFormData, status: 'DRAFT' | 'PENDING_REVIEW') => {
-    if (isSubmitting) return; // ล็อคป้องกันการส่งซ้ำ
+  const handleProcessSubmission = async (data: ReceiptFormData) => {
+    if (isSubmitting) return;
     
     const customer = customers.find(c => c.id === data.customerId);
     const selectedDocs = sourceDocs.filter(d => data.sourceDocIds.includes(d.id));
@@ -204,15 +204,22 @@ export function ReceiptForm() {
       if (editDocId) {
           await updateDoc(doc(db, 'documents', editDocId), sanitizeForFirestore({
               ...docData,
-              status,
+              status: 'ISSUED',
+              receiptStatus: 'ISSUED_NOT_CONFIRMED',
               updatedAt: serverTimestamp(),
           }));
           finalDocId = editDocId;
           finalDocNo = docToEdit?.docNo || "";
       } else {
-          const result = await createDocument(db, 'RECEIPT', docData, profile, undefined, { initialStatus: status });
+          // Direct to ISSUED status for accountants
+          const result = await createDocument(db, 'RECEIPT', docData, profile, undefined, { initialStatus: 'ISSUED' });
           finalDocId = result.docId;
           finalDocNo = result.docNo;
+          
+          await updateDoc(doc(db, 'documents', finalDocId), {
+              receiptStatus: 'ISSUED_NOT_CONFIRMED',
+              updatedAt: serverTimestamp()
+          });
       }
 
       const batch = writeBatch(db);
@@ -239,13 +246,8 @@ export function ReceiptForm() {
       });
       await batch.commit();
 
-      toast({ title: status === 'DRAFT' ? "บันทึกร่างสำเร็จ" : "ส่งตรวจสอบสำเร็จ", description: `เลขที่ใบเสร็จ: ${finalDocNo}` });
-      
-      if (status === 'DRAFT') {
-          router.push(`/app/office/documents/${finalDocId}`);
-      } else {
-          router.push(`/app/management/accounting/inbox`);
-      }
+      toast({ title: "ออกใบเสร็จรับเงินสำเร็จ", description: `เลขที่ใบเสร็จ: ${finalDocNo}` });
+      router.push(`/app/management/accounting/inbox`);
     } catch (error: any) {
       toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: error.message });
       setIsSubmitting(false);
@@ -271,21 +273,12 @@ export function ReceiptForm() {
             </h2>
             <div className="flex gap-2 w-full sm:w-auto">
                 <Button 
-                    variant="secondary" 
-                    className="flex-1 sm:flex-none"
+                    className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 font-bold"
                     disabled={isSubmitting || watchedSourceDocIds.length === 0}
-                    onClick={form.handleSubmit(d => handleProcessSubmission(d, 'DRAFT'))}
+                    onClick={form.handleSubmit(d => handleProcessSubmission(d))}
                 >
                     {isSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-                    บันทึกฉบับร่าง
-                </Button>
-                <Button 
-                    className="flex-1 sm:flex-none"
-                    disabled={isSubmitting || watchedSourceDocIds.length === 0}
-                    onClick={form.handleSubmit(d => handleProcessSubmission(d, 'PENDING_REVIEW'))}
-                >
-                    {isSubmitting ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Send className="mr-2 h-4 w-4" />}
-                    บันทึกและส่งตรวจสอบ
+                    บันทึกและออกใบเสร็จ
                 </Button>
             </div>
         </div>

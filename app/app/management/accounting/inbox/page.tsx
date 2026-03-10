@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit, deleteField, addDoc, getDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit, deleteField, addDoc, getDoc, writeBatch, deleteDoc } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from 'next/navigation';
@@ -20,8 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw, Save, Wallet, PlusCircle, CheckCircle2, Send } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Loader2, Search, CheckCircle, Ban, HandCoins, MoreHorizontal, Eye, AlertCircle, ExternalLink, Calendar, Info, RefreshCw, Save, Wallet, PlusCircle, CheckCircle2, Send, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { WithId } from "@/firebase";
 import type { Document as DocumentType, AccountingAccount } from "@/lib/types";
 import { safeFormat } from "@/lib/date-utils";
@@ -68,9 +68,11 @@ function AccountingInboxPageContent() {
   const [suggestedPayments, setSuggestedPayments] = useState<{accountId: string, amount: number}[]>([]);
   const [arDocToConfirm, setArDocToConfirm] = useState<WithId<DocumentType> | null>(null);
 
+  const isUserAdmin = profile?.role === 'ADMIN' || profile?.role === 'MANAGER';
+
   const hasPermission = useMemo(() => {
     if (!profile) return false;
-    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE';
+    return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE' || profile.department === 'ACCOUNTING_HR';
   }, [profile]);
 
   useEffect(() => {
@@ -81,7 +83,7 @@ function AccountingInboxPageContent() {
 
     const docsQuery = query(
       collection(db, "documents"), 
-      where("status", "in", ["PENDING_REVIEW", "APPROVED"]),
+      where("status", "in", ["PENDING_REVIEW", "APPROVED", "ISSUED", "UNPAID", "PARTIAL"]),
       limit(200)
     );
 
@@ -91,7 +93,7 @@ function AccountingInboxPageContent() {
         const needingReview = all.filter(d => {
             if (d.docType === 'DELIVERY_NOTE') return d.status === 'PENDING_REVIEW' || d.status === 'APPROVED';
             if (d.docType === 'TAX_INVOICE') return d.status === 'PENDING_REVIEW';
-            if (d.docType === 'RECEIPT') return true;
+            if (d.docType === 'RECEIPT') return d.status !== 'CANCELLED' && d.receiptStatus !== 'CONFIRMED';
             return false;
         });
         setDocuments(needingReview); 
@@ -231,7 +233,6 @@ function AccountingInboxPageContent() {
 
     try {
       await runTransaction(db, async (transaction) => {
-        // --- STEP 1: READS ---
         const docRef = doc(db, 'documents', confirmingDoc.id);
         const docSnap = await transaction.get(docRef);
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
@@ -242,7 +243,6 @@ function AccountingInboxPageContent() {
             jobSnap = await transaction.get(jobRef);
         }
 
-        // --- STEP 2: VALIDATION ---
         if (confirmingDoc.docType === 'TAX_INVOICE' && docSnap.data().status === 'APPROVED') {
           throw new Error("ใบกำกับภาษีนี้ตรวจสอบแล้ว รอออกใบเสร็จค่ะ");
         }
@@ -256,7 +256,6 @@ function AccountingInboxPageContent() {
             return { ...p, method: acc?.type === 'CASH' ? 'CASH' : 'TRANSFER' };
         });
 
-        // --- STEP 3: WRITES ---
         if (isDeliveryNote) {
             const entryId = `AUTO_CASH_${confirmingDoc.id}`;
             const entryRef = doc(db, 'accountingEntries', entryId);
@@ -415,7 +414,6 @@ function AccountingInboxPageContent() {
 
     try {
       await runTransaction(db, async (transaction) => {
-        // --- STEP 1: READS (Critical for Transactions & Security Rules) ---
         const docSnap = await transaction.get(docRef);
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
 
@@ -425,7 +423,6 @@ function AccountingInboxPageContent() {
             jobSnap = await transaction.get(jobRef);
         }
 
-        // --- STEP 2: WRITES ---
         transaction.set(arRef, sanitizeForFirestore({
           id: arId,
           type: 'AR', 
@@ -477,6 +474,38 @@ function AccountingInboxPageContent() {
       errorEmitter.emit('permission-error', new FirestorePermissionError({ path: docRef.path, operation: 'write' }));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteReceipt = async (receipt: WithId<DocumentType>) => {
+    if (!db || !profile || !isUserAdmin) return;
+    if (!confirm(`ยืนยันการลบใบเสร็จเลขที่ ${receipt.docNo} ใช่หรือไม่? ระบบจะล้างการผูกบิลเพื่อให้สามารถออกใบเสร็จใหม่ได้ค่ะ`)) return;
+    
+    setIsSubmitting(true);
+    try {
+        const batch = writeBatch(db);
+        
+        // 1. Clean up references in source documents (bills/billing notes)
+        if (receipt.referencesDocIds && receipt.referencesDocIds.length > 0) {
+            for (const docId of receipt.referencesDocIds) {
+                batch.update(doc(db, 'documents', docId), {
+                    receiptStatus: deleteField(),
+                    receiptDocId: deleteField(),
+                    receiptDocNo: deleteField(),
+                    updatedAt: serverTimestamp()
+                });
+            }
+        }
+        
+        // 2. Delete the receipt document
+        batch.delete(doc(db, 'documents', receipt.id));
+        
+        await batch.commit();
+        toast({ title: "ลบใบเสร็จเรียบร้อยแล้ว" });
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "ลบไม่สำเร็จ", description: e.message });
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
@@ -684,13 +713,33 @@ function AccountingInboxPageContent() {
                         <TableCell>{docItem.customerSnapshot?.name || '--'}</TableCell>
                         <TableCell>
                             <div className="font-medium">{docItem.docNo}</div>
-                            <div className="text-xs text-muted-foreground">อ้างอิง: {docItem.referencesDocIds?.[0] || '-'}</div>
+                            <div className="text-xs text-muted-foreground">อ้างอิง: {docItem.referencesDocIds?.join(', ') || '-'}</div>
                         </TableCell>
                         <TableCell className="font-bold text-green-600">{formatCurrency(docItem.grandTotal)}</TableCell>
                         <TableCell className="text-right">
-                            <Button variant="outline" size="sm" onClick={() => router.push(`/app/management/accounting/documents/receipt/${docItem.id}/confirm`)}>
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-600"/> ยืนยันรับเงินจริง
-                            </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem asChild>
+                                        <Link href={`/app/office/documents/${docItem.id}`}>
+                                            <Eye className="mr-2 h-4 w-4" /> ดูเอกสาร
+                                        </Link>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => router.push(`/app/management/accounting/documents/receipt/${docItem.id}/confirm`)} className="text-green-600 focus:text-green-600 font-bold">
+                                        <CheckCircle2 className="mr-2 h-4 w-4" /> ยืนยันรับเงินจริง
+                                    </DropdownMenuItem>
+                                    {isUserAdmin && (
+                                        <>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuItem onClick={() => handleDeleteReceipt(docItem)} className="text-destructive focus:text-destructive">
+                                                <Trash2 className="mr-2 h-4 w-4" /> ลบใบเสร็จ
+                                            </DropdownMenuItem>
+                                        </>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </TableCell>
                         </TableRow>
                     ))}
