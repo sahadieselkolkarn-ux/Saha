@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense } from "react";
@@ -52,6 +53,7 @@ function DeliveryNoteDetailPageContent() {
     const handleBack = () => {
         const from = searchParams.get('from');
         const tab = searchParams.get('tab');
+        
         if (from === 'inbox') {
             router.push(`/app/management/accounting/inbox?tab=${tab || 'receive'}`);
             return;

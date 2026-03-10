@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -279,6 +280,7 @@ function DocumentPageContent() {
         const tab = searchParams.get('tab');
         
         if (from === 'inbox') {
+            // Force redirection back to Inbox with correct tab
             router.push(`/app/management/accounting/inbox?tab=${tab || 'receive'}`);
             return;
         }
