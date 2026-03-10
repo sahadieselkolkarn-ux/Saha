@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -51,7 +50,6 @@ interface CartItem extends Part {
   quantity: number;
 }
 
-// Placeholder Card component for when products are missing
 function PlaceholderCard() {
   return (
     <Card className="border-none bg-white/5 backdrop-blur-md overflow-hidden flex flex-col h-full animate-pulse border border-white/10">
@@ -83,7 +81,6 @@ export default function PublicProductsPage() {
   
   const [viewingPart, setViewingPart] = useState<Part | null>(null);
 
-  // Background image
   const bgImage = PlaceHolderImages.find(img => img.id === "login-bg") || PlaceHolderImages[0];
 
   useEffect(() => {
@@ -135,15 +132,21 @@ export default function PublicProductsPage() {
   }, [parts, activeCategory, searchTerm]);
 
   const addToCart = (part: Part) => {
+    const existing = cart.find(item => item.id === part.id);
+    
     setCart(prev => {
-      const existing = prev.find(item => item.id === part.id);
-      if (existing) {
-        toast({ title: "เพิ่มจำนวนสินค้าแล้ว" });
+      const existingInPrev = prev.find(item => item.id === part.id);
+      if (existingInPrev) {
         return prev.map(item => item.id === part.id ? { ...item, quantity: item.quantity + 1 } : item);
       }
-      toast({ title: "เพิ่มลงตะกร้าแล้ว", description: part.name });
       return [...prev, { ...part, quantity: 1 }];
     });
+
+    if (existing) {
+      toast({ title: "เพิ่มจำนวนสินค้าแล้ว" });
+    } else {
+      toast({ title: "เพิ่มลงตะกร้าแล้ว", description: part.name });
+    }
   };
 
   const updateQuantity = (partId: string, delta: number) => {
@@ -167,7 +170,6 @@ export default function PublicProductsPage() {
     <div className="flex min-h-screen flex-col bg-slate-900">
       <PublicHeader />
 
-      {/* Shared Background from Landing/Auth */}
       <div className="fixed inset-0 z-0">
         <Image
           src={bgImage.imageUrl}
@@ -298,7 +300,6 @@ export default function PublicProductsPage() {
                           {part.webPromoNote && <Badge className="bg-orange-500 border-none font-bold text-[9px] px-1.5"><Sparkles className="h-2.5 w-2.5 mr-1" />PROMO</Badge>}
                         </div>
                         
-                        {/* Details Overlay on Hover */}
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <Button variant="secondary" size="sm" className="rounded-full font-bold text-xs gap-2">
                                 <Info className="h-3 w-3" /> รายละเอียด
@@ -350,7 +351,6 @@ export default function PublicProductsPage() {
         </div>
       </main>
 
-      {/* Product Detail Dialog */}
       <Dialog open={!!viewingPart} onOpenChange={(open) => !open && setViewingPart(null)}>
         <DialogContent className="sm:max-w-2xl bg-slate-900 border-white/10 text-white overflow-hidden p-0">
             <div className="grid md:grid-cols-2">
