@@ -47,7 +47,7 @@ function ByStatusContent() {
 
   const activeTab = (searchParams.get("status") as TabValue) || allowedTabs[0] || "quotation";
 
-  // Security Redirect: If user is on a tab they are not allowed to see, redirect them to their primary allowed tab
+  // Security Redirect
   useEffect(() => {
     if (!authLoading && allowedTabs.length > 0 && !allowedTabs.includes(activeTab)) {
       const params = new URLSearchParams(searchParams.toString());
@@ -154,9 +154,9 @@ function ByStatusContent() {
                     {activeTab === 'waiting-approve' && allowedTabs.includes('waiting-approve') && (
                         <JobList 
                             searchTerm={searchTerm}
-                            status="WAITING_APPROVE"
+                            status={["PENDING_CUSTOMER_INFORM", "WAITING_APPROVE"]}
                             emptyTitle="ไม่มีงานที่รอลูกค้าอนุมัติ"
-                            emptyDescription="ไม่มีงานที่อยู่ในสถานะ WAITING_APPROVE ในขณะนี้"
+                            emptyDescription="ไม่มีงานที่อยู่ในสถานะ 'รอแจ้งลูกค้า' หรือ 'รอลูกค้าอนุมัติ' ในขณะนี้"
                         />
                     )}
                 </TabsContent>

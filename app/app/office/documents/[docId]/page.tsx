@@ -1,9 +1,8 @@
-
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { PageHeader } from "@/components/page-header";
@@ -11,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertCircle, ArrowLeft, Printer, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Printer, Loader2, CheckCircle2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { safeFormat } from "@/lib/date-utils";
 import { cn, thaiBahtText } from "@/lib/utils";
-import type { Document, AccountingAccount, Customer } from "@/lib/types";
+import type { Document, AccountingAccount, Customer, Job } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/auth-context";
 
 import {
   AlertDialog,
@@ -238,17 +238,22 @@ function DocumentPageContent() {
     const router = useRouter();
     const { db } = useFirebase();
     const { toast } = useToast();
+    const { profile } = useAuth();
     const searchParams = useSearchParams();
 
     const [isPrintOptionsOpen, setIsPrintOptionsOpen] = useState(false);
     const [printCopies, setPrintCopies] = useState<1 | 2>(1);
     const [accountName, setAccountName] = useState<string>("");
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const customerRef = useMemo(() => (db && document?.customerId ? doc(db, 'customers', document.customerId) : null), [db, document?.customerId]);
     const { data: liveCustomer } = useDoc<Customer>(customerRef);
+
+    const jobRef = useMemo(() => (db && document?.jobId ? doc(db, 'jobs', document.jobId) : null), [db, document?.jobId]);
+    const { data: linkedJob } = useDoc<Job>(jobRef);
 
     const effectiveCustomer = useMemo(() => {
         if (!document) return null;
@@ -320,10 +325,36 @@ function DocumentPageContent() {
         else window.print();
     };
 
+    const handleInformCustomer = async () => {
+        if (!db || !document?.jobId || !profile) return;
+        setIsProcessing(true);
+        try {
+            const jRef = doc(db, 'jobs', document.jobId);
+            await updateDoc(jRef, {
+                status: 'WAITING_APPROVE',
+                lastActivityAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            // Log activity
+            await addDoc(collection(jRef, 'activities'), {
+                text: `แจ้งราคาลูกค้าแล้ว (โดย ${profile.displayName}) - สถานะเปลี่ยนเป็นรออนุมัติ`,
+                userName: profile.displayName,
+                userId: profile.uid,
+                createdAt: serverTimestamp()
+            });
+            toast({ title: "อัปเดตสถานะสำเร็จ", description: "งานซ่อมเปลี่ยนเป็นสถานะ 'รอลูกค้าอนุมัติ' แล้วค่ะ" });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Error", description: e.message });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     if (isLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
     if (error || !document || !effectiveCustomer) return <div className="p-12 text-center space-y-4"><AlertCircle className="mx-auto h-12 w-12 text-destructive"/><h2 className="text-xl font-bold">ไม่พบเอกสาร</h2><Button variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2"/> กลับ</Button></div>;
 
     const showMultiCopy = ['TAX_INVOICE', 'BILLING_NOTE', 'RECEIPT'].includes(document.docType);
+    const showInformButton = document.docType === 'QUOTATION' && linkedJob?.status === 'PENDING_CUSTOMER_INFORM';
 
     return (
         <div className="min-h-screen bg-muted/20 py-8 print:p-0 print:bg-white overflow-x-hidden print:overflow-visible">
@@ -331,6 +362,16 @@ function DocumentPageContent() {
                 <div className="flex flex-wrap justify-between items-center bg-background p-4 rounded-lg border shadow-sm print:hidden mx-4 md:mx-0 gap-4">
                     <Button variant="outline" onClick={handleBack}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
                     <div className="flex flex-wrap gap-2">
+                        {showInformButton && (
+                            <Button 
+                                onClick={handleInformCustomer} 
+                                disabled={isProcessing}
+                                className="bg-pink-600 hover:bg-pink-700 text-white font-bold"
+                            >
+                                {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <CheckCircle2 className="mr-2 h-4 w-4"/>}
+                                แจ้งราคาลูกค้าแล้ว
+                            </Button>
+                        )}
                         <Button onClick={handlePrintRequest}><Printer className="mr-2 h-4 w-4"/> สั่งพิมพ์ (Ctrl+P)</Button>
                     </div>
                 </div>

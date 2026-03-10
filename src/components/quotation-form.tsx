@@ -241,7 +241,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
             toast({ title: "อัปเดตสำเร็จ" });
             router.push(`/app/office/documents/quotation/${editDocId}`);
         } else {
-            const { docId } = await createDocument(db, 'QUOTATION', documentData, profile, data.jobId ? 'WAITING_APPROVE' : undefined);
+            // New flow: set status to PENDING_CUSTOMER_INFORM instead of WAITING_APPROVE
+            const { docId } = await createDocument(db, 'QUOTATION', documentData, profile, data.jobId ? 'PENDING_CUSTOMER_INFORM' : undefined);
             toast({ title: "สร้างใบเสนอราคาสำเร็จ" });
             router.push(`/app/office/documents/quotation/${docId}`);
         }
@@ -273,7 +274,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   };
 
   const onSubmit = async (data: QuotationFormData) => {
-    if (isCancelled || isProcessing) return; // ล็อคป้องกันกดเบิ้ล
+    if (isCancelled || isProcessing) return; 
     if (data.jobId) {
       const ok = await checkUniqueness(data.jobId);
       if (!ok) {

@@ -90,6 +90,7 @@ const getStatusStyles = (status: Job['status']) => {
     case 'RECEIVED': return 'bg-amber-500 text-white border-amber-600 hover:bg-amber-500';
     case 'IN_PROGRESS': return 'bg-cyan-500 text-white border-cyan-600 hover:bg-cyan-500';
     case 'WAITING_QUOTATION': return 'bg-blue-500 text-white border-blue-600 hover:bg-blue-500';
+    case 'PENDING_CUSTOMER_INFORM': return 'bg-pink-500 text-white border-pink-600 hover:bg-pink-500';
     case 'WAITING_APPROVE': return 'bg-orange-500 text-white border-orange-600 hover:bg-orange-500';
     case 'PENDING_PARTS': return 'bg-purple-500 text-white border-purple-600 hover:bg-purple-500';
     case 'IN_REPAIR_PROCESS': return 'bg-indigo-600 text-white border-indigo-700 hover:bg-indigo-600';
@@ -145,7 +146,7 @@ export function JobList({
   const [paymentConfirmDoc, setPaymentConfirmDoc] = useState<DocumentType | null>(null);
   const [isFetchingDoc, setIsFetchingDoc] = useState(false);
   const [accounts, setAccounts] = useState<AccountingAccount[]>([]);
-  const [suggestedPayments, setSuggestedPayments] = useState<{accountId: string, amount: number}[]>([]);
+  const [suggestedPayments, setSuggestedPayments] = useState<{accountId: string, amount: number}[]>([{accountId: '', amount: 0}]);
   const [recordRemainingAsCredit, setRecordRemainingAsCredit] = useState(false);
   const [submitBillingRequired, setSubmitBillingRequired] = useState(false);
   const [submitDueDate, setSubmitDueDate] = useState('');
@@ -413,6 +414,15 @@ export function JobList({
                 <Button asChild className="w-full h-9" variant="secondary"><Link href={`/app/jobs/${job.id}`}>ดูรายละเอียด <ArrowRight className="ml-2 h-4 w-4" /></Link></Button>
                 <div className="w-full flex flex-col gap-2">
                   {canAssignWork && job.status === 'RECEIVED' && (<Button onClick={() => handleOpenAssignQuick(job)} className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-white font-bold"><UserCheck className="mr-2 h-4 w-4" />มอบหมายงาน</Button>)}
+                  
+                  {isMgmtOrOffice && job.status === 'PENDING_CUSTOMER_INFORM' && (
+                    <Button asChild className="w-full h-9 bg-pink-600 hover:bg-pink-700 text-white font-bold">
+                      <Link href={`/app/office/documents/${job.salesDocId}`}>
+                        <Send className="mr-2 h-4 w-4" /> แจ้งเสนอราคาลูกค้า
+                      </Link>
+                    </Button>
+                  )}
+
                   {isMgmtOrOffice && job.status === 'WAITING_APPROVE' && (
                     <div className="grid grid-cols-2 gap-2">
                       <Button className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-[10px]" onClick={() => handleUpdateStatus(job.id, 'PENDING_PARTS', 'ลูกค้าอนุมัติการซ่อมแล้ว')} disabled={!!isProcessing}><Check className="mr-1 h-3 w-3" />อนุมัติ</Button>
@@ -468,7 +478,7 @@ export function JobList({
       
       <Dialog open={!!assigningJob} onOpenChange={(open) => !open && setAssigningJob(null)}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-amber-500" />{assigningJob?.department === 'OUTSOURCE' ? 'มอบหมายผู้รับเหมา' : 'มอบหมายพนักงาน'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogHeader><DialogTitle className="flex items-center gap-2"><UserCheck className="h-5 w-5 text-amber-500" />{assigningJob?.department === 'OUTSOURCE' ? 'มอบหมายผู้รับเหมา' : 'มอบหมายพนักงาน'}</DialogTitle></DialogHeader></DialogHeader>
           <div className="py-4 space-y-4">{isLoadingWorkers ? (<div className="flex items-center justify-center p-4 border rounded-md border-dashed"><Loader2 className="h-5 w-5 animate-spin mr-2" /><span>กำลังโหลด...</span></div>) : (<Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}><SelectTrigger><SelectValue placeholder="เลือกรายชื่อ..." /></SelectTrigger><SelectContent>{deptWorkers.length > 0 ? deptWorkers.map(w => (<SelectItem key={w.uid} value={w.uid}>{w.displayName}</SelectItem>)) : <div className="p-4 text-center text-sm italic">ไม่พบรายชื่อ</div>}</SelectContent></Select>)}</div>
           <DialogFooter><Button variant="outline" onClick={() => setAssigningJob(null)}>ยกเลิก</Button><Button onClick={handleConfirmAssign} disabled={!selectedWorkerId || !!isProcessing}>ยืนยัน</Button></DialogFooter>
         </DialogContent>
