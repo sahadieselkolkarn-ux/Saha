@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { 
   Loader2, Box, Search, Info, Gift, Sparkles, Tag, AlertCircle, 
   ExternalLink, ShoppingCart, ShoppingBag, Plus, Minus, Trash2, 
-  CreditCard, CheckCircle2, ChevronDown, LayoutGrid
+  CreditCard, CheckCircle2, ChevronDown, LayoutGrid, Eye, FileText
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,13 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import type { Part, PartCategory } from "@/lib/types";
@@ -73,6 +80,8 @@ export default function PublicProductsPage() {
   
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  
+  const [viewingPart, setViewingPart] = useState<Part | null>(null);
 
   // Background image
   const bgImage = PlaceHolderImages.find(img => img.id === "login-bg") || PlaceHolderImages[0];
@@ -165,7 +174,7 @@ export default function PublicProductsPage() {
           alt={bgImage.description}
           fill
           priority
-          className="object-cover"
+          className="object-cover opacity-40"
           data-ai-hint="luxury workshop"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-black/90 via-black/70 to-primary/40 backdrop-blur-[3px]" />
@@ -271,21 +280,31 @@ export default function PublicProductsPage() {
             ) : filteredParts.length > 0 ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
                 {filteredParts.map(part => {
-                  const hasSpecialPrice = part.webPrice && part.webPrice < part.sellingPrice;
-                  const discountPercent = hasSpecialPrice ? Math.round(((part.sellingPrice - part.webPrice!) / part.sellingPrice) * 100) : 0;
+                  const isSpecial = part.isSpecialPrice;
+                  const displayPrice = part.webPrice || part.sellingPrice;
+                  const originalPrice = isSpecial ? (part.webPriceOld || part.sellingPrice) : part.sellingPrice;
+                  const discountPercent = isSpecial ? Math.round(((originalPrice - displayPrice) / originalPrice) * 100) : 0;
 
                   return (
                     <Card key={part.id} className="group border-none shadow-xl transition-all duration-500 overflow-hidden bg-white flex flex-col h-full hover:-translate-y-1">
-                      <div className="relative aspect-square bg-slate-100 overflow-hidden">
+                      <div className="relative aspect-square bg-slate-100 overflow-hidden cursor-pointer" onClick={() => setViewingPart(part)}>
                         {part.imageUrl ? (
                           <Image src={part.imageUrl} alt={part.name} fill className="object-cover transition-transform duration-700 group-hover:scale-110" />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-slate-200"><Box className="h-16 w-16 opacity-10" /></div>
                         )}
                         <div className="absolute top-2 left-2 flex flex-col gap-1">
-                          {discountPercent > 0 && <Badge className="bg-red-600 text-white border-none font-bold text-[9px] px-1.5">-{discountPercent}%</Badge>}
+                          {isSpecial && discountPercent > 0 && <Badge className="bg-red-600 text-white border-none font-bold text-[9px] px-1.5">-{discountPercent}%</Badge>}
                           {part.webPromoNote && <Badge className="bg-orange-500 border-none font-bold text-[9px] px-1.5"><Sparkles className="h-2.5 w-2.5 mr-1" />PROMO</Badge>}
                         </div>
+                        
+                        {/* Details Overlay on Hover */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <Button variant="secondary" size="sm" className="rounded-full font-bold text-xs gap-2">
+                                <Info className="h-3 w-3" /> รายละเอียด
+                            </Button>
+                        </div>
+
                         {part.stockQty <= 0 && (
                           <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
                             <Badge variant="destructive" className="font-bold">สินค้าหมด</Badge>
@@ -294,14 +313,14 @@ export default function PublicProductsPage() {
                       </div>
 
                       <CardContent className="p-4 flex-grow space-y-2">
-                        <div className="min-h-[40px]">
-                          <h3 className="text-xs font-bold line-clamp-2 leading-snug text-slate-800">{part.name}</h3>
+                        <div className="min-h-[40px] cursor-pointer" onClick={() => setViewingPart(part)}>
+                          <h3 className="text-xs font-bold line-clamp-2 leading-snug text-slate-800 hover:text-primary transition-colors">{part.name}</h3>
                           <p className="text-[9px] text-slate-400 font-mono mt-1 uppercase">{part.code}</p>
                         </div>
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-baseline gap-2">
-                            <span className="text-lg font-black text-primary">฿{(part.webPrice || part.sellingPrice).toLocaleString()}</span>
-                            {hasSpecialPrice && <span className="text-[10px] text-slate-400 line-through">฿{part.sellingPrice.toLocaleString()}</span>}
+                            <span className="text-lg font-black text-primary">฿{displayPrice.toLocaleString()}</span>
+                            {isSpecial && <span className="text-[10px] text-slate-400 line-through">฿{originalPrice.toLocaleString()}</span>}
                           </div>
                           {part.bulkPrice && part.bulkPrice > 0 && (
                             <p className="text-[9px] text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded w-fit"><Tag className="h-2 w-2 inline mr-1" />฿{part.bulkPrice.toLocaleString()} ({part.bulkPriceQty}+ ชิ้น)</p>
@@ -309,8 +328,11 @@ export default function PublicProductsPage() {
                         </div>
                       </CardContent>
 
-                      <CardFooter className="p-3 pt-0">
-                        <Button className="w-full h-9 rounded-lg text-xs font-bold gap-2" onClick={() => addToCart(part)} disabled={part.stockQty <= 0}>
+                      <CardFooter className="p-3 pt-0 gap-2">
+                        <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => setViewingPart(part)} title="ดูรายละเอียด">
+                            <FileText className="h-4 w-4" />
+                        </Button>
+                        <Button className="flex-1 h-9 rounded-lg text-xs font-bold gap-2" onClick={() => addToCart(part)} disabled={part.stockQty <= 0}>
                           <Plus className="h-3.5 w-3.5" /> ใส่ตะกร้า
                         </Button>
                       </CardFooter>
@@ -319,13 +341,71 @@ export default function PublicProductsPage() {
                 })}
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
-                {Array.from({ length: 6 }).map((_, i) => <PlaceholderCard key={i} />)}
+              <div className="flex flex-col items-center justify-center py-20 text-white/40 gap-4">
+                  <Box className="h-16 w-16 opacity-10" />
+                  <p>ไม่พบสินค้าในหมวดหมู่ที่เลือกค่ะ</p>
               </div>
             )}
           </div>
         </div>
       </main>
+
+      {/* Product Detail Dialog */}
+      <Dialog open={!!viewingPart} onOpenChange={(open) => !open && setViewingPart(null)}>
+        <DialogContent className="sm:max-w-2xl bg-slate-900 border-white/10 text-white overflow-hidden p-0">
+            <div className="grid md:grid-cols-2">
+                <div className="relative aspect-square md:aspect-auto bg-slate-100">
+                    {viewingPart?.imageUrl ? (
+                        <Image src={viewingPart.imageUrl} alt={viewingPart.name} fill className="object-cover" />
+                    ) : (
+                        <div className="flex h-full w-full items-center justify-center text-slate-200"><Box className="h-20 w-20 opacity-10" /></div>
+                    )}
+                    {viewingPart?.isSpecialPrice && (
+                        <Badge className="absolute top-4 left-4 bg-red-600 text-white border-none font-bold">ราคาพิเศษ</Badge>
+                    )}
+                </div>
+                <div className="p-6 flex flex-col h-full">
+                    <DialogHeader>
+                        <div className="text-[10px] text-primary font-bold uppercase tracking-widest mb-1">{viewingPart?.categoryNameSnapshot}</div>
+                        <DialogTitle className="text-xl font-bold leading-tight text-white">{viewingPart?.name}</DialogTitle>
+                        <DialogDescription className="text-slate-400 font-mono text-xs">{viewingPart?.code}</DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="flex-1 mt-6">
+                        <div className="flex items-baseline gap-3 mb-6">
+                            <span className="text-3xl font-black text-primary">฿{(viewingPart?.webPrice || viewingPart?.sellingPrice || 0).toLocaleString()}</span>
+                            {viewingPart?.isSpecialPrice && (
+                                <span className="text-sm text-slate-500 line-through">฿{(viewingPart?.webPriceOld || viewingPart?.sellingPrice || 0).toLocaleString()}</span>
+                            )}
+                        </div>
+
+                        {viewingPart?.webPromoNote && (
+                            <Alert className="bg-orange-500/10 border-orange-500/20 text-orange-500 mb-6">
+                                <Sparkles className="h-4 w-4" />
+                                <AlertTitle className="text-xs font-bold">โปรโมชั่นพิเศษ!</AlertTitle>
+                                <AlertDescription className="text-xs">{viewingPart.webPromoNote}</AlertDescription>
+                            </Alert>
+                        )}
+
+                        <div className="space-y-2">
+                            <Label className="text-xs font-bold text-white/40 uppercase tracking-widest">รายละเอียดสินค้า</Label>
+                            <ScrollArea className="h-40 pr-4">
+                                <p className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
+                                    {viewingPart?.webDetails || "ขออภัยค่ะ สินค้ารายการนี้ยังไม่มีรายละเอียดเพิ่มเติมในขณะนี้ หากต้องการข้อมูลสเปคที่แน่นอน สามารถติดต่อสอบถามเจ้าหน้าที่ได้เลยค่ะ"}
+                                </p>
+                            </ScrollArea>
+                        </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-white/10 mt-6 flex gap-3">
+                        <Button className="flex-1 h-12 text-base font-bold rounded-xl" onClick={() => { if(viewingPart) addToCart(viewingPart); setViewingPart(null); }} disabled={viewingPart && viewingPart.stockQty <= 0}>
+                            <Plus className="mr-2 h-5 w-5" /> เพิ่มลงตะกร้า
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </DialogContent>
+      </Dialog>
 
       <PublicFooter />
     </div>
