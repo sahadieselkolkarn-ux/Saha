@@ -106,7 +106,6 @@ export default function OfficePartsWithdrawPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data() as Document;
 
-        // If it was already ISSUED (stock deducted), we must revert stock
         if (docData.status === 'ISSUED') {
           for (const item of docData.items) {
             if (!item.partId) continue;
@@ -167,7 +166,6 @@ export default function OfficePartsWithdrawPage() {
         if (!docSnap.exists()) throw new Error("ไม่พบเอกสารในระบบ");
         const docData = docSnap.data() as Document;
 
-        // 1. Revert Stock if was ISSUED
         if (docData.status === 'ISSUED') {
           for (const item of docData.items) {
             if (!item.partId) continue;
@@ -201,7 +199,6 @@ export default function OfficePartsWithdrawPage() {
           }
         }
 
-        // 2. Set status to CANCELLED
         transaction.update(docRef, {
           status: 'CANCELLED',
           updatedAt: serverTimestamp(),
@@ -360,17 +357,19 @@ export default function OfficePartsWithdrawPage() {
               <Trash2 className="h-5 w-5 text-destructive" />
               ยืนยันการลบรายการถาวร?
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>คุณต้องการลบเอกสารเลขที่ <span className="font-bold">{docToDelete?.docNo}</span> ใช่หรือไม่? การลบจะทำให้ข้อมูลหายไปจากระบบอย่างถาวร</p>
-              {docToDelete?.status === 'ISSUED' && (
-                <Alert variant="destructive" className="bg-destructive/5 border-destructive/20 text-destructive">
-                  <RotateCcw className="h-4 w-4" />
-                  <AlertTitle className="text-xs font-bold">ข้อมูลการคืนสต็อก</AlertTitle>
-                  <AlertDescription className="text-[10px]">
-                    เนื่องจากรายการนี้เบิกไปแล้ว เมื่อลบระบบจะทำการ **บวกยอดสินค้าคืนเข้าคลัง** ให้โดยอัตโนมัติค่ะ
-                  </AlertDescription>
-                </Alert>
-              )}
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>คุณต้องการลบเอกสารเลขที่ <span className="font-bold">{docToDelete?.docNo}</span> ใช่หรือไม่? การลบจะทำให้ข้อมูลหายไปจากระบบอย่างถาวร</p>
+                {docToDelete?.status === 'ISSUED' && (
+                  <Alert variant="destructive" className="bg-destructive/5 border-destructive/20 text-destructive">
+                    <RotateCcw className="h-4 w-4" />
+                    <AlertTitle className="text-xs font-bold">ข้อมูลการคืนสต็อก</AlertTitle>
+                    <AlertDescription className="text-[10px]">
+                      เนื่องจากรายการนี้เบิกไปแล้ว เมื่อลบระบบจะทำการ **บวกยอดสินค้าคืนเข้าคลัง** ให้โดยอัตโนมัติค่ะ
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -394,18 +393,20 @@ export default function OfficePartsWithdrawPage() {
               <XCircle className="h-5 w-5 text-orange-600" />
               ยืนยันการยกเลิกรายการเบิก?
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>ต้องการยกเลิกใบเบิกเลขที่ <span className="font-bold">{docToCancel?.docNo}</span> ใช่หรือไม่? เอกสารจะยังคงอยู่ในประวัติแต่สถานะจะเปลี่ยนเป็นยกเลิก</p>
-              {docToCancel?.status === 'ISSUED' && (
-                <Alert variant="secondary" className="bg-orange-50 border-orange-200 text-orange-800">
-                  <RotateCcw className="h-4 w-4 text-orange-600" />
-                  <AlertTitle className="text-xs font-bold">ผลของการยกเลิก</AlertTitle>
-                  <AlertDescription className="text-[10px] space-y-1">
-                    <p>• ระบบจะ **คืนยอดสินค้าเข้าคลัง** ให้โดยอัตโนมัติ</p>
-                    <p>• ระบบจะ **ยกเลิกการผูกบิล** ออกจากใบงานซ่อมเพื่อให้เบิกใหม่ได้</p>
-                  </AlertDescription>
-                </Alert>
-              )}
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>ต้องการยกเลิกใบเบิกเลขที่ <span className="font-bold">{docToCancel?.docNo}</span> ใช่หรือไม่? เอกสารจะยังคงอยู่ในประวัติแต่สถานะจะเปลี่ยนเป็นยกเลิก</p>
+                {docToCancel?.status === 'ISSUED' && (
+                  <Alert variant="secondary" className="bg-orange-50 border-orange-200 text-orange-800">
+                    <RotateCcw className="h-4 w-4 text-orange-600" />
+                    <AlertTitle className="text-xs font-bold">ผลของการยกเลิก</AlertTitle>
+                    <AlertDescription className="text-[10px] space-y-1">
+                      <p>• ระบบจะ **คืนยอดสินค้าเข้าคลัง** ให้โดยอัตโนมัติ</p>
+                      <p>• ระบบจะ **ยกเลิกการผูกบิล** ออกจากใบงานซ่อมเพื่อให้เบิกใหม่ได้</p>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
