@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, Suspense } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { doc } from "firebase/firestore";
 import { useFirebase, useDoc } from "@/firebase";
@@ -41,11 +41,22 @@ function TaxInvoiceDetailPageContent() {
     const { docId } = useParams();
     const router = useRouter();
     const { db } = useFirebase();
+    const searchParams = useSearchParams();
     
     const docRef = useMemo(() => (db && typeof docId === 'string' ? doc(db, 'documents', docId) : null), [db, docId]);
     const { data: document, isLoading, error } = useDoc<Document>(docRef);
 
     const isCancelled = document?.status === 'CANCELLED';
+
+    const handleBack = () => {
+        const from = searchParams.get('from');
+        const tab = searchParams.get('tab');
+        if (from === 'inbox') {
+            router.push(`/app/management/accounting/inbox?tab=${tab || 'receive'}`);
+            return;
+        }
+        router.push('/app/office/documents/tax-invoice');
+    };
 
     if (isLoading) return (
         <div className="flex flex-col items-center justify-center h-[60vh]">
@@ -60,7 +71,7 @@ function TaxInvoiceDetailPageContent() {
                 <AlertCircle className="mx-auto h-12 w-12 text-destructive"/>
                 <h2 className="text-xl font-bold">ไม่พบข้อมูลใบกำกับภาษี</h2>
                 <p className="text-muted-foreground">เอกสารที่ต้องการอาจไม่มีอยู่ในระบบ</p>
-                <Button variant="outline" onClick={() => router.push('/app/office/documents/tax-invoice')}><ArrowLeft className="mr-2 h-4 w-4"/> กลับไปหน้ารายการ</Button>
+                <Button variant="outline" onClick={handleBack}><ArrowLeft className="mr-2 h-4 w-4"/> กลับไปหน้ารายการ</Button>
             </div>
         );
     }
@@ -74,12 +85,12 @@ function TaxInvoiceDetailPageContent() {
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <Button variant="outline" onClick={() => router.push('/app/office/documents/tax-invoice')}>
+                <Button variant="outline" onClick={handleBack}>
                     <ArrowLeft className="mr-2 h-4 w-4"/> ย้อนกลับ
                 </Button>
                 <div className="flex flex-wrap gap-2">
                     <Button asChild variant="default" size="sm">
-                        <Link href={`/app/office/documents/${docId}`}>
+                        <Link href={`/app/office/documents/${docId}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`}>
                             <Eye className="mr-2 h-4 w-4"/> พรีวิว / พิมพ์เอกสาร
                         </Link>
                     </Button>

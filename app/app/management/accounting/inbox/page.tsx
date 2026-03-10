@@ -6,7 +6,7 @@ import { useFirebase } from "@/firebase";
 import { collection, query, onSnapshot, where, doc, serverTimestamp, type FirestoreError, updateDoc, runTransaction, limit, deleteField, addDoc, getDoc, writeBatch, deleteDoc } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useToast } from "@/hooks/use-toast";
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { format } from "date-fns";
 
@@ -48,13 +48,18 @@ function AccountingInboxPageContent() {
   const { db, app: firebaseApp } = useFirebase();
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   const [documents, setDocuments] = useState<WithId<DocumentType>[]>([]);
   const [approvedDocs, setApprovedDocs] = useState<WithId<DocumentType>[]>([]);
   const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"receive" | "ar" | "receipts">("receive");
+  
+  const initialTab = (searchParams.get('tab') as "receive" | "ar" | "receipts") || "receive";
+  const [activeTab, setActiveTab] = useState<"receive" | "ar" | "receipts">(initialTab);
+  
   const [indexCreationUrl, setIndexErrorUrl] = useState<string | null>(null);
 
   const [confirmingDoc, setConfirmingDoc] = useState<WithId<DocumentType> | null>(null);
@@ -74,6 +79,14 @@ function AccountingInboxPageContent() {
     if (!profile) return false;
     return profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'OFFICE' || profile.department === 'ACCOUNTING_HR';
   }, [profile]);
+
+  // Sync activeTab if URL changes
+  useEffect(() => {
+    const tab = searchParams.get('tab') as "receive" | "ar" | "receipts";
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams, activeTab]);
 
   useEffect(() => {
     if (!db || !hasPermission) {
@@ -181,6 +194,14 @@ function AccountingInboxPageContent() {
       (doc.customerSnapshot?.name || '').toLowerCase().includes(lowerSearch)
     );
   }, [documents, activeTab, searchTerm]);
+
+  const handleTabChange = (value: string) => {
+    const v = value as "receive" | "ar" | "receipts";
+    setActiveTab(v);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', v);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   const callCloseJobFunction = async (jobId: string, paymentStatus: 'PAID' | 'UNPAID' = 'UNPAID') => {
     if (!firebaseApp) return;
@@ -526,7 +547,7 @@ function AccountingInboxPageContent() {
     <div className="space-y-6">
       <PageHeader title="Inbox บัญชี (ตรวจสอบรายการขาย)" description="ตรวจสอบความถูกต้องของบิลก่อนลงสมุดบัญชีรายวัน" />
       
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
           <TabsList>
             <TabsTrigger value="receive">รอตรวจสอบ (Cash/Mixed)</TabsTrigger>
@@ -577,7 +598,7 @@ function AccountingInboxPageContent() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem asChild>
-                                  <Link href={docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : `/app/office/documents/tax-invoice/${docItem.id}`}>
+                                  <Link href={(docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : `/app/office/documents/tax-invoice/${docItem.id}`) + `?from=inbox&tab=receive`}>
                                     <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
                                   </Link>
                                 </DropdownMenuItem>
@@ -634,7 +655,7 @@ function AccountingInboxPageContent() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem asChild>
-                                  <Link href={docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : `/app/office/documents/tax-invoice/${docItem.id}`}>
+                                  <Link href={(docItem.docType === 'DELIVERY_NOTE' ? `/app/office/documents/delivery-note/${docItem.id}` : `/app/office/documents/tax-invoice/${docItem.id}`) + `?from=inbox&tab=ar`}>
                                     <Eye className="mr-2 h-4 w-4"/> ดูรายละเอียด
                                   </Link>
                                 </DropdownMenuItem>
@@ -723,7 +744,7 @@ function AccountingInboxPageContent() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                     <DropdownMenuItem asChild>
-                                        <Link href={`/app/office/documents/${docItem.id}`}>
+                                        <Link href={`/app/office/documents/${docItem.id}?from=inbox&tab=receipts`}>
                                             <Eye className="mr-2 h-4 w-4" /> ดูเอกสาร
                                         </Link>
                                     </DropdownMenuItem>

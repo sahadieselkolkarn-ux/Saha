@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -276,6 +275,14 @@ function DocumentPageContent() {
     }, [document, db]);
 
     const handleBack = () => {
+        const from = searchParams.get('from');
+        const tab = searchParams.get('tab');
+        
+        if (from === 'inbox') {
+            router.push(`/app/management/accounting/inbox?tab=${tab || 'receive'}`);
+            return;
+        }
+
         if (!document) {
             router.back();
             return;
