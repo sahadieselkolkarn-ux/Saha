@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { collection, query, doc, updateDoc, serverTimestamp, getDocs, type FirestoreError, where } from "firebase/firestore";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useCollection } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -22,8 +22,21 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Search, Package, Globe, PlusCircle, Settings, Trash2, Box, Info, Sparkles, Gift, LayoutGrid, ExternalLink, AlertCircle, FileText } from "lucide-react";
+import { 
+  Loader2, Search, Package, Globe, PlusCircle, Settings, Trash2, Box, Info, Sparkles, 
+  Gift, LayoutGrid, ExternalLink, AlertCircle, FileText 
+} from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Part } from "@/lib/types";
 import type { WithId } from "@/firebase";
 import Image from "next/image";
@@ -57,6 +70,9 @@ export default function WebManagementProductsPage() {
   
   const [managingPart, setManagingPart] = useState<WithId<Part> | null>(null);
   const [isManaging, setIsManaging] = useState(false);
+
+  // Confirmation state for removal
+  const [partToRemove, setPartToRemove] = useState<WithId<Part> | null>(null);
 
   const manageForm = useForm<z.infer<typeof manageWebSchema>>({
     resolver: zodResolver(manageWebSchema),
@@ -179,6 +195,12 @@ export default function WebManagementProductsPage() {
     return allParts.filter(p => !webIds.has(p.id) && (p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q)));
   }, [allParts, webParts, partSearch]);
 
+  const confirmRemoveFromWeb = async () => {
+    if (!partToRemove) return;
+    await handleToggleWeb(partToRemove.id, false);
+    setPartToRemove(null);
+  };
+
   return (
     <div className="space-y-6 pb-20">
       <PageHeader title="จัดการรายการหน้าเว็บ" description="เลือกสินค้าจากสต๊อกขึ้นแสดงบนหน้าเว็บ พร้อมจัดการโปรโมชั่นและราคาพิเศษ">
@@ -295,7 +317,13 @@ export default function WebManagementProductsPage() {
                           <Button variant="outline" size="sm" className="h-8 text-xs font-bold" onClick={() => handleOpenManage(part)}>
                             <Settings className="mr-1.5 h-3 w-3" /> จัดการ
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleToggleWeb(part.id, false)} title="นำออกจากหน้าเว็บ">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" 
+                            onClick={() => setPartToRemove(part)} 
+                            title="นำออกจากหน้าเว็บ"
+                          >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -467,6 +495,25 @@ export default function WebManagementProductsPage() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Remove Confirmation Dialog */}
+      <AlertDialog open={!!partToRemove} onOpenChange={(open) => !open && setPartToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการนำสินค้าออกจากหน้าเว็บ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              คุณต้องการนำสินค้า <span className="font-bold text-primary">"{partToRemove?.name}"</span> ออกจากรายการที่แสดงบนหน้าเว็บไซต์ใช่หรือไม่? 
+              (ข้อมูลในคลังสินค้าจะยังคงอยู่ตามปกติค่ะ)
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRemoveFromWeb} className="bg-destructive hover:bg-destructive/90">
+              ยืนยันการลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
