@@ -222,7 +222,15 @@ function ScanPageContent() {
   }
 
   const isActuallyLoading = authLoading || tokenStatus === "verifying" || !now;
-  const nextAction = now ? ((now.getHours() * 60 + now.getMinutes()) < (hrSettings?.afternoonCutoffTime?.split(':').map(Number).reduce((h, m) => h * 60 + m) || 720) ? 'IN' : 'OUT') : 'IN';
+  
+  // Safe calculation for nextAction to avoid crash during SSR
+  const nextAction = useMemo(() => {
+    if (!now) return 'IN';
+    const cutoffStr = hrSettings?.afternoonCutoffTime || '12:00';
+    const [h, m] = cutoffStr.split(':').map(Number);
+    const cutoffMinutes = (isNaN(h) ? 12 : h) * 60 + (isNaN(m) ? 0 : m);
+    return (now.getHours() * 60 + now.getMinutes()) < cutoffMinutes ? 'IN' : 'OUT';
+  }, [now, hrSettings]);
 
   return (
     <>

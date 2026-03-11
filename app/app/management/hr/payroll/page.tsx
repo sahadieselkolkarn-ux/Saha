@@ -159,7 +159,6 @@ export default function HRGeneratePayslipsPage() {
     const { profile: adminProfile } = useAuth();
     const printFrameRef = useRef<HTMLIFrameElement | null>(null);
 
-    // FIXED: Initialize states to null or deferred values to prevent hydration errors
     const [currentMonth, setCurrentMonth] = useState<Date | null>(null);
     const [period, setPeriod] = useState<1 | 2 | null>(null);
     
@@ -187,7 +186,6 @@ export default function HRGeneratePayslipsPage() {
     
     const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.role === 'MANAGER' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
 
-    // Initialize period and month on client only
     useEffect(() => {
       const today = new Date();
       setCurrentMonth(startOfMonth(today));
