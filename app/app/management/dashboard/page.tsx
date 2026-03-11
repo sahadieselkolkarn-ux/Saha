@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -54,6 +53,8 @@ import { JOB_DEPARTMENTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
 
+export const dynamic = 'force-dynamic';
+
 // --- Helper Functions ---
 const toDateSafe = (ts: any): Date | null => {
   if (!ts) return null;
@@ -87,7 +88,7 @@ const TrendIndicator = ({ value }: { value: number }) => {
   );
 };
 
-const isOutflow = (job: Job) => ["DONE", "WAITING_CUSTOMER_PICKUP", "CLOSED"].includes(job.status);
+const isOutflow = (job: Job) => ["DONE", "WAITING_CUSTOMER_PICKUP", "PICKED_UP", "CLOSED"].includes(job.status);
 
 // --- Main Dashboard Component ---
 function AppDashboardPage() {
@@ -104,10 +105,16 @@ function AppDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   // Filters
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: startOfMonth(startOfToday()),
-    to: endOfMonth(startOfToday()),
-  });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+
+  // Initialize date range on client only to avoid hydration mismatch
+  useEffect(() => {
+    const today = startOfToday();
+    setDateRange({
+      from: startOfMonth(today),
+      to: endOfMonth(today),
+    });
+  }, []);
 
   const selectedYear = useMemo(() => dateRange?.from ? dateRange.from.getFullYear() : new Date().getFullYear(), [dateRange]);
 
@@ -115,29 +122,34 @@ function AppDashboardPage() {
     if (!db) return;
     setLoading(true);
 
-    const unsubJobs = onSnapshot(collection(db, "jobs"), (snap) => {
+    // Limit active jobs to avoid heavy payload
+    const unsubJobs = onSnapshot(query(collection(db, "jobs"), limit(500)), (snap) => {
       setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
     // Fetch archived jobs for selected year with a reasonable limit for mobile performance
-    const archivedQuery = query(collection(db, `jobsArchive_${selectedYear}`), orderBy("lastActivityAt", "desc"), limit(500));
+    const archivedQuery = query(collection(db, `jobsArchive_${selectedYear}`), orderBy("lastActivityAt", "desc"), limit(200));
     const unsubArchived = onSnapshot(archivedQuery, (snap) => {
       setArchivedJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
-    const unsubDocs = onSnapshot(collection(db, "documents"), (snap) => {
+    const unsubDocs = onSnapshot(query(collection(db, "documents"), limit(300)), (snap) => {
       setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as Document)));
     });
-    const unsubEntries = onSnapshot(collection(db, "accountingEntries"), (snap) => {
+    
+    const unsubEntries = onSnapshot(query(collection(db, "accountingEntries"), orderBy("entryDate", "desc"), limit(200)), (snap) => {
       setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingEntry)));
     });
-    const unsubObligations = onSnapshot(collection(db, "accountingObligations"), (snap) => {
+    
+    const unsubObligations = onSnapshot(query(collection(db, "accountingObligations"), limit(200)), (snap) => {
       setObligations(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingObligation)));
     });
-    const unsubPurchases = onSnapshot(collection(db, "purchaseDocs"), (snap) => {
+    
+    const unsubPurchases = onSnapshot(query(collection(db, "purchaseDocs"), limit(100)), (snap) => {
       setPurchaseDocs(snap.docs.map(d => ({ id: d.id, ...d.data() } as PurchaseDoc)));
     });
-    const unsubCustomers = onSnapshot(collection(db, "customers"), (snap) => {
+    
+    const unsubCustomers = onSnapshot(query(collection(db, "customers"), limit(500)), (snap) => {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer)));
       setLoading(false);
     });
@@ -269,7 +281,7 @@ function AppDashboardPage() {
       };
     });
 
-    // 6. Customer Acquisition Stats (OPTIMIZED)
+    // 6. Customer Acquisition Stats
     const acqCounts = {
       EXISTING: 0,
       REFERRAL: 0,
@@ -281,18 +293,14 @@ function AppDashboardPage() {
     };
 
     const periodStart = startOfDay(from);
-    
-    // Use a Map for fast customer lookup
     const customerMap = new Map<string, Customer>();
     customers.forEach(c => customerMap.set(c.id, c));
 
-    // Combine all jobs in period
     const allJobsInPeriod = [
       ...jobs.filter(j => isInPeriod(toDateSafe(j.createdAt))),
       ...archivedJobs.filter(j => isInPeriod(toDateSafe(j.createdAt)))
     ];
 
-    // Identify UNIQUE customers who had a job in this period
     const uniqueCidsInPeriod = Array.from(new Set(allJobsInPeriod.map(j => j.customerId).filter(Boolean)));
 
     uniqueCidsInPeriod.forEach(cid => {
@@ -426,7 +434,7 @@ function AppDashboardPage() {
         </div>
       </PageHeader>
 
-      {/* --- Row 1: KPI Cards --- */}
+      {/* KPI Cards and Charts remain same... */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.kpis.map((kpi, i) => (
           <Card key={i} className="h-[130px] flex flex-col hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => router.push(kpi.link)}>
@@ -444,7 +452,6 @@ function AppDashboardPage() {
         ))}
       </div>
 
-      {/* --- Row 2: Trends --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <Card className="h-full flex flex-col">
           <CardHeader>
@@ -513,7 +520,6 @@ function AppDashboardPage() {
         </Card>
       </div>
 
-      {/* --- Row 3: Breakdowns --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <Card className="h-full flex flex-col">
           <CardHeader>
@@ -571,7 +577,7 @@ function AppDashboardPage() {
         <Card className="h-full flex flex-col">
           <CardHeader>
             <CardTitle>แหล่งที่มาของลูกค้า</CardTitle>
-            <CardDescription>สัดส่วนลูกค้าที่เปิดงานซ่อมในช่วงเวลานี้ (นับรวมงานในประวัติ)</CardDescription>
+            <CardDescription>สัดส่วนลูกค้าที่เปิดงานซ่อมในช่วงเวลานี้</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-center">
             <div className="h-[180px]">
@@ -599,7 +605,6 @@ function AppDashboardPage() {
         </Card>
       </div>
 
-      {/* --- Row 4: Summary & Alerts --- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="h-full flex flex-col min-h-[260px]">
           <CardHeader>
