@@ -20,12 +20,10 @@ function logError(message) {
 console.log('Running routing sanity checks...');
 
 // --- Check 1: Disallow src/app directory ---
-/*
 const disallowedSrcAppDir = path.join(projectRoot, 'src', 'app');
 if (fs.existsSync(disallowedSrcAppDir) && fs.readdirSync(disallowedSrcAppDir).length > 0) {
-  logError('Critical Routing Error: The directory "src/app" must be empty. All application routes must exist under the root "app/" directory.');
+  logError('Critical Routing Error: The directory "src/app" must be empty. All application routes must exist under the root "app/" directory. Please delete the "src/app" folder manually.');
 }
-*/
 
 // --- Helper to find files recursively ---
 function findFiles(startPath, filter, fileList = []) {
@@ -51,14 +49,6 @@ const allPageFiles = findFiles(path.join(projectRoot, 'app'), /(page|layout)\.ts
 for (const filePath of allPageFiles) {
   const content = fs.readFileSync(filePath, 'utf8');
   const relativePath = path.relative(projectRoot, filePath).replace(/\\/g, '/');
-
-  // Rule 1 (New): Disallow files in app/app unless they are part of the legacy redirect handlers.
-  // This rule is DISABLED to allow /app/... URLs via app/app/... file structure, which is the current project convention.
-  /*
-  if (relativePath.startsWith('app/app/') && !ALLOW_LEGACY_APP_SEGMENT.has(relativePath)) {
-    logError(`Legacy Route Error: Route file "${relativePath}" must be moved to the root "app/" directory. The "app/app/" segment is for legacy redirects only.`);
-  }
-  */
 
   // Rule 2: Check for self-export loops
   const selfExportRegex = /export\s*{\s*default\s*}\s*from\s*["']@\/(.*?)["']/;
