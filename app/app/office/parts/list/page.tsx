@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -42,7 +41,7 @@ import type { Part, PartCategory, PartLocation, StockActivity } from "@/lib/type
 import type { WithId } from "@/firebase";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 
-const FILE_SIZE_THRESHOLD = 5 * 1024 * 1024; // 5MB
+const FILE_SIZE_THRESHOLD = 500 * 1024; // 500KB
 
 const compressImageIfNeeded = async (file: File): Promise<File> => {
   if (file.size <= FILE_SIZE_THRESHOLD) return file;

@@ -39,6 +39,59 @@ import { vendorTypeLabel } from "@/lib/ui-labels";
 import type { PurchaseDoc, Vendor, AccountingAccount, Part } from "@/lib/types";
 import Link from "next/link";
 
+const FILE_SIZE_THRESHOLD = 500 * 1024; // 500KB
+
+const compressImageIfNeeded = async (file: File): Promise<File> => {
+  if (file.size <= FILE_SIZE_THRESHOLD) return file;
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        let quality = 0.9;
+        const attemptCompression = (q: number) => {
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                if (blob.size <= FILE_SIZE_THRESHOLD || q <= 0.1) {
+                  const compressedFile = new File([blob], file.name, {
+                    type: "image/jpeg",
+                    lastModified: Date.now(),
+                  });
+                  resolve(compressedFile);
+                } else {
+                  attemptCompression(q - 0.1);
+                }
+              } else {
+                resolve(file); 
+              }
+            },
+            "image/jpeg",
+            q
+          );
+        };
+        attemptCompression(quality);
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
+
 const lineItemSchema = z.object({
   partId: z.string().min(1, "กรุณาเลือกอะไหล่จากระบบ"),
   code: z.string().optional(),
@@ -89,6 +142,7 @@ export function PurchaseDocForm() {
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [previewDocNo, setPreviewDocNo] = useState<string>("");
   const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
 
@@ -208,12 +262,25 @@ export function PurchaseDocForm() {
     form.setValue("grandTotal", grandTotal);
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      setPhotos(prev => [...prev, ...files]);
-      const newPreviews = files.map(file => URL.createObjectURL(file));
-      setPhotoPreviews(prev => [...prev, ...newPreviews]);
+      setIsCompressing(true);
+      try {
+        const processedFiles: File[] = [];
+        for (const file of files) {
+          const processed = await compressImageIfNeeded(file);
+          processedFiles.push(processed);
+        }
+        setPhotos(prev => [...prev, ...processedFiles]);
+        const newPreviews = processedFiles.map(file => URL.createObjectURL(file));
+        setPhotoPreviews(prev => [...prev, ...newPreviews]);
+      } catch (err) {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการจัดการรูปภาพ" });
+      } finally {
+        setIsCompressing(false);
+        e.target.value = '';
+      }
     }
   };
 
@@ -258,11 +325,7 @@ export function PurchaseDocForm() {
 
       const targetStatus = isSubmitForReview ? 'PENDING_REVIEW' : 'DRAFT';
 
-      // CRITICAL FIX: Ensure all transaction.get() happen before any transaction.update()/set()
       await runTransaction(db, async (transaction) => {
-        // --- STEP 1: All READS ---
-        
-        // 1.1 Read counter and settings if needed
         const docSettingsRef = doc(db, 'settings', 'documents');
         const docSettingsSnap = await transaction.get(docSettingsRef);
         
@@ -279,7 +342,6 @@ export function PurchaseDocForm() {
             }
         }
 
-        // 1.2 Read all parts involved
         const partsToUpdate = [];
         if (isSubmitForReview && !alreadyReceived) {
             for (const item of data.items) {
@@ -290,9 +352,6 @@ export function PurchaseDocForm() {
             }
         }
 
-        // --- STEP 2: All WRITES ---
-
-        // 2.1 Calculate and Update Parts
         for (const { partRef, partSnap, item } of partsToUpdate) {
             if (partSnap.exists()) {
                 const partData = partSnap.data() as Part;
@@ -318,7 +377,6 @@ export function PurchaseDocForm() {
             }
         }
 
-        // 2.2 Save Document
         const finalDocNo = editDocId ? existingDocNo : previewDocNo;
         const docData = {
           ...data,
@@ -340,7 +398,6 @@ export function PurchaseDocForm() {
 
         transaction.set(newDocRef, sanitizeForFirestore(docData), { merge: true });
 
-        // 2.3 Create Claim if needed
         if (isSubmitForReview) {
             const claimId = `CLAIM_${finalDocId}`;
             const claimRef = doc(db, "purchaseClaims", claimId);
@@ -363,14 +420,12 @@ export function PurchaseDocForm() {
             }));
         }
         
-        // 2.4 Update Counters if it's a new doc
         if (!editDocId) {
             const dateObj = new Date(data.docDate);
             const year = dateObj.getFullYear() > 2400 ? dateObj.getFullYear() - 543 : dateObj.getFullYear();
             const counterRef = doc(db, 'documentCounters', String(year));
             const prefix = (docSettingsSnap.exists() ? (docSettingsSnap.data() as any).purchasePrefix : 'PUR') || 'PUR';
             
-            // Extract the sequence from previewDocNo
             const seqParts = previewDocNo.split('-');
             const seq = parseInt(seqParts[seqParts.length - 1], 10);
             
@@ -424,7 +479,7 @@ export function PurchaseDocForm() {
                       type="button" 
                       variant="secondary" 
                       className="flex-1 sm:flex-none"
-                      disabled={isSubmitting} 
+                      disabled={isSubmitting || isCompressing} 
                       onClick={form.handleSubmit(data => onSubmit(data, false))}
                   >
                       {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
@@ -433,7 +488,7 @@ export function PurchaseDocForm() {
                   <Button 
                       type="button" 
                       className="flex-1 sm:flex-none"
-                      disabled={isSubmitting} 
+                      disabled={isSubmitting || isCompressing} 
                       onClick={form.handleSubmit(data => onSubmit(data, true))}
                   >
                       {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4"/>}
@@ -535,7 +590,7 @@ export function PurchaseDocForm() {
                                 <FormItem><FormLabel>จ่ายโดย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">เงินโอน</SelectItem></SelectContent></Select></FormItem>
                               )} />
                               <FormField name="suggestedAccountId" render={({ field }) => (
-                                <FormItem><FormLabel>บัญชีที่จ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></Select></FormItem>
+                                <FormItem><FormLabel>บัญชีที่จ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</Select></FormItem>
                               )} />
                           </div>
                       )}
@@ -613,7 +668,8 @@ export function PurchaseDocForm() {
                   <CardHeader><CardTitle className="text-base">4. แนบรูปบิล</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                       <div className="flex items-center gap-4">
-                          <Input type="file" multiple accept="image/*" disabled={isSubmitting} onChange={handlePhotoChange} className="max-w-[300px]" />
+                          <Input type="file" multiple accept="image/*" disabled={isSubmitting || isCompressing} onChange={handlePhotoChange} className="max-w-[300px]" />
+                          {isCompressing && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
                       </div>
                       <div className="flex flex-wrap gap-2">
                           {docToEdit?.billPhotos?.map((url, i) => (

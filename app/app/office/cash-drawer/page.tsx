@@ -64,6 +64,59 @@ import type { CashDrawerSession, CashDrawerTransaction } from "@/lib/types";
 
 export const dynamic = 'force-dynamic';
 
+const FILE_SIZE_THRESHOLD = 500 * 1024; // 500KB
+
+const compressImageIfNeeded = async (file: File): Promise<File> => {
+  if (file.size <= FILE_SIZE_THRESHOLD) return file;
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new window.Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        let quality = 0.9;
+        const attemptCompression = (q: number) => {
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                if (blob.size <= FILE_SIZE_THRESHOLD || q <= 0.1) {
+                  const compressedFile = new File([blob], file.name, {
+                    type: "image/jpeg",
+                    lastModified: Date.now(),
+                  });
+                  resolve(compressedFile);
+                } else {
+                  attemptCompression(q - 0.1);
+                }
+              } else {
+                resolve(file); 
+              }
+            },
+            "image/jpeg",
+            q
+          );
+        };
+        attemptCompression(quality);
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
+
 const transactionSchema = z.object({
   type: z.enum(["IN", "OUT"]),
   amount: z.coerce.number().min(0.01, "จำนวนเงินต้องมากกว่า 0"),
@@ -97,6 +150,7 @@ export default function OfficeCashDrawerPage() {
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   // History Details States
   const [viewingSession, setViewingSession] = useState<CashDrawerSession | null>(null);
@@ -292,11 +346,24 @@ export default function OfficeCashDrawerPage() {
     }
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      setTransPhotos(prev => [...prev, ...files]);
-      setTransPhotoPreviews(prev => [...prev, ...files.map(f => URL.createObjectURL(f))]);
+      setIsCompressing(true);
+      try {
+        const processedFiles: File[] = [];
+        for (const file of files) {
+          const processed = await compressImageIfNeeded(file);
+          processedFiles.push(processed);
+        }
+        setTransPhotos(prev => [...prev, ...processedFiles]);
+        setTransPhotoPreviews(prev => [...prev, ...processedFiles.map(f => URL.createObjectURL(f))]);
+      } catch (err) {
+        toast({ variant: "destructive", title: "เกิดข้อผิดพลาดในการจัดการรูปภาพ" });
+      } finally {
+        setIsCompressing(false);
+        e.target.value = '';
+      }
     }
   };
 
@@ -628,10 +695,11 @@ export default function OfficeCashDrawerPage() {
               <div className="space-y-2">
                 <Label>แนบรูปภาพหลักฐาน (ถ้ามี)</Label>
                 <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" asChild>
+                  <Button type="button" variant="outline" size="sm" asChild disabled={isCompressing}>
                     <label className="cursor-pointer flex items-center gap-2">
-                      <Camera className="h-4 w-4" /> ถ่ายรูป/เลือกไฟล์
-                      <input type="file" className="hidden" accept="image/*" multiple onChange={handlePhotoChange} />
+                      {isCompressing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />} 
+                      {isCompressing ? "กำลังบีบอัด..." : "ถ่ายรูป/เลือกไฟล์"}
+                      <input type="file" className="hidden" accept="image/*" multiple onChange={handlePhotoChange} disabled={isCompressing} />
                     </label>
                   </Button>
                 </div>
@@ -648,7 +716,7 @@ export default function OfficeCashDrawerPage() {
                 </div>
               </div>
 
-              <DialogFooter><Button type="submit" disabled={isSubmitting}>{isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}บันทึกรายการ</Button></DialogFooter>
+              <DialogFooter><Button type="submit" disabled={isSubmitting || isCompressing}>{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}บันทึกรายการ</Button></DialogFooter>
             </form>
           </Form>
         </DialogContent>

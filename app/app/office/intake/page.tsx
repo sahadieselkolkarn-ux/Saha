@@ -30,7 +30,7 @@ import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
 import { createJob, getNextAvailableJobId } from "@/firebase/jobs";
 
-const FILE_SIZE_THRESHOLD = 5 * 1024 * 1024; // 5MB
+const FILE_SIZE_THRESHOLD = 500 * 1024; // 500KB
 
 const compressImageIfNeeded = async (file: File): Promise<File> => {
   if (file.size <= FILE_SIZE_THRESHOLD) return file;
@@ -256,11 +256,6 @@ export default function IntakePage() {
     
     try {
         const photoURLs: string[] = [];
-        // Sequential ID Logic: We create a dummy ref first just to get a deterministic structure,
-        // but createJob will assign the final sequential ID as document name.
-        
-        // Temporarily upload photos - We'll link them to the sequential ID after creation.
-        // For simplicity, we upload them with a timestamp prefix.
         for (const photo of photos) {
             const tempName = `${Date.now()}-${photo.name || 'blob'}`;
             const photoRef = ref(storage, `jobs/temp/${tempName}`);
@@ -474,6 +469,6 @@ export default function IntakePage() {
           </Form>
         </CardContent>
       </Card>
-    </>
+    </form>
   );
 }
