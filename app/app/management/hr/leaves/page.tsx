@@ -6,7 +6,7 @@ import { useFirebase, useCollection, useDoc } from "@/firebase";
 import type { WithId } from "@/firebase/firestore/use-collection";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format, isWithinInterval, startOfMonth, endOfMonth, isAfter, startOfToday, set } from 'date-fns';
+import { getYear, parseISO, differenceInCalendarDays, isBefore, startOfYear, endOfYear, eachDayOfInterval, isSaturday, isSunday, format as dfFormat, isWithinInterval, startOfMonth, endOfMonth, isAfter, startOfToday, set } from 'date-fns';
 import { safeFormat } from '@/lib/date-utils';
 import { useForm } from "react-hook-form";
 import * as z from "zod";
@@ -74,7 +74,7 @@ const monthOptions = [
   { value: "4", label: "เมษายน" },
   { value: "5", label: "พฤษภาคม" },
   { value: "6", label: "มิถุนายน" },
-  { value: "7", label: "กรกฎาคม" },
+  { value: "7", label: "กุมภาพันธ์" },
   { value: "8", label: "สิงหาคม" },
   { value: "9", label: "กันยายน" },
   { value: "10", label: "ตุลาคม" },
@@ -101,8 +101,8 @@ function LeaveManageDialog({
     resolver: zodResolver(leaveSchema),
     defaultValues: {
       leaveType: 'SICK',
-      startDate: format(new Date(), 'yyyy-MM-dd'),
-      endDate: format(new Date(), 'yyyy-MM-dd'),
+      startDate: "",
+      endDate: "",
       reason: '',
       isHalfDay: false,
       halfDaySession: 'MORNING',
@@ -130,10 +130,11 @@ function LeaveManageDialog({
           halfDaySession: leave.halfDaySession || 'MORNING',
         });
       } else {
+        const todayStr = dfFormat(new Date(), 'yyyy-MM-dd');
         form.reset({
           leaveType: 'SICK',
-          startDate: format(new Date(), 'yyyy-MM-dd'),
-          endDate: format(new Date(), 'yyyy-MM-dd'),
+          startDate: todayStr,
+          endDate: todayStr,
           reason: 'Admin บันทึกให้',
           isHalfDay: false,
           halfDaySession: 'MORNING',
@@ -203,7 +204,7 @@ function LeaveManageDialog({
                                     !field.value && "text-muted-foreground"
                                   )}
                                 >
-                                  {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                  {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                                   <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -212,7 +213,7 @@ function LeaveManageDialog({
                               <Calendar
                                 mode="single"
                                 selected={field.value ? parseISO(field.value) : undefined}
-                                onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                                 initialFocus
                               />
                             </PopoverContent>
@@ -233,7 +234,7 @@ function LeaveManageDialog({
                                   )}
                                   disabled={watchedIsHalfDay}
                                 >
-                                  {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                  {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                                   <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -242,7 +243,7 @@ function LeaveManageDialog({
                               <Calendar
                                 mode="single"
                                 selected={field.value ? parseISO(field.value) : undefined}
-                                onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                                 disabled={(date) => isBefore(date, parseISO(watchedStartDate))}
                                 initialFocus
                               />
@@ -272,7 +273,6 @@ export default function ManagementHRLeavesPage() {
 
   const [activeTab, setActiveTab] = useState('summary');
   
-  // FIXED: Defer initialization to prevent hydration error
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [filters, setFilters] = useState({ status: 'ALL', userId: 'ALL' });
@@ -326,8 +326,8 @@ export default function ManagementHRLeavesPage() {
             
             const [attSnap, holSnap, adjSnap] = await Promise.all([
                 getDocs(query(collection(db, 'attendance'), where('timestamp', '>=', start), where('timestamp', '<=', end))),
-                getDocs(query(collection(db, 'hrHolidays'), where('date', '>=', format(start, 'yyyy-MM-dd')), where('date', '<=', format(end, 'yyyy-MM-dd')))),
-                getDocs(query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', format(start, 'yyyy-MM-dd')), where('date', '<=', format(end, 'yyyy-MM-dd'))))
+                getDocs(query(collection(db, 'hrHolidays'), where('date', '>=', dfFormat(start, 'yyyy-MM-dd')), where('date', '<=', dfFormat(end, 'yyyy-MM-dd')))),
+                getDocs(query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', dfFormat(start, 'yyyy-MM-dd')), where('date', '<=', dfFormat(end, 'yyyy-MM-dd'))))
             ]);
 
             setPeriodAttendance(attSnap.docs.map(d => ({ id: d.id, ...d.data() } as Attendance)));
@@ -391,7 +391,7 @@ export default function ManagementHRLeavesPage() {
         const userAdjustments = periodAdjustments.filter(a => a.userId === user.id);
 
         const attendanceDates = new Set([
-            ...userAttendance.map(a => format(a.timestamp.toDate(), 'yyyy-MM-dd')),
+            ...userAttendance.map(a => dfFormat(a.timestamp.toDate(), 'yyyy-MM-dd')),
             ...userAdjustments.filter(a => a.type === 'ADD_RECORD').map(a => a.date)
         ]);
 
@@ -402,8 +402,8 @@ export default function ManagementHRLeavesPage() {
         let absentDays = 0;
 
         daysInterval.forEach(day => {
-            const dayStr = format(day, 'yyyy-MM-dd');
-            const isToday = dayStr === format(today, 'yyyy-MM-dd');
+            const dayStr = dfFormat(day, 'yyyy-MM-dd');
+            const isToday = dayStr === dfFormat(today, 'yyyy-MM-dd');
             
             if (isAfter(day, today)) return;
             
@@ -582,8 +582,8 @@ export default function ManagementHRLeavesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {isLoadingExtras && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-                    <Select value={selectedMonth} onValueChange={setSelectedMonth}><SelectTrigger className="w-[150px]"><SelectValue placeholder="เลือกเดือน..." /></SelectTrigger><SelectContent>{monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent></Select>
-                    <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(Number(v))}><SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger><SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent></Select>
+                    <Select value={selectedMonth || ""} onValueChange={setSelectedMonth}><SelectTrigger className="w-[150px]"><SelectValue placeholder="เลือกเดือน..." /></SelectTrigger><SelectContent>{monthOptions.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent></Select>
+                    <Select value={selectedYear?.toString() || ""} onValueChange={(v) => setSelectedYear(Number(v))}><SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger><SelectContent>{yearOptions.map(y => <SelectItem key={y} value={y.toString()}>{y}</SelectItem>)}</SelectContent></Select>
                   </div>
                 </div>
             </CardHeader>
@@ -627,7 +627,7 @@ export default function ManagementHRLeavesPage() {
                 <Table>
                 <TableHeader><TableRow><TableHead>พนักงาน</TableHead><TableHead>ประเภท</TableHead><TableHead>วันที่ลา</TableHead><TableHead className="text-center">จำนวนวัน</TableHead><TableHead>สถานะ</TableHead><TableHead className="text-right">จัดการ</TableHead></TableRow></TableHeader>
                 <TableBody>{filteredLeaves.length > 0 ? filteredLeaves.map(leave => (
-                    <TableRow key={leave.id}><TableCell className="font-medium">{leave.userName}</TableCell><TableCell>{leaveTypeLabel(leave.leaveType)}{leave.isHalfDay && <Badge variant="outline" className="ml-2 text-[9px] h-4">0.5 วัน</Badge>}</TableCell><TableCell className="text-sm">{safeFormat(parseISO(leave.startDate), 'dd/MM/yy')} {!leave.isHalfDay && leave.endDate !== leave.startDate && ` - ${safeFormat(parseISO(leave.endDate), 'dd/MM/yy')}`}</TableCell><TableCell className="text-center">{leave.days}</TableCell><TableCell><Badge variant={leave.status === 'APPROVED' ? 'default' : leave.status === 'REJECTED' ? 'destructive' : 'secondary'}>{leaveStatusLabel(leave.status)}</Badge></TableCell>
+                    <TableRow key={leave.id}><TableCell className="font-medium">{leave.userName}</TableCell><TableCell>{leaveTypeLabel(leave.leaveType)}{leave.isHalfDay && <Badge variant="outline" className="ml-2 text-[9px] h-4">0.5 วัน</Badge>}</TableCell><TableCell className="text-sm">{dfFormat(parseISO(leave.startDate), 'dd/MM/yy')} {!leave.isHalfDay && leave.endDate !== leave.startDate && ` - ${dfFormat(parseISO(leave.endDate), 'dd/MM/yy')}`}</TableCell><TableCell className="text-center">{leave.days}</TableCell><TableCell><Badge variant={leave.status === 'APPROVED' ? 'default' : leave.status === 'REJECTED' ? 'destructive' : 'secondary'}>{leaveStatusLabel(leave.status)}</Badge></TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>

@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { format, parseISO } from "date-fns";
+import { format as dfFormat, parseISO } from "date-fns";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -68,7 +68,7 @@ function ReceivePaymentDialog({
   const form = useForm<z.infer<typeof arPaymentSchema>>({
     resolver: zodResolver(arPaymentSchema),
     defaultValues: {
-      paymentDate: new Date().toISOString().split("T")[0],
+      paymentDate: "",
       amount: obligation.balance,
       withholdingEnabled: false,
       withholdingAmount: 0,
@@ -78,15 +78,17 @@ function ReceivePaymentDialog({
   });
 
   useEffect(() => {
-    form.reset({
-      paymentDate: new Date().toISOString().split("T")[0],
-      amount: obligation.balance,
-      withholdingEnabled: false,
-      withholdingAmount: 0,
-      notes: "",
-      accountId: accounts[0]?.id || "",
-    });
-  }, [obligation, accounts, form]);
+    if (isOpen) {
+        form.reset({
+          paymentDate: dfFormat(new Date(), "yyyy-MM-dd"),
+          amount: obligation.balance,
+          withholdingEnabled: false,
+          withholdingAmount: 0,
+          notes: "",
+          accountId: accounts[0]?.id || "",
+        });
+    }
+  }, [obligation, accounts, form, isOpen]);
 
   const watchedAmount = form.watch('amount');
   const watchedWhtEnabled = form.watch('withholdingEnabled');
@@ -216,7 +218,7 @@ function ReceivePaymentDialog({
                                 !field.value && "text-muted-foreground"
                               )}
                             >
-                              {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                              {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                               <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                             </Button>
                           </FormControl>
@@ -225,7 +227,7 @@ function ReceivePaymentDialog({
                           <Calendar
                             mode="single"
                             selected={field.value ? parseISO(field.value) : undefined}
-                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                             initialFocus
                           />
                         </PopoverContent>
@@ -308,7 +310,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
   const form = useForm<z.infer<typeof apPaymentSchema>>({
     resolver: zodResolver(apPaymentSchema),
     defaultValues: {
-      paymentDate: new Date().toISOString().split("T")[0],
+      paymentDate: "",
       amount: obligation.balance,
       notes: "",
       accountId: accounts[0]?.id || "",
@@ -374,7 +376,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
   useEffect(() => {
     if (isOpen) {
         form.reset({
-            paymentDate: new Date().toISOString().split("T")[0],
+            paymentDate: dfFormat(new Date(), "yyyy-MM-dd"),
             amount: obligation.balance,
             notes: "",
             accountId: accounts[0]?.id || "",
@@ -561,7 +563,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                                 !field.value && "text-muted-foreground"
                               )}
                             >
-                              {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                              {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                               <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                             </Button>
                           </FormControl>
@@ -570,7 +572,7 @@ function PayCreditorDialog({ obligation, accounts, isOpen, onClose }: { obligati
                           <Calendar
                             mode="single"
                             selected={field.value ? parseISO(field.value) : undefined}
-                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                             initialFocus
                           />
                         </PopoverContent>
@@ -710,10 +712,19 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
     const form = useForm<z.infer<typeof addCreditorSchema>>({
         resolver: zodResolver(addCreditorSchema),
         defaultValues: {
-            docDate: new Date().toISOString().split("T")[0],
+            docDate: "",
             amountTotal: 0,
         },
     });
+
+    useEffect(() => {
+        if (isOpen) {
+            form.reset({
+                docDate: dfFormat(new Date(), "yyyy-MM-dd"),
+                amountTotal: 0,
+            });
+        }
+    }, [isOpen, form]);
 
     const filteredVendors = useMemo(() => {
         if (!vendorSearch) return vendors;
@@ -811,7 +822,7 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                                               !field.value && "text-muted-foreground"
                                             )}
                                           >
-                                            {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                            {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                                             <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                                           </Button>
                                         </FormControl>
@@ -820,7 +831,7 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                                         <Calendar
                                           mode="single"
                                           selected={field.value ? parseISO(field.value) : undefined}
-                                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                          onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                                           initialFocus
                                         />
                                       </PopoverContent>
@@ -845,7 +856,7 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                                               !field.value && "text-muted-foreground"
                                             )}
                                           >
-                                            {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                            {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                                             <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                                           </Button>
                                         </FormControl>
@@ -854,7 +865,7 @@ function AddCreditorDialog({ vendors, isOpen, onClose }: { vendors: WithId<Vendo
                                         <Calendar
                                           mode="single"
                                           selected={field.value ? parseISO(field.value) : undefined}
-                                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                          onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                                           initialFocus
                                         />
                                       </PopoverContent>

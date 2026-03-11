@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from "zod";
 import { addDoc, collection, query, where, orderBy, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
-import { format, differenceInCalendarDays, getYear, isBefore, parseISO } from 'date-fns';
+import { format as dfFormat, differenceInCalendarDays, getYear, isBefore, parseISO } from 'date-fns';
 
 import { useFirebase, useCollection, useDoc } from '@/firebase';
 import { useAuth } from '@/context/auth-context';
@@ -74,13 +74,24 @@ export default function MyLeavesPage() {
   const form = useForm<LeaveFormData>({
     resolver: zodResolver(leaveRequestSchema),
     defaultValues: {
-      startDate: format(new Date(), 'yyyy-MM-dd'),
-      endDate: format(new Date(), 'yyyy-MM-dd'),
+      startDate: "",
+      endDate: "",
       reason: '',
       isHalfDay: false,
       halfDaySession: 'MORNING',
     },
   });
+
+  useEffect(() => {
+    const todayStr = dfFormat(new Date(), 'yyyy-MM-dd');
+    form.reset({
+      startDate: todayStr,
+      endDate: todayStr,
+      reason: '',
+      isHalfDay: false,
+      halfDaySession: 'MORNING',
+    });
+  }, [form]);
   
   const watchedIsHalfDay = form.watch('isHalfDay');
   const watchedStartDate = form.watch('startDate');
@@ -146,8 +157,8 @@ export default function MyLeavesPage() {
       toast({ title: 'ส่งใบลาสำเร็จ', description: 'คำขอของคุณถูกส่งไปรอการพิจารณาแล้ว' });
       form.reset({ 
           reason: '', 
-          startDate: format(new Date(), 'yyyy-MM-dd'), 
-          endDate: format(new Date(), 'yyyy-MM-dd'), 
+          startDate: dfFormat(new Date(), 'yyyy-MM-dd'), 
+          endDate: dfFormat(new Date(), 'yyyy-MM-dd'), 
           isHalfDay: false, 
           halfDaySession: 'MORNING' 
       });
@@ -253,8 +264,8 @@ export default function MyLeavesPage() {
       return myLeaves.map((leave) => (
         <TableRow key={leave.id}>
           <TableCell className="font-medium">
-            {format(parseISO(leave.startDate), 'dd/MM/yy')} 
-            {!leave.isHalfDay && leave.endDate !== leave.startDate && ` - ${format(parseISO(leave.endDate), 'dd/MM/yy')}`}
+            {dfFormat(parseISO(leave.startDate), 'dd/MM/yy')} 
+            {!leave.isHalfDay && leave.endDate !== leave.startDate && ` - ${dfFormat(parseISO(leave.endDate), 'dd/MM/yy')}`}
             {leave.isHalfDay && <span className="ml-1 text-muted-foreground text-[10px]">({leave.halfDaySession === 'MORNING' ? 'ครึ่งเช้า' : 'ครึ่งบ่าย'})</span>}
           </TableCell>
           <TableCell>{leaveTypeLabel(leave.leaveType)}</TableCell>
@@ -274,7 +285,7 @@ export default function MyLeavesPage() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>ยืนยันการยกเลิกคำขอลา?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      คุณต้องการยกเลิกใบลาประเภท {leaveTypeLabel(leave.leaveType)} วันที่ {format(parseISO(leave.startDate), 'dd/MM/yyyy')} ใช่หรือไม่?
+                      คุณต้องการยกเลิกใบลาประเภท {leaveTypeLabel(leave.leaveType)} วันที่ {dfFormat(parseISO(leave.startDate), 'dd/MM/yyyy')} ใช่หรือไม่?
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -375,11 +386,11 @@ export default function MyLeavesPage() {
                                 <Button
                                   variant={"outline"}
                                   className={cn(
-                                    "w-full pl-3 text-left font-normal",
+                                    "w-full pl-3 text-left font-normal h-10",
                                     !field.value && "text-muted-foreground"
                                   )}
                                 >
-                                  {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                  {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                                   <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -388,7 +399,7 @@ export default function MyLeavesPage() {
                               <Calendar
                                 mode="single"
                                 selected={field.value ? parseISO(field.value) : undefined}
-                                onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                                 initialFocus
                               />
                             </PopoverContent>
@@ -409,12 +420,12 @@ export default function MyLeavesPage() {
                                 <Button
                                   variant={"outline"}
                                   className={cn(
-                                    "w-full pl-3 text-left font-normal",
+                                    "w-full pl-3 text-left font-normal h-10",
                                     !field.value && "text-muted-foreground"
                                   )}
                                   disabled={watchedIsHalfDay}
                                 >
-                                  {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                  {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                                   <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -423,7 +434,7 @@ export default function MyLeavesPage() {
                               <Calendar
                                 mode="single"
                                 selected={field.value ? parseISO(field.value) : undefined}
-                                onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                                onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                                 disabled={(date) => isBefore(date, parseISO(watchedStartDate))}
                                 initialFocus
                               />

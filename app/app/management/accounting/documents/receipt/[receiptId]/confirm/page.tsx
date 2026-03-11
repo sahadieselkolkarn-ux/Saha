@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
@@ -11,14 +10,14 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { format, parseISO } from "date-fns";
+import { format as dfFormat, parseISO } from "date-fns";
 
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ArrowLeft, Calculator, Info, AlertCircle, CalendarDays, Wallet, Percent, Check } from "lucide-react";
+import { Loader2, Save, ArrowLeft, Calculator, Info, AlertCircle, CalendarDays, Wallet, Percent, Check } from "lucide-center";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -72,7 +71,7 @@ function ConfirmReceiptPageContent() {
   const form = useForm<ConfirmReceiptFormData>({
     resolver: zodResolver(confirmReceiptSchema),
     defaultValues: {
-      paymentDate: format(new Date(), 'yyyy-MM-dd'),
+      paymentDate: "",
       netReceivedTotal: 0,
       whtPercent: 0,
       accountId: "",
@@ -146,14 +145,13 @@ function ConfirmReceiptPageContent() {
         const initialNetTotal = fetchedInvoices.reduce((sum, inv) => {
             const gross = obligations[inv.id]?.balance ?? inv.paymentSummary?.balance ?? inv.grandTotal;
             const whtBase = inv.withTax ? (gross / 1.07) : gross;
-            // Default check: if doc is TAX_INVOICE, maybe user wants 3%
             const initialWhtRate = inv.docType === 'TAX_INVOICE' ? 0.03 : 0; 
             return sum + (gross - (whtBase * initialWhtRate));
         }, 0);
 
         form.reset({
             accountId: receiptData.receivedAccountId || accountsData[0]?.id || "",
-            paymentDate: receiptData.paymentDate || format(new Date(), "yyyy-MM-dd"),
+            paymentDate: receiptData.paymentDate || dfFormat(new Date(), "yyyy-MM-dd"),
             netReceivedTotal: Math.round(initialNetTotal * 100) / 100,
             whtPercent: fetchedInvoices.some(inv => inv.docType === 'TAX_INVOICE') ? 3 : 0
         });
@@ -383,13 +381,13 @@ function ConfirmReceiptPageContent() {
                                     <PopoverTrigger asChild>
                                       <FormControl>
                                         <Button variant={"outline"} className={cn("w-full pl-3 text-left font-normal h-10", !field.value && "text-muted-foreground")}>
-                                          {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                                          {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                                           <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                                         </Button>
                                       </FormControl>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-auto p-0" align="start">
-                                      <Calendar mode="single" selected={field.value ? parseISO(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} initialFocus />
+                                      <Calendar mode="single" selected={field.value ? parseISO(field.value) : undefined} onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")} initialFocus />
                                     </PopoverContent>
                                   </Popover>
                                   <FormMessage />
