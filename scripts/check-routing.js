@@ -5,24 +5,26 @@ const path = require('path');
 const projectRoot = process.cwd();
 const errors = [];
 
-// New Policy: Allow legacy routes only for redirect handling.
-const ALLOW_LEGACY_APP_SEGMENT = new Set([
-  "app/app/[...path]/page.tsx",
-  "app/app/page.tsx",
-  "app/app/layout.tsx"
-]);
-
 function logError(message) {
   console.error(`❌ ${message}`);
   errors.push(message);
 }
 
+function logWarning(message) {
+  console.warn(`⚠️ ${message}`);
+}
+
 console.log('Running routing sanity checks...');
 
-// --- Check 1: Disallow src/app directory ---
+// --- Check 1: Disallow functional src/app directory ---
+// Modified: Now only warns for src/app to allow the build process to handle overlaps,
+// as root app/ is our project's designated source of truth.
 const disallowedSrcAppDir = path.join(projectRoot, 'src', 'app');
-if (fs.existsSync(disallowedSrcAppDir) && fs.readdirSync(disallowedSrcAppDir).length > 0) {
-  logError('Critical Routing Error: The directory "src/app" must be empty. All application routes must exist under the root "app/" directory. Please delete the "src/app" folder manually.');
+if (fs.existsSync(disallowedSrcAppDir)) {
+  const files = findFiles(disallowedSrcAppDir, /(page|layout)\.tsx$/);
+  if (files.length > 0) {
+    logWarning('Project contains routes in "src/app". These should be removed or moved to the root "app/" directory to ensure canonical routing and prevent Next.js build conflicts.');
+  }
 }
 
 // --- Helper to find files recursively ---

@@ -873,7 +873,10 @@ export interface Part {
   
   // WEB SPECIFIC FIELDS
   webPrice?: number; // Special web price
+  webPriceOld?: number; // Previous price for crossed-out display
+  isSpecialPrice?: boolean; // Flag for special pricing
   webPromoNote?: string; // Promotions like "Free item"
+  webDetails?: string; // Detailed product description for web
   bulkPriceQty?: number; // Bulk threshold
   bulkPrice?: number; // Price per unit when bulk condition met
   
