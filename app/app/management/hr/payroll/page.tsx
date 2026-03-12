@@ -1,10 +1,11 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { doc, collection, query, where, orderBy, getDocs, getDoc, Timestamp, setDoc, serverTimestamp, updateDoc, addDoc } from "firebase/firestore";
 import { useFirebase, useDoc, type WithId } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
-import { addMonths, subMonths, format as dfFormat, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear, eachDayOfInterval, isSaturday, isSunday, parseISO, differenceInCalendarDays, getYear } from "date-fns";
+import { addMonths, subMonths, format, startOfMonth, endOfMonth, isAfter, startOfToday, set, startOfYear, eachDayOfInterval, isSaturday, isSunday, parseISO, differenceInCalendarDays, getYear } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,7 +102,7 @@ function LeaveManageDialog({
 
   useEffect(() => {
     if (isOpen) {
-        const today = dfFormat(new Date(), 'yyyy-MM-dd');
+        const today = format(new Date(), 'yyyy-MM-dd');
         form.reset({
           leaveType: 'SICK',
           startDate: today,
@@ -132,8 +133,18 @@ function LeaveManageDialog({
                   </FormItem>
                 )} />
                 <div className="grid grid-cols-2 gap-4">
-                    <FormField control={form.control} name="startDate" render={({ field }) => (<FormItem><FormLabel>วันเริ่มลา</FormLabel><FormControl><Input type="date" {...field}/></FormItem>)} />
-                    <FormField control={form.control} name="endDate" render={({ field }) => (<FormItem><FormLabel>วันสิ้นสุด</FormLabel><FormControl><Input type="date" {...field}/></FormItem>)} />
+                    <FormField control={form.control} name="startDate" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>วันเริ่มลา</FormLabel>
+                        <FormControl><Input type="date" {...field}/></FormControl>
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="endDate" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>วันสิ้นสุด</FormLabel>
+                        <FormControl><Input type="date" {...field}/></FormControl>
+                      </FormItem>
+                    )} />
                 </div>
                 <FormField control={form.control} name="reason" render={({ field }) => (
                   <FormItem>
@@ -218,12 +229,12 @@ export default function HRGeneratePayslipsPage() {
             const year = currentMonth.getFullYear();
             
             const ytdStart = startOfYear(currentMonth);
-            const ytdStartStr = dfFormat(ytdStart, 'yyyy-MM-dd');
-            const periodEndStr = dfFormat(payPeriod.end, 'yyyy-MM-dd');
+            const ytdStartStr = format(ytdStart, 'yyyy-MM-dd');
+            const periodEndStr = format(payPeriod.end, 'yyyy-MM-dd');
             
-            const payrollBatchId = `${dfFormat(currentMonth, 'yyyy-MM')}-${period}`;
+            const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
             
-            const monthBatchId = `${dfFormat(currentMonth, 'yyyy-MM')}`;
+            const monthBatchId = `${format(currentMonth, 'yyyy-MM')}`;
             const batchDocRef = doc(db, 'payrollBatches', monthBatchId);
             const batchDocSnap = await getDoc(batchDocRef);
             let finalSsoDecision = batchDocSnap.exists() ? batchDocSnap.data().ssoDecision : null;
@@ -258,7 +269,7 @@ export default function HRGeneratePayslipsPage() {
             const holidaysQuery = collection(db, 'hrHolidays');
             const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED'));
             const attendancePeriodQuery = query(collection(db, 'attendance'), where('timestamp', '>=', payPeriod.start), where('timestamp', '<=', payPeriod.end));
-            const adjustmentsPeriodQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', dfFormat(payPeriod.start, 'yyyy-MM-dd')), where('date', '<=', dfFormat(payPeriod.end, 'yyyy-MM-dd')));
+            const adjustmentsPeriodQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', format(payPeriod.start, 'yyyy-MM-dd')), where('date', '<=', format(payPeriod.end, 'yyyy-MM-dd')));
             const attendanceYtdQuery = query(collection(db, 'attendance'), where('timestamp', '>=', ytdStart), where('timestamp', '<=', payPeriod.end));
             const adjustmentsYtdQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', ytdStartStr), where('date', '<=', periodEndStr));
             const payslipsQuery = collection(db, 'payrollBatches', payrollBatchId, 'payslips');
@@ -285,7 +296,7 @@ export default function HRGeneratePayslipsPage() {
             const allHolidays = new Map(
               holidaysSnap.docs.map(d => {
                 const raw = d.data().date;
-                const key = typeof raw === "string" ? raw.trim().slice(0, 10) : (raw?.toDate ? dfFormat(raw.toDate(), "yyyy-MM-dd") : "");
+                const key = typeof raw === "string" ? raw.trim().slice(0, 10) : (raw?.toDate ? format(raw.toDate(), "yyyy-MM-dd") : "");
                 return [key, d.data().name];
               }).filter(([k]) => !!k)
             );
@@ -332,7 +343,7 @@ export default function HRGeneratePayslipsPage() {
     
     const handleSsoDecisionConfirm = async (decision: any) => {
         if (!db || !adminProfile || !currentMonth) return;
-        const monthBatchId = `${dfFormat(currentMonth, 'yyyy-MM')}`;
+        const monthBatchId = `${format(currentMonth, 'yyyy-MM')}`;
         const batchRef = doc(db, 'payrollBatches', monthBatchId);
         const finalDecision = { ...decision, decidedAt: serverTimestamp(), decidedByUid: adminProfile.uid, decidedByName: adminProfile.displayName };
         await setDoc(batchRef, { ssoDecision: finalDecision }, { merge: true });
@@ -350,7 +361,7 @@ export default function HRGeneratePayslipsPage() {
         if (!periodMetrics || !periodMetricsYtd) { toast({variant: 'destructive', title: 'คำนวณไม่สำเร็จ'}); setEditingPayslip(null); return; }
         
         const otherPeriodNo = period === 1 ? 2 : 1;
-        const otherBatchId = `${dfFormat(currentMonth, 'yyyy-MM')}-${otherPeriodNo}`;
+        const otherBatchId = `${format(currentMonth, 'yyyy-MM')}-${otherPeriodNo}`;
         const otherPayslipRef = doc(db, 'payrollBatches', otherBatchId, 'payslips', user.id);
         const otherPayslipSnap = await getDoc(otherPayslipRef);
         const otherSnapshot = otherPayslipSnap.exists() ? (otherPayslipSnap.data().snapshot as PayslipSnapshot) : null;
@@ -422,7 +433,7 @@ export default function HRGeneratePayslipsPage() {
     const handleSaveDraft = async () => {
         if (!db || !adminProfile || !editingPayslip || !drawerSnapshot || !currentMonth || !period) return;
         setIsActing(editingPayslip.id);
-        const payrollBatchId = `${dfFormat(currentMonth, 'yyyy-MM')}-${period}`;
+        const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
         const batchRef = doc(db, 'payrollBatches', payrollBatchId);
         const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', editingPayslip.id);
         try {
@@ -439,7 +450,7 @@ export default function HRGeneratePayslipsPage() {
     const handleSaveAndSend = async () => {
         if (!db || !adminProfile || !editingPayslip || !drawerSnapshot || !currentMonth || !period) return;
         setIsActing(editingPayslip.id);
-        const payrollBatchId = `${dfFormat(currentMonth, 'yyyy-MM')}-${period}`;
+        const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
         const batchRef = doc(db, 'payrollBatches', payrollBatchId);
         const payslipRef = doc(db, 'payrollBatches', payrollBatchId, 'payslips', editingPayslip.id);
         try {
@@ -460,7 +471,7 @@ export default function HRGeneratePayslipsPage() {
           const frame = printFrameRef.current;
           if (!frame) return;
           const totals = calcTotals(drawerSnapshot);
-          const periodLabelText = `งวด ${period} (${dfFormat(currentMonth, 'MMMM yyyy')})`;
+          const periodLabelText = `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})`;
           const html = `<html><head><meta charset="utf-8" /><style>@page { size: A4; margin: 15mm; } body { font-family: sans-serif; font-size: 14px; } .header { text-align: center; border-bottom: 2px solid #333; margin-bottom: 20px; } table { width: 100%; border-collapse: collapse; margin-bottom: 15px; } th, td { border: 1px solid #ddd; padding: 8px; } .text-right { text-align: right; } .total { font-weight: bold; background: #eee; }</style></head><body><div class="header"><h1>${storeSettings.taxName || 'Sahadiesel Service'}</h1><p>ใบแจ้งยอดเงินเดือน / PAY SLIP</p></div><p><strong>พนักงาน:</strong> ${editingPayslip.displayName} | <strong>งวด:</strong> ${periodLabelText}</p><table><thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน</th></tr></thead><tbody><tr><td>เงินเดือน/ค่าแรงงวดนี้</td><td class="text-right">${formatCurrency(totals.basePay)}</td></tr>${(drawerSnapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${formatCurrency(a.amount)}</td></tr>`).join('')}${(drawerSnapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">-${formatCurrency(d.amount)}</td></tr>`).join('')}<tr class="total"><td>สุทธิได้รับจริง</td><td class="text-right">${formatCurrency(totals.netPay)} บาท</td></tr></tbody></table></body></html>`;
           frame.onload = () => { frame.contentWindow?.focus(); frame.contentWindow?.print(); };
           frame.srcdoc = html;
@@ -502,8 +513,8 @@ export default function HRGeneratePayslipsPage() {
                         </div>
                         <div className="flex items-center gap-2 self-end sm:self-center">
                             <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => prev ? subMonths(prev, 1) : null)}><ChevronLeft /></Button>
-                            <span className="font-semibold text-lg text-center w-32">{currentMonth ? dfFormat(currentMonth, 'MMMM yyyy') : '...'}</span>
-                            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => prev ? addMonths(prev, 1) : null)}><ChevronRight /></Button>
+                            <span className="font-semibold text-lg text-center w-32">{currentMonth ? format(currentMonth, 'MMMM yyyy') : '...'}</span>
+                            <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => addMonths(prev, 1) : null)}><ChevronRight /></Button>
                             <Select value={period?.toString() || ""} onValueChange={(v) => setPeriod(Number(v) as 1 | 2)}>
                                 <SelectTrigger className="w-[120px]"><SelectValue placeholder="..." /></SelectTrigger>
                                 <SelectContent><SelectItem value="1">งวดที่ 1</SelectItem><SelectItem value="2">งวดที่ 2</SelectItem></SelectContent>
@@ -574,7 +585,7 @@ export default function HRGeneratePayslipsPage() {
                 >
                     <PayslipSlipView 
                         userName={editingPayslip.displayName} 
-                        periodLabel={currentMonth ? `งวด ${period} (${dfFormat(currentMonth, 'MMMM yyyy')})` : ""} 
+                        periodLabel={currentMonth ? `งวด ${period} (${format(currentMonth, 'MMMM yyyy')})` : ""} 
                         snapshot={drawerSnapshot} 
                         otherPeriodSnapshot={otherPeriodSnapshot}
                         currentPeriodNo={period || 1}
@@ -591,7 +602,7 @@ export default function HRGeneratePayslipsPage() {
             <Dialog open={isDaySelectOpen} onOpenChange={setIsDaySelectOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader><DialogTitle>เลือกวันที่ต้องการปรับปรุงเวลา</DialogTitle></DialogHeader>
-                    <ScrollArea className="h-80 pr-4"><div className="space-y-1">{periodDaysList.map(day => (<Button key={day.toISOString()} variant="ghost" className="w-full justify-between" onClick={() => { setSelectedDayToAdjust({ date: day }); setIsDaySelectOpen(false); }}><span>{dfFormat(day, 'dd/MM/yyyy')}</span><span className="text-[10px] text-muted-foreground">{dfFormat(day, 'EEEE')}</span></Button>))}</div></ScrollArea>
+                    <ScrollArea className="h-80 pr-4"><div className="space-y-1">{periodDaysList.map(day => (<Button key={day.toISOString()} variant="ghost" className="w-full justify-between" onClick={() => { setSelectedDayToAdjust({ date: day }); setIsDaySelectOpen(false); }}><span>{format(day, 'dd/MM/yyyy')}</span><span className="text-[10px] text-muted-foreground">{format(day, 'EEEE')}</span></Button>))}</div></ScrollArea>
                 </DialogContent>
             </Dialog>
 

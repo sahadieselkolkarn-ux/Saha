@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -22,8 +23,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { ScrollArea } from "./ui/scroll-area";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
@@ -52,7 +53,7 @@ const compressImageIfNeeded = async (file: File): Promise<File> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.editContext("2d");
         if (!ctx) {
           resolve(file);
           return;
@@ -162,7 +163,7 @@ export function PurchaseDocForm() {
     resolver: zodResolver(purchaseFormSchema),
     defaultValues: {
       vendorId: "",
-      docDate: "", // FIXED: Defer to useEffect
+      docDate: "",
       invoiceNo: "",
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       withTax: true,
@@ -178,7 +179,6 @@ export function PurchaseDocForm() {
     },
   });
 
-  // Client-side initialization for docDate
   useEffect(() => {
     if (!editDocId && !form.getValues("docDate")) {
       form.setValue("docDate", format(new Date(), "yyyy-MM-dd"));
@@ -522,7 +522,7 @@ export function PurchaseDocForm() {
                           </Select>
                         </FormItem>
 
-                        <FormField name="vendorId" render={({ field }) => (
+                        <FormField name="vendorId" control={form.control} render={({ field }) => (
                             <FormItem>
                                 <FormLabel>รายชื่อร้านค้า</FormLabel>
                                 <Popover open={isVendorPopoverOpen} onOpenChange={setIsVendorPopoverOpen}>
@@ -597,7 +597,7 @@ export function PurchaseDocForm() {
                                 <FormItem><FormLabel>จ่ายโดย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue/></SelectTrigger></FormControl><SelectContent><SelectItem value="CASH">เงินสด</SelectItem><SelectItem value="TRANSFER">เงินโอน</SelectItem></SelectContent></Select></FormItem>
                               )} />
                               <FormField name="suggestedAccountId" render={({ field }) => (
-                                <FormItem><FormLabel>บัญชีที่จ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</Select></FormItem>
+                                <FormItem><FormLabel>บัญชีที่จ่าย</FormLabel><Select onValueChange={field.onChange} value={field.value}><FormControl><SelectTrigger><SelectValue placeholder="เลือก..."/></SelectTrigger></FormControl><SelectContent>{accounts.map(a=><SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent></FormItem>
                               )} />
                           </div>
                       )}
@@ -692,7 +692,12 @@ export function PurchaseDocForm() {
               <div className="space-y-4 p-6 border rounded-lg bg-muted/30 h-fit">
                   <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">รวมเป็นเงิน</span><span className="font-medium">{(form.watch('subtotal') || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                   <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">ส่วนลด (บาท)</span><FormField name="discountAmount" render={({ field }) => (<Input type="number" step="any" className="w-32 text-right bg-background h-8" {...field} value={field.value || ''} disabled={isSubmitting}/>)} /></div>
-                  <div className="flex justify-between items-center py-2"><FormField name="withTax" render={({ field }) => (<div className="flex items-center space-x-2"><Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isSubmitting}/><Label className="text-sm font-normal cursor-pointer">ภาษีมูลค่าเพิ่ม 7%</Label></div>)} /><span className="text-sm">{(form.watch('vatAmount') || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                  <div className="flex justify-between items-center py-2"><FormField name="withTax" render={({ field }) => (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={isSubmitting}/>
+                      <Label className="text-sm font-normal cursor-pointer">ภาษีมูลค่าเพิ่ม 7%</Label>
+                    </div>
+                  )} /><span className="text-sm">{(form.watch('vatAmount') || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                   <Separator className="my-2"/>
                   <div className="flex justify-between items-center text-xl font-bold text-primary"><span>ยอดรวมสุทธิ</span><span>{(form.watch('grandTotal') || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
               </div>

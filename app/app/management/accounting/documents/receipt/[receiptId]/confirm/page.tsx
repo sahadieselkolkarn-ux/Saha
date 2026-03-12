@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState, Suspense, useCallback } from "react";
@@ -17,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, ArrowLeft, Calculator, Info, AlertCircle, CalendarDays, Wallet, Percent, Check } from "lucide-center";
+import { Loader2, Save, ArrowLeft, Calculator, Info, AlertCircle, CalendarDays, Wallet, Percent, Check } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -234,7 +235,7 @@ function ConfirmReceiptPageContent() {
                     invoiceId: a.invoiceId,
                     invoiceDocNo: a.invoiceDocNo,
                     netCashApplied: a.netCash,
-                    withholdingAmount: a.whtAmount,
+                    withholdingAmount: a.withholdingAmount,
                     grossApplied: a.gross,
                 })),
                 createdAt: serverTimestamp(),
@@ -447,7 +448,7 @@ function ConfirmReceiptPageContent() {
                             <Info className="h-4 w-4 text-blue-600" />
                             <AlertTitle className="text-blue-800 text-xs font-bold">ข้อมูลการคำนวณ</AlertTitle>
                             <AlertDescription className="text-blue-700 text-[10px]">
-                                ตารางนี้แสดงว่ายอดเงินที่พี่โจ้กรอกด้านบน ถูกแบ่งไปหักลบหนี้ในแต่ละบิลอย่างไรบ้างค่ะ
+                                ตารางนี้แสดงว่ายอดเงินที่ได้รับจริง ถูกแบ่งไปหักลบหนี้ในแต่ละบิลอย่างไรบ้างค่ะ
                             </AlertDescription>
                         </Alert>
 
