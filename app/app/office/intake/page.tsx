@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -29,7 +28,7 @@ import { Loader2, Camera, X, ChevronsUpDown, PlusCircle, ImageIcon, AlertCircle,
 import type { Customer } from "@/lib/types";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
-import { createJob, getNextAvailableJobId } from "@/firebase/jobs";
+import { createJob } from "@/firebase/jobs";
 
 const FILE_SIZE_THRESHOLD = 500 * 1024; // 500KB
 
@@ -152,9 +151,6 @@ export default function IntakePage() {
   const [isCustomerPopoverOpen, setIsCustomerPopoverOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   
-  const [previewJobId, setPreviewJobId] = useState<string>("");
-  const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
-
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -189,18 +185,6 @@ export default function IntakePage() {
     });
     return () => unsub();
   }, [db]);
-
-  useEffect(() => {
-    if (!db) return;
-    const fetchPreview = async () => {
-      try {
-        const result = await getNextAvailableJobId(db);
-        setPreviewJobId(result.jobId);
-        if (result.indexErrorUrl) setIndexErrorUrl(result.indexErrorUrl);
-      } catch (e) {}
-    };
-    fetchPreview();
-  }, [db, isSubmitting]);
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -304,34 +288,11 @@ export default function IntakePage() {
     <div className="space-y-6">
       <PageHeader title="เปิดงานใหม่" description={`สร้างใบงานใหม่ (แนบรูปประกอบได้สูงสุด ${DATA_LIMITS.MAX_INTAKE_PHOTOS} รูป)`} />
       
-      {indexErrorUrl && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>ต้องการดัชนี (Index)</AlertTitle>
-          <AlertDescription className="flex flex-col gap-2 mt-2">
-            <span>ระบบต้องการดัชนีเพื่อรันเลขที่ใบงานอัตโนมัติ กรุณากดปุ่มเพื่อสร้าง Index</span>
-            <Button asChild variant="outline" size="sm" className="w-fit bg-white text-destructive">
-              <a href={indexErrorUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="mr-2 h-4 w-4"/>สร้าง Index</a>
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
       <Card>
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 max-w-2xl mx-auto">
               
-              <div className="flex justify-between items-center p-4 bg-primary/5 border border-primary/20 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Hash className="h-5 w-5 text-primary" />
-                  <span className="font-bold">เลขที่ใบงานถัดไป (Next Job ID):</span>
-                </div>
-                <Badge variant="outline" className="font-mono text-lg py-1 px-3 border-primary/30 text-primary bg-white shadow-sm">
-                  {previewJobId || "กำลังโหลด..."}
-                </Badge>
-              </div>
-
               <div className="grid grid-cols-1 gap-6">
                 <FormField
                   name="customerId"
