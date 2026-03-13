@@ -363,7 +363,7 @@ function ConfirmReceiptPageContent() {
                 <div className="flex justify-end gap-2">
                     <Button type="button" variant="outline" onClick={() => router.back()}><ArrowLeft className="mr-2 h-4 w-4"/> กลับ</Button>
                     <Button type="submit" disabled={isLoading} className="bg-green-600 hover:bg-green-700 font-bold">
-                        <Save className="mr-2 h-4 w-4"/> ยืนยันข้อมูล
+                        <Check className="mr-2 h-4 w-4"/> ยืนยันข้อมูล
                     </Button>
                 </div>
                 

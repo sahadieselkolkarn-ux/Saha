@@ -24,7 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { JOB_DEPARTMENTS, DATA_LIMITS } from "@/lib/constants";
-import { Loader2, Camera, X, ChevronsUpDown, PlusCircle, ImageIcon, AlertCircle, Hash, ExternalLink } from "lucide-react";
+import { Loader2, Camera, X, ChevronsUpDown, PlusCircle, ImageIcon, AlertCircle, Hash, ExternalLink, ScanBarcode } from "lucide-react";
 import type { Customer } from "@/lib/types";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
 import { deptLabel } from "@/lib/ui-labels";
@@ -304,7 +304,7 @@ export default function IntakePage() {
       <PageHeader title="เปิดงานใหม่" description={`สร้างใบงานใหม่ (แนบรูปประกอบได้สูงสุด ${DATA_LIMITS.MAX_INTAKE_PHOTOS} รูป)`} />
       
       {indexErrorUrl && (
-        <Alert variant="destructive" className="mb-6">
+        <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>ต้องการดัชนี (Index)</AlertTitle>
           <AlertDescription className="flex flex-col gap-2 mt-2">

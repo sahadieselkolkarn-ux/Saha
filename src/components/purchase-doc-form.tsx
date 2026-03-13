@@ -23,7 +23,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, Camera, X, Send, AlertCircle, ExternalLink, CalendarDays, Search, Box, ImageIcon, PackagePlus, Info } from "lucide-react";
+import { Loader2, PlusCircle, Trash2, Save, ArrowLeft, ChevronsUpDown, Camera, X, Send, AlertCircle, ExternalLink, CalendarDays, Search, Box, ImageIcon, PackagePlus, Info, ScanBarcode } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -710,7 +710,14 @@ export function PurchaseDocForm() {
                               <div key={`new-${i}`} className="relative aspect-square w-20 border rounded-md overflow-hidden bg-muted"><Image src={p} alt="preview" fill className="object-cover" /><Button type="button" variant="destructive" size="icon" className="absolute top-0 right-0 h-5 w-5 rounded-none" onClick={() => { setPhotos(prev => prev.filter((_, idx) => idx !== i)); setPhotoPreviews(prev => prev.filter((_, idx) => idx !== i)); }}><X className="h-3 w-3"/></Button></div>
                           ))}
                       </div>
-                      <FormField name="note" render={({ field }) => (<FormItem><FormLabel>หมายเหตุ</FormLabel><FormControl><Textarea {...field} value={field.value ?? ''} disabled={isSubmitting} /></FormControl></FormItem>)} />
+                      <FormField name="note" render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>หมายเหตุ</FormLabel>
+                          <FormControl>
+                            <Textarea {...field} value={field.value ?? ''} disabled={isSubmitting} />
+                          </FormControl>
+                        </FormItem>
+                      )} />
                   </CardContent>
               </Card>
               <div className="space-y-4 p-6 border rounded-lg bg-muted/30 h-fit">
