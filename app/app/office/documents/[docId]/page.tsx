@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -168,9 +169,17 @@ function DocumentView({
                         <TableRow className="hover:bg-transparent">
                             <TableHead className="w-12 text-center text-black font-bold h-8">#</TableHead>
                             <TableHead className="text-black font-bold h-8">รายการ</TableHead>
-                            <TableHead className="w-20 text-right text-black font-bold h-8">จำนวน</TableHead>
-                            <TableHead className="w-32 text-right text-black font-bold h-8">ราคา/หน่วย</TableHead>
-                            <TableHead className="w-32 text-right text-black font-bold h-8">รวมเงิน</TableHead>
+                            <TableHead className={cn("text-right text-black font-bold h-8", isWithdrawal ? "w-32" : "w-20")}>
+                                {isWithdrawal ? "จำนวนเบิก" : "จำนวน"}
+                            </TableHead>
+                            {isWithdrawal ? (
+                                <TableHead className="w-32 text-right text-black font-bold h-8">คงเหลือในคลัง</TableHead>
+                            ) : (
+                                <>
+                                    <TableHead className="w-32 text-right text-black font-bold h-8">ราคา/หน่วย</TableHead>
+                                    <TableHead className="w-32 text-right text-black font-bold h-8">รวมเงิน</TableHead>
+                                </>
+                            )}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -179,8 +188,16 @@ function DocumentView({
                                 <TableCell className="text-center py-1.5 h-8">{index + 1}</TableCell>
                                 <TableCell className="py-1.5 h-8">{item.description}</TableCell>
                                 <TableCell className="text-right py-1.5 h-8">{item.quantity}</TableCell>
-                                <TableCell className="text-right py-1.5 h-8">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
-                                <TableCell className="text-right py-1.5 h-8">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                {isWithdrawal ? (
+                                    <TableCell className="text-right py-1.5 h-8">
+                                        {item.stockSnapshot !== undefined ? item.stockSnapshot : "-"}
+                                    </TableCell>
+                                ) : (
+                                    <>
+                                        <TableCell className="text-right py-1.5 h-8">{item.unitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                        <TableCell className="text-right py-1.5 h-8">{item.total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                                    </>
+                                )}
                             </TableRow>
                         ))}
                     </TableBody>
@@ -198,18 +215,20 @@ function DocumentView({
                             </div>
                         )}
                     </div>
-                    <div className="space-y-1">
-                        <div className="flex justify-between text-sm"><span>รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between text-sm"><span>ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        <div className="flex justify-between font-bold text-sm"><span>ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        {document.withTax && <div className="flex justify-between text-sm"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
-                        <Separator className="my-1" />
-                        <div className="flex justify-between text-base font-bold text-primary uppercase"><span>ยอดสุทธิรวม</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
-                        
-                        <div className="text-right pt-1">
-                            <span className="text-[11px] font-bold italic">{thaiBahtText(document.grandTotal)}</span>
+                    {!isWithdrawal && (
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-sm"><span>รวมเป็นเงิน</span><span>{document.subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                            <div className="flex justify-between text-sm"><span>ส่วนลด</span><span>{document.discountAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                            <div className="flex justify-between font-bold text-sm"><span>ยอดหลังหักส่วนลด</span><span>{document.net.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                            {document.withTax && <div className="flex justify-between text-sm"><span>ภาษีมูลค่าเพิ่ม 7%</span><span>{document.vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>}
+                            <Separator className="my-1" />
+                            <div className="flex justify-between text-base font-bold text-primary uppercase"><span>ยอดสุทธิรวม</span><span>{document.grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</span></div>
+                            
+                            <div className="text-right pt-1">
+                                <span className="text-[11px] font-bold italic">{thaiBahtText(document.grandTotal)}</span>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
             

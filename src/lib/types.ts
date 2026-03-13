@@ -440,6 +440,7 @@ export interface DocumentItem {
   total: number;
   partId?: string;
   code?: string;
+  stockSnapshot?: number;
 }
 
 export type DocType = 'QUOTATION' | 'DELIVERY_NOTE' | 'TAX_INVOICE' | 'RECEIPT' | 'BILLING_NOTE' | 'CREDIT_NOTE' | 'WITHHOLDING_TAX' | 'WITHDRAWAL';

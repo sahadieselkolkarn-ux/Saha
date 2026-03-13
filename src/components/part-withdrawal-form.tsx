@@ -26,8 +26,7 @@ import {
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle 
-} from "@/components/ui/dialog";
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Loader2, PlusCircle, Trash2, Save, ArrowLeft, Search, 
   ScanBarcode, AlertCircle, Info, Package, User, FileText, ChevronsUpDown, X, ClipboardList, Hash, ExternalLink, Users
@@ -324,7 +323,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
       const docPayload = {
         jobId: data.refType === 'JOB' ? data.refId : undefined,
         customerId: data.customerId,
-        docDate: data.docDate,
+        docDate: data.issueDate,
         customerSnapshot: entity,
         storeSnapshot: storeSettings,
         items: data.items.map(i => ({ 
@@ -333,7 +332,8 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
             unitPrice: i.unitPrice || 0, 
             total: i.total || 0,
             partId: i.partId,
-            code: i.code
+            code: i.code,
+            stockSnapshot: (i.stockQty || 0) - (isDraft ? 0 : i.quantity)
         })),
         subtotal,
         discountAmount: 0,
