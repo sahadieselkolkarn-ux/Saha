@@ -10,7 +10,7 @@ import {
   serverTimestamp, getDocs, limit, orderBy, runTransaction, getDoc, updateDoc
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { useFirebase, useDoc } from "@/firebase";
+import { useFirebase, useDoc, useCollection } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { BrowserMultiFormatReader } from '@zxing/browser';
@@ -30,14 +30,14 @@ import {
 } from "@/components/ui/dialog";
 import { 
   Loader2, PlusCircle, Trash2, Save, ArrowLeft, Search, 
-  ScanBarcode, AlertCircle, Info, Package, User, FileText, ChevronsUpDown, X, ClipboardList, Hash, ExternalLink
+  ScanBarcode, AlertCircle, Info, Package, User, FileText, ChevronsUpDown, X, ClipboardList, Hash, ExternalLink, Users
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, sanitizeForFirestore } from "@/lib/utils";
-import type { Customer, Job, Part, Document as DocumentType, StoreSettings } from "@/lib/types";
+import type { Customer, Job, Part, Document as DocumentType, StoreSettings, UserProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { createDocument, getNextAvailableDocNo } from "@/firebase/documents";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,9 +53,9 @@ const withdrawalItemSchema = z.object({
 });
 
 const withdrawalSchema = z.object({
-  refType: z.enum(["JOB", "SALES_DOC", "LOAN"]),
+  refType: z.enum(["JOB", "SALES_DOC", "LOAN", "INTERNAL"]),
   refId: z.string().min(1, "กรุณาระบุรายการอ้างอิง"),
-  customerId: z.string().min(1, "กรุณาเลือกลูกค้า"),
+  customerId: z.string().min(1, "กรุณาเลือกลูกค้าหรือพนักงาน"),
   items: z.array(withdrawalItemSchema).min(1, "ต้องมีอย่างน้อย 1 รายการ"),
   notes: z.string().optional(),
   docDate: z.string().min(1, "กรุณาเลือกวันที่"),
@@ -78,6 +78,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
   const isEditing = !!editDocId;
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [workers, setWorkers] = useState<UserProfile[]>([]);
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
   const [activeSalesDocs, setActiveSalesDocs] = useState<DocumentType[]>([]);
   const [parts, setParts] = useState<Part[]>([]);
@@ -146,6 +147,10 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer)));
     });
 
+    const unsubWorkers = onSnapshot(query(collection(db, "users"), where("role", "==", "WORKER"), where("status", "==", "ACTIVE")), (snap) => {
+      setWorkers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
+    });
+
     const unsubJobs = onSnapshot(query(collection(db, "jobs"), where("status", "in", ["PENDING_PARTS", "IN_REPAIR_PROCESS", "DONE", "WAITING_CUSTOMER_PICKUP"])), (snap) => {
       setActiveJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
@@ -159,7 +164,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
       setIsLoadingData(false);
     });
 
-    return () => { unsubCustomers(); unsubJobs(); unsubDocs(); unsubParts(); };
+    return () => { unsubCustomers(); unsubWorkers(); unsubJobs(); unsubDocs(); unsubParts(); };
   }, [db]);
 
   // Handle URL Job ID
@@ -178,8 +183,8 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
   useEffect(() => {
     if (docToEdit && customers.length > 0) {
         form.reset({
-            refType: docToEdit.jobId ? 'JOB' : 'LOAN', 
-            refId: docToEdit.jobId || 'MANUAL_LOAN',
+            refType: docToEdit.jobId ? 'JOB' : (docToEdit.notes?.includes('INTERNAL') ? 'INTERNAL' : 'LOAN'), 
+            refId: docToEdit.jobId || 'MANUAL_REF',
             customerId: docToEdit.customerId || "",
             docDate: docToEdit.docDate,
             items: docToEdit.items.map(i => ({
@@ -196,17 +201,20 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
     }
   }, [docToEdit, customers, parts, form]);
 
-  const availableCustomers = useMemo(() => {
+  const availableEntities = useMemo(() => {
     if (watchedRefType === 'JOB') {
       const customerIdsWithValidJobs = new Set(activeJobs.map(j => j.customerId));
-      return customers.filter(c => customerIdsWithValidJobs.has(c.id));
+      return customers.filter(c => customerIdsWithValidJobs.has(c.id)).map(c => ({ id: c.id, name: c.name, phone: c.phone }));
     }
     if (watchedRefType === 'SALES_DOC') {
       const customerIdsWithDraftDocs = new Set(activeSalesDocs.map(d => d.customerId));
-      return customers.filter(c => customerIdsWithDraftDocs.has(c.id));
+      return customers.filter(c => customerIdsWithDraftDocs.has(c.id)).map(c => ({ id: c.id, name: c.name, phone: c.phone }));
     }
-    return customers;
-  }, [watchedRefType, activeJobs, activeSalesDocs, customers]);
+    if (watchedRefType === 'INTERNAL') {
+      return workers.map(w => ({ id: w.uid, name: w.displayName, phone: w.phone }));
+    }
+    return customers.map(c => ({ id: c.id, name: c.name, phone: c.phone }));
+  }, [watchedRefType, activeJobs, activeSalesDocs, workers, customers]);
 
   const filteredJobs = useMemo(() => activeJobs.filter(j => j.customerId === watchedCustomerId), [activeJobs, watchedCustomerId]);
   const filteredSalesDocs = useMemo(() => activeSalesDocs.filter(d => d.customerId === watchedCustomerId), [activeSalesDocs, watchedCustomerId]);
@@ -263,18 +271,16 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
     if (!db || !profile || !storeSettings) return;
     setIsSubmitting(true);
 
-    const customer = customers.find(c => c.id === data.customerId);
-    if (!customer) {
-        toast({ variant: "destructive", title: "กรุณาเลือกลูกค้า" });
+    const entity = availableEntities.find(e => e.id === data.customerId);
+    if (!entity) {
+        toast({ variant: "destructive", title: "กรุณาเลือกรายชื่ออ้างอิง" });
         setIsSubmitting(false);
         return;
     }
 
     try {
-      // 1. If not a draft, perform stock deduction in a transaction (READ ALL THEN WRITE ALL)
       if (!isDraft) {
         await runTransaction(db, async (transaction) => {
-          // --- STEP 1: READ ALL SNAPSHOTS ---
           const snapshots: { partRef: any, currentQty: number, item: any }[] = [];
           for (const item of data.items) {
             const partRef = doc(db, "parts", item.partId);
@@ -288,7 +294,6 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
             snapshots.push({ partRef, currentQty, item });
           }
 
-          // --- STEP 2: PERFORM ALL WRITES ---
           for (const { partRef, currentQty, item } of snapshots) {
             transaction.update(partRef, {
               stockQty: currentQty - item.quantity,
@@ -313,7 +318,6 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
         });
       }
 
-      // 2. Create or Update document
       const subtotal = data.items.reduce((sum, i) => sum + (i.total || 0), 0);
       const targetStatus = isDraft ? 'DRAFT' : 'ISSUED';
       
@@ -321,7 +325,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
         jobId: data.refType === 'JOB' ? data.refId : undefined,
         customerId: data.customerId,
         docDate: data.docDate,
-        customerSnapshot: customer,
+        customerSnapshot: entity,
         storeSnapshot: storeSettings,
         items: data.items.map(i => ({ 
             description: i.description || "", 
@@ -337,9 +341,9 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
         withTax: false,
         vatAmount: 0,
         grandTotal: subtotal,
-        notes: data.notes,
+        notes: (data.refType === 'INTERNAL' ? '[INTERNAL] ' : '') + (data.notes || ''),
         senderName: profile.displayName,
-        receiverName: customer.name,
+        receiverName: entity.name,
       };
 
       if (isEditing && editDocId) {
@@ -364,7 +368,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
     }
   };
 
-  const filteredCustomers = customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch));
+  const filteredEntities = availableEntities.filter(e => e.name.toLowerCase().includes(customerSearch.toLowerCase()) || e.phone.includes(customerSearch));
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
@@ -378,14 +382,14 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
                     variant="secondary" 
                     className="flex-1 sm:flex-none"
                     disabled={isSubmitting} 
-                    onClick={form.handleSubmit(d => handleSave(d, true), (err) => toast({variant: "destructive", title: "กรุณากรอกข้อมูลให้ครบถ้วน"}))} 
+                    onClick={form.handleSubmit(d => handleSave(d, true))} 
                 >
                     {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     บันทึกฉบับร่าง
                 </Button>
                 <Button 
                     type="button" 
-                    onClick={form.handleSubmit(d => handleSave(d, false), (err) => toast({variant: "destructive", title: "กรุณาตรวจสอบรายการสินค้าที่เลือก"}))} 
+                    onClick={form.handleSubmit(d => handleSave(d, false))} 
                     disabled={isSubmitting} 
                     className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 font-bold"
                 >
@@ -421,6 +425,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
                         <SelectItem value="JOB">งานซ่อม (Job)</SelectItem>
                         <SelectItem value="SALES_DOC">บิลขาย (ฉบับร่าง)</SelectItem>
                         <SelectItem value="LOAN">ยืมอะไหล่</SelectItem>
+                        <SelectItem value="INTERNAL">เบิกใช้ในร้าน</SelectItem>
                       </SelectContent>
                     </Select>
                   </FormItem>
@@ -429,16 +434,17 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
             </Card>
 
             <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="h-4 w-4 text-primary"/> 2. รายละเอียดการอ้างอิง</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2">{watchedRefType === 'INTERNAL' ? <Users className="h-4 w-4 text-primary"/> : <User className="h-4 w-4 text-primary"/>} 2. รายละเอียดการอ้างอิง</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <FormField name="customerId" control={form.control} render={({ field }) => (
                   <FormItem>
+                    <FormLabel>{watchedRefType === 'INTERNAL' ? 'พนักงานผู้เบิก (Worker)' : 'ชื่อลูกค้า'}</FormLabel>
                     <Popover open={isCustomerPopoverOpen} onOpenChange={setIsCustomerPopoverOpen}>
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button variant="outline" className={cn("w-full justify-between font-normal", !field.value && "text-muted-foreground")} disabled={isSubmitting || !!queryJobId || isEditing}>
                             <span className="truncate">
-                              {field.value ? (customers.find(c => c.id === field.value)?.name || "เลือกรายชื่อ...") : "ค้นหาชื่อลูกค้า..."}
+                              {field.value ? (availableEntities.find(e => e.id === field.value)?.name || "เลือกรายชื่อ...") : `ค้นหา${watchedRefType === 'INTERNAL' ? 'พนักงาน' : 'ลูกค้า'}...`}
                             </span>
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
@@ -447,9 +453,9 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
                       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                         <div className="p-2 border-b"><Input placeholder="พิมพ์ชื่อเพื่อค้นหา..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} /></div>
                         <ScrollArea className="h-60">
-                          {availableCustomers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).map(c => (
-                            <Button key={c.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => { field.onChange(c.id); setIsCustomerPopoverOpen(false); form.setValue("refId", ""); }}>
-                              <div className="flex flex-col"><span className="font-medium">{c.name}</span><span className="text-xs text-muted-foreground">{c.phone}</span></div>
+                          {filteredEntities.map(e => (
+                            <Button key={e.id} variant="ghost" className="w-full justify-start h-auto py-2 px-3 border-b last:border-0 rounded-none text-left" onClick={() => { field.onChange(e.id); setIsCustomerPopoverOpen(false); form.setValue("refId", (watchedRefType === 'INTERNAL' ? 'INTERNAL_USE' : '')); }}>
+                              <div className="flex flex-col"><span className="font-medium">{e.name}</span><span className="text-xs text-muted-foreground">{e.phone}</span></div>
                             </Button>
                           ))}
                         </ScrollArea>
@@ -462,13 +468,14 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
                 {watchedCustomerId && (
                   <FormField name="refId" control={form.control} render={({ field }) => (
                     <FormItem className="animate-in fade-in slide-in-from-top-1">
-                      <FormLabel>เลือกรายการอ้างอิง</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""} disabled={isSubmitting || !!queryJobId || isEditing}>
+                      <FormLabel>รายการอ้างอิง</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""} disabled={isSubmitting || !!queryJobId || isEditing || watchedRefType === 'INTERNAL'}>
                         <FormControl><SelectTrigger><SelectValue placeholder="เลือก..." /></SelectTrigger></FormControl>
                         <SelectContent>
-                          {watchedRefType === 'JOB' && filteredJobs.map(j => <SelectItem key={j.id} value={j.id}>{j.id} - {j.description.slice(0,20)}...</SelectItem>)}
+                          {watchedRefType === 'JOB' && filteredJobs.map(j => <SelectItem key={j.id} value={j.id}>{j.id} - {j.description.slice(0,30)}...</SelectItem>)}
                           {watchedRefType === 'SALES_DOC' && filteredSalesDocs.map(d => <SelectItem key={d.id} value={d.id}>{d.docNo} ({d.grandTotal.toLocaleString()}.-)</SelectItem>)}
-                          {watchedRefType === 'LOAN' && <SelectItem value="MANUAL_LOAN">ระบุมือ (ยืมของ)</SelectItem>}
+                          {watchedRefType === 'LOAN' && <SelectItem value="MANUAL_LOAN">ใบยืมอะไหล่ (ระบุมือ)</SelectItem>}
+                          {watchedRefType === 'INTERNAL' && <SelectItem value="INTERNAL_USE">เบิกใช้ภายในร้าน</SelectItem>}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -536,7 +543,7 @@ export default function PartWithdrawalForm({ editDocId }: PartWithdrawalFormProp
           <Card>
             <CardHeader><CardTitle className="text-base">4. หมายเหตุเพิ่มเติม</CardTitle></CardHeader>
             <CardContent>
-              <FormField name="notes" control={form.control} render={({ field }) => (<Textarea placeholder="เช่น เบิกให้ช่างตู่, ใช้ประกอบเครื่องยนต์ Revo..." {...field} disabled={isSubmitting} />)} />
+              <FormField name="notes" control={form.control} render={({ field }) => (<Textarea placeholder="ระบุเหตุผลการเบิก..." {...field} disabled={isSubmitting} />)} />
             </CardContent>
           </Card>
         </form>
