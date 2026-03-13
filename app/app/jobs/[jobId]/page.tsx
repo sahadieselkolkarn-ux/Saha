@@ -600,7 +600,7 @@ function JobDetailsPageContent() {
     batch.commit().then(() => {
         toast({ title: `ส่งงานต่อไปยังแผนก ${deptCode(subTransferDept)} เรียบร้อย` });
         setIsSubTransferDialogOpen(false);
-    }).catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message })).finally(() => setIsTransferring(false));
+    }).catch(e => toast({ variant: 'destructive', title: 'Error', description: e.message }).finally(() => setIsTransferring(false)));
   };
 
   const handleReturnToMain = async () => {
@@ -849,11 +849,6 @@ function JobDetailsPageContent() {
                           {job.assigneeUid ? 'เปลี่ยนผู้รับผิดชอบ' : 'มอบหมายงาน'}
                       </Button>
                   )}
-                  {job.status === 'DONE' && canIssueBill && (
-                    <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" onClick={() => setIsRevertDialogOpen(true)}>
-                      <RotateCcw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
-                    </Button>
-                  )}
               </div>
             </CardContent>
           </Card>
@@ -944,59 +939,6 @@ function JobDetailsPageContent() {
                       </DropdownMenu>
                       <input type="file" ref={activityCameraRef} className="hidden" accept="image/*" capture="environment" onChange={handlePhotoChange} />
                       <input type="file" ref={activityGalleryRef} className="hidden" multiple accept="image/*" onChange={handlePhotoChange} />
-                      
-                      {!isSubTask && !isViewOnly && (
-                          <Button variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" onClick={() => setIsSubTransferDialogOpen(true)}>
-                              <Forward className="mr-2 h-4 w-4" /> ส่งงานต่อ
-                          </Button>
-                      )}
-
-                      {job.status === 'PENDING_PARTS' && (
-                          <Button 
-                            asChild
-                            variant="outline"
-                            className="border-blue-600 text-blue-600 hover:bg-blue-50 font-bold"
-                          >
-                              <Link href={`/app/office/parts/withdraw/new?jobId=${job.id}`}>
-                                <ClipboardList className="mr-2 h-4 w-4" /> 
-                                เบิกอะไหล่
-                              </Link>
-                          </Button>
-                      )}
-
-                      {job.status === 'IN_PROGRESS' && (
-                          <Button 
-                            variant="outline"
-                            onClick={handleRequestQuotation} 
-                            disabled={isSubmittingNote || isViewOnly} 
-                            className="border-blue-600 text-blue-600 hover:bg-blue-50 font-bold"
-                          >
-                              <FileText className="mr-2 h-4 w-4" /> 
-                              แจ้งเสนอราคา
-                          </Button>
-                      )}
-
-                      {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS', 'PENDING_PARTS'].includes(job.status) && (
-                          <Button 
-                            onClick={isSubTask ? handleReturnToMain : handleFinishJob} 
-                            disabled={isSubmittingNote || isViewOnly} 
-                            className="bg-green-600 hover:bg-green-700 text-white font-bold"
-                          >
-                              <CheckCircle className="mr-2 h-4 w-4" /> 
-                              {isSubTask ? "ส่งงานกลับแผนกหลัก" : "งานเสร็จแจ้งทำบิล"}
-                          </Button>
-                      )}
-
-                      {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canIssueBill && !isAlreadyBilled && (
-                          <Button 
-                            onClick={() => setIsBillingSelectionOpen(true)}
-                            disabled={isSubmittingNote || isViewOnly} 
-                            className="bg-primary hover:bg-primary/90 text-white font-bold"
-                          >
-                              <Receipt className="mr-2 h-4 w-4" /> 
-                              ออกบิล (Issue Bill)
-                          </Button>
-                      )}
                   </div>
                 </CardContent>
               </Card>
@@ -1041,7 +983,7 @@ function JobDetailsPageContent() {
         </div>
         
         <div className="space-y-6">
-          {/* Reference Documents moved to TOP */}
+          {/* Reference Documents */}
           <Card><CardHeader><CardTitle className="text-base font-semibold flex items-center gap-2"><FileText className="h-4 w-4"/> เอกสารอ้างอิง</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">
               {loadingDocs ? <div className="flex justify-center"><Loader2 className="animate-spin"/></div> : (
                 <>
@@ -1098,10 +1040,10 @@ function JobDetailsPageContent() {
               )}
             </CardContent></Card>
 
-          {/* Job Status Card moved below Documents */}
+          {/* Job Status Card */}
           <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-base font-semibold">สถานะงาน (Status)</CardTitle><Badge className={cn("border", getStatusStyles(job.status))}>{jobStatusLabel(job.status)}</Badge></CardHeader></Card>
           
-          {(job.status === 'WAITING_APPROVE' || job.status === 'PENDING_PARTS') && canManageWork && (
+          {(!isViewOnly) && (
             <Card className="border-primary/50 bg-primary/5 shadow-md animate-in fade-in zoom-in-95 duration-300">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-bold uppercase tracking-widest flex items-center gap-2">
@@ -1110,22 +1052,91 @@ function JobDetailsPageContent() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
+                    {/* Approve/Reject for WAITING_APPROVE */}
                     {isMgmtOrOffice && job.status === 'WAITING_APPROVE' && (
                         <>
-                            <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleApproveJob} disabled={isSubmittingNote}>
+                            <Button className="w-full bg-green-600 hover:bg-green-700 font-bold" onClick={handleApproveJob} disabled={isSubmittingNote}>
                                 <Check className="mr-2 h-4 w-4" /> อนุมัติเริ่มซ่อม
                             </Button>
-                            <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/10" onClick={handleRejectJob} disabled={isSubmittingNote}>
+                            <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/10 font-bold" onClick={handleRejectJob} disabled={isSubmittingNote}>
                                 <Ban className="mr-2 h-4 w-4" /> ลูกค้าไม่อนุมัติ/ยกเลิก
                             </Button>
                         </>
                     )}
+
+                    {/* Parts Ready for PENDING_PARTS */}
                     {isMgmtOrOffice && job.status === 'PENDING_PARTS' && (
-                        <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={handlePartsReady} disabled={isSubmittingNote}>
+                        <Button className="w-full bg-blue-600 hover:bg-blue-700 font-bold" onClick={handlePartsReady} disabled={isSubmittingNote}>
                             <PackageCheck className="mr-2 h-4 w-4" /> อะไหล่มาครบแล้ว (เริ่มซ่อม)
                         </Button>
                     )}
-                    {!isMgmtOrOffice && (
+
+                    {/* Request Quotation */}
+                    {job.status === 'IN_PROGRESS' && (
+                        <Button 
+                          variant="outline"
+                          onClick={handleRequestQuotation} 
+                          disabled={isSubmittingNote} 
+                          className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 font-bold"
+                        >
+                            <FileText className="mr-2 h-4 w-4" /> 
+                            แจ้งเสนอราคา
+                        </Button>
+                    )}
+
+                    {/* Finish / Return to Main */}
+                    {['IN_PROGRESS', 'WAITING_QUOTATION', 'WAITING_APPROVE', 'IN_REPAIR_PROCESS', 'PENDING_PARTS'].includes(job.status) && (
+                        <Button 
+                          onClick={isSubTask ? handleReturnToMain : handleFinishJob} 
+                          disabled={isSubmittingNote} 
+                          className="w-full bg-green-600 hover:bg-green-700 text-white font-bold"
+                        >
+                            <CheckCircle className="mr-2 h-4 w-4" /> 
+                            {isSubTask ? "ส่งงานกลับแผนกหลัก" : "งานเสร็จแจ้งทำบิล"}
+                        </Button>
+                    )}
+
+                    {/* Withdraw Parts */}
+                    {['IN_PROGRESS', 'IN_REPAIR_PROCESS', 'PENDING_PARTS'].includes(job.status) && (
+                        <Button 
+                          asChild
+                          variant="outline"
+                          className="w-full border-blue-600 text-blue-600 hover:bg-blue-50 font-bold"
+                        >
+                            <Link href={`/app/office/parts/withdraw/new?jobId=${job.id}`}>
+                              <ClipboardList className="mr-2 h-4 w-4" /> 
+                              เบิกอะไหล่
+                            </Link>
+                        </Button>
+                    )}
+
+                    {/* Sub-Transfer */}
+                    {!isSubTask && (
+                        <Button variant="outline" className="w-full border-amber-500 text-amber-600 hover:bg-amber-50 font-bold" onClick={() => setIsSubTransferDialogOpen(true)}>
+                            <Forward className="mr-2 h-4 w-4" /> ส่งงานต่อ
+                        </Button>
+                    )}
+
+                    {/* Issue Bill */}
+                    {['DONE', 'WAITING_CUSTOMER_PICKUP'].includes(job.status) && canIssueBill && !isAlreadyBilled && (
+                        <Button 
+                          onClick={() => setIsBillingSelectionOpen(true)}
+                          disabled={isSubmittingNote} 
+                          className="w-full bg-primary hover:bg-primary/90 text-white font-bold"
+                        >
+                            <Receipt className="mr-2 h-4 w-4" /> 
+                            ออกบิล (Issue Bill)
+                        </Button>
+                    )}
+
+                    {/* Revert Job (Office can send back to technical) */}
+                    {job.status === 'DONE' && canIssueBill && (
+                      <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/10 font-bold" onClick={() => setIsRevertDialogOpen(true)}>
+                        <RotateCcw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
+                      </Button>
+                    )}
+
+                    {!isMgmtOrOffice && job.status === 'WAITING_APPROVE' && (
                         <p className="text-[10px] text-muted-foreground text-center italic">ส่วนนี้สำหรับฝ่ายออฟฟิศ/บริหารจัดการเท่านั้น</p>
                     )}
                 </CardContent>
@@ -1208,8 +1219,15 @@ function JobDetailsPageContent() {
 
       <AlertDialog open={isBillingSelectionOpen} onOpenChange={setIsBillingSelectionOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle><AlertDialogDescription>เลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{job?.customerSnapshot.name}</b></AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2"><Button variant="outline" onClick={() => setIsBillingSelectionOpen(false)} className="w-full sm:w-auto">ยกเลิก</Button><Button variant="secondary" onClick={() => { if (job) router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`); setIsBillingSelectionOpen(false); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button><Button onClick={() => { if (job) router.push(`/app/office/documents/tax-invoice/new?jobId=${job.id}`); setIsBillingSelectionOpen(false); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button></AlertDialogFooter>
+          <AlertDialogHeader>
+            <AlertDialogTitle>เลือกประเภทเอกสาร</AlertDialogTitle>
+            <AlertDialogDescription>เลือกประเภทเอกสารที่ต้องการออกสำหรับงานซ่อมของ <b>{job?.customerSnapshot.name}</b></AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setIsBillingSelectionOpen(false)} className="w-full sm:w-auto">ยกเลิก</Button>
+            <Button variant="secondary" onClick={() => { if (job) router.push(`/app/office/documents/delivery-note/new?jobId=${job.id}`); setIsBillingSelectionOpen(false); }} className="w-full sm:w-auto">ใบส่งของชั่วคราว</Button>
+            <Button onClick={() => { if (job) router.push(`/app/office/documents/tax-invoice/new?jobId=${job.id}`); setIsBillingSelectionOpen(false); }} className="w-full sm:w-auto">ใบกำกับภาษี</Button>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
