@@ -370,7 +370,7 @@ export function DocumentList({
                               <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setDocToAction(docItem); setIsRevertAlertOpen(true); }} className="text-amber-600 focus:text-amber-600 font-bold"><RotateCcw className="mr-2 h-4 w-4" /> กู้คืนเพื่อออกใบเสร็จ</DropdownMenuItem>
                             )}
 
-                            {canManageDocs && (
+                            {canManageDocs && docType !== 'QUOTATION' && (
                                 <DropdownMenuItem onSelect={(e) => { e.preventDefault(); setDocToAction(docItem); setIsCancelAlertOpen(true); }} disabled={docItem.status === 'CANCELLED' || (docItem.status === 'PAID' && !isUserAdmin)}> 
                                     <XCircle className="mr-2 h-4 w-4"/> ยกเลิก
                                 </DropdownMenuItem>
