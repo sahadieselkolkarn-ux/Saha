@@ -18,7 +18,7 @@ import {
 import { useFirebase, useDoc } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { addMonths, subMonths, format, parseISO, startOfMonth } from "date-fns";
+import { addMonths, subMonths, format as dfFormat, parseISO, startOfMonth } from "date-fns";
 import * as z from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -84,7 +84,7 @@ function PayDialog({
   });
 
   useEffect(() => {
-    form.setValue("paidDate", format(new Date(), "yyyy-MM-dd"));
+    form.setValue("paidDate", dfFormat(new Date(), "yyyy-MM-dd"));
   }, [form]);
 
   const bankInfo = userProfile?.personal?.bank;
@@ -123,7 +123,7 @@ function PayDialog({
                             !field.value && "text-muted-foreground"
                           )}
                         >
-                          {field.value ? format(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
+                          {field.value ? dfFormat(parseISO(field.value), "dd/MM/yyyy") : <span>เลือกวันที่</span>}
                           <CalendarDays className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
                       </FormControl>
@@ -132,7 +132,7 @@ function PayDialog({
                       <Calendar
                         mode="single"
                         selected={field.value ? parseISO(field.value) : undefined}
-                        onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                        onSelect={(date) => field.onChange(date ? dfFormat(date, "yyyy-MM-dd") : "")}
                         initialFocus
                       />
                     </PopoverContent>
@@ -207,7 +207,12 @@ export default function PayrollPayoutsPage() {
   const [payingPayslip, setPayingPayslip] = useState<WithId<PayslipNew> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
+  const hasPermission = useMemo(() => 
+    profile?.role === 'ADMIN' || 
+    profile?.role === 'MANAGER' || 
+    profile?.department === 'MANAGEMENT' ||
+    profile?.department === 'ACCOUNTING_HR'
+  , [profile]);
 
   useEffect(() => {
     if (!db || !hasPermission || !currentMonth || !period) {
@@ -217,7 +222,7 @@ export default function PayrollPayoutsPage() {
     
     setLoading(true);
     setIndexErrorUrl(null);
-    const payrollBatchId = `${format(currentMonth, 'yyyy-MM')}-${period}`;
+    const payrollBatchId = `${dfFormat(currentMonth, 'yyyy-MM')}-${period}`;
     
     const payslipsQuery = query(
       collection(db, "payrollBatches", payrollBatchId, "payslips"),
@@ -349,7 +354,7 @@ export default function PayrollPayoutsPage() {
             <CardTitle>รายการสลิปในงวดนี้</CardTitle>
             <div className="flex items-center gap-2 self-end sm:self-center">
               <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => prev ? subMonths(prev, 1) : null)}><ChevronLeft /></Button>
-              <span className="font-semibold text-lg text-center w-32">{currentMonth ? format(currentMonth, 'MMMM yyyy') : '...'}</span>
+              <span className="font-semibold text-lg text-center w-32">{currentMonth ? dfFormat(currentMonth, 'MMMM yyyy') : '...'}</span>
               <Button variant="outline" size="icon" onClick={() => setCurrentMonth(prev => prev ? addMonths(prev, 1) : null)}><ChevronRight /></Button>
               <Select value={period?.toString() || ""} onValueChange={(v) => setPeriod(Number(v) as 1 | 2)}>
                 <SelectTrigger className="w-[180px]"><SelectValue placeholder="..." /></SelectTrigger>

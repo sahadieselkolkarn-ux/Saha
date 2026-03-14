@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
@@ -195,7 +196,12 @@ export default function HRGeneratePayslipsPage() {
     const storeSettingsRef = useMemo(() => (db ? doc(db, "settings", "store") : null), [db]);
     const { data: storeSettings } = useDoc<StoreSettings>(storeSettingsRef);
     
-    const hasPermission = useMemo(() => adminProfile?.role === 'ADMIN' || adminProfile?.role === 'MANAGER' || adminProfile?.department === 'MANAGEMENT', [adminProfile]);
+    const hasPermission = useMemo(() => 
+        adminProfile?.role === 'ADMIN' || 
+        adminProfile?.role === 'MANAGER' || 
+        adminProfile?.department === 'MANAGEMENT' ||
+        adminProfile?.department === 'ACCOUNTING_HR'
+    , [adminProfile]);
 
     useEffect(() => {
       const today = new Date();
@@ -264,14 +270,14 @@ export default function HRGeneratePayslipsPage() {
             }
             setSsoDecision(finalSsoDecision);
 
-            const usersQuery = query(collection(db, 'users'), where('status', '==', 'ACTIVE'));
-            const holidaysQuery = collection(db, 'hrHolidays');
-            const leavesQuery = query(collection(db, 'hrLeaves'), where('year', '==', year), where('status', '==', 'APPROVED'));
-            const attendancePeriodQuery = query(collection(db, 'attendance'), where('timestamp', '>=', payPeriod.start), where('timestamp', '<=', payPeriod.end));
-            const adjustmentsPeriodQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', format(payPeriod.start, 'yyyy-MM-dd')), where('date', '<=', format(payPeriod.end, 'yyyy-MM-dd')));
-            const attendanceYtdQuery = query(collection(db, 'attendance'), where('timestamp', '>=', ytdStart), where('timestamp', '<=', payPeriod.end));
-            const adjustmentsYtdQuery = query(collection(db, 'hrAttendanceAdjustments'), where('date', '>=', ytdStartStr), where('date', '<=', periodEndStr));
-            const payslipsQuery = collection(db, 'payrollBatches', payrollBatchId, 'payslips');
+            const usersQuery = query(collection(db, "users"), where("status", "==", "ACTIVE"));
+            const holidaysQuery = collection(db, "hrHolidays");
+            const leavesQuery = query(collection(db, "hrLeaves"), where("year", "==", year), where("status", "==", "APPROVED"));
+            const attendancePeriodQuery = query(collection(db, "attendance"), where("timestamp", ">=", payPeriod.start), where("timestamp", "<=", payPeriod.end));
+            const adjustmentsPeriodQuery = query(collection(db, "hrAttendanceAdjustments"), where("date", ">=", format(payPeriod.start, "yyyy-MM-dd")), where("date", "<=", format(payPeriod.end, "yyyy-MM-dd")));
+            const attendanceYtdQuery = query(collection(db, "attendance"), where("timestamp", ">=", ytdStart), where("timestamp", "<=", payPeriod.end));
+            const adjustmentsYtdQuery = query(collection(db, "hrAttendanceAdjustments"), where("date", ">=", ytdStartStr), where("date", "<=", periodEndStr));
+            const payslipsQuery = collection(db, "payrollBatches", payrollBatchId, "payslips");
 
             const [
                 usersSnap, holidaysSnap, leavesSnap, 

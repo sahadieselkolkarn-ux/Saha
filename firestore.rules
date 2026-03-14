@@ -71,6 +71,10 @@ service cloud.firestore {
     function isAccountingAllowed() {
       return isOfficeOrMgmt() || (signedIn() && dept() == "ACCOUNTING_HR");
     }
+
+    function isHRAllowed() {
+      return isMgmt() || (signedIn() && dept() == "ACCOUNTING_HR");
+    }
     
     function isPurchasingAllowed() {
       return isMgmt() || (signedIn() && (dept() == "PURCHASING" || dept() == "OFFICE" || role() == "PURCHASE"));
@@ -95,7 +99,7 @@ service cloud.firestore {
     // User Profiles
     match /users/{uid} {
       allow read: if signedIn();
-      allow create, update: if (isMgmt() || (signedIn() && request.auth.uid == uid)) && !isViewer();
+      allow create, update: if (isHRAllowed() || (signedIn() && request.auth.uid == uid)) && !isViewer();
       allow delete: if isAdmin();
     }
 
@@ -188,7 +192,7 @@ service cloud.firestore {
     }
     
     match /accountingObligations/{id} {
-      allow read, create, update: if signedIn() && !isViewer();
+      allow read, create, update: if isAccountingAllowed();
       allow delete: if isMgmt();
     }
     
@@ -236,27 +240,27 @@ service cloud.firestore {
     }
     
     match /hrAttendanceAdjustments/{id} {
-      allow read: if isMgmt();
-      allow write: if isAdmin();
+      allow read: if isHRAllowed();
+      allow write: if isHRAllowed();
     }
     
     match /ssoHospitals/{hospitalId} {
       allow read: if signedIn();
-      allow write: if isMgmt();
+      allow write: if isHRAllowed();
     }
     
     match /hrLeaves/{id} {
-        allow read: if isMgmt() || (signedIn() && request.auth.uid == resource.data.userId);
+        allow read: if isHRAllowed() || (signedIn() && request.auth.uid == resource.data.userId);
         allow create: if signedIn() && !isViewer();
-        allow update: if (isMgmt() || (signedIn() && request.auth.uid == resource.data.userId)) && !isViewer();
+        allow update: if (isHRAllowed() || (signedIn() && request.auth.uid == resource.data.userId)) && !isViewer();
         allow delete: if isAdmin();
     }
 
     match /payrollBatches/{batchId} {
-      allow read, write: if isMgmt();
+      allow read, write: if isHRAllowed();
       match /payslips/{userId} {
-        allow read: if (signedIn() && request.auth.uid == userId) || isMgmt();
-        allow write: if (isMgmt() || (signedIn() && request.auth.uid == userId)) && !isViewer();
+        allow read: if (signedIn() && request.auth.uid == userId) || isHRAllowed();
+        allow write: if (isHRAllowed() || (signedIn() && request.auth.uid == userId)) && !isViewer();
       }
     }
 

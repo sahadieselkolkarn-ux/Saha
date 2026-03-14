@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, Suspense, useState, useEffect } from "react";
@@ -1133,7 +1134,12 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
 
 export default function ReceivablesPayablesPage() {
     const { profile, loading } = useAuth();
-    const hasPermission = useMemo(() => profile?.role === 'ADMIN' || profile?.role === 'MANAGER' || profile?.department === 'MANAGEMENT', [profile]);
+    const hasPermission = useMemo(() => 
+        profile?.role === 'ADMIN' || 
+        profile?.role === 'MANAGER' || 
+        profile?.department === 'MANAGEMENT' ||
+        profile?.department === 'ACCOUNTING_HR'
+    , [profile]);
 
     if (loading) {
         return <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>;
