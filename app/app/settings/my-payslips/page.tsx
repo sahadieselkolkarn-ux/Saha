@@ -19,6 +19,7 @@ import type { WithId } from "@/firebase/firestore/use-collection";
 import { newPayslipStatusLabel, deptLabel, payTypeLabel } from "@/lib/ui-labels";
 import { PayslipSlipDrawer } from "@/components/payroll/PayslipSlipDrawer";
 import { PayslipSlipView, calcTotals } from "@/components/payroll/PayslipSlipView";
+import { thaiBahtText } from "@/lib/utils";
 
 const formatCurrency = (value: number | undefined) => {
   return (value ?? 0).toLocaleString("th-TH", {
@@ -208,41 +209,43 @@ export default function MyPayslipsPage() {
       if (!frame) return;
   
       const totals = calcTotals(viewPayslip.snapshot);
+      const bahtTextValue = thaiBahtText(totals.netPay);
       
-      const html = `
-      <!doctype html>
+      const html = `<!doctype html>
       <html>
       <head>
         <meta charset="utf-8" />
         <title>Payslip ${viewPayslip.userName}</title>
         <style>
+          @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap');
           @page { size: A4; margin: 15mm; }
-          body { font-family: 'Sarabun', sans-serif; font-size: 14px; line-height: 1.5; color: #333; margin: 0; padding: 0; }
+          body { font-family: 'Sarabun', sans-serif; font-size: 13px; line-height: 1.4; color: #333; margin: 0; padding: 0; }
           .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
-          .header h1 { margin: 0; font-size: 20px; color: #000; }
-          .header p { margin: 5px 0 0; font-size: 12px; color: #666; }
+          .header h1 { margin: 0; font-size: 18px; color: #000; }
+          .header p { margin: 5px 0 0; font-size: 11px; color: #666; }
           .doc-title { text-align: center; margin-bottom: 20px; }
-          .doc-title h2 { margin: 0; font-size: 18px; text-decoration: underline; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-          .section-title { font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px; margin-top: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          .doc-title h2 { margin: 0; font-size: 16px; text-decoration: underline; font-weight: bold; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+          .section-title { font-weight: bold; background: #f0f0f0; padding: 4px 8px; border: 1px solid #ccc; font-size: 12px; margin-top: 15px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+          th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
           th { background-color: #f9f9f9; }
           .text-right { text-align: right; }
           .total-row { font-weight: bold; background-color: #eee; }
+          .net-pay-box { border: 2px solid #333; padding: 10px; margin-top: 15px; display: flex; justify-content: space-between; align-items: center; }
+          .net-pay-val { font-size: 18px; font-weight: bold; }
+          .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; }
           .footer { margin-top: 50px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px; text-align: center; }
           .signature { border-top: 1px solid #333; padding-top: 5px; margin-top: 40px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h1>${storeSettings.taxName || 'ห้างหุ้นส่วนจำกัด สหดีเซลกลการ'}</h1>
+          <h1>${storeSettings.taxName || ' Sahadiesel Service '}</h1>
           <p>${storeSettings.taxAddress || ''}</p>
-          <p>โทร: ${storeSettings.phone || ''}</p>
+          <p>โทร: ${storeSettings.phone || ''} ${storeSettings.taxId ? `| เลขผู้เสียภาษี: ${storeSettings.taxId}` : ''}</p>
         </div>
-        <div class="doc-title">
-          <h2>ใบแจ้งยอดเงินเดือน / PAY SLIP</h2>
-        </div>
+        <div class="doc-title"><h2>ใบแจ้งยอดเงินเดือน / PAY SLIP</h2></div>
         <div class="info-grid">
           <div><strong>ชื่อพนักงาน:</strong> ${viewPayslip.userName}</div>
           <div class="text-right"><strong>ประจำงวด:</strong> ${viewPayslip.batchId}</div>
@@ -250,38 +253,65 @@ export default function MyPayslipsPage() {
           <div class="text-right"><strong>ประเภท:</strong> ${payTypeLabel(profile.hr?.payType)}</div>
         </div>
         
-        <div class="section-title">รายได้ / Earnings</div>
-        <table>
-          <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
-          <tbody>
-            <tr><td>เงินเดือนพื้นฐาน / Base Salary (งวด)</td><td class="text-right">${formatCurrency(totals.basePay)}</td></tr>
-            ${(viewPayslip.snapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${formatCurrency(a.amount)}</td></tr>`).join('')}
-            <tr class="total-row"><td>รวมรายได้ / Total Earnings</td><td class="text-right">${formatCurrency(totals.basePay + totals.addTotal)}</td></tr>
-          </tbody>
-        </table>
-
-        <div class="section-title">รายการหัก / Deductions</div>
-        <table>
-          <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน (บาท)</th></tr></thead>
-          <tbody>
-            ${(viewPayslip.snapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">${formatCurrency(d.amount)}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0</td></tr>'}
-            <tr class="total-row"><td>รวมรายการหัก / Total Deductions</td><td class="text-right">${formatCurrency(totals.dedTotal)}</td></tr>
-          </tbody>
-        </table>
-
-        <div style="margin-top: 20px; padding: 10px; border: 2px solid #333; text-align: right; font-size: 18px; font-weight: bold;">
-          เงินได้สุทธิ / NET PAY: <span style="margin-left: 20px;">${formatCurrency(totals.netPay)} บาท</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0 15px;">
+          <div>
+            <div class="section-title">รายได้ / EARNINGS</div>
+            <table>
+              <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน</th></tr></thead>
+              <tbody>
+                <tr><td>เงินเดือนพื้นฐาน (เต็ม)</td><td class="text-right">${formatCurrency(profile.hr?.salaryMonthly)}</td></tr>
+                <tr style="color: #666;"><td>เงินเดือนงวดนี้</td><td class="text-right">${formatCurrency(totals.basePay)}</td></tr>
+                ${(viewPayslip.snapshot.additions || []).map(a => `<tr><td>${a.name}</td><td class="text-right">${formatCurrency(a.amount)}</td></tr>`).join('')}
+                <tr class="total-row"><td>รวมรายได้งวดนี้</td><td class="text-right">${formatCurrency(totals.basePay + totals.addTotal)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <div class="section-title">รายการหัก / DEDUCTIONS</div>
+            <table>
+              <thead><tr><th>รายการ</th><th class="text-right">จำนวนเงิน</th></tr></thead>
+              <tbody>
+                ${(viewPayslip.snapshot.deductions || []).map(d => `<tr><td>${d.name}</td><td class="text-right">-${formatCurrency(d.amount)}</td></tr>`).join('') || '<tr><td>-</td><td class="text-right">0</td></tr>'}
+                <tr class="total-row"><td>รวมรายการหัก</td><td class="text-right">-${formatCurrency(totals.dedTotal)}</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
+        <div class="net-pay-box">
+          <div style="font-size: 11px;">(${bahtTextValue})</div>
+          <div>
+            <span style="margin-right: 15px;">เงินได้สุทธิ / NET PAY:</span>
+            <span class="net-pay-val">${formatCurrency(totals.netPay)} บาท</span>
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div>
+            <div class="section-title">สรุปการทำงานงวดนี้</div>
+            <table style="font-size: 11px;">
+              <tr><td>วันทำงานจริง</td><td class="text-right">${viewPayslip.snapshot.attendanceSummary?.presentDays || 0} วัน</td></tr>
+              <tr><td>มาสาย</td><td class="text-right">${viewPayslip.snapshot.attendanceSummary?.lateDays || 0} ครั้ง (${viewPayslip.snapshot.attendanceSummary?.lateMinutes || 0} นาที)</td></tr>
+              <tr><td>ขาดงาน</td><td class="text-right">${viewPayslip.snapshot.attendanceSummary?.absentUnits || 0} หน่วย</td></tr>
+              <tr><td>ลาป่วย / กิจ / พักร้อน</td><td class="text-right">${viewPayslip.snapshot.leaveSummary?.sickDays || 0} / ${viewPayslip.snapshot.leaveSummary?.businessDays || 0} / ${viewPayslip.snapshot.leaveSummary?.vacationDays || 0} วัน</td></tr>
+            </table>
+          </div>
+          <div>
+            <div class="section-title">สถิติสะสมปีปัจจุบัน (YTD)</div>
+            <table style="font-size: 11px;">
+              <tr><td>วันทำงานรวม</td><td class="text-right">${viewPayslip.snapshot.attendanceSummaryYtd?.presentDays || 0} วัน</td></tr>
+              <tr><td>สายสะสม</td><td class="text-right">${viewPayslip.snapshot.attendanceSummaryYtd?.lateMinutes || 0} นาที</td></tr>
+              <tr><td>ลาป่วยสะสม</td><td class="text-right">${viewPayslip.snapshot.leaveSummaryYtd?.sickDays || 0} วัน</td></tr>
+              <tr><td>ลากิจ / พักร้อนสะสม</td><td class="text-right">${(viewPayslip.snapshot.leaveSummaryYtd?.businessDays || 0) + (viewPayslip.snapshot.leaveSummaryYtd?.vacationDays || 0)} วัน</td></tr>
+            </table>
+          </div>
+        </div>
+
+        ${viewPayslip.snapshot.calcNotes ? `<div style="margin-top: 10px; font-size: 11px; border: 1px dashed #ccc; padding: 8px;"><strong>หมายเหตุ:</strong> ${viewPayslip.snapshot.calcNotes}</div>` : ''}
+
         <div class="footer">
-          <div>
-            <div class="signature"></div>
-            <p>ผู้อนุมัติจ่าย / Authorized Signature</p>
-          </div>
-          <div>
-            <div class="signature"></div>
-            <p>ผู้รับเงิน / Employee Signature</p>
-          </div>
+          <div><div class="signature"></div><p>ผู้อนุมัติจ่าย / Authorized Signature</p></div>
+          <div><div class="signature"></div><p>ผู้รับเงิน / Employee Signature</p></div>
         </div>
       </body>
       </html>`;
