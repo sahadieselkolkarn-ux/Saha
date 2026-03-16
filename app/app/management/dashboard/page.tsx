@@ -19,7 +19,8 @@ import {
   isBefore,
   parseISO,
   startOfDay,
-  endOfDay
+  endOfDay,
+  set
 } from "date-fns";
 import { 
   BarChart, 
@@ -144,11 +145,11 @@ function AppDashboardPage() {
     });
     
     // Fetch accounting entries
-    const unsubEntries = onSnapshot(query(collection(db, "accountingEntries"), orderBy("entryDate", "desc"), limit(500)), (snap) => {
+    const unsubEntries = onSnapshot(query(collection(db, "accountingEntries"), orderBy("entryDate", "desc"), limit(1000)), (snap) => {
       setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingEntry)));
     });
     
-    // FETCH OBLIGATIONS (AR/AP) - Fix: Filter for outstanding debts and increase limit
+    // FETCH OBLIGATIONS (AR/AP)
     const unsubObligations = onSnapshot(query(
       collection(db, "accountingObligations"), 
       where("status", "in", ["UNPAID", "PARTIAL"]),
@@ -204,7 +205,6 @@ function AppDashboardPage() {
     const currentCashOut = entries.filter(e => e.entryType === 'CASH_OUT' && isInPeriod(toDateSafe(e.entryDate))).reduce((s, e) => s + e.amount, 0);
     const prevCashOut = entries.filter(e => e.entryType === 'CASH_OUT' && isInPrevPeriod(toDateSafe(e.entryDate))).reduce((s, e) => s + e.amount, 0);
 
-    // FIX: Grand total outstanding balance regardless of date range
     const arBalance = obligations.filter(o => o.type === 'AR' && o.status !== 'PAID').reduce((s, o) => s + (o.balance || 0), 0);
     const apBalance = obligations.filter(o => o.type === 'AP' && o.status !== 'PAID').reduce((s, o) => s + (o.balance || 0), 0);
 
@@ -255,22 +255,41 @@ function AppDashboardPage() {
       value: currentInflow.filter(j => j.department === dept).length
     })).filter(v => v.value > 0);
 
-    // 4. Financial Flow (6 Months)
+    // 4. Financial Flow (3 Months - Bi-weekly points)
     const cashFlowData = Array.from({ length: 6 }).map((_, i) => {
-      const mStart = startOfMonth(subMonths(from, 5 - i));
-      const mEnd = endOfMonth(mStart);
-      const interval = { start: mStart, end: mEnd };
+      // 6 points = 3 months * 2 (bi-weekly)
+      const monthsAgo = Math.floor((5 - i) / 2);
+      const isSecondHalf = (5 - i) % 2 === 0;
+      
+      const targetMonth = subMonths(from, monthsAgo);
+      let rangeStart, rangeEnd;
+      
+      if (isSecondHalf) {
+        rangeStart = set(targetMonth, { date: 16, hours: 0, minutes: 0, seconds: 0 });
+        rangeEnd = endOfMonth(targetMonth);
+      } else {
+        rangeStart = startOfMonth(targetMonth);
+        rangeEnd = set(targetMonth, { date: 15, hours: 23, minutes: 59, seconds: 59 });
+      }
+      
+      const interval = { start: rangeStart, end: rangeEnd };
       
       const cin = entries.filter(e => {
         const d = toDateSafe(e.entryDate);
         return (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') && d && isWithinInterval(d, interval);
       }).reduce((s, e) => s + e.amount, 0);
+      
       const cout = entries.filter(e => {
         const d = toDateSafe(e.entryDate);
         return e.entryType === 'CASH_OUT' && d && isWithinInterval(d, interval);
       }).reduce((s, e) => s + e.amount, 0);
       
-      return { name: format(mStart, "MM/yy"), "เงินรับเข้า": cin, "เงินจ่ายออก": cout, Net: cin - cout };
+      return { 
+        name: format(rangeStart, "dd/MM"), 
+        "เงินรับเข้า": cin, 
+        "เงินจ่ายออก": cout, 
+        Net: cin - cout 
+      };
     });
 
     // 5. VAT Trend (6 Months)
@@ -533,8 +552,8 @@ function AppDashboardPage() {
 
         <Card className="h-full flex flex-col">
           <CardHeader>
-            <CardTitle>กระแสเงินสด (6 เดือน)</CardTitle>
-            <CardDescription>ภาพรวมเงินเข้า–ออก</CardDescription>
+            <CardTitle>กระแสเงินสด (3 เดือน)</CardTitle>
+            <CardDescription>ภาพรวมเงินเข้า–ออก (ทุกครึ่งเดือน)</CardDescription>
           </CardHeader>
           <CardContent className="flex-1">
             <div className="h-[280px]">
