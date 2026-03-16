@@ -1,9 +1,10 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase } from "@/firebase";
-import { collection, onSnapshot, query, orderBy, Timestamp, getDocs, limit, where } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, Timestamp, getDocs, limit, where, type FirestoreError } from "firebase/firestore";
 import { DateRange } from "react-day-picker";
 import { 
   subDays, 
@@ -46,7 +47,8 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2, PieChart as PieIcon, Landmark } from "lucide-react";
+import { Loader2, Calendar as CalendarIcon, TrendingUp, TrendingDown, AlertCircle, Clock, ArrowRight, Wallet, Users, Receipt, CheckCircle2, PieChart as PieIcon, Landmark, ExternalLink } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import type { Job, Document, AccountingEntry, JobDepartment, AccountingObligation, PurchaseDoc, Customer } from "@/lib/types";
 import { JOB_DEPARTMENTS } from "@/lib/constants";
@@ -59,6 +61,7 @@ export const dynamic = 'force-dynamic';
 const toDateSafe = (ts: any): Date | null => {
   if (!ts) return null;
   if (ts instanceof Date) return ts;
+  if (ts instanceof Timestamp) return ts.toDate();
   if (typeof ts.toDate === 'function') return ts.toDate();
   if (ts.seconds !== undefined) return new Date(ts.seconds * 1000);
   if (typeof ts === "string") {
@@ -103,11 +106,12 @@ function AppDashboardPage() {
   const [purchaseDocs, setPurchaseDocs] = useState<PurchaseDoc[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [indexErrorUrl, setIndexErrorUrl] = useState<string | null>(null);
 
   // Filters
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
-  // Initialize date range on client only to avoid hydration mismatch
+  // Initialize date range on client only
   useEffect(() => {
     const today = startOfToday();
     setDateRange({
@@ -121,35 +125,50 @@ function AppDashboardPage() {
   useEffect(() => {
     if (!db) return;
     setLoading(true);
+    setIndexErrorUrl(null);
 
-    // Limit active jobs to avoid heavy payload
+    // Fetch active jobs
     const unsubJobs = onSnapshot(query(collection(db, "jobs"), limit(500)), (snap) => {
       setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
-    // Fetch archived jobs for selected year with a reasonable limit for mobile performance
+    // Fetch archived jobs
     const archivedQuery = query(collection(db, `jobsArchive_${selectedYear}`), orderBy("lastActivityAt", "desc"), limit(200));
     const unsubArchived = onSnapshot(archivedQuery, (snap) => {
       setArchivedJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as Job)));
     });
 
-    const unsubDocs = onSnapshot(query(collection(db, "documents"), limit(300)), (snap) => {
+    // Fetch documents
+    const unsubDocs = onSnapshot(query(collection(db, "documents"), limit(500)), (snap) => {
       setDocuments(snap.docs.map(d => ({ id: d.id, ...d.data() } as Document)));
     });
     
-    const unsubEntries = onSnapshot(query(collection(db, "accountingEntries"), orderBy("entryDate", "desc"), limit(200)), (snap) => {
+    // Fetch accounting entries
+    const unsubEntries = onSnapshot(query(collection(db, "accountingEntries"), orderBy("entryDate", "desc"), limit(500)), (snap) => {
       setEntries(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingEntry)));
     });
     
-    const unsubObligations = onSnapshot(query(collection(db, "accountingObligations"), limit(200)), (snap) => {
+    // FETCH OBLIGATIONS (AR/AP) - Fix: Filter for outstanding debts and increase limit
+    const unsubObligations = onSnapshot(query(
+      collection(db, "accountingObligations"), 
+      where("status", "in", ["UNPAID", "PARTIAL"]),
+      limit(1000)
+    ), (snap) => {
       setObligations(snap.docs.map(d => ({ id: d.id, ...d.data() } as AccountingObligation)));
+    }, (err: FirestoreError) => {
+      if (err.message?.includes('requires an index')) {
+        const urlMatch = err.message.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) setIndexErrorUrl(urlMatch[0]);
+      }
     });
     
-    const unsubPurchases = onSnapshot(query(collection(db, "purchaseDocs"), limit(100)), (snap) => {
+    // Fetch purchases
+    const unsubPurchases = onSnapshot(query(collection(db, "purchaseDocs"), limit(200)), (snap) => {
       setPurchaseDocs(snap.docs.map(d => ({ id: d.id, ...d.data() } as PurchaseDoc)));
     });
     
-    const unsubCustomers = onSnapshot(query(collection(db, "customers"), limit(500)), (snap) => {
+    // Fetch customers
+    const unsubCustomers = onSnapshot(query(collection(db, "customers"), limit(1000)), (snap) => {
       setCustomers(snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer)));
       setLoading(false);
     });
@@ -168,8 +187,8 @@ function AppDashboardPage() {
     const prevFrom = subDays(from, diff);
     const prevTo = subDays(to, diff);
 
-    const isInPeriod = (d: Date | null) => d && isWithinInterval(d, { start: from, end: to });
-    const isInPrevPeriod = (d: Date | null) => d && isWithinInterval(d, { start: prevFrom, end: prevTo });
+    const isInPeriod = (d: Date | null) => d && isWithinInterval(d, { start: startOfDay(from), end: endOfDay(to) });
+    const isInPrevPeriod = (d: Date | null) => d && isWithinInterval(d, { start: startOfDay(prevFrom), end: endOfDay(prevTo) });
 
     // 1. KPI Calculations
     const currentInflow = jobs.filter(j => isInPeriod(toDateSafe(j.createdAt)));
@@ -185,8 +204,9 @@ function AppDashboardPage() {
     const currentCashOut = entries.filter(e => e.entryType === 'CASH_OUT' && isInPeriod(toDateSafe(e.entryDate))).reduce((s, e) => s + e.amount, 0);
     const prevCashOut = entries.filter(e => e.entryType === 'CASH_OUT' && isInPrevPeriod(toDateSafe(e.entryDate))).reduce((s, e) => s + e.amount, 0);
 
-    const arBalance = obligations.filter(o => o.type === 'AR' && o.status !== 'PAID').reduce((s, o) => s + o.balance, 0);
-    const apBalance = obligations.filter(o => o.type === 'AP' && o.status !== 'PAID').reduce((s, o) => s + o.balance, 0);
+    // FIX: Grand total outstanding balance regardless of date range
+    const arBalance = obligations.filter(o => o.type === 'AR' && o.status !== 'PAID').reduce((s, o) => s + (o.balance || 0), 0);
+    const apBalance = obligations.filter(o => o.type === 'AP' && o.status !== 'PAID').reduce((s, o) => s + (o.balance || 0), 0);
 
     // 2. Charts: Job Volume (6 Months)
     const last6Months = Array.from({ length: 6 }).map((_, i) => {
@@ -433,6 +453,21 @@ function AppDashboardPage() {
           </Select>
         </div>
       </PageHeader>
+
+      {indexErrorUrl && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>ต้องสร้าง Index เพื่อคำนวณยอดลูกหนี้/เจ้าหนี้</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2 mt-2">
+            <span>ฐานข้อมูลต้องการดัชนีพิเศษเพื่อกรองยอดค้างชำระมาแสดงผล กรุณากดปุ่มเพื่อสร้าง Index ค่ะ</span>
+            <Button asChild variant="outline" size="sm" className="w-fit bg-white text-destructive hover:bg-muted">
+              <a href={indexErrorUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="mr-2 h-4 w-4" /> สร้าง Index (Firebase)
+              </a>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.kpis.map((kpi, i) => (
