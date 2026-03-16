@@ -105,13 +105,18 @@ export default function ManagementAccountingAccountsPage() {
   // Calculate current balances for all accounts
   const accountsWithBalances = useMemo(() => {
     return accounts.map(acc => {
-      const accEntries = entries.filter(e => e.accountId === acc.id);
+      const openingDate = acc.openingBalanceDate || "1900-01-01";
+      // IMPORTANT: Only count entries that occurred on or after the opening balance date
+      // to match the calculation logic in the detailed ledger.
+      const accEntries = entries.filter(e => e.accountId === acc.id && e.entryDate >= openingDate);
+      
       const balance = accEntries.reduce((sum, e) => {
         if (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') return sum + e.amount;
         if (e.entryType === 'CASH_OUT') return sum - e.amount;
         return sum;
       }, acc.openingBalance || 0);
-      return { ...acc, currentBalance: balance };
+      
+      return { ...acc, currentBalance: Math.round(balance * 100) / 100 };
     });
   }, [accounts, entries]);
 
@@ -288,7 +293,7 @@ export default function ManagementAccountingAccountsPage() {
                       <TableCell>{account.type}</TableCell>
                       <TableCell>{account.bankName || '-'}</TableCell>
                       <TableCell>{account.accountNo || '-'}</TableCell>
-                      <TableCell className="text-right font-bold text-primary">{(account.currentBalance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right font-bold text-primary">{(account.currentBalance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                       <TableCell>
                         <Badge variant={account.isActive ? 'default' : 'secondary'}>{account.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}</Badge>
                       </TableCell>
