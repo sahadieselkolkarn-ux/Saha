@@ -95,8 +95,8 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     resolver: zodResolver(quotationFormSchema),
     defaultValues: {
       jobId: jobId || undefined,
-      issueDate: "", // Set in useEffect
-      expiryDate: "", // Set in useEffect
+      issueDate: "",
+      expiryDate: "",
       items: [{ description: "", quantity: 1, unitPrice: 0, total: 0 }],
       isVat: false,
       subtotal: 0,
@@ -114,7 +114,11 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
   const isCustomerSelectionDisabled = !!jobId || (isEditing && !!docToEdit?.customerId);
   const isCancelled = docToEdit?.status === 'CANCELLED';
 
-  // Client-side initialization for issueDate
+  const { fields, append, remove, replace } = useFieldArray({
+    control: form.control,
+    name: "items",
+  });
+
   useEffect(() => {
     if (!isEditing && !form.getValues("issueDate")) {
       const today = new Date();
@@ -123,7 +127,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     }
   }, [isEditing, form]);
 
-  // Preview Document Number
   useEffect(() => {
     if (!db || isEditing || !watchedIssueDate) return;
     
@@ -136,9 +139,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
         } else {
           setPreviewDocNo(result.docNo);
         }
-      } catch (e: any) {
-        // Silently handle
-      }
+      } catch (e: any) {}
     };
     fetchPreview();
   }, [db, isEditing, watchedIssueDate]);
@@ -189,11 +190,6 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     });
   }, [job, docToEdit, customers, jobId, form]);
 
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "items",
-  });
-  
   const watchedItems = useWatch({ control: form.control, name: "items" });
   const watchedDiscount = useWatch({ control: form.control, name: "discountAmount" });
   const watchedIsVat = useWatch({ control: form.control, name: "isVat" });
@@ -210,6 +206,55 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     form.setValue("vatAmount", vatAmount);
     form.setValue("grandTotal", grandTotal);
   }, [watchedItems, watchedDiscount, watchedIsVat, form]);
+
+  const applyTemplate = (template: QuotationTemplate) => {
+    if (template.items && template.items.length > 0) {
+      replace(template.items.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.total
+      })));
+      form.setValue('isVat', template.withTax ?? false);
+      form.setValue('discountAmount', template.discountAmount || 0);
+      form.setValue('notes', template.notes || "");
+      toast({ title: "ใช้ Template สำเร็จ", description: `ดึงข้อมูลจาก "${template.name}" เรียบร้อยแล้วค่ะ` });
+    }
+    setIsTemplatePopoverOpen(false);
+  };
+
+  const handleSaveAsTemplate = async () => {
+    const items = form.getValues("items");
+    const name = prompt("กรุณาระบุชื่อ Template ที่ต้องการบันทึก:");
+    if (!name || !db || !profile) return;
+
+    setIsProcessing(true);
+    try {
+      const templateData = {
+        name: name.trim(),
+        items: items.map(i => ({ ...i })),
+        discountAmount: form.getValues("discountAmount") || 0,
+        withTax: form.getValues("isVat") || false,
+        notes: form.getValues("notes") || "",
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        createdByUid: profile.uid,
+        createdByName: profile.displayName,
+      };
+
+      const newRef = doc(collection(db, "quotationTemplates"));
+      await setDoc(newRef, {
+        ...sanitizeForFirestore(templateData),
+        id: newRef.id,
+      });
+
+      toast({ title: "บันทึก Template สำเร็จ", description: `Template "${name}" พร้อมใช้งานแล้วค่ะ` });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "บันทึกไม่สำเร็จ", description: e.message });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const executeSave = async (data: QuotationFormData) => {
     const customerSnapshot = customers.find(c => c.id === data.customerId) || docToEdit?.customerSnapshot || job?.customerSnapshot;
@@ -308,33 +353,15 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
     } catch(e: any) { toast({ variant: 'destructive', title: "Error", description: e.message }); setIsProcessing(false); }
   };
 
-  const handleFetchFromDoc = async (sourceDoc: DocumentType) => {
-    const itemsFromDoc = (sourceDoc.items || []).map((item: any) => ({ description: String(item.description ?? ''), quantity: Number(item.quantity ?? 1), unitPrice: Number(item.unitPrice ?? 0), total: Math.round((Number(item.quantity ?? 1) * Number(item.unitPrice ?? 0)) * 100) / 100 }));
-    if (itemsFromDoc.length === 0) return;
-    replace(itemsFromDoc);
-    if (sourceDoc.docType === 'QUOTATION') setReferencedQuotationId(sourceDoc.id);
-    form.setValue('discountAmount', Number(sourceDoc.discountAmount ?? 0));
-    form.setValue('customerId', sourceDoc.customerId || sourceDoc.customerSnapshot?.id || "");
-    form.setValue('receiverName', sourceDoc.customerSnapshot?.taxName || sourceDoc.customerSnapshot?.name || "");
-    setIsQtSearchOpen(false);
-  };
-
-  const loadAllDocs = async (type: DocType | 'BILLS') => {
-    if (!db) return;
-    if (type === 'QUOTATION') {
-        setIsSearchingQt(true);
-        try {
-            const snap = await getDocs(query(collection(db, "documents"), where("docType", "==", "QUOTATION"), limit(500)));
-            const getTime = (v: any) => v?.toMillis?.() || v?.seconds * 1000 || 0;
-            setAllQuotations(snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentType)).filter(d => d.status !== 'CANCELLED').sort((a,b) => getTime(b.createdAt) - getTime(a.createdAt)));
-        } finally { setIsSearchingQt(false); }
-    }
-  };
-
   const isFormLoading = form.formState.isSubmitting || isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingDocToEdit || isProcessing;
   const filteredCustomers = useMemo(() => {
     if (!customerSearch) return customers;
-    return customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch));
+    const lowercasedFilter = customerSearch.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(lowercasedFilter) ||
+        c.phone.includes(customerSearch)
+    );
   }, [customers, customerSearch]);
 
   if (isLoadingJob || isLoadingStore || isLoadingCustomers || isLoadingDocToEdit) return <div className="p-8 space-y-4"><Skeleton className="h-20 w-full" /><Skeleton className="h-64 w-full" /></div>;
@@ -344,7 +371,7 @@ export function QuotationForm({ jobId, editDocId }: { jobId: string | null, edit
       {indexErrorUrl && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>ต้องสร้าง Index ก่อน</AlertTitle>
+          <AlertTitle>ต้องสร้างดัชนี (Index) ก่อน</AlertTitle>
           <AlertDescription className="flex flex-col gap-2">
             <span>ฐานข้อมูลต้องการดัชนีเพื่อเรียงลำดับเอกสาร กรุณากดปุ่มด้านล่างเพื่อสร้าง Index</span>
             <Button asChild variant="outline" size="sm" className="w-fit bg-white text-destructive hover:bg-muted">
