@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp, writeBatch, where } from "firebase/firestore";
 import { useFirebase } from "@/firebase";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
@@ -18,13 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, PlusCircle, Search, MoreHorizontal, Edit, ToggleLeft, ToggleRight, BookOpen, ShieldAlert, ArrowRightLeft, Save, AlertCircle } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { AccountingAccount } from "@/lib/types";
+import type { AccountingAccount, AccountingEntry } from "@/lib/types";
 import type { WithId } from "@/firebase/index";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
@@ -49,6 +50,7 @@ export default function ManagementAccountingAccountsPage() {
   const { toast } = useToast();
 
   const [accounts, setAccounts] = useState<WithId<AccountingAccount>[]>([]);
+  const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [accountToAction, setAccountToAction] = useState<WithId<AccountingAccount> | null>(null);
@@ -67,10 +69,9 @@ export default function ManagementAccountingAccountsPage() {
     },
   });
 
-  // Strictly block WORKER from management accounting
   const hasPermission = useMemo(() => {
     if (!profile) return false;
-    return (profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT') && profile.role !== 'WORKER';
+    return (profile.role === 'ADMIN' || profile.role === 'MANAGER' || profile.department === 'MANAGEMENT' || profile.department === 'ACCOUNTING_HR') && profile.role !== 'WORKER';
   }, [profile]);
 
   useEffect(() => {
@@ -79,33 +80,49 @@ export default function ManagementAccountingAccountsPage() {
       return;
     }
     setLoading(true);
-    const q = query(collection(db, "accountingAccounts"), orderBy("createdAt", "desc"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+
+    // 1. Listen to Accounts
+    const unsubAccounts = onSnapshot(query(collection(db, "accountingAccounts"), orderBy("createdAt", "desc")), (snapshot) => {
       setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WithId<AccountingAccount>)));
-      setLoading(false);
     }, (error: any) => {
       if (error.code === 'permission-denied') {
-        const permissionError = new FirestorePermissionError({
-          path: 'accountingAccounts',
-          operation: 'list',
-        } satisfies SecurityRuleContext);
-        errorEmitter.emit('permission-error', permissionError);
-      } else {
-        toast({ variant: "destructive", title: "เกิดข้อผิดพลาด", description: "ไม่สามารถโหลดข้อมูลบัญชีได้" });
+        errorEmitter.emit('permission-error', new FirestorePermissionError({ path: 'accountingAccounts', operation: 'list' }));
       }
+    });
+
+    // 2. Listen to Entries for Balance Calculation
+    const unsubEntries = onSnapshot(query(collection(db, "accountingEntries")), (snapshot) => {
+      setEntries(snapshot.docs.map(doc => doc.data() as AccountingEntry));
+      setLoading(false);
+    }, (error: any) => {
+      console.error("Entries listener error:", error);
       setLoading(false);
     });
-    return () => unsubscribe();
-  }, [db, toast, hasPermission, authLoading]);
+
+    return () => { unsubAccounts(); unsubEntries(); };
+  }, [db, hasPermission, authLoading]);
+
+  // Calculate current balances for all accounts
+  const accountsWithBalances = useMemo(() => {
+    return accounts.map(acc => {
+      const accEntries = entries.filter(e => e.accountId === acc.id);
+      const balance = accEntries.reduce((sum, e) => {
+        if (e.entryType === 'RECEIPT' || e.entryType === 'CASH_IN') return sum + e.amount;
+        if (e.entryType === 'CASH_OUT') return sum - e.amount;
+        return sum;
+      }, acc.openingBalance || 0);
+      return { ...acc, currentBalance: balance };
+    });
+  }, [accounts, entries]);
 
   const filteredAccounts = useMemo(() => {
-    if (!searchTerm.trim()) return accounts;
+    if (!searchTerm.trim()) return accountsWithBalances;
     const lowercasedFilter = searchTerm.toLowerCase();
-    return accounts.filter(acc =>
+    return accountsWithBalances.filter(acc =>
       acc.name.toLowerCase().includes(lowercasedFilter) ||
       (acc.accountNo && acc.accountNo.includes(searchTerm))
     );
-  }, [accounts, searchTerm]);
+  }, [accountsWithBalances, searchTerm]);
 
   const handleToggleActive = (account: WithId<AccountingAccount>) => {
     setAccountToAction(account);
@@ -256,7 +273,7 @@ export default function ManagementAccountingAccountsPage() {
                   <TableHead>ประเภท</TableHead>
                   <TableHead>ธนาคาร</TableHead>
                   <TableHead>เลขที่บัญชี</TableHead>
-                  <TableHead className="text-right">ยอดยกมา</TableHead>
+                  <TableHead className="text-right">ยอดคงเหลือปัจจุบัน</TableHead>
                   <TableHead>สถานะ</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
@@ -271,7 +288,7 @@ export default function ManagementAccountingAccountsPage() {
                       <TableCell>{account.type}</TableCell>
                       <TableCell>{account.bankName || '-'}</TableCell>
                       <TableCell>{account.accountNo || '-'}</TableCell>
-                      <TableCell className="text-right">{(account.openingBalance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right font-bold text-primary">{(account.currentBalance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })}</TableCell>
                       <TableCell>
                         <Badge variant={account.isActive ? 'default' : 'secondary'}>{account.isActive ? 'ใช้งาน' : 'ปิดใช้งาน'}</Badge>
                       </TableCell>
