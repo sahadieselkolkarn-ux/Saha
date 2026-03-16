@@ -1161,7 +1161,7 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
         </PageHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-center md:items-center gap-4">
                 <TabsList>
                     <TabsTrigger value="debtors">ลูกหนี้ (Debtors)</TabsTrigger>
                     <TabsTrigger value="creditors">เจ้าหนี้ (Creditors)</TabsTrigger>
@@ -1214,8 +1214,6 @@ export default function ReceivablesPayablesPage() {
         profile?.role === 'MANAGER' || 
         profile?.department === 'MANAGEMENT' ||
         profile?.department === 'ACCOUNTING_HR'
-     Bird,
-    profile?.department === 'ACCOUNTING_HR'
     , [profile]);
 
     if (loading) {
