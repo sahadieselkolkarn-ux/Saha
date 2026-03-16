@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Suspense, useState, useEffect } from "react";
+import { useMemo, Suspense, useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { useFirebase, useCollection, useDoc, type WithId } from "@/firebase";
@@ -1119,6 +1119,18 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
         return () => { unsubAccounts(); unsubVendors(); };
     }, [db]);
 
+    const handleSummaryChange = useCallback((total: number, count: number) => {
+        setSummary(prev => {
+            if (prev.total === total && prev.count === count) return prev;
+            return { total, count };
+        });
+    }, []);
+
+    useEffect(() => {
+        // Reset summary when tab changes to avoid showing old totals
+        setSummary({ total: 0, count: 0 });
+    }, [activeTab]);
+
     const monthOptions = useMemo(() => {
         const options = [{ value: 'ALL', label: 'ทุกเดือน' }];
         const now = new Date();
@@ -1160,7 +1172,7 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
             </div>
         </PageHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-4">
             <div className="flex flex-col md:flex-row justify-between items-center md:items-center gap-4">
                 <TabsList>
                     <TabsTrigger value="debtors">ลูกหนี้ (Debtors)</TabsTrigger>
@@ -1194,10 +1206,28 @@ function ReceivablesPayablesContent({ profile }: { profile: UserProfile }) {
             <Card>
               <CardContent className="pt-6">
                 <TabsContent value="debtors" className="mt-0">
-                    <ObligationList type="AR" searchTerm={searchTerm} monthFilter={monthFilter} accounts={accounts} vendors={vendors} onSummaryChange={(total, count) => setSummary({ total, count })} />
+                    {activeTab === 'debtors' && (
+                        <ObligationList 
+                            type="AR" 
+                            searchTerm={searchTerm} 
+                            monthFilter={monthFilter} 
+                            accounts={accounts} 
+                            vendors={vendors} 
+                            onSummaryChange={handleSummaryChange} 
+                        />
+                    )}
                 </TabsContent>
                 <TabsContent value="creditors" className="mt-0">
-                    <ObligationList type="AP" searchTerm={searchTerm} monthFilter={monthFilter} accounts={accounts} vendors={vendors} onSummaryChange={(total, count) => setSummary({ total, count })} />
+                    {activeTab === 'creditors' && (
+                        <ObligationList 
+                            type="AP" 
+                            searchTerm={searchTerm} 
+                            monthFilter={monthFilter} 
+                            accounts={accounts} 
+                            vendors={vendors} 
+                            onSummaryChange={handleSummaryChange} 
+                        />
+                    )}
                 </TabsContent>
               </CardContent>
             </Card>
